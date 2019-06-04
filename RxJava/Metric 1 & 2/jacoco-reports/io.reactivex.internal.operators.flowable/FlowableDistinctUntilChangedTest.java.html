@@ -1,0 +1,488 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableDistinctUntilChangedTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableDistinctUntilChangedTest.java</span></div><h1>FlowableDistinctUntilChangedTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.*;
+import org.mockito.InOrder;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.*;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L37">public class FlowableDistinctUntilChangedTest {</span>
+
+    Subscriber&lt;String&gt; w;
+    Subscriber&lt;String&gt; w2;
+
+    // nulls lead to exceptions
+<span class="fc" id="L43">    final Function&lt;String, String&gt; TO_UPPER_WITH_EXCEPTION = new Function&lt;String, String&gt;() {</span>
+        @Override
+        public String apply(String s) {
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if (s.equals(&quot;x&quot;)) {</span>
+<span class="nc" id="L47">                return &quot;xx&quot;;</span>
+            }
+<span class="fc" id="L49">            return s.toUpperCase();</span>
+        }
+    };
+
+    @Before
+    public void before() {
+<span class="fc" id="L55">        w = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L56">        w2 = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L57">    }</span>
+
+    @Test
+    public void testDistinctUntilChangedOfNone() {
+<span class="fc" id="L61">        Flowable&lt;String&gt; src = Flowable.empty();</span>
+<span class="fc" id="L62">        src.distinctUntilChanged().subscribe(w);</span>
+
+<span class="fc" id="L64">        verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L65">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L66">        verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L67">    }</span>
+
+    @Test
+    public void testDistinctUntilChangedOfNoneWithKeySelector() {
+<span class="fc" id="L71">        Flowable&lt;String&gt; src = Flowable.empty();</span>
+<span class="fc" id="L72">        src.distinctUntilChanged(TO_UPPER_WITH_EXCEPTION).subscribe(w);</span>
+
+<span class="fc" id="L74">        verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L75">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L76">        verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L77">    }</span>
+
+    @Test
+    public void testDistinctUntilChangedOfNormalSource() {
+<span class="fc" id="L81">        Flowable&lt;String&gt; src = Flowable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;, &quot;c&quot;, &quot;c&quot;, &quot;b&quot;, &quot;b&quot;, &quot;a&quot;, &quot;e&quot;);</span>
+<span class="fc" id="L82">        src.distinctUntilChanged().subscribe(w);</span>
+
+<span class="fc" id="L84">        InOrder inOrder = inOrder(w);</span>
+<span class="fc" id="L85">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L86">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L87">        inOrder.verify(w, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L88">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L89">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L90">        inOrder.verify(w, times(1)).onNext(&quot;e&quot;);</span>
+<span class="fc" id="L91">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L92">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L93">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L94">    }</span>
+
+    @Test
+    public void testDistinctUntilChangedOfNormalSourceWithKeySelector() {
+<span class="fc" id="L98">        Flowable&lt;String&gt; src = Flowable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;, &quot;C&quot;, &quot;c&quot;, &quot;B&quot;, &quot;b&quot;, &quot;a&quot;, &quot;e&quot;);</span>
+<span class="fc" id="L99">        src.distinctUntilChanged(TO_UPPER_WITH_EXCEPTION).subscribe(w);</span>
+
+<span class="fc" id="L101">        InOrder inOrder = inOrder(w);</span>
+<span class="fc" id="L102">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L103">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L104">        inOrder.verify(w, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L105">        inOrder.verify(w, times(1)).onNext(&quot;B&quot;);</span>
+<span class="fc" id="L106">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L107">        inOrder.verify(w, times(1)).onNext(&quot;e&quot;);</span>
+<span class="fc" id="L108">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L109">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L110">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L111">    }</span>
+
+    @Test
+    @Ignore(&quot;Null values no longer allowed&quot;)
+    public void testDistinctUntilChangedOfSourceWithNulls() {
+<span class="nc" id="L116">        Flowable&lt;String&gt; src = Flowable.just(null, &quot;a&quot;, &quot;a&quot;, null, null, &quot;b&quot;, null, null);</span>
+<span class="nc" id="L117">        src.distinctUntilChanged().subscribe(w);</span>
+
+<span class="nc" id="L119">        InOrder inOrder = inOrder(w);</span>
+<span class="nc" id="L120">        inOrder.verify(w, times(1)).onNext(null);</span>
+<span class="nc" id="L121">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="nc" id="L122">        inOrder.verify(w, times(1)).onNext(null);</span>
+<span class="nc" id="L123">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="nc" id="L124">        inOrder.verify(w, times(1)).onNext(null);</span>
+<span class="nc" id="L125">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="nc" id="L126">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="nc" id="L127">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="nc" id="L128">    }</span>
+
+    @Test
+    @Ignore(&quot;Null values no longer allowed&quot;)
+    public void testDistinctUntilChangedOfSourceWithExceptionsFromKeySelector() {
+<span class="nc" id="L133">        Flowable&lt;String&gt; src = Flowable.just(&quot;a&quot;, &quot;b&quot;, null, &quot;c&quot;);</span>
+<span class="nc" id="L134">        src.distinctUntilChanged(TO_UPPER_WITH_EXCEPTION).subscribe(w);</span>
+
+<span class="nc" id="L136">        InOrder inOrder = inOrder(w);</span>
+<span class="nc" id="L137">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="nc" id="L138">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="nc" id="L139">        verify(w, times(1)).onError(any(NullPointerException.class));</span>
+<span class="nc" id="L140">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="nc" id="L141">        inOrder.verify(w, never()).onComplete();</span>
+<span class="nc" id="L142">    }</span>
+
+    @Test
+    public void directComparer() {
+<span class="fc" id="L146">        Flowable.fromArray(1, 2, 2, 3, 2, 4, 1, 1, 2)</span>
+<span class="fc" id="L147">        .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Integer b) {
+<span class="fc" id="L150">                return a.equals(b);</span>
+            }
+        })
+<span class="fc" id="L153">        .test()</span>
+<span class="fc" id="L154">        .assertResult(1, 2, 3, 2, 4, 1, 2);</span>
+<span class="fc" id="L155">    }</span>
+
+    @Test
+    public void directComparerConditional() {
+<span class="fc" id="L159">        Flowable.fromArray(1, 2, 2, 3, 2, 4, 1, 1, 2)</span>
+<span class="fc" id="L160">        .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Integer b) {
+<span class="fc" id="L163">                return a.equals(b);</span>
+            }
+        })
+<span class="fc" id="L166">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) {
+<span class="fc" id="L169">                return true;</span>
+            }
+        })
+<span class="fc" id="L172">        .test()</span>
+<span class="fc" id="L173">        .assertResult(1, 2, 3, 2, 4, 1, 2);</span>
+<span class="fc" id="L174">    }</span>
+
+    @Test
+    public void directComparerFused() {
+<span class="fc" id="L178">        Flowable.fromArray(1, 2, 2, 3, 2, 4, 1, 1, 2)</span>
+<span class="fc" id="L179">        .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Integer b) {
+<span class="fc" id="L182">                return a.equals(b);</span>
+            }
+        })
+<span class="fc" id="L185">        .to(SubscriberFusion.&lt;Integer&gt;test(Long.MAX_VALUE, QueueFuseable.ANY, false))</span>
+<span class="fc" id="L186">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L187">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.SYNC))</span>
+<span class="fc" id="L188">        .assertResult(1, 2, 3, 2, 4, 1, 2);</span>
+<span class="fc" id="L189">    }</span>
+
+    @Test
+    public void directComparerConditionalFused() {
+<span class="fc" id="L193">        Flowable.fromArray(1, 2, 2, 3, 2, 4, 1, 1, 2)</span>
+<span class="fc" id="L194">        .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Integer b) {
+<span class="fc" id="L197">                return a.equals(b);</span>
+            }
+        })
+<span class="fc" id="L200">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) {
+<span class="fc" id="L203">                return true;</span>
+            }
+        })
+<span class="fc" id="L206">        .to(SubscriberFusion.&lt;Integer&gt;test(Long.MAX_VALUE, QueueFuseable.ANY, false))</span>
+<span class="fc" id="L207">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L208">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.SYNC))</span>
+<span class="fc" id="L209">        .assertResult(1, 2, 3, 2, 4, 1, 2);</span>
+<span class="fc" id="L210">    }</span>
+
+<span class="fc" id="L212">    private static final Function&lt;String, String&gt; THROWS_NON_FATAL = new Function&lt;String, String&gt;() {</span>
+        @Override
+        public String apply(String s) {
+<span class="fc" id="L215">            throw new RuntimeException();</span>
+        }
+    };
+
+    @Test
+    public void testDistinctUntilChangedWhenNonFatalExceptionThrownByKeySelectorIsNotReportedByUpstream() {
+<span class="fc" id="L221">        Flowable&lt;String&gt; src = Flowable.just(&quot;a&quot;, &quot;b&quot;, &quot;null&quot;, &quot;c&quot;);</span>
+<span class="fc" id="L222">        final AtomicBoolean errorOccurred = new AtomicBoolean(false);</span>
+<span class="fc" id="L223">        src</span>
+<span class="fc" id="L224">          .doOnError(new Consumer&lt;Throwable&gt;() {</span>
+                @Override
+                public void accept(Throwable t) {
+<span class="nc" id="L227">                    errorOccurred.set(true);</span>
+<span class="nc" id="L228">                }</span>
+            })
+<span class="fc" id="L230">          .distinctUntilChanged(THROWS_NON_FATAL)</span>
+<span class="fc" id="L231">          .subscribe(w);</span>
+<span class="fc" id="L232">        Assert.assertFalse(errorOccurred.get());</span>
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void customComparator() {
+<span class="fc" id="L237">        Flowable&lt;String&gt; source = Flowable.just(&quot;a&quot;, &quot;b&quot;, &quot;B&quot;, &quot;A&quot;, &quot;a&quot;, &quot;C&quot;);</span>
+
+<span class="fc" id="L239">        TestSubscriber&lt;String&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L241">        source.distinctUntilChanged(new BiPredicate&lt;String, String&gt;() {</span>
+            @Override
+            public boolean test(String a, String b) {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">                return a.compareToIgnoreCase(b) == 0;</span>
+            }
+        })
+<span class="fc" id="L247">        .subscribe(ts);</span>
+
+<span class="fc" id="L249">        ts.assertValues(&quot;a&quot;, &quot;b&quot;, &quot;A&quot;, &quot;C&quot;);</span>
+<span class="fc" id="L250">        ts.assertNoErrors();</span>
+<span class="fc" id="L251">        ts.assertComplete();</span>
+<span class="fc" id="L252">    }</span>
+
+    @Test
+    public void customComparatorThrows() {
+<span class="fc" id="L256">        Flowable&lt;String&gt; source = Flowable.just(&quot;a&quot;, &quot;b&quot;, &quot;B&quot;, &quot;A&quot;, &quot;a&quot;, &quot;C&quot;);</span>
+
+<span class="fc" id="L258">        TestSubscriber&lt;String&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L260">        source.distinctUntilChanged(new BiPredicate&lt;String, String&gt;() {</span>
+            @Override
+            public boolean test(String a, String b) {
+<span class="fc" id="L263">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L266">        .subscribe(ts);</span>
+
+<span class="fc" id="L268">        ts.assertValue(&quot;a&quot;);</span>
+<span class="fc" id="L269">        ts.assertNotComplete();</span>
+<span class="fc" id="L270">        ts.assertError(TestException.class);</span>
+<span class="fc" id="L271">    }</span>
+
+    @Test
+    public void fused() {
+<span class="fc" id="L275">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L277">        Flowable.just(1, 2, 2, 3, 3, 4, 5)</span>
+<span class="fc" id="L278">        .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Integer b) throws Exception {
+<span class="fc" id="L281">                return a.equals(b);</span>
+            }
+        })
+<span class="fc" id="L284">        .subscribe(ts);</span>
+
+<span class="fc" id="L286">        ts.assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L287">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.SYNC))</span>
+<span class="fc" id="L288">        .assertResult(1, 2, 3, 4, 5)</span>
+        ;
+<span class="fc" id="L290">    }</span>
+
+    @Test
+    public void fusedAsync() {
+<span class="fc" id="L294">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L296">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+
+<span class="fc" id="L298">        up</span>
+<span class="fc" id="L299">        .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Integer b) throws Exception {
+<span class="fc" id="L302">                return a.equals(b);</span>
+            }
+        })
+<span class="fc" id="L305">        .subscribe(ts);</span>
+
+<span class="fc" id="L307">        TestHelper.emit(up, 1, 2, 2, 3, 3, 4, 5);</span>
+
+<span class="fc" id="L309">        ts.assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L310">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L311">        .assertResult(1, 2, 3, 4, 5)</span>
+        ;
+<span class="fc" id="L313">    }</span>
+
+    @Test
+    public void ignoreCancel() {
+<span class="fc" id="L317">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L320">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L323">                    s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L324">                    s.onNext(1);</span>
+<span class="fc" id="L325">                    s.onNext(2);</span>
+<span class="fc" id="L326">                    s.onNext(3);</span>
+<span class="fc" id="L327">                    s.onError(new IOException());</span>
+<span class="fc" id="L328">                    s.onComplete();</span>
+<span class="fc" id="L329">                }</span>
+            }
+<span class="fc" id="L331">            .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+                @Override
+                public boolean test(Integer a, Integer b) throws Exception {
+<span class="fc" id="L334">                    throw new TestException();</span>
+                }
+            })
+<span class="fc" id="L337">            .test()</span>
+<span class="fc" id="L338">            .assertFailure(TestException.class, 1);</span>
+
+<span class="fc" id="L340">            TestHelper.assertUndeliverable(errors, 0, IOException.class);</span>
+        } finally {
+<span class="fc" id="L342">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L344">    }</span>
+
+<span class="fc" id="L346">    class Mutable {</span>
+        int value;
+    }
+
+    @Test
+    public void mutableWithSelector() {
+<span class="fc" id="L352">        Mutable m = new Mutable();</span>
+
+<span class="fc" id="L354">        PublishProcessor&lt;Mutable&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L356">        TestSubscriber&lt;Mutable&gt; ts = pp.distinctUntilChanged(new Function&lt;Mutable, Object&gt;() {</span>
+            @Override
+            public Object apply(Mutable m) throws Exception {
+<span class="fc" id="L359">                return m.value;</span>
+            }
+        })
+<span class="fc" id="L362">        .test();</span>
+
+<span class="fc" id="L364">        pp.onNext(m);</span>
+<span class="fc" id="L365">        m.value = 1;</span>
+<span class="fc" id="L366">        pp.onNext(m);</span>
+<span class="fc" id="L367">        pp.onComplete();</span>
+
+<span class="fc" id="L369">        ts.assertResult(m, m);</span>
+<span class="fc" id="L370">    }</span>
+
+    @Test
+    public void conditionalNormal() {
+<span class="fc" id="L374">        Flowable.just(1, 2, 1, 3, 3, 4, 3, 5, 5)</span>
+<span class="fc" id="L375">        .distinctUntilChanged()</span>
+<span class="fc" id="L376">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="fc bfc" id="L379" title="All 2 branches covered.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L382">        .test()</span>
+<span class="fc" id="L383">        .assertResult(2, 4);</span>
+<span class="fc" id="L384">    }</span>
+
+    @Test
+    public void conditionalNormal2() {
+<span class="fc" id="L388">        Flowable.just(1, 2, 1, 3, 3, 4, 3, 5, 5).hide()</span>
+<span class="fc" id="L389">        .distinctUntilChanged()</span>
+<span class="fc" id="L390">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="fc bfc" id="L393" title="All 2 branches covered.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L396">        .test()</span>
+<span class="fc" id="L397">        .assertResult(2, 4);</span>
+<span class="fc" id="L398">    }</span>
+
+    @Test
+    public void conditionalNormal3() {
+<span class="fc" id="L402">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+
+<span class="fc" id="L404">        TestSubscriber&lt;Integer&gt; ts = up.hide()</span>
+<span class="fc" id="L405">        .distinctUntilChanged()</span>
+<span class="fc" id="L406">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="fc bfc" id="L409" title="All 2 branches covered.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L412">        .test();</span>
+
+<span class="fc" id="L414">        TestHelper.emit(up, 1, 2, 1, 3, 3, 4, 3, 5, 5);</span>
+
+<span class="fc" id="L416">        ts</span>
+<span class="fc" id="L417">        .assertResult(2, 4);</span>
+<span class="fc" id="L418">    }</span>
+
+    @Test
+    public void conditionalSelectorCrash() {
+<span class="fc" id="L422">        Flowable.just(1, 2, 1, 3, 3, 4, 3, 5, 5)</span>
+<span class="fc" id="L423">        .distinctUntilChanged(new BiPredicate&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Integer b) throws Exception {
+<span class="fc" id="L426">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L429">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L435">        .test()</span>
+<span class="fc" id="L436">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L437">    }</span>
+
+    @Test
+    public void conditionalFused() {
+<span class="fc" id="L441">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L443">        Flowable.just(1, 2, 1, 3, 3, 4, 3, 5, 5)</span>
+<span class="fc" id="L444">        .distinctUntilChanged()</span>
+<span class="fc" id="L445">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="fc bfc" id="L448" title="All 2 branches covered.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L451">        .subscribe(ts);</span>
+
+<span class="fc" id="L453">        SubscriberFusion.assertFusion(ts, QueueFuseable.SYNC)</span>
+<span class="fc" id="L454">        .assertResult(2, 4);</span>
+<span class="fc" id="L455">    }</span>
+
+    @Test
+    public void conditionalAsyncFused() {
+<span class="fc" id="L459">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+<span class="fc" id="L460">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+
+<span class="fc" id="L462">        up</span>
+<span class="fc" id="L463">        .distinctUntilChanged()</span>
+<span class="fc" id="L464">        .filter(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="fc bfc" id="L467" title="All 2 branches covered.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L470">        .subscribe(ts);</span>
+
+<span class="fc" id="L472">        TestHelper.emit(up, 1, 2, 1, 3, 3, 4, 3, 5, 5);</span>
+
+<span class="fc" id="L474">        SubscriberFusion.assertFusion(ts, QueueFuseable.ASYNC)</span>
+<span class="fc" id="L475">        .assertResult(2, 4);</span>
+<span class="fc" id="L476">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L480">        TestHelper.checkBadSourceFlowable(new Function&lt;Flowable&lt;Integer&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Flowable&lt;Integer&gt; f) throws Exception {
+<span class="fc" id="L483">                return f.distinctUntilChanged().filter(Functions.alwaysTrue());</span>
+            }
+<span class="fc" id="L485">        }, false, 1, 1, 1);</span>
+<span class="fc" id="L486">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

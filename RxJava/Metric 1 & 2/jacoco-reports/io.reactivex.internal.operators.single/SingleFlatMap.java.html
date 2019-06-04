@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleFlatMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleFlatMap.java</span></div><h1>SingleFlatMap.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import java.util.concurrent.atomic.AtomicReference;
+
+public final class SingleFlatMap&lt;T, R&gt; extends Single&lt;R&gt; {
+    final SingleSource&lt;? extends T&gt; source;
+
+    final Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper;
+
+<span class="fc" id="L29">    public SingleFlatMap(SingleSource&lt;? extends T&gt; source, Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper) {</span>
+<span class="fc" id="L30">        this.mapper = mapper;</span>
+<span class="fc" id="L31">        this.source = source;</span>
+<span class="fc" id="L32">    }</span>
+
+    @Override
+    protected void subscribeActual(SingleObserver&lt;? super R&gt; downstream) {
+<span class="fc" id="L36">        source.subscribe(new SingleFlatMapCallback&lt;T, R&gt;(downstream, mapper));</span>
+<span class="fc" id="L37">    }</span>
+
+    static final class SingleFlatMapCallback&lt;T, R&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements SingleObserver&lt;T&gt;, Disposable {
+        private static final long serialVersionUID = 3258103020495908596L;
+
+        final SingleObserver&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper;
+
+        SingleFlatMapCallback(SingleObserver&lt;? super R&gt; actual,
+<span class="fc" id="L49">                Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper) {</span>
+<span class="fc" id="L50">            this.downstream = actual;</span>
+<span class="fc" id="L51">            this.mapper = mapper;</span>
+<span class="fc" id="L52">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L56">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L57">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L61">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (DisposableHelper.setOnce(this, d)) {</span>
+<span class="fc" id="L67">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L69">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+            SingleSource&lt;? extends R&gt; o;
+
+            try {
+<span class="fc" id="L76">                o = ObjectHelper.requireNonNull(mapper.apply(value), &quot;The single returned by the mapper is null&quot;);</span>
+<span class="fc" id="L77">            } catch (Throwable e) {</span>
+<span class="fc" id="L78">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L79">                downstream.onError(e);</span>
+<span class="fc" id="L80">                return;</span>
+<span class="fc" id="L81">            }</span>
+
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (!isDisposed()) {</span>
+<span class="fc" id="L84">                o.subscribe(new FlatMapSingleObserver&lt;R&gt;(this, downstream));</span>
+            }
+<span class="fc" id="L86">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L90">            downstream.onError(e);</span>
+<span class="fc" id="L91">        }</span>
+
+        static final class FlatMapSingleObserver&lt;R&gt; implements SingleObserver&lt;R&gt; {
+
+            final AtomicReference&lt;Disposable&gt; parent;
+
+            final SingleObserver&lt;? super R&gt; downstream;
+
+<span class="fc" id="L99">            FlatMapSingleObserver(AtomicReference&lt;Disposable&gt; parent, SingleObserver&lt;? super R&gt; downstream) {</span>
+<span class="fc" id="L100">                this.parent = parent;</span>
+<span class="fc" id="L101">                this.downstream = downstream;</span>
+<span class="fc" id="L102">            }</span>
+
+            @Override
+            public void onSubscribe(final Disposable d) {
+<span class="fc" id="L106">                DisposableHelper.replace(parent, d);</span>
+<span class="fc" id="L107">            }</span>
+
+            @Override
+            public void onSuccess(final R value) {
+<span class="fc" id="L111">                downstream.onSuccess(value);</span>
+<span class="fc" id="L112">            }</span>
+
+            @Override
+            public void onError(final Throwable e) {
+<span class="fc" id="L116">                downstream.onError(e);</span>
+<span class="fc" id="L117">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

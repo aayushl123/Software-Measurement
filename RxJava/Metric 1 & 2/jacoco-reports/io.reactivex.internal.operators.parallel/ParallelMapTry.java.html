@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParallelMapTry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.parallel</a> &gt; <span class="el_source">ParallelMapTry.java</span></div><h1>ParallelMapTry.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.parallel;
+
+import org.reactivestreams.*;
+
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.ConditionalSubscriber;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.parallel.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Maps each 'rail' of the source ParallelFlowable with a mapper function
+ * and handle any failure based on a handler function.
+ * &lt;p&gt;History: 2.0.8 - experimental
+ * @param &lt;T&gt; the input value type
+ * @param &lt;R&gt; the output value type
+ * @since 2.2
+ */
+public final class ParallelMapTry&lt;T, R&gt; extends ParallelFlowable&lt;R&gt; {
+
+    final ParallelFlowable&lt;T&gt; source;
+
+    final Function&lt;? super T, ? extends R&gt; mapper;
+
+    final BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler;
+
+    public ParallelMapTry(ParallelFlowable&lt;T&gt; source, Function&lt;? super T, ? extends R&gt; mapper,
+<span class="fc" id="L43">            BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler) {</span>
+<span class="fc" id="L44">        this.source = source;</span>
+<span class="fc" id="L45">        this.mapper = mapper;</span>
+<span class="fc" id="L46">        this.errorHandler = errorHandler;</span>
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public void subscribe(Subscriber&lt;? super R&gt;[] subscribers) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (!validate(subscribers)) {</span>
+<span class="fc" id="L52">            return;</span>
+        }
+
+<span class="fc" id="L55">        int n = subscribers.length;</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L57">        Subscriber&lt;? super T&gt;[] parents = new Subscriber[n];</span>
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L60">            Subscriber&lt;? super R&gt; a = subscribers[i];</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (a instanceof ConditionalSubscriber) {</span>
+<span class="fc" id="L62">                parents[i] = new ParallelMapTryConditionalSubscriber&lt;T, R&gt;((ConditionalSubscriber&lt;? super R&gt;)a, mapper, errorHandler);</span>
+            } else {
+<span class="fc" id="L64">                parents[i] = new ParallelMapTrySubscriber&lt;T, R&gt;(a, mapper, errorHandler);</span>
+            }
+        }
+
+<span class="fc" id="L68">        source.subscribe(parents);</span>
+<span class="fc" id="L69">    }</span>
+
+    @Override
+    public int parallelism() {
+<span class="fc" id="L73">        return source.parallelism();</span>
+    }
+
+    static final class ParallelMapTrySubscriber&lt;T, R&gt; implements ConditionalSubscriber&lt;T&gt;, Subscription {
+
+        final Subscriber&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends R&gt; mapper;
+
+        final BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler;
+
+        Subscription upstream;
+
+        boolean done;
+
+        ParallelMapTrySubscriber(Subscriber&lt;? super R&gt; actual, Function&lt;? super T, ? extends R&gt; mapper,
+<span class="fc" id="L89">                BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler) {</span>
+<span class="fc" id="L90">            this.downstream = actual;</span>
+<span class="fc" id="L91">            this.mapper = mapper;</span>
+<span class="fc" id="L92">            this.errorHandler = errorHandler;</span>
+<span class="fc" id="L93">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L97">            upstream.request(n);</span>
+<span class="fc" id="L98">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L102">            upstream.cancel();</span>
+<span class="fc" id="L103">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L108">                this.upstream = s;</span>
+
+<span class="fc" id="L110">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L112">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L116" title="All 4 branches covered.">            if (!tryOnNext(t) &amp;&amp; !done) {</span>
+<span class="fc" id="L117">                upstream.request(1);</span>
+            }
+<span class="fc" id="L119">        }</span>
+
+        @Override
+        public boolean tryOnNext(T t) {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L124">                return false;</span>
+            }
+<span class="fc" id="L126">            long retries = 0;</span>
+
+            for (;;) {
+                R v;
+
+                try {
+<span class="fc" id="L132">                    v = ObjectHelper.requireNonNull(mapper.apply(t), &quot;The mapper returned a null value&quot;);</span>
+<span class="fc" id="L133">                } catch (Throwable ex) {</span>
+<span class="fc" id="L134">                    Exceptions.throwIfFatal(ex);</span>
+
+                    ParallelFailureHandling h;
+
+                    try {
+<span class="fc" id="L139">                        h = ObjectHelper.requireNonNull(errorHandler.apply(++retries, ex), &quot;The errorHandler returned a null item&quot;);</span>
+<span class="fc" id="L140">                    } catch (Throwable exc) {</span>
+<span class="fc" id="L141">                        Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L142">                        cancel();</span>
+<span class="fc" id="L143">                        onError(new CompositeException(ex, exc));</span>
+<span class="fc" id="L144">                        return false;</span>
+<span class="fc" id="L145">                    }</span>
+
+<span class="fc bfc" id="L147" title="All 4 branches covered.">                    switch (h) {</span>
+                    case RETRY:
+<span class="fc" id="L149">                        continue;</span>
+                    case SKIP:
+<span class="fc" id="L151">                        return false;</span>
+                    case STOP:
+<span class="fc" id="L153">                        cancel();</span>
+<span class="fc" id="L154">                        onComplete();</span>
+<span class="fc" id="L155">                        return false;</span>
+                    default:
+<span class="fc" id="L157">                        cancel();</span>
+<span class="fc" id="L158">                        onError(ex);</span>
+<span class="fc" id="L159">                        return false;</span>
+                    }
+<span class="fc" id="L161">                }</span>
+
+<span class="fc" id="L163">                downstream.onNext(v);</span>
+<span class="fc" id="L164">                return true;</span>
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L171">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L172">                return;</span>
+            }
+<span class="fc" id="L174">            done = true;</span>
+<span class="fc" id="L175">            downstream.onError(t);</span>
+<span class="fc" id="L176">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L181">                return;</span>
+            }
+<span class="fc" id="L183">            done = true;</span>
+<span class="fc" id="L184">            downstream.onComplete();</span>
+<span class="fc" id="L185">        }</span>
+
+    }
+    static final class ParallelMapTryConditionalSubscriber&lt;T, R&gt; implements ConditionalSubscriber&lt;T&gt;, Subscription {
+
+        final ConditionalSubscriber&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends R&gt; mapper;
+
+        final BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler;
+
+        Subscription upstream;
+
+        boolean done;
+
+        ParallelMapTryConditionalSubscriber(ConditionalSubscriber&lt;? super R&gt; actual,
+                Function&lt;? super T, ? extends R&gt; mapper,
+<span class="fc" id="L202">                BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler) {</span>
+<span class="fc" id="L203">            this.downstream = actual;</span>
+<span class="fc" id="L204">            this.mapper = mapper;</span>
+<span class="fc" id="L205">            this.errorHandler = errorHandler;</span>
+<span class="fc" id="L206">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L210">            upstream.request(n);</span>
+<span class="fc" id="L211">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L215">            upstream.cancel();</span>
+<span class="fc" id="L216">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L221">                this.upstream = s;</span>
+
+<span class="fc" id="L223">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L225">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L229" title="All 4 branches covered.">            if (!tryOnNext(t) &amp;&amp; !done) {</span>
+<span class="fc" id="L230">                upstream.request(1);</span>
+            }
+<span class="fc" id="L232">        }</span>
+
+        @Override
+        public boolean tryOnNext(T t) {
+<span class="fc bfc" id="L236" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L237">                return false;</span>
+            }
+<span class="fc" id="L239">            long retries = 0;</span>
+
+            for (;;) {
+                R v;
+
+                try {
+<span class="fc" id="L245">                    v = ObjectHelper.requireNonNull(mapper.apply(t), &quot;The mapper returned a null value&quot;);</span>
+<span class="fc" id="L246">                } catch (Throwable ex) {</span>
+<span class="fc" id="L247">                    Exceptions.throwIfFatal(ex);</span>
+
+                    ParallelFailureHandling h;
+
+                    try {
+<span class="fc" id="L252">                        h = ObjectHelper.requireNonNull(errorHandler.apply(++retries, ex), &quot;The errorHandler returned a null item&quot;);</span>
+<span class="fc" id="L253">                    } catch (Throwable exc) {</span>
+<span class="fc" id="L254">                        Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L255">                        cancel();</span>
+<span class="fc" id="L256">                        onError(new CompositeException(ex, exc));</span>
+<span class="fc" id="L257">                        return false;</span>
+<span class="fc" id="L258">                    }</span>
+
+<span class="fc bfc" id="L260" title="All 4 branches covered.">                    switch (h) {</span>
+                    case RETRY:
+<span class="fc" id="L262">                        continue;</span>
+                    case SKIP:
+<span class="fc" id="L264">                        return false;</span>
+                    case STOP:
+<span class="fc" id="L266">                        cancel();</span>
+<span class="fc" id="L267">                        onComplete();</span>
+<span class="fc" id="L268">                        return false;</span>
+                    default:
+<span class="fc" id="L270">                        cancel();</span>
+<span class="fc" id="L271">                        onError(ex);</span>
+<span class="fc" id="L272">                        return false;</span>
+                    }
+<span class="fc" id="L274">                }</span>
+
+<span class="fc" id="L276">                return downstream.tryOnNext(v);</span>
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L282" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L283">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L284">                return;</span>
+            }
+<span class="fc" id="L286">            done = true;</span>
+<span class="fc" id="L287">            downstream.onError(t);</span>
+<span class="fc" id="L288">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L292" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L293">                return;</span>
+            }
+<span class="fc" id="L295">            done = true;</span>
+<span class="fc" id="L296">            downstream.onComplete();</span>
+<span class="fc" id="L297">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

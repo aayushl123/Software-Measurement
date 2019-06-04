@@ -1,0 +1,808 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSingleTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableSingleTest.java</span></div><h1>FlowableSingleTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.Test;
+import org.mockito.InOrder;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.functions.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L33">public class FlowableSingleTest {</span>
+
+    @Test
+    public void testSingleFlowable() {
+<span class="fc" id="L37">        Flowable&lt;Integer&gt; flowable = Flowable.just(1).singleElement().toFlowable();</span>
+
+<span class="fc" id="L39">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L40">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L42">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L43">        inOrder.verify(subscriber, times(1)).onNext(1);</span>
+<span class="fc" id="L44">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L45">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L46">    }</span>
+
+    @Test
+    public void testSingleWithTooManyElementsFlowable() {
+<span class="fc" id="L50">        Flowable&lt;Integer&gt; flowable = Flowable.just(1, 2).singleElement().toFlowable();</span>
+
+<span class="fc" id="L52">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L53">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L55">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L56">        inOrder.verify(subscriber, times(1)).onError(</span>
+<span class="fc" id="L57">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L58">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L59">    }</span>
+
+    @Test
+    public void testSingleWithEmptyFlowable() {
+<span class="fc" id="L63">        Flowable&lt;Integer&gt; flowable = Flowable.&lt;Integer&gt; empty().singleElement().toFlowable();</span>
+
+<span class="fc" id="L65">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L66">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L68">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L69">        inOrder.verify(subscriber).onComplete();</span>
+<span class="fc" id="L70">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L71">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void testSingleDoesNotRequestMoreThanItNeedsIf1Then2RequestedFlowable() {
+<span class="fc" id="L76">        final List&lt;Long&gt; requests = new ArrayList&lt;Long&gt;();</span>
+<span class="fc" id="L77">        Flowable.just(1)</span>
+        //
+<span class="fc" id="L79">                .doOnRequest(new LongConsumer() {</span>
+                    @Override
+                    public void accept(long n) {
+<span class="fc" id="L82">                        requests.add(n);</span>
+<span class="fc" id="L83">                    }</span>
+                })
+                //
+<span class="fc" id="L86">                .singleElement()</span>
+                //
+<span class="fc" id="L88">                .toFlowable()</span>
+<span class="fc" id="L89">                .subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public void onStart() {
+<span class="fc" id="L93">                        request(1);</span>
+<span class="fc" id="L94">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+
+<span class="fc" id="L99">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+
+<span class="nc" id="L104">                    }</span>
+
+                    @Override
+                    public void onNext(Integer t) {
+<span class="fc" id="L108">                        request(2);</span>
+<span class="fc" id="L109">                    }</span>
+                });
+        // FIXME single now triggers fast-path
+<span class="fc" id="L112">        assertEquals(Arrays.asList(Long.MAX_VALUE), requests);</span>
+<span class="fc" id="L113">    }</span>
+
+    @Test
+    public void testSingleDoesNotRequestMoreThanItNeedsIf3RequestedFlowable() {
+<span class="fc" id="L117">        final List&lt;Long&gt; requests = new ArrayList&lt;Long&gt;();</span>
+<span class="fc" id="L118">        Flowable.just(1)</span>
+        //
+<span class="fc" id="L120">                .doOnRequest(new LongConsumer() {</span>
+                    @Override
+                    public void accept(long n) {
+<span class="fc" id="L123">                        requests.add(n);</span>
+<span class="fc" id="L124">                    }</span>
+                })
+                //
+<span class="fc" id="L127">                .singleElement()</span>
+                //
+<span class="fc" id="L129">                .toFlowable()</span>
+<span class="fc" id="L130">                .subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public void onStart() {
+<span class="fc" id="L134">                        request(3);</span>
+<span class="fc" id="L135">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+
+<span class="fc" id="L140">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+
+<span class="nc" id="L145">                    }</span>
+
+                    @Override
+                    public void onNext(Integer t) {
+<span class="fc" id="L149">                    }</span>
+                });
+        // FIXME single now triggers fast-path
+<span class="fc" id="L152">        assertEquals(Arrays.asList(Long.MAX_VALUE), requests);</span>
+<span class="fc" id="L153">    }</span>
+
+    @Test
+    public void testSingleRequestsExactlyWhatItNeedsIf1RequestedFlowable() {
+<span class="fc" id="L157">        final List&lt;Long&gt; requests = new ArrayList&lt;Long&gt;();</span>
+<span class="fc" id="L158">        Flowable.just(1)</span>
+        //
+<span class="fc" id="L160">                .doOnRequest(new LongConsumer() {</span>
+                    @Override
+                    public void accept(long n) {
+<span class="fc" id="L163">                        requests.add(n);</span>
+<span class="fc" id="L164">                    }</span>
+                })
+                //
+<span class="fc" id="L167">                .singleElement()</span>
+                //
+<span class="fc" id="L169">                .toFlowable()</span>
+<span class="fc" id="L170">                .subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public void onStart() {
+<span class="fc" id="L174">                        request(1);</span>
+<span class="fc" id="L175">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+
+<span class="fc" id="L180">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+
+<span class="nc" id="L185">                    }</span>
+
+                    @Override
+                    public void onNext(Integer t) {
+<span class="fc" id="L189">                    }</span>
+                });
+        // FIXME single now triggers fast-path
+<span class="fc" id="L192">        assertEquals(Arrays.asList(Long.MAX_VALUE), requests);</span>
+<span class="fc" id="L193">    }</span>
+
+    @Test
+    public void testSingleWithPredicateFlowable() {
+<span class="fc" id="L197">        Flowable&lt;Integer&gt; flowable = Flowable.just(1, 2)</span>
+<span class="fc" id="L198">                .filter(</span>
+<span class="fc" id="L199">                new Predicate&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L203" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L206">                .singleElement().toFlowable();</span>
+
+<span class="fc" id="L208">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L209">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L211">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L212">        inOrder.verify(subscriber, times(1)).onNext(2);</span>
+<span class="fc" id="L213">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L214">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L215">    }</span>
+
+    @Test
+    public void testSingleWithPredicateAndTooManyElementsFlowable() {
+<span class="fc" id="L219">        Flowable&lt;Integer&gt; flowable = Flowable.just(1, 2, 3, 4)</span>
+<span class="fc" id="L220">                .filter(</span>
+<span class="fc" id="L221">                new Predicate&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L228">                .singleElement().toFlowable();</span>
+
+<span class="fc" id="L230">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L231">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L233">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L234">        inOrder.verify(subscriber, times(1)).onError(</span>
+<span class="fc" id="L235">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L236">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L237">    }</span>
+
+    @Test
+    public void testSingleWithPredicateAndEmptyFlowable() {
+<span class="fc" id="L241">        Flowable&lt;Integer&gt; flowable = Flowable.just(1)</span>
+<span class="fc" id="L242">                .filter(</span>
+<span class="fc" id="L243">                new Predicate&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L250">                .singleElement().toFlowable();</span>
+<span class="fc" id="L251">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L252">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L254">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L255">        inOrder.verify(subscriber).onComplete();</span>
+<span class="fc" id="L256">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L257">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L258">    }</span>
+
+    @Test
+    public void testSingleOrDefaultFlowable() {
+<span class="fc" id="L262">        Flowable&lt;Integer&gt; flowable = Flowable.just(1).single(2).toFlowable();</span>
+
+<span class="fc" id="L264">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L265">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L267">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L268">        inOrder.verify(subscriber, times(1)).onNext(1);</span>
+<span class="fc" id="L269">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L270">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L271">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithTooManyElementsFlowable() {
+<span class="fc" id="L275">        Flowable&lt;Integer&gt; flowable = Flowable.just(1, 2).single(3).toFlowable();</span>
+
+<span class="fc" id="L277">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L278">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L280">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L281">        inOrder.verify(subscriber, times(1)).onError(</span>
+<span class="fc" id="L282">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L283">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L284">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithEmptyFlowable() {
+<span class="fc" id="L288">        Flowable&lt;Integer&gt; flowable = Flowable.&lt;Integer&gt; empty()</span>
+<span class="fc" id="L289">                .single(1).toFlowable();</span>
+
+<span class="fc" id="L291">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L292">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L294">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L295">        inOrder.verify(subscriber, times(1)).onNext(1);</span>
+<span class="fc" id="L296">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L297">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L298">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithPredicateFlowable() {
+<span class="fc" id="L302">        Flowable&lt;Integer&gt; flowable = Flowable.just(1, 2)</span>
+<span class="fc" id="L303">                .filter(new Predicate&lt;Integer&gt;() {</span>
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L309">                .single(4).toFlowable();</span>
+
+<span class="fc" id="L311">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L312">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L314">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L315">        inOrder.verify(subscriber, times(1)).onNext(2);</span>
+<span class="fc" id="L316">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L317">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L318">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithPredicateAndTooManyElementsFlowable() {
+<span class="fc" id="L322">        Flowable&lt;Integer&gt; flowable = Flowable.just(1, 2, 3, 4)</span>
+<span class="fc" id="L323">                .filter(new Predicate&lt;Integer&gt;() {</span>
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L326" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L329">                .single(6).toFlowable();</span>
+
+<span class="fc" id="L331">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L332">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L334">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L335">        inOrder.verify(subscriber, times(1)).onError(</span>
+<span class="fc" id="L336">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L337">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L338">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithPredicateAndEmptyFlowable() {
+<span class="fc" id="L342">        Flowable&lt;Integer&gt; flowable = Flowable.just(1)</span>
+<span class="fc" id="L343">                .filter(new Predicate&lt;Integer&gt;() {</span>
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L349">                .single(2).toFlowable();</span>
+
+<span class="fc" id="L351">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L352">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L354">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L355">        inOrder.verify(subscriber, times(1)).onNext(2);</span>
+<span class="fc" id="L356">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L357">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L358">    }</span>
+
+    @Test
+    public void testSingleWithBackpressureFlowable() {
+<span class="fc" id="L362">        Flowable&lt;Integer&gt; flowable = Flowable.just(1, 2).singleElement().toFlowable();</span>
+
+<span class="fc" id="L364">        Subscriber&lt;Integer&gt; subscriber = spy(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onStart() {
+<span class="fc" id="L368">                request(1);</span>
+<span class="fc" id="L369">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L374">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="fc" id="L379">            }</span>
+
+            @Override
+            public void onNext(Integer integer) {
+<span class="nc" id="L383">                request(1);</span>
+<span class="nc" id="L384">            }</span>
+        });
+<span class="fc" id="L386">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L388">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L389">        inOrder.verify(subscriber, times(1)).onError(isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L390">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L391">    }</span>
+
+    @Test
+    public void testSingle() {
+<span class="fc" id="L395">        Maybe&lt;Integer&gt; maybe = Flowable.just(1).singleElement();</span>
+
+<span class="fc" id="L397">        MaybeObserver&lt;Integer&gt; observer = TestHelper.mockMaybeObserver();</span>
+<span class="fc" id="L398">        maybe.subscribe(observer);</span>
+
+<span class="fc" id="L400">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L401">        inOrder.verify(observer, times(1)).onSuccess(1);</span>
+<span class="fc" id="L402">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L403">    }</span>
+
+    @Test
+    public void testSingleWithTooManyElements() {
+<span class="fc" id="L407">        Maybe&lt;Integer&gt; maybe = Flowable.just(1, 2).singleElement();</span>
+
+<span class="fc" id="L409">        MaybeObserver&lt;Integer&gt; observer = TestHelper.mockMaybeObserver();</span>
+<span class="fc" id="L410">        maybe.subscribe(observer);</span>
+
+<span class="fc" id="L412">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L413">        inOrder.verify(observer, times(1)).onError(</span>
+<span class="fc" id="L414">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L415">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L416">    }</span>
+
+    @Test
+    public void testSingleWithEmpty() {
+<span class="fc" id="L420">        Maybe&lt;Integer&gt; maybe = Flowable.&lt;Integer&gt; empty().singleElement();</span>
+
+<span class="fc" id="L422">        MaybeObserver&lt;Integer&gt; observer = TestHelper.mockMaybeObserver();</span>
+<span class="fc" id="L423">        maybe.subscribe(observer);</span>
+
+<span class="fc" id="L425">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L426">        inOrder.verify(observer).onComplete();</span>
+<span class="fc" id="L427">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L428">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L429">    }</span>
+
+    @Test
+    public void testSingleDoesNotRequestMoreThanItNeedsToEmitItem() {
+<span class="fc" id="L433">        final AtomicLong request = new AtomicLong();</span>
+<span class="fc" id="L434">        Flowable.just(1).doOnRequest(new LongConsumer() {</span>
+            @Override
+            public void accept(long n) {
+<span class="fc" id="L437">                request.addAndGet(n);</span>
+<span class="fc" id="L438">            }</span>
+<span class="fc" id="L439">        }).blockingSingle();</span>
+        // FIXME single now triggers fast-path
+<span class="fc" id="L441">        assertEquals(Long.MAX_VALUE, request.get());</span>
+<span class="fc" id="L442">    }</span>
+
+    @Test
+    public void testSingleDoesNotRequestMoreThanItNeedsToEmitErrorFromEmpty() {
+<span class="fc" id="L446">        final AtomicLong request = new AtomicLong();</span>
+        try {
+<span class="fc" id="L448">            Flowable.empty().doOnRequest(new LongConsumer() {</span>
+                @Override
+                public void accept(long n) {
+<span class="fc" id="L451">                    request.addAndGet(n);</span>
+<span class="fc" id="L452">                }</span>
+<span class="nc" id="L453">            }).blockingSingle();</span>
+<span class="fc" id="L454">        } catch (NoSuchElementException e) {</span>
+            // FIXME single now triggers fast-path
+<span class="fc" id="L456">            assertEquals(Long.MAX_VALUE, request.get());</span>
+<span class="nc" id="L457">        }</span>
+<span class="fc" id="L458">    }</span>
+
+    @Test
+    public void testSingleDoesNotRequestMoreThanItNeedsToEmitErrorFromMoreThanOne() {
+<span class="fc" id="L462">        final AtomicLong request = new AtomicLong();</span>
+        try {
+<span class="fc" id="L464">            Flowable.just(1, 2).doOnRequest(new LongConsumer() {</span>
+                @Override
+                public void accept(long n) {
+<span class="fc" id="L467">                    request.addAndGet(n);</span>
+<span class="fc" id="L468">                }</span>
+<span class="nc" id="L469">            }).blockingSingle();</span>
+<span class="fc" id="L470">        } catch (IllegalArgumentException e) {</span>
+            // FIXME single now triggers fast-path
+<span class="fc" id="L472">            assertEquals(Long.MAX_VALUE, request.get());</span>
+<span class="nc" id="L473">        }</span>
+<span class="fc" id="L474">    }</span>
+
+    @Test
+    public void testSingleWithPredicate() {
+<span class="fc" id="L478">        Maybe&lt;Integer&gt; maybe = Flowable.just(1, 2)</span>
+<span class="fc" id="L479">                .filter(</span>
+<span class="fc" id="L480">                new Predicate&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L484" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L487">                .singleElement();</span>
+
+<span class="fc" id="L489">        MaybeObserver&lt;Integer&gt; observer = TestHelper.mockMaybeObserver();</span>
+<span class="fc" id="L490">        maybe.subscribe(observer);</span>
+
+<span class="fc" id="L492">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L493">        inOrder.verify(observer, times(1)).onSuccess(2);</span>
+<span class="fc" id="L494">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L495">    }</span>
+
+    @Test
+    public void testSingleWithPredicateAndTooManyElements() {
+<span class="fc" id="L499">        Maybe&lt;Integer&gt; maybe = Flowable.just(1, 2, 3, 4)</span>
+<span class="fc" id="L500">                .filter(</span>
+<span class="fc" id="L501">                new Predicate&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L505" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L508">                .singleElement();</span>
+
+<span class="fc" id="L510">        MaybeObserver&lt;Integer&gt; observer = TestHelper.mockMaybeObserver();</span>
+<span class="fc" id="L511">        maybe.subscribe(observer);</span>
+
+<span class="fc" id="L513">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L514">        inOrder.verify(observer, times(1)).onError(</span>
+<span class="fc" id="L515">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L516">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L517">    }</span>
+
+    @Test
+    public void testSingleWithPredicateAndEmpty() {
+<span class="fc" id="L521">        Maybe&lt;Integer&gt; maybe = Flowable.just(1)</span>
+<span class="fc" id="L522">                .filter(</span>
+<span class="fc" id="L523">                new Predicate&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L530">                .singleElement();</span>
+
+<span class="fc" id="L532">        MaybeObserver&lt;Integer&gt; observer = TestHelper.mockMaybeObserver();</span>
+<span class="fc" id="L533">        maybe.subscribe(observer);</span>
+
+<span class="fc" id="L535">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L536">        inOrder.verify(observer).onComplete();</span>
+<span class="fc" id="L537">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L538">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L539">    }</span>
+
+    @Test
+    public void testSingleOrDefault() {
+<span class="fc" id="L543">        Single&lt;Integer&gt; single = Flowable.just(1).single(2);</span>
+
+<span class="fc" id="L545">        SingleObserver&lt;Integer&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L546">        single.subscribe(observer);</span>
+
+<span class="fc" id="L548">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L549">        inOrder.verify(observer, times(1)).onSuccess(1);</span>
+<span class="fc" id="L550">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L551">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithTooManyElements() {
+<span class="fc" id="L555">        Single&lt;Integer&gt; single = Flowable.just(1, 2).single(3);</span>
+
+<span class="fc" id="L557">        SingleObserver&lt;Integer&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L558">        single.subscribe(observer);</span>
+
+<span class="fc" id="L560">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L561">        inOrder.verify(observer, times(1)).onError(</span>
+<span class="fc" id="L562">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L563">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L564">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithEmpty() {
+<span class="fc" id="L568">        Single&lt;Integer&gt; single = Flowable.&lt;Integer&gt; empty()</span>
+<span class="fc" id="L569">                .single(1);</span>
+
+<span class="fc" id="L571">        SingleObserver&lt;Integer&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L572">        single.subscribe(observer);</span>
+
+<span class="fc" id="L574">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L575">        inOrder.verify(observer, times(1)).onSuccess(1);</span>
+<span class="fc" id="L576">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L577">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithPredicate() {
+<span class="fc" id="L581">        Single&lt;Integer&gt; single = Flowable.just(1, 2)</span>
+<span class="fc" id="L582">                .filter(new Predicate&lt;Integer&gt;() {</span>
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L585" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L588">                .single(4);</span>
+
+<span class="fc" id="L590">        SingleObserver&lt;Integer&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L591">        single.subscribe(observer);</span>
+
+<span class="fc" id="L593">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L594">        inOrder.verify(observer, times(1)).onSuccess(2);</span>
+<span class="fc" id="L595">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L596">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithPredicateAndTooManyElements() {
+<span class="fc" id="L600">        Single&lt;Integer&gt; single = Flowable.just(1, 2, 3, 4)</span>
+<span class="fc" id="L601">                .filter(new Predicate&lt;Integer&gt;() {</span>
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="fc bfc" id="L604" title="All 2 branches covered.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L607">                .single(6);</span>
+
+<span class="fc" id="L609">        SingleObserver&lt;Integer&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L610">        single.subscribe(observer);</span>
+
+<span class="fc" id="L612">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L613">        inOrder.verify(observer, times(1)).onError(</span>
+<span class="fc" id="L614">                isA(IllegalArgumentException.class));</span>
+<span class="fc" id="L615">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L616">    }</span>
+
+    @Test
+    public void testSingleOrDefaultWithPredicateAndEmpty() {
+<span class="fc" id="L620">        Single&lt;Integer&gt; single = Flowable.just(1)</span>
+<span class="fc" id="L621">                .filter(new Predicate&lt;Integer&gt;() {</span>
+                    @Override
+                    public boolean test(Integer t1) {
+<span class="pc bpc" id="L624" title="1 of 2 branches missed.">                        return t1 % 2 == 0;</span>
+                    }
+                })
+<span class="fc" id="L627">                .single(2);</span>
+
+<span class="fc" id="L629">        SingleObserver&lt;Integer&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L630">        single.subscribe(observer);</span>
+
+<span class="fc" id="L632">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L633">        inOrder.verify(observer, times(1)).onSuccess(2);</span>
+<span class="fc" id="L634">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L635">    }</span>
+
+    @Test(timeout = 30000)
+    public void testIssue1527() throws InterruptedException {
+        //https://github.com/ReactiveX/RxJava/pull/1527
+<span class="fc" id="L640">        Flowable&lt;Integer&gt; source = Flowable.just(1, 2, 3, 4, 5, 6);</span>
+<span class="fc" id="L641">        Maybe&lt;Integer&gt; reduced = source.reduce(new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer i1, Integer i2) {
+<span class="fc" id="L644">                return i1 + i2;</span>
+            }
+        });
+
+<span class="fc" id="L648">        Integer r = reduced.blockingGet();</span>
+<span class="fc" id="L649">        assertEquals(21, r.intValue());</span>
+<span class="fc" id="L650">    }</span>
+
+    @Test
+    public void singleOrErrorNoElement() {
+<span class="fc" id="L654">        Flowable.empty()</span>
+<span class="fc" id="L655">            .singleOrError()</span>
+<span class="fc" id="L656">            .test()</span>
+<span class="fc" id="L657">            .assertNoValues()</span>
+<span class="fc" id="L658">            .assertError(NoSuchElementException.class);</span>
+<span class="fc" id="L659">    }</span>
+
+    @Test
+    public void singleOrErrorOneElement() {
+<span class="fc" id="L663">        Flowable.just(1)</span>
+<span class="fc" id="L664">            .singleOrError()</span>
+<span class="fc" id="L665">            .test()</span>
+<span class="fc" id="L666">            .assertNoErrors()</span>
+<span class="fc" id="L667">            .assertValue(1);</span>
+<span class="fc" id="L668">    }</span>
+
+    @Test
+    public void singleOrErrorMultipleElements() {
+<span class="fc" id="L672">        Flowable.just(1, 2, 3)</span>
+<span class="fc" id="L673">            .singleOrError()</span>
+<span class="fc" id="L674">            .test()</span>
+<span class="fc" id="L675">            .assertNoValues()</span>
+<span class="fc" id="L676">            .assertError(IllegalArgumentException.class);</span>
+<span class="fc" id="L677">    }</span>
+
+    @Test
+    public void singleOrErrorError() {
+<span class="fc" id="L681">        Flowable.error(new RuntimeException(&quot;error&quot;))</span>
+<span class="fc" id="L682">            .singleOrError()</span>
+<span class="fc" id="L683">            .test()</span>
+<span class="fc" id="L684">            .assertNoValues()</span>
+<span class="fc" id="L685">            .assertErrorMessage(&quot;error&quot;)</span>
+<span class="fc" id="L686">            .assertError(RuntimeException.class);</span>
+<span class="fc" id="L687">    }</span>
+
+    @Test(timeout = 30000)
+    public void testIssue1527Flowable() throws InterruptedException {
+        //https://github.com/ReactiveX/RxJava/pull/1527
+<span class="fc" id="L692">        Flowable&lt;Integer&gt; source = Flowable.just(1, 2, 3, 4, 5, 6);</span>
+<span class="fc" id="L693">        Flowable&lt;Integer&gt; reduced = source.reduce(new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer i1, Integer i2) {
+<span class="fc" id="L696">                return i1 + i2;</span>
+            }
+<span class="fc" id="L698">        }).toFlowable();</span>
+
+<span class="fc" id="L700">        Integer r = reduced.blockingFirst();</span>
+<span class="fc" id="L701">        assertEquals(21, r.intValue());</span>
+<span class="fc" id="L702">    }</span>
+
+    @Test
+    public void singleElementOperatorDoNotSwallowExceptionWhenDone() {
+<span class="fc" id="L706">        final Throwable exception = new RuntimeException(&quot;some error&quot;);</span>
+<span class="fc" id="L707">        final AtomicReference&lt;Throwable&gt; error = new AtomicReference&lt;Throwable&gt;();</span>
+
+        try {
+<span class="fc" id="L710">            RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+                @Override public void accept(final Throwable throwable) throws Exception {
+<span class="fc" id="L712">                    error.set(throwable);</span>
+<span class="fc" id="L713">                }</span>
+            });
+
+<span class="fc" id="L716">            Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+                @Override public void subscribe(final Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L718">                    subscriber.onComplete();</span>
+<span class="fc" id="L719">                    subscriber.onError(exception);</span>
+<span class="fc" id="L720">                }</span>
+<span class="fc" id="L721">            }).singleElement().test().assertComplete();</span>
+
+<span class="fc" id="L723">            assertSame(exception, error.get().getCause());</span>
+        } finally {
+<span class="fc" id="L725">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L727">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L731">        TestHelper.checkBadSourceFlowable(new Function&lt;Flowable&lt;Object&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L734">                return f.singleOrError();</span>
+            }
+<span class="fc" id="L736">        }, false, 1, 1, 1);</span>
+
+<span class="fc" id="L738">        TestHelper.checkBadSourceFlowable(new Function&lt;Flowable&lt;Object&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L741">                return f.singleElement();</span>
+            }
+<span class="fc" id="L743">        }, false, 1, 1, 1);</span>
+
+<span class="fc" id="L745">        TestHelper.checkBadSourceFlowable(new Function&lt;Flowable&lt;Object&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L748">                return f.singleOrError().toFlowable();</span>
+            }
+<span class="fc" id="L750">        }, false, 1, 1, 1);</span>
+<span class="fc" id="L751">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L755">        TestHelper.checkDoubleOnSubscribeFlowableToSingle(new Function&lt;Flowable&lt;Object&gt;, SingleSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L758">                return f.singleOrError();</span>
+            }
+        });
+
+<span class="fc" id="L762">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L765">                return f.singleOrError().toFlowable();</span>
+            }
+        });
+
+<span class="fc" id="L769">        TestHelper.checkDoubleOnSubscribeFlowableToMaybe(new Function&lt;Flowable&lt;Object&gt;, MaybeSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L772">                return f.singleElement();</span>
+            }
+        });
+
+<span class="fc" id="L776">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L779">                return f.singleElement().toFlowable();</span>
+            }
+        });
+<span class="fc" id="L782">    }</span>
+
+    @Test
+    public void cancelAsFlowable() {
+<span class="fc" id="L786">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L788">        TestSubscriber&lt;Integer&gt; ts = pp.singleOrError().toFlowable().test();</span>
+
+<span class="fc" id="L790">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L792">        ts.assertEmpty();</span>
+
+<span class="fc" id="L794">        ts.cancel();</span>
+
+<span class="fc" id="L796">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L797">    }</span>
+
+    @Test
+    public void singleOrError() {
+<span class="fc" id="L801">        Flowable.empty()</span>
+<span class="fc" id="L802">        .singleOrError()</span>
+<span class="fc" id="L803">        .toFlowable()</span>
+<span class="fc" id="L804">        .test()</span>
+<span class="fc" id="L805">        .assertFailure(NoSuchElementException.class);</span>
+<span class="fc" id="L806">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

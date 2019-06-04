@@ -1,0 +1,1347 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReplaySubjectTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subjects</a> &gt; <span class="el_source">ReplaySubjectTest.java</span></div><h1>ReplaySubjectTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subjects;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.lang.management.*;
+import java.util.Arrays;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.*;
+import org.mockito.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.*;
+import io.reactivex.subjects.ReplaySubject.*;
+
+<span class="fc" id="L36">public class ReplaySubjectTest extends SubjectTest&lt;Integer&gt; {</span>
+
+<span class="fc" id="L38">    private final Throwable testException = new Throwable();</span>
+
+    @Override
+    protected Subject&lt;Integer&gt; create() {
+<span class="fc" id="L42">        return ReplaySubject.create();</span>
+    }
+
+    @Test
+    public void testCompleted() {
+<span class="fc" id="L47">        ReplaySubject&lt;String&gt; subject = ReplaySubject.create();</span>
+
+<span class="fc" id="L49">        Observer&lt;String&gt; o1 = TestHelper.mockObserver();</span>
+<span class="fc" id="L50">        subject.subscribe(o1);</span>
+
+<span class="fc" id="L52">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L53">        subject.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L54">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L55">        subject.onComplete();</span>
+
+<span class="fc" id="L57">        subject.onNext(&quot;four&quot;);</span>
+<span class="fc" id="L58">        subject.onComplete();</span>
+<span class="fc" id="L59">        subject.onError(new Throwable());</span>
+
+<span class="fc" id="L61">        assertCompletedSubscriber(o1);</span>
+
+        // assert that subscribing a 2nd time gets the same data
+<span class="fc" id="L64">        Observer&lt;String&gt; o2 = TestHelper.mockObserver();</span>
+<span class="fc" id="L65">        subject.subscribe(o2);</span>
+<span class="fc" id="L66">        assertCompletedSubscriber(o2);</span>
+<span class="fc" id="L67">    }</span>
+
+    @Test
+    public void testCompletedStopsEmittingData() {
+<span class="fc" id="L71">        ReplaySubject&lt;Integer&gt; channel = ReplaySubject.create();</span>
+<span class="fc" id="L72">        Observer&lt;Object&gt; observerA = TestHelper.mockObserver();</span>
+<span class="fc" id="L73">        Observer&lt;Object&gt; observerB = TestHelper.mockObserver();</span>
+<span class="fc" id="L74">        Observer&lt;Object&gt; observerC = TestHelper.mockObserver();</span>
+<span class="fc" id="L75">        Observer&lt;Object&gt; observerD = TestHelper.mockObserver();</span>
+<span class="fc" id="L76">        TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;(observerA);</span>
+
+<span class="fc" id="L78">        channel.subscribe(to);</span>
+<span class="fc" id="L79">        channel.subscribe(observerB);</span>
+
+<span class="fc" id="L81">        InOrder inOrderA = inOrder(observerA);</span>
+<span class="fc" id="L82">        InOrder inOrderB = inOrder(observerB);</span>
+<span class="fc" id="L83">        InOrder inOrderC = inOrder(observerC);</span>
+<span class="fc" id="L84">        InOrder inOrderD = inOrder(observerD);</span>
+
+<span class="fc" id="L86">        channel.onNext(42);</span>
+
+        // both A and B should have received 42 from before subscription
+<span class="fc" id="L89">        inOrderA.verify(observerA).onNext(42);</span>
+<span class="fc" id="L90">        inOrderB.verify(observerB).onNext(42);</span>
+
+<span class="fc" id="L92">        to.dispose();</span>
+
+        // a should receive no more
+<span class="fc" id="L95">        inOrderA.verifyNoMoreInteractions();</span>
+
+<span class="fc" id="L97">        channel.onNext(4711);</span>
+
+        // only be should receive 4711 at this point
+<span class="fc" id="L100">        inOrderB.verify(observerB).onNext(4711);</span>
+
+<span class="fc" id="L102">        channel.onComplete();</span>
+
+        // B is subscribed so should receive onComplete
+<span class="fc" id="L105">        inOrderB.verify(observerB).onComplete();</span>
+
+<span class="fc" id="L107">        channel.subscribe(observerC);</span>
+
+        // when C subscribes it should receive 42, 4711, onComplete
+<span class="fc" id="L110">        inOrderC.verify(observerC).onNext(42);</span>
+<span class="fc" id="L111">        inOrderC.verify(observerC).onNext(4711);</span>
+<span class="fc" id="L112">        inOrderC.verify(observerC).onComplete();</span>
+
+        // if further events are propagated they should be ignored
+<span class="fc" id="L115">        channel.onNext(13);</span>
+<span class="fc" id="L116">        channel.onNext(14);</span>
+<span class="fc" id="L117">        channel.onNext(15);</span>
+<span class="fc" id="L118">        channel.onError(new RuntimeException());</span>
+
+        // a new subscription should only receive what was emitted prior to terminal state onComplete
+<span class="fc" id="L121">        channel.subscribe(observerD);</span>
+
+<span class="fc" id="L123">        inOrderD.verify(observerD).onNext(42);</span>
+<span class="fc" id="L124">        inOrderD.verify(observerD).onNext(4711);</span>
+<span class="fc" id="L125">        inOrderD.verify(observerD).onComplete();</span>
+
+<span class="fc" id="L127">        verify(observerA).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L128">        verify(observerB).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L129">        verify(observerC).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L130">        verify(observerD).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L131">        Mockito.verifyNoMoreInteractions(observerA);</span>
+<span class="fc" id="L132">        Mockito.verifyNoMoreInteractions(observerB);</span>
+<span class="fc" id="L133">        Mockito.verifyNoMoreInteractions(observerC);</span>
+<span class="fc" id="L134">        Mockito.verifyNoMoreInteractions(observerD);</span>
+
+<span class="fc" id="L136">    }</span>
+
+    @Test
+    public void testCompletedAfterError() {
+<span class="fc" id="L140">        ReplaySubject&lt;String&gt; subject = ReplaySubject.create();</span>
+
+<span class="fc" id="L142">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L144">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L145">        subject.onError(testException);</span>
+<span class="fc" id="L146">        subject.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L147">        subject.onComplete();</span>
+<span class="fc" id="L148">        subject.onError(new RuntimeException());</span>
+
+<span class="fc" id="L150">        subject.subscribe(observer);</span>
+<span class="fc" id="L151">        verify(observer).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L152">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L153">        verify(observer, times(1)).onError(testException);</span>
+<span class="fc" id="L154">        verifyNoMoreInteractions(observer);</span>
+<span class="fc" id="L155">    }</span>
+
+    private void assertCompletedSubscriber(Observer&lt;String&gt; observer) {
+<span class="fc" id="L158">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L160">        inOrder.verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L161">        inOrder.verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L162">        inOrder.verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L163">        inOrder.verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L164">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L165">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L166">    }</span>
+
+    @Test
+    public void testError() {
+<span class="fc" id="L170">        ReplaySubject&lt;String&gt; subject = ReplaySubject.create();</span>
+
+<span class="fc" id="L172">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L173">        subject.subscribe(observer);</span>
+
+<span class="fc" id="L175">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L176">        subject.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L177">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L178">        subject.onError(testException);</span>
+
+<span class="fc" id="L180">        subject.onNext(&quot;four&quot;);</span>
+<span class="fc" id="L181">        subject.onError(new Throwable());</span>
+<span class="fc" id="L182">        subject.onComplete();</span>
+
+<span class="fc" id="L184">        assertErrorSubscriber(observer);</span>
+
+<span class="fc" id="L186">        observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L187">        subject.subscribe(observer);</span>
+<span class="fc" id="L188">        assertErrorSubscriber(observer);</span>
+<span class="fc" id="L189">    }</span>
+
+    private void assertErrorSubscriber(Observer&lt;String&gt; observer) {
+<span class="fc" id="L192">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L193">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L194">        verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L195">        verify(observer, times(1)).onError(testException);</span>
+<span class="fc" id="L196">        verify(observer, Mockito.never()).onComplete();</span>
+<span class="fc" id="L197">    }</span>
+
+    @Test
+    public void testSubscribeMidSequence() {
+<span class="fc" id="L201">        ReplaySubject&lt;String&gt; subject = ReplaySubject.create();</span>
+
+<span class="fc" id="L203">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L204">        subject.subscribe(observer);</span>
+
+<span class="fc" id="L206">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L207">        subject.onNext(&quot;two&quot;);</span>
+
+<span class="fc" id="L209">        assertObservedUntilTwo(observer);</span>
+
+<span class="fc" id="L211">        Observer&lt;String&gt; anotherSubscriber = TestHelper.mockObserver();</span>
+<span class="fc" id="L212">        subject.subscribe(anotherSubscriber);</span>
+<span class="fc" id="L213">        assertObservedUntilTwo(anotherSubscriber);</span>
+
+<span class="fc" id="L215">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L216">        subject.onComplete();</span>
+
+<span class="fc" id="L218">        assertCompletedSubscriber(observer);</span>
+<span class="fc" id="L219">        assertCompletedSubscriber(anotherSubscriber);</span>
+<span class="fc" id="L220">    }</span>
+
+    @Test
+    public void testUnsubscribeFirstSubscriber() {
+<span class="fc" id="L224">        ReplaySubject&lt;String&gt; subject = ReplaySubject.create();</span>
+
+<span class="fc" id="L226">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L227">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L228">        subject.subscribe(to);</span>
+
+<span class="fc" id="L230">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L231">        subject.onNext(&quot;two&quot;);</span>
+
+<span class="fc" id="L233">        to.dispose();</span>
+<span class="fc" id="L234">        assertObservedUntilTwo(observer);</span>
+
+<span class="fc" id="L236">        Observer&lt;String&gt; anotherSubscriber = TestHelper.mockObserver();</span>
+<span class="fc" id="L237">        subject.subscribe(anotherSubscriber);</span>
+<span class="fc" id="L238">        assertObservedUntilTwo(anotherSubscriber);</span>
+
+<span class="fc" id="L240">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L241">        subject.onComplete();</span>
+
+<span class="fc" id="L243">        assertObservedUntilTwo(observer);</span>
+<span class="fc" id="L244">        assertCompletedSubscriber(anotherSubscriber);</span>
+<span class="fc" id="L245">    }</span>
+
+    private void assertObservedUntilTwo(Observer&lt;String&gt; observer) {
+<span class="fc" id="L248">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L249">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L250">        verify(observer, Mockito.never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L251">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L252">        verify(observer, Mockito.never()).onComplete();</span>
+<span class="fc" id="L253">    }</span>
+
+    @Test(timeout = 2000)
+    public void testNewSubscriberDoesntBlockExisting() throws InterruptedException {
+
+<span class="fc" id="L258">        final AtomicReference&lt;String&gt; lastValueForSubscriber1 = new AtomicReference&lt;String&gt;();</span>
+<span class="fc" id="L259">        Observer&lt;String&gt; observer1 = new DefaultObserver&lt;String&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="fc" id="L264">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L269">            }</span>
+
+            @Override
+            public void onNext(String v) {
+<span class="fc" id="L273">                System.out.println(&quot;observer1: &quot; + v);</span>
+<span class="fc" id="L274">                lastValueForSubscriber1.set(v);</span>
+<span class="fc" id="L275">            }</span>
+
+        };
+
+<span class="fc" id="L279">        final AtomicReference&lt;String&gt; lastValueForSubscriber2 = new AtomicReference&lt;String&gt;();</span>
+<span class="fc" id="L280">        final CountDownLatch oneReceived = new CountDownLatch(1);</span>
+<span class="fc" id="L281">        final CountDownLatch makeSlow = new CountDownLatch(1);</span>
+<span class="fc" id="L282">        final CountDownLatch completed = new CountDownLatch(1);</span>
+<span class="fc" id="L283">        Observer&lt;String&gt; observer2 = new DefaultObserver&lt;String&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L287">                completed.countDown();</span>
+<span class="fc" id="L288">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L293">            }</span>
+
+            @Override
+            public void onNext(String v) {
+<span class="fc" id="L297">                System.out.println(&quot;observer2: &quot; + v);</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">                if (v.equals(&quot;one&quot;)) {</span>
+<span class="fc" id="L299">                    oneReceived.countDown();</span>
+                } else {
+                    try {
+<span class="fc" id="L302">                        makeSlow.await();</span>
+<span class="nc" id="L303">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L304">                        e.printStackTrace();</span>
+<span class="fc" id="L305">                    }</span>
+<span class="fc" id="L306">                    lastValueForSubscriber2.set(v);</span>
+                }
+<span class="fc" id="L308">            }</span>
+
+        };
+
+<span class="fc" id="L312">        ReplaySubject&lt;String&gt; subject = ReplaySubject.create();</span>
+<span class="fc" id="L313">        subject.subscribe(observer1);</span>
+<span class="fc" id="L314">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L315">        assertEquals(&quot;one&quot;, lastValueForSubscriber1.get());</span>
+<span class="fc" id="L316">        subject.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L317">        assertEquals(&quot;two&quot;, lastValueForSubscriber1.get());</span>
+
+        // use subscribeOn to make this async otherwise we deadlock as we are using CountDownLatches
+<span class="fc" id="L320">        subject.subscribeOn(Schedulers.newThread()).subscribe(observer2);</span>
+
+<span class="fc" id="L322">        System.out.println(&quot;before waiting for one&quot;);</span>
+
+        // wait until observer2 starts having replay occur
+<span class="fc" id="L325">        oneReceived.await();</span>
+
+<span class="fc" id="L327">        System.out.println(&quot;after waiting for one&quot;);</span>
+
+<span class="fc" id="L329">        subject.onNext(&quot;three&quot;);</span>
+
+<span class="fc" id="L331">        System.out.println(&quot;sent three&quot;);</span>
+
+        // if subscription blocked existing subscribers then 'makeSlow' would cause this to not be there yet
+<span class="fc" id="L334">        assertEquals(&quot;three&quot;, lastValueForSubscriber1.get());</span>
+
+<span class="fc" id="L336">        System.out.println(&quot;about to send onComplete&quot;);</span>
+
+<span class="fc" id="L338">        subject.onComplete();</span>
+
+<span class="fc" id="L340">        System.out.println(&quot;completed subject&quot;);</span>
+
+        // release
+<span class="fc" id="L343">        makeSlow.countDown();</span>
+
+<span class="fc" id="L345">        System.out.println(&quot;makeSlow released&quot;);</span>
+
+<span class="fc" id="L347">        completed.await();</span>
+        // all of them should be emitted with the last being &quot;three&quot;
+<span class="fc" id="L349">        assertEquals(&quot;three&quot;, lastValueForSubscriber2.get());</span>
+
+<span class="fc" id="L351">    }</span>
+
+    @Test
+    public void testSubscriptionLeak() {
+<span class="fc" id="L355">        ReplaySubject&lt;Object&gt; subject = ReplaySubject.create();</span>
+
+<span class="fc" id="L357">        Disposable d = subject.subscribe();</span>
+
+<span class="fc" id="L359">        assertEquals(1, subject.observerCount());</span>
+
+<span class="fc" id="L361">        d.dispose();</span>
+
+<span class="fc" id="L363">        assertEquals(0, subject.observerCount());</span>
+<span class="fc" id="L364">    }</span>
+
+    @Test(timeout = 1000)
+    public void testUnsubscriptionCase() {
+<span class="fc" id="L368">        ReplaySubject&lt;String&gt; src = ReplaySubject.create();</span>
+
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L371">            final Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L372">            InOrder inOrder = inOrder(o);</span>
+<span class="fc" id="L373">            String v = &quot;&quot; + i;</span>
+<span class="fc" id="L374">            src.onNext(v);</span>
+<span class="fc" id="L375">            System.out.printf(&quot;Turn: %d%n&quot;, i);</span>
+<span class="fc" id="L376">            src.firstElement()</span>
+<span class="fc" id="L377">                .toObservable()</span>
+<span class="fc" id="L378">                .flatMap(new Function&lt;String, Observable&lt;String&gt;&gt;() {</span>
+
+                    @Override
+                    public Observable&lt;String&gt; apply(String t1) {
+<span class="fc" id="L382">                        return Observable.just(t1 + &quot;, &quot; + t1);</span>
+                    }
+                })
+<span class="fc" id="L385">                .subscribe(new DefaultObserver&lt;String&gt;() {</span>
+                    @Override
+                    public void onNext(String t) {
+<span class="fc" id="L388">                        System.out.println(t);</span>
+<span class="fc" id="L389">                        o.onNext(t);</span>
+<span class="fc" id="L390">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L394">                        o.onError(e);</span>
+<span class="nc" id="L395">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L399">                        o.onComplete();</span>
+<span class="fc" id="L400">                    }</span>
+                });
+<span class="fc" id="L402">            inOrder.verify(o).onNext(&quot;0, 0&quot;);</span>
+<span class="fc" id="L403">            inOrder.verify(o).onComplete();</span>
+<span class="fc" id="L404">            verify(o, never()).onError(any(Throwable.class));</span>
+        }
+<span class="fc" id="L406">    }</span>
+
+    @Test
+    public void testTerminateOnce() {
+<span class="fc" id="L410">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.create();</span>
+<span class="fc" id="L411">        source.onNext(1);</span>
+<span class="fc" id="L412">        source.onNext(2);</span>
+<span class="fc" id="L413">        source.onComplete();</span>
+
+<span class="fc" id="L415">        final Observer&lt;Integer&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L417">        source.subscribe(new DefaultObserver&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L421">                o.onNext(t);</span>
+<span class="fc" id="L422">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L426">                o.onError(e);</span>
+<span class="nc" id="L427">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L431">                o.onComplete();</span>
+<span class="fc" id="L432">            }</span>
+        });
+
+<span class="fc" id="L435">        verify(o).onNext(1);</span>
+<span class="fc" id="L436">        verify(o).onNext(2);</span>
+<span class="fc" id="L437">        verify(o).onComplete();</span>
+<span class="fc" id="L438">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L439">    }</span>
+
+    @Test
+    public void testReplay1AfterTermination() {
+<span class="fc" id="L443">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithSize(1);</span>
+
+<span class="fc" id="L445">        source.onNext(1);</span>
+<span class="fc" id="L446">        source.onNext(2);</span>
+<span class="fc" id="L447">        source.onComplete();</span>
+
+<span class="fc bfc" id="L449" title="All 2 branches covered.">        for (int i = 0; i &lt; 1; i++) {</span>
+<span class="fc" id="L450">            Observer&lt;Integer&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L452">            source.subscribe(o);</span>
+
+<span class="fc" id="L454">            verify(o, never()).onNext(1);</span>
+<span class="fc" id="L455">            verify(o).onNext(2);</span>
+<span class="fc" id="L456">            verify(o).onComplete();</span>
+<span class="fc" id="L457">            verify(o, never()).onError(any(Throwable.class));</span>
+        }
+<span class="fc" id="L459">    }</span>
+
+    @Test
+    public void testReplay1Directly() {
+<span class="fc" id="L463">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithSize(1);</span>
+
+<span class="fc" id="L465">        Observer&lt;Integer&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L467">        source.onNext(1);</span>
+<span class="fc" id="L468">        source.onNext(2);</span>
+
+<span class="fc" id="L470">        source.subscribe(o);</span>
+
+<span class="fc" id="L472">        source.onNext(3);</span>
+<span class="fc" id="L473">        source.onComplete();</span>
+
+<span class="fc" id="L475">        verify(o, never()).onNext(1);</span>
+<span class="fc" id="L476">        verify(o).onNext(2);</span>
+<span class="fc" id="L477">        verify(o).onNext(3);</span>
+<span class="fc" id="L478">        verify(o).onComplete();</span>
+<span class="fc" id="L479">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L480">    }</span>
+
+    @Test
+    public void testReplayTimestampedAfterTermination() {
+<span class="fc" id="L484">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L485">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithTime(1, TimeUnit.SECONDS, scheduler);</span>
+
+<span class="fc" id="L487">        source.onNext(1);</span>
+
+<span class="fc" id="L489">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L491">        source.onNext(2);</span>
+
+<span class="fc" id="L493">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L495">        source.onNext(3);</span>
+<span class="fc" id="L496">        source.onComplete();</span>
+
+<span class="fc" id="L498">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L500">        Observer&lt;Integer&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L502">        source.subscribe(o);</span>
+
+<span class="fc" id="L504">        verify(o, never()).onNext(1);</span>
+<span class="fc" id="L505">        verify(o, never()).onNext(2);</span>
+<span class="fc" id="L506">        verify(o, never()).onNext(3);</span>
+<span class="fc" id="L507">        verify(o).onComplete();</span>
+<span class="fc" id="L508">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L509">    }</span>
+
+    @Test
+    public void testReplayTimestampedDirectly() {
+<span class="fc" id="L513">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L514">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithTime(1, TimeUnit.SECONDS, scheduler);</span>
+
+<span class="fc" id="L516">        source.onNext(1);</span>
+
+<span class="fc" id="L518">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L520">        Observer&lt;Integer&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L522">        source.subscribe(o);</span>
+
+<span class="fc" id="L524">        source.onNext(2);</span>
+
+<span class="fc" id="L526">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L528">        source.onNext(3);</span>
+
+<span class="fc" id="L530">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L532">        source.onComplete();</span>
+
+<span class="fc" id="L534">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L536">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L537">        verify(o, never()).onNext(1);</span>
+<span class="fc" id="L538">        verify(o).onNext(2);</span>
+<span class="fc" id="L539">        verify(o).onNext(3);</span>
+<span class="fc" id="L540">        verify(o).onComplete();</span>
+<span class="fc" id="L541">    }</span>
+
+    // FIXME RS subscribers can't throw
+//    @Test
+//    public void testOnErrorThrowsDoesntPreventDelivery() {
+//        ReplaySubject&lt;String&gt; ps = ReplaySubject.create();
+//
+//        ps.subscribe();
+//        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();
+//        ps.subscribe(to);
+//
+//        try {
+//            ps.onError(new RuntimeException(&quot;an exception&quot;));
+//            fail(&quot;expect OnErrorNotImplementedException&quot;);
+//        } catch (OnErrorNotImplementedException e) {
+//            // ignore
+//        }
+//        // even though the onError above throws we should still receive it on the other subscriber
+//        assertEquals(1, to.errors().size());
+//    }
+
+    // FIXME RS subscribers can't throw
+//    /**
+//     * This one has multiple failures so should get a CompositeException
+//     */
+//    @Test
+//    public void testOnErrorThrowsDoesntPreventDelivery2() {
+//        ReplaySubject&lt;String&gt; ps = ReplaySubject.create();
+//
+//        ps.subscribe();
+//        ps.subscribe();
+//        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();
+//        ps.subscribe(to);
+//        ps.subscribe();
+//        ps.subscribe();
+//        ps.subscribe();
+//
+//        try {
+//            ps.onError(new RuntimeException(&quot;an exception&quot;));
+//            fail(&quot;expect OnErrorNotImplementedException&quot;);
+//        } catch (CompositeException e) {
+//            // we should have 5 of them
+//            assertEquals(5, e.getExceptions().size());
+//        }
+//        // even though the onError above throws we should still receive it on the other subscriber
+//        assertEquals(1, to.getOnErrorEvents().size());
+//    }
+
+    @Test
+    public void testCurrentStateMethodsNormal() {
+<span class="fc" id="L591">        ReplaySubject&lt;Object&gt; as = ReplaySubject.create();</span>
+
+<span class="fc" id="L593">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L594">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L595">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L597">        as.onNext(1);</span>
+
+<span class="fc" id="L599">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L600">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L601">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L603">        as.onComplete();</span>
+
+<span class="fc" id="L605">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L606">        assertTrue(as.hasComplete());</span>
+<span class="fc" id="L607">        assertNull(as.getThrowable());</span>
+<span class="fc" id="L608">    }</span>
+
+    @Test
+    public void testCurrentStateMethodsEmpty() {
+<span class="fc" id="L612">        ReplaySubject&lt;Object&gt; as = ReplaySubject.create();</span>
+
+<span class="fc" id="L614">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L615">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L616">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L618">        as.onComplete();</span>
+
+<span class="fc" id="L620">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L621">        assertTrue(as.hasComplete());</span>
+<span class="fc" id="L622">        assertNull(as.getThrowable());</span>
+<span class="fc" id="L623">    }</span>
+
+    @Test
+    public void testCurrentStateMethodsError() {
+<span class="fc" id="L627">        ReplaySubject&lt;Object&gt; as = ReplaySubject.create();</span>
+
+<span class="fc" id="L629">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L630">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L631">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L633">        as.onError(new TestException());</span>
+
+<span class="fc" id="L635">        assertTrue(as.hasThrowable());</span>
+<span class="fc" id="L636">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L637">        assertTrue(as.getThrowable() instanceof TestException);</span>
+<span class="fc" id="L638">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueUnbounded() {
+<span class="fc" id="L642">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.create();</span>
+
+<span class="fc" id="L644">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L645">        assertFalse(rs.hasValue());</span>
+
+<span class="fc" id="L647">        rs.onNext(1);</span>
+
+<span class="fc" id="L649">        assertEquals(1, rs.size());</span>
+<span class="fc" id="L650">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L652">        rs.onNext(1);</span>
+
+<span class="fc" id="L654">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L655">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L657">        rs.onComplete();</span>
+
+<span class="fc" id="L659">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L660">        assertTrue(rs.hasValue());</span>
+<span class="fc" id="L661">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueEffectivelyUnbounded() {
+<span class="fc" id="L665">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.createUnbounded();</span>
+
+<span class="fc" id="L667">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L668">        assertFalse(rs.hasValue());</span>
+
+<span class="fc" id="L670">        rs.onNext(1);</span>
+
+<span class="fc" id="L672">        assertEquals(1, rs.size());</span>
+<span class="fc" id="L673">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L675">        rs.onNext(1);</span>
+
+<span class="fc" id="L677">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L678">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L680">        rs.onComplete();</span>
+
+<span class="fc" id="L682">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L683">        assertTrue(rs.hasValue());</span>
+<span class="fc" id="L684">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueUnboundedError() {
+<span class="fc" id="L688">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.create();</span>
+
+<span class="fc" id="L690">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L691">        assertFalse(rs.hasValue());</span>
+
+<span class="fc" id="L693">        rs.onNext(1);</span>
+
+<span class="fc" id="L695">        assertEquals(1, rs.size());</span>
+<span class="fc" id="L696">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L698">        rs.onNext(1);</span>
+
+<span class="fc" id="L700">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L701">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L703">        rs.onError(new TestException());</span>
+
+<span class="fc" id="L705">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L706">        assertTrue(rs.hasValue());</span>
+<span class="fc" id="L707">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueEffectivelyUnboundedError() {
+<span class="fc" id="L711">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.createUnbounded();</span>
+
+<span class="fc" id="L713">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L714">        assertFalse(rs.hasValue());</span>
+
+<span class="fc" id="L716">        rs.onNext(1);</span>
+
+<span class="fc" id="L718">        assertEquals(1, rs.size());</span>
+<span class="fc" id="L719">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L721">        rs.onNext(1);</span>
+
+<span class="fc" id="L723">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L724">        assertTrue(rs.hasValue());</span>
+
+<span class="fc" id="L726">        rs.onError(new TestException());</span>
+
+<span class="fc" id="L728">        assertEquals(2, rs.size());</span>
+<span class="fc" id="L729">        assertTrue(rs.hasValue());</span>
+<span class="fc" id="L730">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueUnboundedEmptyError() {
+<span class="fc" id="L734">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.create();</span>
+
+<span class="fc" id="L736">        rs.onError(new TestException());</span>
+
+<span class="fc" id="L738">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L739">        assertFalse(rs.hasValue());</span>
+<span class="fc" id="L740">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueEffectivelyUnboundedEmptyError() {
+<span class="fc" id="L744">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.createUnbounded();</span>
+
+<span class="fc" id="L746">        rs.onError(new TestException());</span>
+
+<span class="fc" id="L748">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L749">        assertFalse(rs.hasValue());</span>
+<span class="fc" id="L750">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueUnboundedEmptyCompleted() {
+<span class="fc" id="L754">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.create();</span>
+
+<span class="fc" id="L756">        rs.onComplete();</span>
+
+<span class="fc" id="L758">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L759">        assertFalse(rs.hasValue());</span>
+<span class="fc" id="L760">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueEffectivelyUnboundedEmptyCompleted() {
+<span class="fc" id="L764">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.createUnbounded();</span>
+
+<span class="fc" id="L766">        rs.onComplete();</span>
+
+<span class="fc" id="L768">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L769">        assertFalse(rs.hasValue());</span>
+<span class="fc" id="L770">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueSizeBounded() {
+<span class="fc" id="L774">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.createWithSize(1);</span>
+
+<span class="fc" id="L776">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L777">        assertFalse(rs.hasValue());</span>
+
+<span class="fc bfc" id="L779" title="All 2 branches covered.">        for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L780">            rs.onNext(i);</span>
+
+<span class="fc" id="L782">            assertEquals(1, rs.size());</span>
+<span class="fc" id="L783">            assertTrue(rs.hasValue());</span>
+        }
+
+<span class="fc" id="L786">        rs.onComplete();</span>
+
+<span class="fc" id="L788">        assertEquals(1, rs.size());</span>
+<span class="fc" id="L789">        assertTrue(rs.hasValue());</span>
+<span class="fc" id="L790">    }</span>
+
+    @Test
+    public void testSizeAndHasAnyValueTimeBounded() {
+<span class="fc" id="L794">        TestScheduler to = new TestScheduler();</span>
+<span class="fc" id="L795">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.createWithTime(1, TimeUnit.SECONDS, to);</span>
+
+<span class="fc" id="L797">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L798">        assertFalse(rs.hasValue());</span>
+
+<span class="fc bfc" id="L800" title="All 2 branches covered.">        for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L801">            rs.onNext(i);</span>
+<span class="fc" id="L802">            assertEquals(1, rs.size());</span>
+<span class="fc" id="L803">            assertTrue(rs.hasValue());</span>
+<span class="fc" id="L804">            to.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L805">            assertEquals(0, rs.size());</span>
+<span class="fc" id="L806">            assertFalse(rs.hasValue());</span>
+        }
+
+<span class="fc" id="L809">        rs.onComplete();</span>
+
+<span class="fc" id="L811">        assertEquals(0, rs.size());</span>
+<span class="fc" id="L812">        assertFalse(rs.hasValue());</span>
+<span class="fc" id="L813">    }</span>
+
+    @Test
+    public void testGetValues() {
+<span class="fc" id="L817">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.create();</span>
+<span class="fc" id="L818">        Object[] expected = new Object[10];</span>
+<span class="fc bfc" id="L819" title="All 2 branches covered.">        for (int i = 0; i &lt; expected.length; i++) {</span>
+<span class="fc" id="L820">            expected[i] = i;</span>
+<span class="fc" id="L821">            rs.onNext(i);</span>
+<span class="fc" id="L822">            assertArrayEquals(Arrays.copyOf(expected, i + 1), rs.getValues());</span>
+        }
+<span class="fc" id="L824">        rs.onComplete();</span>
+
+<span class="fc" id="L826">        assertArrayEquals(expected, rs.getValues());</span>
+
+<span class="fc" id="L828">    }</span>
+
+    @Test
+    public void testGetValuesUnbounded() {
+<span class="fc" id="L832">        ReplaySubject&lt;Object&gt; rs = ReplaySubject.createUnbounded();</span>
+<span class="fc" id="L833">        Object[] expected = new Object[10];</span>
+<span class="fc bfc" id="L834" title="All 2 branches covered.">        for (int i = 0; i &lt; expected.length; i++) {</span>
+<span class="fc" id="L835">            expected[i] = i;</span>
+<span class="fc" id="L836">            rs.onNext(i);</span>
+<span class="fc" id="L837">            assertArrayEquals(Arrays.copyOf(expected, i + 1), rs.getValues());</span>
+        }
+<span class="fc" id="L839">        rs.onComplete();</span>
+
+<span class="fc" id="L841">        assertArrayEquals(expected, rs.getValues());</span>
+
+<span class="fc" id="L843">    }</span>
+
+    public void createInvalidCapacity() {
+        try {
+<span class="nc" id="L847">            ReplaySubject.create(-99);</span>
+<span class="nc" id="L848">            fail(&quot;Didn't throw IllegalArgumentException&quot;);</span>
+<span class="nc" id="L849">        } catch (IllegalArgumentException ex) {</span>
+<span class="nc" id="L850">            assertEquals(&quot;capacityHint &gt; 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L851">        }</span>
+<span class="nc" id="L852">    }</span>
+
+    @Test
+    public void createWithSizeInvalidCapacity() {
+        try {
+<span class="nc" id="L857">            ReplaySubject.createWithSize(-99);</span>
+<span class="nc" id="L858">            fail(&quot;Didn't throw IllegalArgumentException&quot;);</span>
+<span class="fc" id="L859">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L860">            assertEquals(&quot;maxSize &gt; 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L861">        }</span>
+<span class="fc" id="L862">    }</span>
+
+    @Test
+    public void createWithTimeAndSizeInvalidCapacity() {
+        try {
+<span class="nc" id="L867">            ReplaySubject.createWithTimeAndSize(1, TimeUnit.DAYS, Schedulers.computation(), -99);</span>
+<span class="nc" id="L868">            fail(&quot;Didn't throw IllegalArgumentException&quot;);</span>
+<span class="fc" id="L869">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L870">            assertEquals(&quot;maxSize &gt; 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L871">        }</span>
+<span class="fc" id="L872">    }</span>
+
+    @Test
+    public void hasSubscribers() {
+<span class="fc" id="L876">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create();</span>
+
+<span class="fc" id="L878">        assertFalse(rp.hasObservers());</span>
+
+<span class="fc" id="L880">        TestObserver&lt;Integer&gt; to = rp.test();</span>
+
+<span class="fc" id="L882">        assertTrue(rp.hasObservers());</span>
+
+<span class="fc" id="L884">        to.cancel();</span>
+
+<span class="fc" id="L886">        assertFalse(rp.hasObservers());</span>
+<span class="fc" id="L887">    }</span>
+
+    @Test
+    public void peekStateUnbounded() {
+<span class="fc" id="L891">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create();</span>
+
+<span class="fc" id="L893">        rp.onNext(1);</span>
+
+<span class="fc" id="L895">        assertEquals((Integer)1, rp.getValue());</span>
+
+<span class="fc" id="L897">        assertEquals(1, rp.getValues()[0]);</span>
+<span class="fc" id="L898">    }</span>
+
+    @Test
+    public void peekStateTimeAndSize() {
+<span class="fc" id="L902">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithTimeAndSize(1, TimeUnit.DAYS, Schedulers.computation(), 1);</span>
+
+<span class="fc" id="L904">        rp.onNext(1);</span>
+
+<span class="fc" id="L906">        assertEquals((Integer)1, rp.getValue());</span>
+
+<span class="fc" id="L908">        assertEquals(1, rp.getValues()[0]);</span>
+
+<span class="fc" id="L910">        rp.onNext(2);</span>
+
+<span class="fc" id="L912">        assertEquals((Integer)2, rp.getValue());</span>
+
+<span class="fc" id="L914">        assertEquals(2, rp.getValues()[0]);</span>
+
+<span class="fc" id="L916">        assertEquals((Integer)2, rp.getValues(new Integer[0])[0]);</span>
+
+<span class="fc" id="L918">        assertEquals((Integer)2, rp.getValues(new Integer[1])[0]);</span>
+
+<span class="fc" id="L920">        Integer[] a = new Integer[2];</span>
+<span class="fc" id="L921">        assertEquals((Integer)2, rp.getValues(a)[0]);</span>
+<span class="fc" id="L922">        assertNull(a[1]);</span>
+<span class="fc" id="L923">    }</span>
+
+    @Test
+    public void peekStateTimeAndSizeValue() {
+<span class="fc" id="L927">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithTimeAndSize(1, TimeUnit.DAYS, Schedulers.computation(), 1);</span>
+
+<span class="fc" id="L929">        assertNull(rp.getValue());</span>
+
+<span class="fc" id="L931">        assertEquals(0, rp.getValues().length);</span>
+
+<span class="fc" id="L933">        assertNull(rp.getValues(new Integer[2])[0]);</span>
+
+<span class="fc" id="L935">        rp.onComplete();</span>
+
+<span class="fc" id="L937">        assertNull(rp.getValue());</span>
+
+<span class="fc" id="L939">        assertEquals(0, rp.getValues().length);</span>
+
+<span class="fc" id="L941">        assertNull(rp.getValues(new Integer[2])[0]);</span>
+
+<span class="fc" id="L943">        rp = ReplaySubject.createWithTimeAndSize(1, TimeUnit.DAYS, Schedulers.computation(), 1);</span>
+<span class="fc" id="L944">        rp.onError(new TestException());</span>
+
+<span class="fc" id="L946">        assertNull(rp.getValue());</span>
+
+<span class="fc" id="L948">        assertEquals(0, rp.getValues().length);</span>
+
+<span class="fc" id="L950">        assertNull(rp.getValues(new Integer[2])[0]);</span>
+<span class="fc" id="L951">    }</span>
+
+    @Test
+    public void peekStateTimeAndSizeValueExpired() {
+<span class="fc" id="L955">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L956">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithTime(1, TimeUnit.DAYS, scheduler);</span>
+
+<span class="fc" id="L958">        assertNull(rp.getValue());</span>
+<span class="fc" id="L959">        assertNull(rp.getValues(new Integer[2])[0]);</span>
+
+<span class="fc" id="L961">        rp.onNext(2);</span>
+
+<span class="fc" id="L963">        assertEquals((Integer)2, rp.getValue());</span>
+<span class="fc" id="L964">        assertEquals(2, rp.getValues()[0]);</span>
+
+<span class="fc" id="L966">        scheduler.advanceTimeBy(2, TimeUnit.DAYS);</span>
+
+<span class="fc" id="L968">        assertEquals(null, rp.getValue());</span>
+<span class="fc" id="L969">        assertEquals(0, rp.getValues().length);</span>
+<span class="fc" id="L970">        assertNull(rp.getValues(new Integer[2])[0]);</span>
+<span class="fc" id="L971">    }</span>
+
+    @Test
+    public void capacityHint() {
+<span class="fc" id="L975">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create(8);</span>
+
+<span class="fc bfc" id="L977" title="All 2 branches covered.">        for (int i = 0; i &lt; 15; i++) {</span>
+<span class="fc" id="L978">            rp.onNext(i);</span>
+        }
+<span class="fc" id="L980">        rp.onComplete();</span>
+
+<span class="fc" id="L982">        rp.test().assertResult(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14);</span>
+<span class="fc" id="L983">    }</span>
+
+    @Test
+    public void subscribeCancelRace() {
+<span class="fc bfc" id="L987" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L988">            final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L990">            final ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create();</span>
+
+<span class="fc" id="L992">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L995">                    rp.subscribe(to);</span>
+<span class="fc" id="L996">                }</span>
+            };
+
+<span class="fc" id="L999">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1002">                    to.cancel();</span>
+<span class="fc" id="L1003">                }</span>
+            };
+
+<span class="fc" id="L1006">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L1008">    }</span>
+
+    @Test
+    public void subscribeAfterDone() {
+<span class="fc" id="L1012">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create();</span>
+<span class="fc" id="L1013">        rp.onComplete();</span>
+
+<span class="fc" id="L1015">        Disposable bs = Disposables.empty();</span>
+
+<span class="fc" id="L1017">        rp.onSubscribe(bs);</span>
+
+<span class="fc" id="L1019">        assertTrue(bs.isDisposed());</span>
+<span class="fc" id="L1020">    }</span>
+
+    @Test
+    public void subscribeRace() {
+<span class="fc bfc" id="L1024" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L1025">            final ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create();</span>
+
+<span class="fc" id="L1027">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1030">                    rp.test();</span>
+<span class="fc" id="L1031">                }</span>
+            };
+
+<span class="fc" id="L1034">            TestHelper.race(r1, r1);</span>
+        }
+<span class="fc" id="L1036">    }</span>
+
+    @Test
+    public void cancelUpfront() {
+<span class="fc" id="L1040">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create();</span>
+<span class="fc" id="L1041">        rp.test();</span>
+<span class="fc" id="L1042">        rp.test();</span>
+
+<span class="fc" id="L1044">        TestObserver&lt;Integer&gt; to = rp.test(true);</span>
+
+<span class="fc" id="L1046">        assertEquals(2, rp.observerCount());</span>
+
+<span class="fc" id="L1048">        to.assertEmpty();</span>
+<span class="fc" id="L1049">    }</span>
+
+    @Test
+    public void cancelRace() {
+<span class="fc bfc" id="L1053" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L1055">            final ReplaySubject&lt;Integer&gt; rp = ReplaySubject.create();</span>
+<span class="fc" id="L1056">            final TestObserver&lt;Integer&gt; to1 = rp.test();</span>
+<span class="fc" id="L1057">            final TestObserver&lt;Integer&gt; to2 = rp.test();</span>
+
+<span class="fc" id="L1059">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1062">                    to1.cancel();</span>
+<span class="fc" id="L1063">                }</span>
+            };
+
+<span class="fc" id="L1066">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1069">                    to2.cancel();</span>
+<span class="fc" id="L1070">                }</span>
+            };
+
+<span class="fc" id="L1073">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L1075">            assertFalse(rp.hasObservers());</span>
+        }
+<span class="fc" id="L1077">    }</span>
+
+    @Test
+    public void sizeboundReplayError() {
+<span class="fc" id="L1081">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithSize(2);</span>
+
+<span class="fc" id="L1083">        rp.onNext(1);</span>
+<span class="fc" id="L1084">        rp.onNext(2);</span>
+<span class="fc" id="L1085">        rp.onNext(3);</span>
+<span class="fc" id="L1086">        rp.onNext(4);</span>
+<span class="fc" id="L1087">        rp.onError(new TestException());</span>
+
+<span class="fc" id="L1089">        rp.test()</span>
+<span class="fc" id="L1090">        .assertFailure(TestException.class, 3, 4);</span>
+<span class="fc" id="L1091">    }</span>
+
+    @Test
+    public void sizeAndTimeBoundReplayError() {
+<span class="fc" id="L1095">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithTimeAndSize(1, TimeUnit.DAYS, Schedulers.single(), 2);</span>
+
+<span class="fc" id="L1097">        rp.onNext(1);</span>
+<span class="fc" id="L1098">        rp.onNext(2);</span>
+<span class="fc" id="L1099">        rp.onNext(3);</span>
+<span class="fc" id="L1100">        rp.onNext(4);</span>
+<span class="fc" id="L1101">        rp.onError(new TestException());</span>
+
+<span class="fc" id="L1103">        rp.test()</span>
+<span class="fc" id="L1104">        .assertFailure(TestException.class, 3, 4);</span>
+<span class="fc" id="L1105">    }</span>
+
+    @Test
+    public void timedSkipOld() {
+<span class="fc" id="L1109">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1111">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithTimeAndSize(1, TimeUnit.SECONDS, scheduler, 2);</span>
+
+<span class="fc" id="L1113">        rp.onNext(1);</span>
+<span class="fc" id="L1114">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L1116">        rp.test()</span>
+<span class="fc" id="L1117">        .assertEmpty();</span>
+<span class="fc" id="L1118">    }</span>
+
+    @Test
+    public void takeSizeAndTime() {
+<span class="fc" id="L1122">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1124">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithTimeAndSize(1, TimeUnit.SECONDS, scheduler, 2);</span>
+
+<span class="fc" id="L1126">        rp.onNext(1);</span>
+<span class="fc" id="L1127">        rp.onNext(2);</span>
+<span class="fc" id="L1128">        rp.onNext(3);</span>
+
+<span class="fc" id="L1130">        rp</span>
+<span class="fc" id="L1131">        .take(1)</span>
+<span class="fc" id="L1132">        .test()</span>
+<span class="fc" id="L1133">        .assertResult(2);</span>
+<span class="fc" id="L1134">    }</span>
+
+    @Test
+    public void takeSize() {
+<span class="fc" id="L1138">        ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithSize(2);</span>
+
+<span class="fc" id="L1140">        rp.onNext(1);</span>
+<span class="fc" id="L1141">        rp.onNext(2);</span>
+<span class="fc" id="L1142">        rp.onNext(3);</span>
+
+<span class="fc" id="L1144">        rp</span>
+<span class="fc" id="L1145">        .take(1)</span>
+<span class="fc" id="L1146">        .test()</span>
+<span class="fc" id="L1147">        .assertResult(2);</span>
+<span class="fc" id="L1148">    }</span>
+
+    @Test
+    public void reentrantDrain() {
+<span class="fc" id="L1152">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1154">        final ReplaySubject&lt;Integer&gt; rp = ReplaySubject.createWithTimeAndSize(1, TimeUnit.SECONDS, scheduler, 2);</span>
+
+<span class="fc" id="L1156">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc bfc" id="L1159" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L1160">                    rp.onNext(2);</span>
+                }
+<span class="fc" id="L1162">                super.onNext(t);</span>
+<span class="fc" id="L1163">            }</span>
+        };
+
+<span class="fc" id="L1166">        rp.subscribe(to);</span>
+
+<span class="fc" id="L1168">        rp.onNext(1);</span>
+<span class="fc" id="L1169">        rp.onComplete();</span>
+
+<span class="fc" id="L1171">        to.assertResult(1, 2);</span>
+<span class="fc" id="L1172">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L1176">        TestHelper.checkDisposed(ReplaySubject.create());</span>
+
+<span class="fc" id="L1178">        TestHelper.checkDisposed(ReplaySubject.createUnbounded());</span>
+
+<span class="fc" id="L1180">        TestHelper.checkDisposed(ReplaySubject.createWithSize(10));</span>
+
+<span class="fc" id="L1182">        TestHelper.checkDisposed(ReplaySubject.createWithTimeAndSize(1, TimeUnit.SECONDS, Schedulers.single(), 10));</span>
+<span class="fc" id="L1183">    }</span>
+
+    @Test
+    public void timedNoOutdatedData() {
+<span class="fc" id="L1187">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1189">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithTime(2, TimeUnit.SECONDS, scheduler);</span>
+<span class="fc" id="L1190">        source.onNext(1);</span>
+<span class="fc" id="L1191">        source.onComplete();</span>
+
+<span class="fc" id="L1193">        source.test().assertResult(1);</span>
+
+<span class="fc" id="L1195">        source.test().assertResult(1);</span>
+
+<span class="fc" id="L1197">        scheduler.advanceTimeBy(3, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L1199">        source.test().assertResult();</span>
+<span class="fc" id="L1200">    }</span>
+
+    @Test
+    public void noHeadRetentionCompleteSize() {
+<span class="fc" id="L1204">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithSize(1);</span>
+
+<span class="fc" id="L1206">        source.onNext(1);</span>
+<span class="fc" id="L1207">        source.onNext(2);</span>
+<span class="fc" id="L1208">        source.onComplete();</span>
+
+<span class="fc" id="L1210">        SizeBoundReplayBuffer&lt;Integer&gt; buf = (SizeBoundReplayBuffer&lt;Integer&gt;)source.buffer;</span>
+
+<span class="fc" id="L1212">        assertNull(buf.head.value);</span>
+
+<span class="fc" id="L1214">        Object o = buf.head;</span>
+
+<span class="fc" id="L1216">        source.cleanupBuffer();</span>
+
+<span class="fc" id="L1218">        assertSame(o, buf.head);</span>
+<span class="fc" id="L1219">    }</span>
+
+    @Test
+    public void noHeadRetentionSize() {
+<span class="fc" id="L1223">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithSize(1);</span>
+
+<span class="fc" id="L1225">        source.onNext(1);</span>
+<span class="fc" id="L1226">        source.onNext(2);</span>
+
+<span class="fc" id="L1228">        SizeBoundReplayBuffer&lt;Integer&gt; buf = (SizeBoundReplayBuffer&lt;Integer&gt;)source.buffer;</span>
+
+<span class="fc" id="L1230">        assertNotNull(buf.head.value);</span>
+
+<span class="fc" id="L1232">        source.cleanupBuffer();</span>
+
+<span class="fc" id="L1234">        assertNull(buf.head.value);</span>
+
+<span class="fc" id="L1236">        Object o = buf.head;</span>
+
+<span class="fc" id="L1238">        source.cleanupBuffer();</span>
+
+<span class="fc" id="L1240">        assertSame(o, buf.head);</span>
+<span class="fc" id="L1241">    }</span>
+
+    @Test
+    public void noHeadRetentionCompleteTime() {
+<span class="fc" id="L1245">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithTime(1, TimeUnit.MINUTES, Schedulers.computation());</span>
+
+<span class="fc" id="L1247">        source.onNext(1);</span>
+<span class="fc" id="L1248">        source.onNext(2);</span>
+<span class="fc" id="L1249">        source.onComplete();</span>
+
+<span class="fc" id="L1251">        SizeAndTimeBoundReplayBuffer&lt;Integer&gt; buf = (SizeAndTimeBoundReplayBuffer&lt;Integer&gt;)source.buffer;</span>
+
+<span class="fc" id="L1253">        assertNull(buf.head.value);</span>
+
+<span class="fc" id="L1255">        Object o = buf.head;</span>
+
+<span class="fc" id="L1257">        source.cleanupBuffer();</span>
+
+<span class="fc" id="L1259">        assertSame(o, buf.head);</span>
+<span class="fc" id="L1260">    }</span>
+
+    @Test
+    public void noHeadRetentionTime() {
+<span class="fc" id="L1264">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L1266">        ReplaySubject&lt;Integer&gt; source = ReplaySubject.createWithTime(1, TimeUnit.MILLISECONDS, sch);</span>
+
+<span class="fc" id="L1268">        source.onNext(1);</span>
+
+<span class="fc" id="L1270">        sch.advanceTimeBy(2, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L1272">        source.onNext(2);</span>
+
+<span class="fc" id="L1274">        SizeAndTimeBoundReplayBuffer&lt;Integer&gt; buf = (SizeAndTimeBoundReplayBuffer&lt;Integer&gt;)source.buffer;</span>
+
+<span class="fc" id="L1276">        assertNotNull(buf.head.value);</span>
+
+<span class="fc" id="L1278">        source.cleanupBuffer();</span>
+
+<span class="fc" id="L1280">        assertNull(buf.head.value);</span>
+
+<span class="fc" id="L1282">        Object o = buf.head;</span>
+
+<span class="fc" id="L1284">        source.cleanupBuffer();</span>
+
+<span class="fc" id="L1286">        assertSame(o, buf.head);</span>
+<span class="fc" id="L1287">    }</span>
+
+    @Test
+    public void noBoundedRetentionViaThreadLocal() throws Exception {
+<span class="fc" id="L1291">        final ReplaySubject&lt;byte[]&gt; rs = ReplaySubject.createWithSize(1);</span>
+
+<span class="fc" id="L1293">        Observable&lt;byte[]&gt; source = rs.take(1)</span>
+<span class="fc" id="L1294">        .concatMap(new Function&lt;byte[], Observable&lt;byte[]&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;byte[]&gt; apply(byte[] v) throws Exception {
+<span class="fc" id="L1297">                return rs;</span>
+            }
+        })
+<span class="fc" id="L1300">        .takeLast(1)</span>
+        ;
+
+<span class="fc" id="L1303">        System.out.println(&quot;Bounded Replay Leak check: Wait before GC&quot;);</span>
+<span class="fc" id="L1304">        Thread.sleep(1000);</span>
+
+<span class="fc" id="L1306">        System.out.println(&quot;Bounded Replay Leak check: GC&quot;);</span>
+<span class="fc" id="L1307">        System.gc();</span>
+
+<span class="fc" id="L1309">        Thread.sleep(500);</span>
+
+<span class="fc" id="L1311">        final MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();</span>
+<span class="fc" id="L1312">        MemoryUsage memHeap = memoryMXBean.getHeapMemoryUsage();</span>
+<span class="fc" id="L1313">        long initial = memHeap.getUsed();</span>
+
+<span class="fc" id="L1315">        System.out.printf(&quot;Bounded Replay Leak check: Starting: %.3f MB%n&quot;, initial / 1024.0 / 1024.0);</span>
+
+<span class="fc" id="L1317">        final AtomicLong after = new AtomicLong();</span>
+
+<span class="fc" id="L1319">        source.subscribe(new Consumer&lt;byte[]&gt;() {</span>
+            @Override
+            public void accept(byte[] v) throws Exception {
+<span class="fc" id="L1322">                System.out.println(&quot;Bounded Replay Leak check: Wait before GC 2&quot;);</span>
+<span class="fc" id="L1323">                Thread.sleep(1000);</span>
+
+<span class="fc" id="L1325">                System.out.println(&quot;Bounded Replay Leak check:  GC 2&quot;);</span>
+<span class="fc" id="L1326">                System.gc();</span>
+
+<span class="fc" id="L1328">                Thread.sleep(500);</span>
+
+<span class="fc" id="L1330">                after.set(memoryMXBean.getHeapMemoryUsage().getUsed());</span>
+<span class="fc" id="L1331">            }</span>
+        });
+
+<span class="fc bfc" id="L1334" title="All 2 branches covered.">        for (int i = 0; i &lt; 200; i++) {</span>
+<span class="fc" id="L1335">            rs.onNext(new byte[1024 * 1024]);</span>
+        }
+<span class="fc" id="L1337">        rs.onComplete();</span>
+
+<span class="fc" id="L1339">        System.out.printf(&quot;Bounded Replay Leak check: After: %.3f MB%n&quot;, after.get() / 1024.0 / 1024.0);</span>
+
+<span class="pc bpc" id="L1341" title="1 of 2 branches missed.">        if (initial + 100 * 1024 * 1024 &lt; after.get()) {</span>
+<span class="nc" id="L1342">            Assert.fail(&quot;Bounded Replay Leak check: Memory leak detected: &quot; + (initial / 1024.0 / 1024.0)</span>
+<span class="nc" id="L1343">                    + &quot; -&gt; &quot; + after.get() / 1024.0 / 1024.0);</span>
+        }
+<span class="fc" id="L1345">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

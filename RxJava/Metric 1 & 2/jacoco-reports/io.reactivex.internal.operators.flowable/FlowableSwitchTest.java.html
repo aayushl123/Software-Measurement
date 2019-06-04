@@ -1,0 +1,1206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSwitchTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableSwitchTest.java</span></div><h1>FlowableSwitchTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.*;
+import org.mockito.InOrder;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.internal.util.ExceptionHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.*;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L39">public class FlowableSwitchTest {</span>
+
+    private TestScheduler scheduler;
+    private Scheduler.Worker innerScheduler;
+    private Subscriber&lt;String&gt; subscriber;
+
+    @Before
+    public void before() {
+<span class="fc" id="L47">        scheduler = new TestScheduler();</span>
+<span class="fc" id="L48">        innerScheduler = scheduler.createWorker();</span>
+<span class="fc" id="L49">        subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L50">    }</span>
+
+    @Test
+    public void testSwitchWhenOuterCompleteBeforeInner() {
+<span class="fc" id="L54">        Flowable&lt;Flowable&lt;String&gt;&gt; source = Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Flowable&lt;String&gt;&gt; subscriber) {
+<span class="fc" id="L57">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L58">                publishNext(subscriber, 50, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L61">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L62">                        publishNext(subscriber, 70, &quot;one&quot;);</span>
+<span class="fc" id="L63">                        publishNext(subscriber, 100, &quot;two&quot;);</span>
+<span class="fc" id="L64">                        publishCompleted(subscriber, 200);</span>
+<span class="fc" id="L65">                    }</span>
+                }));
+<span class="fc" id="L67">                publishCompleted(subscriber, 60);</span>
+<span class="fc" id="L68">            }</span>
+        });
+
+<span class="fc" id="L71">        Flowable&lt;String&gt; sampled = Flowable.switchOnNext(source);</span>
+<span class="fc" id="L72">        sampled.subscribe(subscriber);</span>
+
+<span class="fc" id="L74">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L76">        scheduler.advanceTimeTo(350, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L77">        inOrder.verify(subscriber, times(2)).onNext(anyString());</span>
+<span class="fc" id="L78">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L79">    }</span>
+
+    @Test
+    public void testSwitchWhenInnerCompleteBeforeOuter() {
+<span class="fc" id="L83">        Flowable&lt;Flowable&lt;String&gt;&gt; source = Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Flowable&lt;String&gt;&gt; subscriber) {
+<span class="fc" id="L86">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L87">                publishNext(subscriber, 10, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L90">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L91">                        publishNext(subscriber, 0, &quot;one&quot;);</span>
+<span class="fc" id="L92">                        publishNext(subscriber, 10, &quot;two&quot;);</span>
+<span class="fc" id="L93">                        publishCompleted(subscriber, 20);</span>
+<span class="fc" id="L94">                    }</span>
+                }));
+
+<span class="fc" id="L97">                publishNext(subscriber, 100, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L100">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L101">                        publishNext(subscriber, 0, &quot;three&quot;);</span>
+<span class="fc" id="L102">                        publishNext(subscriber, 10, &quot;four&quot;);</span>
+<span class="fc" id="L103">                        publishCompleted(subscriber, 20);</span>
+<span class="fc" id="L104">                    }</span>
+                }));
+<span class="fc" id="L106">                publishCompleted(subscriber, 200);</span>
+<span class="fc" id="L107">            }</span>
+        });
+
+<span class="fc" id="L110">        Flowable&lt;String&gt; sampled = Flowable.switchOnNext(source);</span>
+<span class="fc" id="L111">        sampled.subscribe(subscriber);</span>
+
+<span class="fc" id="L113">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L115">        scheduler.advanceTimeTo(150, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L116">        inOrder.verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L117">        inOrder.verify(subscriber, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L118">        inOrder.verify(subscriber, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L119">        inOrder.verify(subscriber, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L120">        inOrder.verify(subscriber, times(1)).onNext(&quot;four&quot;);</span>
+
+<span class="fc" id="L122">        scheduler.advanceTimeTo(250, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L123">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L124">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L125">    }</span>
+
+    @Test
+    public void testSwitchWithComplete() {
+<span class="fc" id="L129">        Flowable&lt;Flowable&lt;String&gt;&gt; source = Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Flowable&lt;String&gt;&gt; subscriber) {
+<span class="fc" id="L132">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L133">                publishNext(subscriber, 50, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(final Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L136">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L137">                        publishNext(subscriber, 60, &quot;one&quot;);</span>
+<span class="fc" id="L138">                        publishNext(subscriber, 100, &quot;two&quot;);</span>
+<span class="fc" id="L139">                    }</span>
+                }));
+
+<span class="fc" id="L142">                publishNext(subscriber, 200, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(final Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L145">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L146">                        publishNext(subscriber, 0, &quot;three&quot;);</span>
+<span class="fc" id="L147">                        publishNext(subscriber, 100, &quot;four&quot;);</span>
+<span class="fc" id="L148">                    }</span>
+                }));
+
+<span class="fc" id="L151">                publishCompleted(subscriber, 250);</span>
+<span class="fc" id="L152">            }</span>
+        });
+
+<span class="fc" id="L155">        Flowable&lt;String&gt; sampled = Flowable.switchOnNext(source);</span>
+<span class="fc" id="L156">        sampled.subscribe(subscriber);</span>
+
+<span class="fc" id="L158">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L160">        scheduler.advanceTimeTo(90, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L161">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L162">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L163">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L165">        scheduler.advanceTimeTo(125, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L166">        inOrder.verify(subscriber, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L167">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L168">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L170">        scheduler.advanceTimeTo(175, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L171">        inOrder.verify(subscriber, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L172">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L173">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L175">        scheduler.advanceTimeTo(225, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L176">        inOrder.verify(subscriber, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L177">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L178">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L180">        scheduler.advanceTimeTo(350, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L181">        inOrder.verify(subscriber, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L182">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L183">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L184">    }</span>
+
+    @Test
+    public void testSwitchWithError() {
+<span class="fc" id="L188">        Flowable&lt;Flowable&lt;String&gt;&gt; source = Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Flowable&lt;String&gt;&gt; subscriber) {
+<span class="fc" id="L191">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L192">                publishNext(subscriber, 50, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(final Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L195">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L196">                        publishNext(subscriber, 50, &quot;one&quot;);</span>
+<span class="fc" id="L197">                        publishNext(subscriber, 100, &quot;two&quot;);</span>
+<span class="fc" id="L198">                    }</span>
+                }));
+
+<span class="fc" id="L201">                publishNext(subscriber, 200, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L204">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L205">                        publishNext(subscriber, 0, &quot;three&quot;);</span>
+<span class="fc" id="L206">                        publishNext(subscriber, 100, &quot;four&quot;);</span>
+<span class="fc" id="L207">                    }</span>
+                }));
+
+<span class="fc" id="L210">                publishError(subscriber, 250, new TestException());</span>
+<span class="fc" id="L211">            }</span>
+        });
+
+<span class="fc" id="L214">        Flowable&lt;String&gt; sampled = Flowable.switchOnNext(source);</span>
+<span class="fc" id="L215">        sampled.subscribe(subscriber);</span>
+
+<span class="fc" id="L217">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L219">        scheduler.advanceTimeTo(90, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L220">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L221">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L222">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L224">        scheduler.advanceTimeTo(125, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L225">        inOrder.verify(subscriber, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L226">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L227">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L229">        scheduler.advanceTimeTo(175, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L230">        inOrder.verify(subscriber, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L231">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L232">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L234">        scheduler.advanceTimeTo(225, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L235">        inOrder.verify(subscriber, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L236">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L237">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L239">        scheduler.advanceTimeTo(350, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L240">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L241">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L242">        verify(subscriber, times(1)).onError(any(TestException.class));</span>
+<span class="fc" id="L243">    }</span>
+
+    @Test
+    public void testSwitchWithSubsequenceComplete() {
+<span class="fc" id="L247">        Flowable&lt;Flowable&lt;String&gt;&gt; source = Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Flowable&lt;String&gt;&gt; subscriber) {
+<span class="fc" id="L250">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L251">                publishNext(subscriber, 50, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L254">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L255">                        publishNext(subscriber, 50, &quot;one&quot;);</span>
+<span class="fc" id="L256">                        publishNext(subscriber, 100, &quot;two&quot;);</span>
+<span class="fc" id="L257">                    }</span>
+                }));
+
+<span class="fc" id="L260">                publishNext(subscriber, 130, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L263">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L264">                        publishCompleted(subscriber, 0);</span>
+<span class="fc" id="L265">                    }</span>
+                }));
+
+<span class="fc" id="L268">                publishNext(subscriber, 150, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L271">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L272">                        publishNext(subscriber, 50, &quot;three&quot;);</span>
+<span class="fc" id="L273">                    }</span>
+                }));
+<span class="fc" id="L275">            }</span>
+        });
+
+<span class="fc" id="L278">        Flowable&lt;String&gt; sampled = Flowable.switchOnNext(source);</span>
+<span class="fc" id="L279">        sampled.subscribe(subscriber);</span>
+
+<span class="fc" id="L281">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L283">        scheduler.advanceTimeTo(90, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L284">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L285">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L286">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L288">        scheduler.advanceTimeTo(125, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L289">        inOrder.verify(subscriber, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L290">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L291">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L293">        scheduler.advanceTimeTo(250, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L294">        inOrder.verify(subscriber, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L295">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L296">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L297">    }</span>
+
+    @Test
+    public void testSwitchWithSubsequenceError() {
+<span class="fc" id="L301">        Flowable&lt;Flowable&lt;String&gt;&gt; source = Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Flowable&lt;String&gt;&gt; subscriber) {
+<span class="fc" id="L304">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L305">                publishNext(subscriber, 50, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L308">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L309">                        publishNext(subscriber, 50, &quot;one&quot;);</span>
+<span class="fc" id="L310">                        publishNext(subscriber, 100, &quot;two&quot;);</span>
+<span class="fc" id="L311">                    }</span>
+                }));
+
+<span class="fc" id="L314">                publishNext(subscriber, 130, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L317">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L318">                        publishError(subscriber, 0, new TestException());</span>
+<span class="fc" id="L319">                    }</span>
+                }));
+
+<span class="fc" id="L322">                publishNext(subscriber, 150, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="nc" id="L325">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="nc" id="L326">                        publishNext(subscriber, 50, &quot;three&quot;);</span>
+<span class="nc" id="L327">                    }</span>
+                }));
+
+<span class="fc" id="L330">            }</span>
+        });
+
+<span class="fc" id="L333">        Flowable&lt;String&gt; sampled = Flowable.switchOnNext(source);</span>
+<span class="fc" id="L334">        sampled.subscribe(subscriber);</span>
+
+<span class="fc" id="L336">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L338">        scheduler.advanceTimeTo(90, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L339">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L340">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L341">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L343">        scheduler.advanceTimeTo(125, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L344">        inOrder.verify(subscriber, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L345">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L346">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L348">        scheduler.advanceTimeTo(250, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L349">        inOrder.verify(subscriber, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L350">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L351">        verify(subscriber, times(1)).onError(any(TestException.class));</span>
+<span class="fc" id="L352">    }</span>
+
+    private &lt;T&gt; void publishCompleted(final Subscriber&lt;T&gt; subscriber, long delay) {
+<span class="fc" id="L355">        innerScheduler.schedule(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L358">                subscriber.onComplete();</span>
+<span class="fc" id="L359">            }</span>
+        }, delay, TimeUnit.MILLISECONDS);
+<span class="fc" id="L361">    }</span>
+
+    private &lt;T&gt; void publishError(final Subscriber&lt;T&gt; subscriber, long delay, final Throwable error) {
+<span class="fc" id="L364">        innerScheduler.schedule(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L367">                subscriber.onError(error);</span>
+<span class="fc" id="L368">            }</span>
+        }, delay, TimeUnit.MILLISECONDS);
+<span class="fc" id="L370">    }</span>
+
+    private &lt;T&gt; void publishNext(final Subscriber&lt;T&gt; subscriber, long delay, final T value) {
+<span class="fc" id="L373">        innerScheduler.schedule(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L376">                subscriber.onNext(value);</span>
+<span class="fc" id="L377">            }</span>
+        }, delay, TimeUnit.MILLISECONDS);
+<span class="fc" id="L379">    }</span>
+
+    @Test
+    public void testSwitchIssue737() {
+        // https://github.com/ReactiveX/RxJava/issues/737
+<span class="fc" id="L384">        Flowable&lt;Flowable&lt;String&gt;&gt; source = Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Flowable&lt;String&gt;&gt; subscriber) {
+<span class="fc" id="L387">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L388">                publishNext(subscriber, 0, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L391">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L392">                        publishNext(subscriber, 10, &quot;1-one&quot;);</span>
+<span class="fc" id="L393">                        publishNext(subscriber, 20, &quot;1-two&quot;);</span>
+                        // The following events will be ignored
+<span class="fc" id="L395">                        publishNext(subscriber, 30, &quot;1-three&quot;);</span>
+<span class="fc" id="L396">                        publishCompleted(subscriber, 40);</span>
+<span class="fc" id="L397">                    }</span>
+                }));
+<span class="fc" id="L399">                publishNext(subscriber, 25, Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L402">                        subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L403">                        publishNext(subscriber, 10, &quot;2-one&quot;);</span>
+<span class="fc" id="L404">                        publishNext(subscriber, 20, &quot;2-two&quot;);</span>
+<span class="fc" id="L405">                        publishNext(subscriber, 30, &quot;2-three&quot;);</span>
+<span class="fc" id="L406">                        publishCompleted(subscriber, 40);</span>
+<span class="fc" id="L407">                    }</span>
+                }));
+<span class="fc" id="L409">                publishCompleted(subscriber, 30);</span>
+<span class="fc" id="L410">            }</span>
+        });
+
+<span class="fc" id="L413">        Flowable&lt;String&gt; sampled = Flowable.switchOnNext(source);</span>
+<span class="fc" id="L414">        sampled.subscribe(subscriber);</span>
+
+<span class="fc" id="L416">        scheduler.advanceTimeTo(1000, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L418">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L419">        inOrder.verify(subscriber, times(1)).onNext(&quot;1-one&quot;);</span>
+<span class="fc" id="L420">        inOrder.verify(subscriber, times(1)).onNext(&quot;1-two&quot;);</span>
+<span class="fc" id="L421">        inOrder.verify(subscriber, times(1)).onNext(&quot;2-one&quot;);</span>
+<span class="fc" id="L422">        inOrder.verify(subscriber, times(1)).onNext(&quot;2-two&quot;);</span>
+<span class="fc" id="L423">        inOrder.verify(subscriber, times(1)).onNext(&quot;2-three&quot;);</span>
+<span class="fc" id="L424">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L425">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L426">    }</span>
+
+    @Test
+    public void testBackpressure() {
+
+<span class="fc" id="L431">        PublishProcessor&lt;String&gt; o1 = PublishProcessor.create();</span>
+<span class="fc" id="L432">        PublishProcessor&lt;String&gt; o2 = PublishProcessor.create();</span>
+<span class="fc" id="L433">        PublishProcessor&lt;String&gt; o3 = PublishProcessor.create();</span>
+
+<span class="fc" id="L435">        PublishProcessor&lt;PublishProcessor&lt;String&gt;&gt; o = PublishProcessor.create();</span>
+
+<span class="fc" id="L437">        publishNext(o, 0, o1);</span>
+<span class="fc" id="L438">        publishNext(o, 5, o2);</span>
+<span class="fc" id="L439">        publishNext(o, 10, o3);</span>
+<span class="fc" id="L440">        publishCompleted(o, 15);</span>
+
+<span class="fc bfc" id="L442" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L443">            publishNext(o1, i * 5, &quot;a&quot; + (i + 1));</span>
+<span class="fc" id="L444">            publishNext(o2, 5 + i * 5, &quot;b&quot; + (i + 1));</span>
+<span class="fc" id="L445">            publishNext(o3, 10 + i * 5, &quot;c&quot; + (i + 1));</span>
+        }
+
+<span class="fc" id="L448">        publishCompleted(o1, 45);</span>
+<span class="fc" id="L449">        publishCompleted(o2, 50);</span>
+<span class="fc" id="L450">        publishCompleted(o3, 55);</span>
+
+<span class="fc" id="L452">        final TestSubscriber&lt;String&gt; testSubscriber = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L453">        Flowable.switchOnNext(o).subscribe(new DefaultSubscriber&lt;String&gt;() {</span>
+
+            private int requested;
+
+            @Override
+            public void onStart() {
+<span class="fc" id="L459">                requested = 3;</span>
+<span class="fc" id="L460">                request(3);</span>
+<span class="fc" id="L461">                testSubscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L462">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L466">                testSubscriber.onComplete();</span>
+<span class="fc" id="L467">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L471">                testSubscriber.onError(e);</span>
+<span class="nc" id="L472">            }</span>
+
+            @Override
+            public void onNext(String s) {
+<span class="fc" id="L476">                testSubscriber.onNext(s);</span>
+<span class="fc" id="L477">                requested--;</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">                if (requested == 0) {</span>
+<span class="fc" id="L479">                    requested = 3;</span>
+<span class="fc" id="L480">                    request(3);</span>
+                }
+<span class="fc" id="L482">            }</span>
+        });
+<span class="fc" id="L484">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L485">        testSubscriber.assertValues(&quot;a1&quot;, &quot;b1&quot;, &quot;c1&quot;, &quot;c2&quot;, &quot;c3&quot;, &quot;c4&quot;, &quot;c5&quot;, &quot;c6&quot;, &quot;c7&quot;, &quot;c8&quot;, &quot;c9&quot;, &quot;c10&quot;);</span>
+<span class="fc" id="L486">        testSubscriber.assertNoErrors();</span>
+<span class="fc" id="L487">        testSubscriber.assertTerminated();</span>
+<span class="fc" id="L488">    }</span>
+
+    @Test
+    public void testUnsubscribe() {
+<span class="fc" id="L492">        final AtomicBoolean isUnsubscribed = new AtomicBoolean();</span>
+<span class="fc" id="L493">        Flowable.switchOnNext(</span>
+<span class="fc" id="L494">                Flowable.unsafeCreate(new Publisher&lt;Flowable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public void subscribe(final Subscriber&lt;? super Flowable&lt;Integer&gt;&gt; subscriber) {
+<span class="fc" id="L497">                        BooleanSubscription bs = new BooleanSubscription();</span>
+<span class="fc" id="L498">                        subscriber.onSubscribe(bs);</span>
+<span class="fc" id="L499">                        subscriber.onNext(Flowable.just(1));</span>
+<span class="fc" id="L500">                        isUnsubscribed.set(bs.isCancelled());</span>
+<span class="fc" id="L501">                    }</span>
+                })
+<span class="fc" id="L503">        ).take(1).subscribe();</span>
+<span class="fc" id="L504">        assertTrue(&quot;Switch doesn't propagate 'unsubscribe'&quot;, isUnsubscribed.get());</span>
+<span class="fc" id="L505">    }</span>
+    /** The upstream producer hijacked the switch producer stopping the requests aimed at the inner observables. */
+    @Test
+    public void testIssue2654() {
+<span class="fc" id="L509">        Flowable&lt;String&gt; oneItem = Flowable.just(&quot;Hello&quot;).mergeWith(Flowable.&lt;String&gt;never());</span>
+
+<span class="fc" id="L511">        Flowable&lt;String&gt; src = oneItem.switchMap(new Function&lt;String, Flowable&lt;String&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;String&gt; apply(final String s) {
+<span class="fc" id="L514">                return Flowable.just(s)</span>
+<span class="fc" id="L515">                        .mergeWith(Flowable.interval(10, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L516">                        .map(new Function&lt;Long, String&gt;() {</span>
+                            @Override
+                            public String apply(Long i) {
+<span class="fc" id="L519">                                return s + &quot; &quot; + i;</span>
+                            }
+<span class="fc" id="L521">                        })).take(250);</span>
+            }
+        })
+<span class="fc" id="L524">        .share()</span>
+        ;
+
+<span class="fc" id="L527">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;() {</span>
+            @Override
+            public void onNext(String t) {
+<span class="fc" id="L530">                super.onNext(t);</span>
+<span class="fc bfc" id="L531" title="All 2 branches covered.">                if (valueCount() == 250) {</span>
+<span class="fc" id="L532">                    onComplete();</span>
+<span class="fc" id="L533">                    dispose();</span>
+                }
+<span class="fc" id="L535">            }</span>
+        };
+<span class="fc" id="L537">        src.subscribe(ts);</span>
+
+<span class="fc" id="L539">        ts.awaitTerminalEvent(10, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L541">        System.out.println(&quot;&gt; testIssue2654: &quot; + ts.valueCount());</span>
+
+<span class="fc" id="L543">        ts.assertTerminated();</span>
+<span class="fc" id="L544">        ts.assertNoErrors();</span>
+
+<span class="fc" id="L546">        Assert.assertEquals(250, ts.valueCount());</span>
+<span class="fc" id="L547">    }</span>
+
+    @Test(timeout = 10000)
+    public void testInitialRequestsAreAdditive() {
+<span class="fc" id="L551">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+<span class="fc" id="L552">        Flowable.switchOnNext(</span>
+<span class="fc" id="L553">                Flowable.interval(100, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L554">                          .map(</span>
+<span class="fc" id="L555">                                new Function&lt;Long, Flowable&lt;Long&gt;&gt;() {</span>
+                                    @Override
+                                    public Flowable&lt;Long&gt; apply(Long t) {
+<span class="fc" id="L558">                                        return Flowable.just(1L, 2L, 3L);</span>
+                                    }
+                                }
+<span class="fc" id="L561">                          ).take(3))</span>
+<span class="fc" id="L562">                          .subscribe(ts);</span>
+<span class="fc" id="L563">        ts.request(Long.MAX_VALUE - 100);</span>
+<span class="fc" id="L564">        ts.request(1);</span>
+<span class="fc" id="L565">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L566">    }</span>
+
+    @Test(timeout = 10000)
+    public void testInitialRequestsDontOverflow() {
+<span class="fc" id="L570">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+<span class="fc" id="L571">        Flowable.switchOnNext(</span>
+<span class="fc" id="L572">                Flowable.interval(100, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L573">                        .map(new Function&lt;Long, Flowable&lt;Long&gt;&gt;() {</span>
+                            @Override
+                            public Flowable&lt;Long&gt; apply(Long t) {
+<span class="fc" id="L576">                                return Flowable.fromIterable(Arrays.asList(1L, 2L, 3L)).hide();</span>
+                            }
+<span class="fc" id="L578">                        }).take(3)).subscribe(ts);</span>
+<span class="fc" id="L579">        ts.request(Long.MAX_VALUE - 1);</span>
+<span class="fc" id="L580">        ts.request(2);</span>
+<span class="fc" id="L581">        ts.awaitTerminalEvent();</span>
+<span class="pc bpc" id="L582" title="1 of 2 branches missed.">        assertTrue(ts.valueCount() &gt; 0);</span>
+<span class="fc" id="L583">    }</span>
+
+    @Test(timeout = 10000)
+    public void testSecondaryRequestsDontOverflow() throws InterruptedException {
+<span class="fc" id="L587">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+<span class="fc" id="L588">        Flowable.switchOnNext(</span>
+<span class="fc" id="L589">                Flowable.interval(100, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L590">                        .map(new Function&lt;Long, Flowable&lt;Long&gt;&gt;() {</span>
+                            @Override
+                            public Flowable&lt;Long&gt; apply(Long t) {
+<span class="fc" id="L593">                                return Flowable.fromIterable(Arrays.asList(1L, 2L, 3L)).hide();</span>
+                            }
+<span class="fc" id="L595">                        }).take(3)).subscribe(ts);</span>
+<span class="fc" id="L596">        ts.request(1);</span>
+        //we will miss two of the first observable
+<span class="fc" id="L598">        Thread.sleep(250);</span>
+<span class="fc" id="L599">        ts.request(Long.MAX_VALUE - 1);</span>
+<span class="fc" id="L600">        ts.request(Long.MAX_VALUE - 1);</span>
+<span class="fc" id="L601">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L602">        ts.assertValueCount(7);</span>
+<span class="fc" id="L603">    }</span>
+
+    @Test(timeout = 10000)
+    @Ignore(&quot;Request pattern changed and I can't decide if this is okay or not&quot;)
+    public void testSecondaryRequestsAdditivelyAreMoreThanLongMaxValueInducesMaxValueRequestFromUpstream()
+            throws InterruptedException {
+<span class="nc" id="L609">        final List&lt;Long&gt; requests = new CopyOnWriteArrayList&lt;Long&gt;();</span>
+
+<span class="nc" id="L611">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(1L);</span>
+<span class="nc" id="L612">        Flowable.switchOnNext(</span>
+<span class="nc" id="L613">                Flowable.interval(100, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L614">                        .map(new Function&lt;Long, Flowable&lt;Long&gt;&gt;() {</span>
+                            @Override
+                            public Flowable&lt;Long&gt; apply(Long t) {
+<span class="nc" id="L617">                                return Flowable.fromIterable(Arrays.asList(1L, 2L, 3L))</span>
+<span class="nc" id="L618">                                        .doOnRequest(new LongConsumer() {</span>
+                                            @Override
+                                            public void accept(long v) {
+<span class="nc" id="L621">                                                requests.add(v);</span>
+<span class="nc" id="L622">                                            }</span>
+                                        });
+                            }
+<span class="nc" id="L625">                        }).take(3)).subscribe(ts);</span>
+        // we will miss two of the first observables
+<span class="nc" id="L627">        Thread.sleep(250);</span>
+<span class="nc" id="L628">        ts.request(Long.MAX_VALUE - 1);</span>
+<span class="nc" id="L629">        ts.request(Long.MAX_VALUE - 1);</span>
+<span class="nc" id="L630">        ts.awaitTerminalEvent();</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">        assertTrue(ts.valueCount() &gt; 0);</span>
+<span class="nc" id="L632">        System.out.println(requests);</span>
+<span class="nc" id="L633">        assertEquals(5, requests.size());</span>
+<span class="nc" id="L634">        assertEquals(Long.MAX_VALUE, (long) requests.get(requests.size() - 1));</span>
+<span class="nc" id="L635">    }</span>
+
+    @Test
+    public void delayErrors() {
+<span class="fc" id="L639">        PublishProcessor&lt;Publisher&lt;Integer&gt;&gt; source = PublishProcessor.create();</span>
+
+<span class="fc" id="L641">        TestSubscriber&lt;Integer&gt; ts = source.switchMapDelayError(Functions.&lt;Publisher&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L642">        .test();</span>
+
+<span class="fc" id="L644">        ts.assertNoValues()</span>
+<span class="fc" id="L645">        .assertNoErrors()</span>
+<span class="fc" id="L646">        .assertNotComplete();</span>
+
+<span class="fc" id="L648">        source.onNext(Flowable.just(1));</span>
+
+<span class="fc" id="L650">        source.onNext(Flowable.&lt;Integer&gt;error(new TestException(&quot;Forced failure 1&quot;)));</span>
+
+<span class="fc" id="L652">        source.onNext(Flowable.just(2, 3, 4));</span>
+
+<span class="fc" id="L654">        source.onNext(Flowable.&lt;Integer&gt;error(new TestException(&quot;Forced failure 2&quot;)));</span>
+
+<span class="fc" id="L656">        source.onNext(Flowable.just(5));</span>
+
+<span class="fc" id="L658">        source.onError(new TestException(&quot;Forced failure 3&quot;));</span>
+
+<span class="fc" id="L660">        ts.assertValues(1, 2, 3, 4, 5)</span>
+<span class="fc" id="L661">        .assertNotComplete()</span>
+<span class="fc" id="L662">        .assertError(CompositeException.class);</span>
+
+<span class="fc" id="L664">        List&lt;Throwable&gt; errors = ExceptionHelper.flatten(ts.errors().get(0));</span>
+
+<span class="fc" id="L666">        TestHelper.assertError(errors, 0, TestException.class, &quot;Forced failure 1&quot;);</span>
+<span class="fc" id="L667">        TestHelper.assertError(errors, 1, TestException.class, &quot;Forced failure 2&quot;);</span>
+<span class="fc" id="L668">        TestHelper.assertError(errors, 2, TestException.class, &quot;Forced failure 3&quot;);</span>
+<span class="fc" id="L669">    }</span>
+
+    @Test
+    public void switchOnNextPrefetch() {
+<span class="fc" id="L673">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L675">        Flowable&lt;Integer&gt; source = Flowable.range(1, 10).hide().doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L678">                list.add(v);</span>
+<span class="fc" id="L679">            }</span>
+        });
+
+<span class="fc" id="L682">        Flowable.switchOnNext(Flowable.just(source).hide(), 2)</span>
+<span class="fc" id="L683">        .test(1);</span>
+
+<span class="fc" id="L685">        assertEquals(Arrays.asList(1, 2, 3), list);</span>
+<span class="fc" id="L686">    }</span>
+
+    @Test
+    public void switchOnNextDelayError() {
+<span class="fc" id="L690">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L692">        Flowable&lt;Integer&gt; source = Flowable.range(1, 10).hide().doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L695">                list.add(v);</span>
+<span class="fc" id="L696">            }</span>
+        });
+
+<span class="fc" id="L699">        Flowable.switchOnNextDelayError(Flowable.just(source).hide())</span>
+<span class="fc" id="L700">        .test(1);</span>
+
+<span class="fc" id="L702">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), list);</span>
+<span class="fc" id="L703">    }</span>
+
+    @Test
+    public void switchOnNextDelayErrorPrefetch() {
+<span class="fc" id="L707">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L709">        Flowable&lt;Integer&gt; source = Flowable.range(1, 10).hide().doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L712">                list.add(v);</span>
+<span class="fc" id="L713">            }</span>
+        });
+
+<span class="fc" id="L716">        Flowable.switchOnNextDelayError(Flowable.just(source).hide(), 2)</span>
+<span class="fc" id="L717">        .test(1);</span>
+
+<span class="fc" id="L719">        assertEquals(Arrays.asList(1, 2, 3), list);</span>
+<span class="fc" id="L720">    }</span>
+
+    @Test
+    public void switchOnNextDelayErrorWithError() {
+<span class="fc" id="L724">        PublishProcessor&lt;Flowable&lt;Integer&gt;&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L726">        TestSubscriber&lt;Integer&gt; ts = Flowable.switchOnNextDelayError(pp).test();</span>
+
+<span class="fc" id="L728">        pp.onNext(Flowable.just(1));</span>
+<span class="fc" id="L729">        pp.onNext(Flowable.&lt;Integer&gt;error(new TestException()));</span>
+<span class="fc" id="L730">        pp.onNext(Flowable.range(2, 4));</span>
+<span class="fc" id="L731">        pp.onComplete();</span>
+
+<span class="fc" id="L733">        ts.assertFailure(TestException.class, 1, 2, 3, 4, 5);</span>
+<span class="fc" id="L734">    }</span>
+
+    @Test
+    public void switchOnNextDelayErrorBufferSize() {
+<span class="fc" id="L738">        PublishProcessor&lt;Flowable&lt;Integer&gt;&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L740">        TestSubscriber&lt;Integer&gt; ts = Flowable.switchOnNextDelayError(pp, 2).test();</span>
+
+<span class="fc" id="L742">        pp.onNext(Flowable.just(1));</span>
+<span class="fc" id="L743">        pp.onNext(Flowable.range(2, 4));</span>
+<span class="fc" id="L744">        pp.onComplete();</span>
+
+<span class="fc" id="L746">        ts.assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L747">    }</span>
+
+    @Test
+    public void switchMapDelayErrorEmptySource() {
+<span class="fc" id="L751">        assertSame(Flowable.empty(), Flowable.&lt;Object&gt;empty()</span>
+<span class="fc" id="L752">                .switchMapDelayError(new Function&lt;Object, Publisher&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Publisher&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="nc" id="L755">                        return Flowable.just(1);</span>
+                    }
+                }, 16));
+<span class="fc" id="L758">    }</span>
+
+    @Test
+    public void switchMapDelayErrorJustSource() {
+<span class="fc" id="L762">        Flowable.just(0)</span>
+<span class="fc" id="L763">        .switchMapDelayError(new Function&lt;Object, Publisher&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L766">                return Flowable.just(1);</span>
+            }
+        }, 16)
+<span class="fc" id="L769">        .test()</span>
+<span class="fc" id="L770">        .assertResult(1);</span>
+
+<span class="fc" id="L772">    }</span>
+
+    @Test
+    public void switchMapErrorEmptySource() {
+<span class="fc" id="L776">        assertSame(Flowable.empty(), Flowable.&lt;Object&gt;empty()</span>
+<span class="fc" id="L777">                .switchMap(new Function&lt;Object, Publisher&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Publisher&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="nc" id="L780">                        return Flowable.just(1);</span>
+                    }
+                }, 16));
+<span class="fc" id="L783">    }</span>
+
+    @Test
+    public void switchMapJustSource() {
+<span class="fc" id="L787">        Flowable.just(0)</span>
+<span class="fc" id="L788">        .switchMap(new Function&lt;Object, Publisher&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L791">                return Flowable.just(1);</span>
+            }
+        }, 16)
+<span class="fc" id="L794">        .test()</span>
+<span class="fc" id="L795">        .assertResult(1);</span>
+
+<span class="fc" id="L797">    }</span>
+
+    @Test
+    public void switchMapInnerCancelled() {
+<span class="fc" id="L801">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L803">        TestSubscriber&lt;Integer&gt; ts = Flowable.just(1)</span>
+<span class="fc" id="L804">                .switchMap(Functions.justFunction(pp))</span>
+<span class="fc" id="L805">                .test();</span>
+
+<span class="fc" id="L807">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L809">        ts.cancel();</span>
+
+<span class="fc" id="L811">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L812">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L816">        TestHelper.checkDisposed(Flowable.switchOnNext(</span>
+<span class="fc" id="L817">                Flowable.just(Flowable.just(1)).hide()));</span>
+<span class="fc" id="L818">    }</span>
+
+    @Test
+    public void nextSourceErrorRace() {
+<span class="fc bfc" id="L822" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L823">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+
+<span class="fc" id="L826">                final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L827">                final PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L829">                pp1.switchMap(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="pc bpc" id="L832" title="1 of 2 branches missed.">                        if (v == 1) {</span>
+<span class="nc" id="L833">                            return pp2;</span>
+                        }
+<span class="fc" id="L835">                        return Flowable.never();</span>
+                    }
+                })
+<span class="fc" id="L838">                .test();</span>
+
+<span class="fc" id="L840">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L843">                        pp1.onNext(2);</span>
+<span class="fc" id="L844">                    }</span>
+                };
+
+<span class="fc" id="L847">                final TestException ex = new TestException();</span>
+
+<span class="fc" id="L849">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L852">                        pp2.onError(ex);</span>
+<span class="fc" id="L853">                    }</span>
+                };
+
+<span class="fc" id="L856">                TestHelper.race(r1, r2);</span>
+
+<span class="pc bpc" id="L858" title="1 of 2 branches missed.">                for (Throwable e : errors) {</span>
+<span class="nc" id="L859">                    assertTrue(e.toString(), e instanceof TestException);</span>
+<span class="nc" id="L860">                }</span>
+            } finally {
+<span class="fc" id="L862">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L865">    }</span>
+
+    @Test
+    public void outerInnerErrorRace() {
+<span class="fc bfc" id="L869" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L870">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+
+<span class="fc" id="L873">                final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L874">                final PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L876">                pp1.switchMap(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc bnc" id="L879" title="All 2 branches missed.">                        if (v == 1) {</span>
+<span class="nc" id="L880">                            return pp2;</span>
+                        }
+<span class="nc" id="L882">                        return Flowable.never();</span>
+                    }
+                })
+<span class="fc" id="L885">                .test();</span>
+
+<span class="fc" id="L887">                final TestException ex1 = new TestException();</span>
+
+<span class="fc" id="L889">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L892">                        pp1.onError(ex1);</span>
+<span class="fc" id="L893">                    }</span>
+                };
+
+<span class="fc" id="L896">                final TestException ex2 = new TestException();</span>
+
+<span class="fc" id="L898">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L901">                        pp2.onError(ex2);</span>
+<span class="fc" id="L902">                    }</span>
+                };
+
+<span class="fc" id="L905">                TestHelper.race(r1, r2);</span>
+
+<span class="pc bpc" id="L907" title="1 of 2 branches missed.">                for (Throwable e : errors) {</span>
+<span class="nc" id="L908">                    assertTrue(e.toString(), e instanceof TestException);</span>
+<span class="nc" id="L909">                }</span>
+            } finally {
+<span class="fc" id="L911">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L914">    }</span>
+
+    @Test
+    public void nextCancelRace() {
+<span class="fc bfc" id="L918" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L919">            final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+
+<span class="fc" id="L921">            final TestSubscriber&lt;Integer&gt; ts = pp1.switchMap(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L924">                    return Flowable.never();</span>
+                }
+            })
+<span class="fc" id="L927">            .test();</span>
+
+<span class="fc" id="L929">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L932">                    pp1.onNext(2);</span>
+<span class="fc" id="L933">                }</span>
+            };
+
+<span class="fc" id="L936">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L939">                    ts.cancel();</span>
+<span class="fc" id="L940">                }</span>
+            };
+
+<span class="fc" id="L943">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L945">    }</span>
+
+    @Test
+    public void mapperThrows() {
+<span class="fc" id="L949">        Flowable.just(1).hide()</span>
+<span class="fc" id="L950">        .switchMap(new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Object&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L953">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L956">        .test()</span>
+<span class="fc" id="L957">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L958">    }</span>
+
+    @Test
+    public void badMainSource() {
+<span class="fc" id="L962">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L964">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L967">                    subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L968">                    subscriber.onComplete();</span>
+<span class="fc" id="L969">                    subscriber.onError(new TestException());</span>
+<span class="fc" id="L970">                    subscriber.onComplete();</span>
+<span class="fc" id="L971">                }</span>
+            }
+<span class="fc" id="L973">            .switchMap(Functions.justFunction(Flowable.never()))</span>
+<span class="fc" id="L974">            .test()</span>
+<span class="fc" id="L975">            .assertResult();</span>
+
+<span class="fc" id="L977">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L979">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L981">    }</span>
+
+    @Test
+    public void emptyInner() {
+<span class="fc" id="L985">        Flowable.range(1, 5)</span>
+<span class="fc" id="L986">        .switchMap(Functions.justFunction(Flowable.empty()))</span>
+<span class="fc" id="L987">        .test()</span>
+<span class="fc" id="L988">        .assertResult();</span>
+<span class="fc" id="L989">    }</span>
+
+    @Test
+    public void justInner() {
+<span class="fc" id="L993">        Flowable.range(1, 5)</span>
+<span class="fc" id="L994">        .switchMap(Functions.justFunction(Flowable.just(1)))</span>
+<span class="fc" id="L995">        .test()</span>
+<span class="fc" id="L996">        .assertResult(1, 1, 1, 1, 1);</span>
+<span class="fc" id="L997">    }</span>
+
+    @Test
+    public void badInnerSource() {
+<span class="fc" id="L1001">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1003">            Flowable.just(1).hide()</span>
+<span class="fc" id="L1004">            .switchMap(Functions.justFunction(new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L1007">                    subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L1008">                    subscriber.onError(new TestException());</span>
+<span class="fc" id="L1009">                    subscriber.onComplete();</span>
+<span class="fc" id="L1010">                    subscriber.onError(new TestException());</span>
+<span class="fc" id="L1011">                    subscriber.onComplete();</span>
+<span class="fc" id="L1012">                }</span>
+            }))
+<span class="fc" id="L1014">            .test()</span>
+<span class="fc" id="L1015">            .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L1017">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L1019">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1021">    }</span>
+
+    @Test
+    public void innerCompletesReentrant() {
+<span class="fc" id="L1025">        final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L1027">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1030">                super.onNext(t);</span>
+<span class="fc" id="L1031">                pp.onComplete();</span>
+<span class="fc" id="L1032">            }</span>
+        };
+
+<span class="fc" id="L1035">        Flowable.just(1).hide()</span>
+<span class="fc" id="L1036">        .switchMap(Functions.justFunction(pp))</span>
+<span class="fc" id="L1037">        .subscribe(ts);</span>
+
+<span class="fc" id="L1039">        pp.onNext(1);</span>
+
+<span class="fc" id="L1041">        ts.assertResult(1);</span>
+<span class="fc" id="L1042">    }</span>
+
+    @Test
+    public void innerErrorsReentrant() {
+<span class="fc" id="L1046">        final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L1048">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1051">                super.onNext(t);</span>
+<span class="fc" id="L1052">                pp.onError(new TestException());</span>
+<span class="fc" id="L1053">            }</span>
+        };
+
+<span class="fc" id="L1056">        Flowable.just(1).hide()</span>
+<span class="fc" id="L1057">        .switchMap(Functions.justFunction(pp))</span>
+<span class="fc" id="L1058">        .subscribe(ts);</span>
+
+<span class="fc" id="L1060">        pp.onNext(1);</span>
+
+<span class="fc" id="L1062">        ts.assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L1063">    }</span>
+
+    @Test
+    public void scalarMap() {
+<span class="fc" id="L1067">        Flowable.switchOnNext(Flowable.just(Flowable.just(1)))</span>
+<span class="fc" id="L1068">        .test()</span>
+<span class="fc" id="L1069">        .assertResult(1);</span>
+<span class="fc" id="L1070">    }</span>
+
+    @Test
+    public void scalarMapDelayError() {
+<span class="fc" id="L1074">        Flowable.switchOnNextDelayError(Flowable.just(Flowable.just(1)))</span>
+<span class="fc" id="L1075">        .test()</span>
+<span class="fc" id="L1076">        .assertResult(1);</span>
+<span class="fc" id="L1077">    }</span>
+
+    @Test
+    public void scalarXMap() {
+<span class="fc" id="L1081">        Flowable.fromCallable(Functions.justCallable(1))</span>
+<span class="fc" id="L1082">        .switchMap(Functions.justFunction(Flowable.just(1)))</span>
+<span class="fc" id="L1083">        .test()</span>
+<span class="fc" id="L1084">        .assertResult(1);</span>
+<span class="fc" id="L1085">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L1089">        TestHelper.checkBadSourceFlowable(new Function&lt;Flowable&lt;Integer&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Flowable&lt;Integer&gt; f) throws Exception {
+<span class="fc" id="L1092">                return f.switchMap(Functions.justFunction(Flowable.just(1)));</span>
+            }
+<span class="fc" id="L1094">        }, false, 1, 1, 1);</span>
+<span class="fc" id="L1095">    }</span>
+
+    @Test
+    public void innerOverflow() {
+<span class="fc" id="L1099">        Flowable.just(1).hide()</span>
+<span class="fc" id="L1100">        .switchMap(Functions.justFunction(new Flowable&lt;Integer&gt;() {</span>
+            @Override
+            protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L1103">                s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc bfc" id="L1104" title="All 2 branches covered.">                for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L1105">                    s.onNext(i);</span>
+                }
+<span class="fc" id="L1107">            }</span>
+        }), 8)
+<span class="fc" id="L1109">        .test(1L)</span>
+<span class="fc" id="L1110">        .assertFailure(MissingBackpressureException.class, 0);</span>
+<span class="fc" id="L1111">    }</span>
+
+    @Test
+    public void drainCancelRace() {
+<span class="fc bfc" id="L1115" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L1116">            final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1118">            final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L1120">            Flowable.just(1).hide()</span>
+<span class="fc" id="L1121">            .switchMap(Functions.justFunction(pp))</span>
+<span class="fc" id="L1122">            .subscribe(ts);</span>
+
+<span class="fc" id="L1124">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1127">                    ts.cancel();</span>
+<span class="fc" id="L1128">                }</span>
+            };
+
+<span class="fc" id="L1131">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1134">                    pp.onNext(1);</span>
+<span class="fc" id="L1135">                }</span>
+            };
+
+<span class="fc" id="L1138">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L1140">    }</span>
+
+    @Test
+    public void fusedInnerCrash() {
+<span class="fc" id="L1144">        Flowable.just(1).hide()</span>
+<span class="fc" id="L1145">        .switchMap(Functions.justFunction(Flowable.just(1)</span>
+<span class="fc" id="L1146">                .map(new Function&lt;Integer, Object&gt;() {</span>
+                    @Override
+                    public Object apply(Integer v) throws Exception {
+<span class="fc" id="L1149">                        throw new TestException();</span>
+                    }
+                })
+<span class="fc" id="L1152">                .compose(TestHelper.&lt;Object&gt;flowableStripBoundary())</span>
+            )
+        )
+<span class="fc" id="L1155">        .test()</span>
+<span class="fc" id="L1156">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1157">    }</span>
+
+    @Test
+    public void innerCancelledOnMainError() {
+<span class="fc" id="L1161">        final PublishProcessor&lt;Integer&gt; main = PublishProcessor.create();</span>
+<span class="fc" id="L1162">        final PublishProcessor&lt;Integer&gt; inner = PublishProcessor.create();</span>
+
+<span class="fc" id="L1164">        TestSubscriber&lt;Integer&gt; ts = main.switchMap(Functions.justFunction(inner))</span>
+<span class="fc" id="L1165">        .test();</span>
+
+<span class="fc" id="L1167">        assertTrue(main.hasSubscribers());</span>
+
+<span class="fc" id="L1169">        main.onNext(1);</span>
+
+<span class="fc" id="L1171">        assertTrue(inner.hasSubscribers());</span>
+
+<span class="fc" id="L1173">        main.onError(new TestException());</span>
+
+<span class="fc" id="L1175">        assertFalse(inner.hasSubscribers());</span>
+
+<span class="fc" id="L1177">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L1178">    }</span>
+
+    @Test
+    public void fusedBoundary() {
+<span class="fc" id="L1182">        String thread = Thread.currentThread().getName();</span>
+
+<span class="fc" id="L1184">        Flowable.range(1, 10000)</span>
+<span class="fc" id="L1185">        .switchMap(new Function&lt;Integer, Flowable&lt;? extends Object&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;? extends Object&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L1189">                return Flowable.just(2).hide()</span>
+<span class="fc" id="L1190">                .observeOn(Schedulers.single())</span>
+<span class="fc" id="L1191">                .map(new Function&lt;Integer, Object&gt;() {</span>
+                    @Override
+                    public Object apply(Integer w) throws Exception {
+<span class="fc" id="L1194">                        return Thread.currentThread().getName();</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L1199">        .test()</span>
+<span class="fc" id="L1200">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1201">        .assertNever(thread)</span>
+<span class="fc" id="L1202">        .assertNoErrors()</span>
+<span class="fc" id="L1203">        .assertComplete();</span>
+<span class="fc" id="L1204">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

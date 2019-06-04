@@ -1,0 +1,528 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableDoFinallyTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableDoFinallyTest.java</span></div><h1>ObservableDoFinallyTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+
+import org.junit.Test;
+
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.TestHelper;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.UnicastSubject;
+
+<span class="fc" id="L34">public class ObservableDoFinallyTest implements Action {</span>
+
+    int calls;
+
+    @Override
+    public void run() throws Exception {
+<span class="fc" id="L40">        calls++;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Test
+    public void normalJust() {
+<span class="fc" id="L45">        Observable.just(1)</span>
+<span class="fc" id="L46">        .doFinally(this)</span>
+<span class="fc" id="L47">        .test()</span>
+<span class="fc" id="L48">        .assertResult(1);</span>
+
+<span class="fc" id="L50">        assertEquals(1, calls);</span>
+<span class="fc" id="L51">    }</span>
+
+    @Test
+    public void normalEmpty() {
+<span class="fc" id="L55">        Observable.empty()</span>
+<span class="fc" id="L56">        .doFinally(this)</span>
+<span class="fc" id="L57">        .test()</span>
+<span class="fc" id="L58">        .assertResult();</span>
+
+<span class="fc" id="L60">        assertEquals(1, calls);</span>
+<span class="fc" id="L61">    }</span>
+
+    @Test
+    public void normalError() {
+<span class="fc" id="L65">        Observable.error(new TestException())</span>
+<span class="fc" id="L66">        .doFinally(this)</span>
+<span class="fc" id="L67">        .test()</span>
+<span class="fc" id="L68">        .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L70">        assertEquals(1, calls);</span>
+<span class="fc" id="L71">    }</span>
+
+    @Test
+    public void normalTake() {
+<span class="fc" id="L75">        Observable.range(1, 10)</span>
+<span class="fc" id="L76">        .doFinally(this)</span>
+<span class="fc" id="L77">        .take(5)</span>
+<span class="fc" id="L78">        .test()</span>
+<span class="fc" id="L79">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L81">        assertEquals(1, calls);</span>
+<span class="fc" id="L82">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L86">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, Observable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Object&gt; apply(Observable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L89">                return f.doFinally(ObservableDoFinallyTest.this);</span>
+            }
+        });
+<span class="fc" id="L92">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, Observable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Object&gt; apply(Observable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L95">                return f.doFinally(ObservableDoFinallyTest.this).filter(Functions.alwaysTrue());</span>
+            }
+        });
+<span class="fc" id="L98">    }</span>
+
+    @Test
+    public void syncFused() {
+<span class="fc" id="L102">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L104">        Observable.range(1, 5)</span>
+<span class="fc" id="L105">        .doFinally(this)</span>
+<span class="fc" id="L106">        .subscribe(to);</span>
+
+<span class="fc" id="L108">        ObserverFusion.assertFusion(to, QueueFuseable.SYNC)</span>
+<span class="fc" id="L109">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L111">        assertEquals(1, calls);</span>
+<span class="fc" id="L112">    }</span>
+
+    @Test
+    public void syncFusedBoundary() {
+<span class="fc" id="L116">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L118">        Observable.range(1, 5)</span>
+<span class="fc" id="L119">        .doFinally(this)</span>
+<span class="fc" id="L120">        .subscribe(to);</span>
+
+<span class="fc" id="L122">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L123">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L125">        assertEquals(1, calls);</span>
+<span class="fc" id="L126">    }</span>
+
+    @Test
+    public void asyncFused() {
+<span class="fc" id="L130">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ASYNC);</span>
+
+<span class="fc" id="L132">        UnicastSubject&lt;Integer&gt; up = UnicastSubject.create();</span>
+<span class="fc" id="L133">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L135">        up</span>
+<span class="fc" id="L136">        .doFinally(this)</span>
+<span class="fc" id="L137">        .subscribe(to);</span>
+
+<span class="fc" id="L139">        ObserverFusion.assertFusion(to, QueueFuseable.ASYNC)</span>
+<span class="fc" id="L140">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L142">        assertEquals(1, calls);</span>
+<span class="fc" id="L143">    }</span>
+
+    @Test
+    public void asyncFusedBoundary() {
+<span class="fc" id="L147">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ASYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L149">        UnicastSubject&lt;Integer&gt; up = UnicastSubject.create();</span>
+<span class="fc" id="L150">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L152">        up</span>
+<span class="fc" id="L153">        .doFinally(this)</span>
+<span class="fc" id="L154">        .subscribe(to);</span>
+
+<span class="fc" id="L156">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L157">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L159">        assertEquals(1, calls);</span>
+<span class="fc" id="L160">    }</span>
+
+    @Test
+    public void normalJustConditional() {
+<span class="fc" id="L164">        Observable.just(1)</span>
+<span class="fc" id="L165">        .doFinally(this)</span>
+<span class="fc" id="L166">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L167">        .test()</span>
+<span class="fc" id="L168">        .assertResult(1);</span>
+
+<span class="fc" id="L170">        assertEquals(1, calls);</span>
+<span class="fc" id="L171">    }</span>
+
+    @Test
+    public void normalEmptyConditional() {
+<span class="fc" id="L175">        Observable.empty()</span>
+<span class="fc" id="L176">        .doFinally(this)</span>
+<span class="fc" id="L177">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L178">        .test()</span>
+<span class="fc" id="L179">        .assertResult();</span>
+
+<span class="fc" id="L181">        assertEquals(1, calls);</span>
+<span class="fc" id="L182">    }</span>
+
+    @Test
+    public void normalErrorConditional() {
+<span class="fc" id="L186">        Observable.error(new TestException())</span>
+<span class="fc" id="L187">        .doFinally(this)</span>
+<span class="fc" id="L188">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L189">        .test()</span>
+<span class="fc" id="L190">        .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L192">        assertEquals(1, calls);</span>
+<span class="fc" id="L193">    }</span>
+
+    @Test
+    public void normalTakeConditional() {
+<span class="fc" id="L197">        Observable.range(1, 10)</span>
+<span class="fc" id="L198">        .doFinally(this)</span>
+<span class="fc" id="L199">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L200">        .take(5)</span>
+<span class="fc" id="L201">        .test()</span>
+<span class="fc" id="L202">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L204">        assertEquals(1, calls);</span>
+<span class="fc" id="L205">    }</span>
+
+    @Test
+    public void syncFusedConditional() {
+<span class="fc" id="L209">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L211">        Observable.range(1, 5)</span>
+<span class="fc" id="L212">        .doFinally(this)</span>
+<span class="fc" id="L213">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L214">        .subscribe(to);</span>
+
+<span class="fc" id="L216">        ObserverFusion.assertFusion(to, QueueFuseable.SYNC)</span>
+<span class="fc" id="L217">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L219">        assertEquals(1, calls);</span>
+<span class="fc" id="L220">    }</span>
+
+    @Test
+    public void nonFused() {
+<span class="fc" id="L224">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L226">        Observable.range(1, 5).hide()</span>
+<span class="fc" id="L227">        .doFinally(this)</span>
+<span class="fc" id="L228">        .subscribe(to);</span>
+
+<span class="fc" id="L230">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L231">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L233">        assertEquals(1, calls);</span>
+<span class="fc" id="L234">    }</span>
+
+    @Test
+    public void nonFusedConditional() {
+<span class="fc" id="L238">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L240">        Observable.range(1, 5).hide()</span>
+<span class="fc" id="L241">        .doFinally(this)</span>
+<span class="fc" id="L242">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L243">        .subscribe(to);</span>
+
+<span class="fc" id="L245">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L246">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L248">        assertEquals(1, calls);</span>
+<span class="fc" id="L249">    }</span>
+
+    @Test
+    public void syncFusedBoundaryConditional() {
+<span class="fc" id="L253">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L255">        Observable.range(1, 5)</span>
+<span class="fc" id="L256">        .doFinally(this)</span>
+<span class="fc" id="L257">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L258">        .subscribe(to);</span>
+
+<span class="fc" id="L260">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L261">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L263">        assertEquals(1, calls);</span>
+<span class="fc" id="L264">    }</span>
+
+    @Test
+    public void asyncFusedConditional() {
+<span class="fc" id="L268">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ASYNC);</span>
+
+<span class="fc" id="L270">        UnicastSubject&lt;Integer&gt; up = UnicastSubject.create();</span>
+<span class="fc" id="L271">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L273">        up</span>
+<span class="fc" id="L274">        .doFinally(this)</span>
+<span class="fc" id="L275">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L276">        .subscribe(to);</span>
+
+<span class="fc" id="L278">        ObserverFusion.assertFusion(to, QueueFuseable.ASYNC)</span>
+<span class="fc" id="L279">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L281">        assertEquals(1, calls);</span>
+<span class="fc" id="L282">    }</span>
+
+    @Test
+    public void asyncFusedBoundaryConditional() {
+<span class="fc" id="L286">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ASYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L288">        UnicastSubject&lt;Integer&gt; up = UnicastSubject.create();</span>
+<span class="fc" id="L289">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L291">        up</span>
+<span class="fc" id="L292">        .doFinally(this)</span>
+<span class="fc" id="L293">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L294">        .subscribe(to);</span>
+
+<span class="fc" id="L296">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L297">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L299">        assertEquals(1, calls);</span>
+<span class="fc" id="L300">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void nullAction() {
+<span class="nc" id="L304">        Observable.just(1).doFinally(null);</span>
+<span class="nc" id="L305">    }</span>
+
+    @Test
+    public void actionThrows() {
+<span class="fc" id="L309">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L311">            Observable.just(1)</span>
+<span class="fc" id="L312">            .doFinally(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L315">                    throw new TestException();</span>
+                }
+            })
+<span class="fc" id="L318">            .test()</span>
+<span class="fc" id="L319">            .assertResult(1)</span>
+<span class="fc" id="L320">            .cancel();</span>
+
+<span class="fc" id="L322">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L324">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L326">    }</span>
+
+    @Test
+    public void actionThrowsConditional() {
+<span class="fc" id="L330">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L332">            Observable.just(1)</span>
+<span class="fc" id="L333">            .doFinally(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L336">                    throw new TestException();</span>
+                }
+            })
+<span class="fc" id="L339">            .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L340">            .test()</span>
+<span class="fc" id="L341">            .assertResult(1)</span>
+<span class="fc" id="L342">            .cancel();</span>
+
+<span class="fc" id="L344">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L346">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L348">    }</span>
+
+    @Test
+    public void clearIsEmpty() {
+<span class="fc" id="L352">        Observable.range(1, 5)</span>
+<span class="fc" id="L353">        .doFinally(this)</span>
+<span class="fc" id="L354">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L359">                QueueDisposable&lt;Integer&gt; qd = (QueueDisposable&lt;Integer&gt;)d;</span>
+
+<span class="fc" id="L361">                qd.requestFusion(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L363">                assertFalse(qd.isEmpty());</span>
+
+                try {
+<span class="fc" id="L366">                    assertEquals(1, qd.poll().intValue());</span>
+<span class="nc" id="L367">                } catch (Throwable ex) {</span>
+<span class="nc" id="L368">                    throw new RuntimeException(ex);</span>
+<span class="fc" id="L369">                }</span>
+
+<span class="fc" id="L371">                assertFalse(qd.isEmpty());</span>
+
+<span class="fc" id="L373">                qd.clear();</span>
+
+<span class="fc" id="L375">                assertTrue(qd.isEmpty());</span>
+
+<span class="fc" id="L377">                qd.dispose();</span>
+<span class="fc" id="L378">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="nc" id="L382">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L386">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L390">            }</span>
+        });
+
+<span class="fc" id="L393">        assertEquals(1, calls);</span>
+<span class="fc" id="L394">    }</span>
+
+    @Test
+    public void clearIsEmptyConditional() {
+<span class="fc" id="L398">        Observable.range(1, 5)</span>
+<span class="fc" id="L399">        .doFinally(this)</span>
+<span class="fc" id="L400">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L401">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L406">                QueueDisposable&lt;Integer&gt; qd = (QueueDisposable&lt;Integer&gt;)d;</span>
+
+<span class="fc" id="L408">                qd.requestFusion(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L410">                assertFalse(qd.isEmpty());</span>
+
+<span class="fc" id="L412">                assertFalse(qd.isDisposed());</span>
+
+                try {
+<span class="fc" id="L415">                    assertEquals(1, qd.poll().intValue());</span>
+<span class="nc" id="L416">                } catch (Throwable ex) {</span>
+<span class="nc" id="L417">                    throw new RuntimeException(ex);</span>
+<span class="fc" id="L418">                }</span>
+
+<span class="fc" id="L420">                assertFalse(qd.isEmpty());</span>
+
+<span class="fc" id="L422">                qd.clear();</span>
+
+<span class="fc" id="L424">                assertTrue(qd.isEmpty());</span>
+
+<span class="fc" id="L426">                qd.dispose();</span>
+
+<span class="fc" id="L428">                assertTrue(qd.isDisposed());</span>
+<span class="fc" id="L429">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="nc" id="L433">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L437">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L441">            }</span>
+        });
+
+<span class="fc" id="L444">        assertEquals(1, calls);</span>
+<span class="fc" id="L445">    }</span>
+
+    @Test
+    public void eventOrdering() {
+<span class="fc" id="L449">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+<span class="fc" id="L451">        Observable.error(new TestException())</span>
+<span class="fc" id="L452">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L455">                list.add(&quot;dispose&quot;);</span>
+<span class="nc" id="L456">            }</span>
+        })
+<span class="fc" id="L458">        .doFinally(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L461">                list.add(&quot;finally&quot;);</span>
+<span class="fc" id="L462">            }</span>
+        })
+<span class="fc" id="L464">        .subscribe(</span>
+<span class="fc" id="L465">                new Consumer&lt;Object&gt;() {</span>
+                    @Override
+                    public void accept(Object v) throws Exception {
+<span class="nc" id="L468">                        list.add(&quot;onNext&quot;);</span>
+<span class="nc" id="L469">                    }</span>
+                },
+<span class="fc" id="L471">                new Consumer&lt;Throwable&gt;() {</span>
+                    @Override
+                    public void accept(Throwable e) throws Exception {
+<span class="fc" id="L474">                        list.add(&quot;onError&quot;);</span>
+<span class="fc" id="L475">                    }</span>
+                },
+<span class="fc" id="L477">                new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="nc" id="L480">                        list.add(&quot;onComplete&quot;);</span>
+<span class="nc" id="L481">                    }</span>
+                });
+
+<span class="fc" id="L484">        assertEquals(Arrays.asList(&quot;onError&quot;, &quot;finally&quot;), list);</span>
+<span class="fc" id="L485">    }</span>
+
+    @Test
+    public void eventOrdering2() {
+<span class="fc" id="L489">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+<span class="fc" id="L491">        Observable.just(1)</span>
+<span class="fc" id="L492">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L495">                list.add(&quot;dispose&quot;);</span>
+<span class="nc" id="L496">            }</span>
+        })
+<span class="fc" id="L498">        .doFinally(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L501">                list.add(&quot;finally&quot;);</span>
+<span class="fc" id="L502">            }</span>
+        })
+<span class="fc" id="L504">        .subscribe(</span>
+<span class="fc" id="L505">                new Consumer&lt;Object&gt;() {</span>
+                    @Override
+                    public void accept(Object v) throws Exception {
+<span class="fc" id="L508">                        list.add(&quot;onNext&quot;);</span>
+<span class="fc" id="L509">                    }</span>
+                },
+<span class="fc" id="L511">                new Consumer&lt;Throwable&gt;() {</span>
+                    @Override
+                    public void accept(Throwable e) throws Exception {
+<span class="nc" id="L514">                        list.add(&quot;onError&quot;);</span>
+<span class="nc" id="L515">                    }</span>
+                },
+<span class="fc" id="L517">                new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="fc" id="L520">                        list.add(&quot;onComplete&quot;);</span>
+<span class="fc" id="L521">                    }</span>
+                });
+
+<span class="fc" id="L524">        assertEquals(Arrays.asList(&quot;onNext&quot;, &quot;onComplete&quot;, &quot;finally&quot;), list);</span>
+<span class="fc" id="L525">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

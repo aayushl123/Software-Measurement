@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeMergeArray.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeMergeArray.java</span></div><h1>MaybeMergeArray.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.annotations.Nullable;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.SimpleQueue;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Run all MaybeSources of an array at once and signal their values as they become available.
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class MaybeMergeArray&lt;T&gt; extends Flowable&lt;T&gt; {
+
+    final MaybeSource&lt;? extends T&gt;[] sources;
+
+<span class="fc" id="L39">    public MaybeMergeArray(MaybeSource&lt;? extends T&gt;[] sources) {</span>
+<span class="fc" id="L40">        this.sources = sources;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L45">        MaybeSource&lt;? extends T&gt;[] maybes = sources;</span>
+<span class="fc" id="L46">        int n = maybes.length;</span>
+
+        SimpleQueueWithConsumerIndex&lt;Object&gt; queue;
+
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (n &lt;= bufferSize()) {</span>
+<span class="fc" id="L51">            queue = new MpscFillOnceSimpleQueue&lt;Object&gt;(n);</span>
+        } else {
+<span class="fc" id="L53">            queue = new ClqSimpleQueue&lt;Object&gt;();</span>
+        }
+<span class="fc" id="L55">        MergeMaybeObserver&lt;T&gt; parent = new MergeMaybeObserver&lt;T&gt;(s, n, queue);</span>
+
+<span class="fc" id="L57">        s.onSubscribe(parent);</span>
+
+<span class="fc" id="L59">        AtomicThrowable e = parent.error;</span>
+
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (MaybeSource&lt;? extends T&gt; source : maybes) {</span>
+<span class="fc bfc" id="L62" title="All 4 branches covered.">            if (parent.isCancelled() || e.get() != null) {</span>
+<span class="fc" id="L63">                return;</span>
+            }
+
+<span class="fc" id="L66">            source.subscribe(parent);</span>
+        }
+<span class="fc" id="L68">    }</span>
+
+    static final class MergeMaybeObserver&lt;T&gt;
+    extends BasicIntQueueSubscription&lt;T&gt; implements MaybeObserver&lt;T&gt; {
+
+        private static final long serialVersionUID = -660395290758764731L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        final CompositeDisposable set;
+
+        final AtomicLong requested;
+
+        final SimpleQueueWithConsumerIndex&lt;Object&gt; queue;
+
+        final AtomicThrowable error;
+
+        final int sourceCount;
+
+        volatile boolean cancelled;
+
+        boolean outputFused;
+
+        long consumed;
+
+<span class="fc" id="L93">        MergeMaybeObserver(Subscriber&lt;? super T&gt; actual, int sourceCount, SimpleQueueWithConsumerIndex&lt;Object&gt; queue) {</span>
+<span class="fc" id="L94">            this.downstream = actual;</span>
+<span class="fc" id="L95">            this.sourceCount = sourceCount;</span>
+<span class="fc" id="L96">            this.set = new CompositeDisposable();</span>
+<span class="fc" id="L97">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L98">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L99">            this.queue = queue;</span>
+<span class="fc" id="L100">        }</span>
+
+        @Override
+        public int requestFusion(int mode) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if ((mode &amp; ASYNC) != 0) {</span>
+<span class="fc" id="L105">                outputFused = true;</span>
+<span class="fc" id="L106">                return ASYNC;</span>
+            }
+<span class="fc" id="L108">            return NONE;</span>
+        }
+
+        @Nullable
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public T poll() throws Exception {
+            for (;;) {
+<span class="fc" id="L116">                Object o = queue.poll();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                if (o != NotificationLite.COMPLETE) {</span>
+<span class="fc" id="L118">                    return (T)o;</span>
+                }
+<span class="fc" id="L120">            }</span>
+        }
+
+        @Override
+        public boolean isEmpty() {
+<span class="fc" id="L125">            return queue.isEmpty();</span>
+        }
+
+        @Override
+        public void clear() {
+<span class="fc" id="L130">            queue.clear();</span>
+<span class="fc" id="L131">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L136">                BackpressureHelper.add(requested, n);</span>
+<span class="fc" id="L137">                drain();</span>
+            }
+<span class="fc" id="L139">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">            if (!cancelled) {</span>
+<span class="fc" id="L144">                cancelled = true;</span>
+<span class="fc" id="L145">                set.dispose();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L147">                    queue.clear();</span>
+                }
+            }
+<span class="fc" id="L150">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L154">            set.add(d);</span>
+<span class="fc" id="L155">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L159">            queue.offer(value);</span>
+<span class="fc" id="L160">            drain();</span>
+<span class="fc" id="L161">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (error.addThrowable(e)) {</span>
+<span class="fc" id="L166">                set.dispose();</span>
+<span class="fc" id="L167">                queue.offer(NotificationLite.COMPLETE);</span>
+<span class="fc" id="L168">                drain();</span>
+            } else {
+<span class="fc" id="L170">                RxJavaPlugins.onError(e);</span>
+            }
+<span class="fc" id="L172">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L176">            queue.offer(NotificationLite.COMPLETE);</span>
+<span class="fc" id="L177">            drain();</span>
+<span class="fc" id="L178">        }</span>
+
+        boolean isCancelled() {
+<span class="fc" id="L181">            return cancelled;</span>
+        }
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        void drainNormal() {
+<span class="fc" id="L186">            int missed = 1;</span>
+<span class="fc" id="L187">            Subscriber&lt;? super T&gt; a = downstream;</span>
+<span class="fc" id="L188">            SimpleQueueWithConsumerIndex&lt;Object&gt; q = queue;</span>
+<span class="fc" id="L189">            long e = consumed;</span>
+
+            for (;;) {
+
+<span class="fc" id="L193">                long r = requested.get();</span>
+
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L197">                        q.clear();</span>
+<span class="fc" id="L198">                        return;</span>
+                    }
+
+<span class="fc" id="L201">                    Throwable ex = error.get();</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                    if (ex != null) {</span>
+<span class="fc" id="L203">                        q.clear();</span>
+<span class="fc" id="L204">                        a.onError(error.terminate());</span>
+<span class="fc" id="L205">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                    if (q.consumerIndex() == sourceCount) {</span>
+<span class="fc" id="L209">                        a.onComplete();</span>
+<span class="fc" id="L210">                        return;</span>
+                    }
+
+<span class="fc" id="L213">                    Object v = q.poll();</span>
+
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                    if (v == null) {</span>
+<span class="fc" id="L216">                        break;</span>
+                    }
+
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                    if (v != NotificationLite.COMPLETE) {</span>
+<span class="fc" id="L220">                        a.onNext((T)v);</span>
+
+<span class="fc" id="L222">                        e++;</span>
+                    }
+<span class="fc" id="L224">                }</span>
+
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc" id="L227">                    Throwable ex = error.get();</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                    if (ex != null) {</span>
+<span class="fc" id="L229">                        q.clear();</span>
+<span class="fc" id="L230">                        a.onError(error.terminate());</span>
+<span class="fc" id="L231">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                    while (q.peek() == NotificationLite.COMPLETE) {</span>
+<span class="fc" id="L235">                        q.drop();</span>
+                    }
+
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                    if (q.consumerIndex() == sourceCount) {</span>
+<span class="fc" id="L239">                        a.onComplete();</span>
+<span class="fc" id="L240">                        return;</span>
+                    }
+                }
+
+<span class="fc" id="L244">                consumed = e;</span>
+<span class="fc" id="L245">                missed = addAndGet(-missed);</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">                if (missed == 0) {</span>
+<span class="fc" id="L247">                    break;</span>
+                }
+<span class="nc" id="L249">            }</span>
+
+<span class="fc" id="L251">        }</span>
+
+        void drainFused() {
+<span class="fc" id="L254">            int missed = 1;</span>
+<span class="fc" id="L255">            Subscriber&lt;? super T&gt; a = downstream;</span>
+<span class="fc" id="L256">            SimpleQueueWithConsumerIndex&lt;Object&gt; q = queue;</span>
+
+            for (;;) {
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L260">                    q.clear();</span>
+<span class="fc" id="L261">                    return;</span>
+                }
+<span class="fc" id="L263">                Throwable ex = error.get();</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">                if (ex != null) {</span>
+<span class="fc" id="L265">                    q.clear();</span>
+<span class="fc" id="L266">                    a.onError(ex);</span>
+<span class="fc" id="L267">                    return;</span>
+                }
+
+<span class="fc bfc" id="L270" title="All 2 branches covered.">                boolean d = q.producerIndex() == sourceCount;</span>
+
+<span class="fc bfc" id="L272" title="All 2 branches covered.">                if (!q.isEmpty()) {</span>
+<span class="fc" id="L273">                    a.onNext(null);</span>
+                }
+
+<span class="fc bfc" id="L276" title="All 2 branches covered.">                if (d) {</span>
+<span class="fc" id="L277">                    a.onComplete();</span>
+<span class="fc" id="L278">                    return;</span>
+                }
+
+<span class="fc" id="L281">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L283">                    break;</span>
+                }
+<span class="fc" id="L285">            }</span>
+
+<span class="fc" id="L287">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L290" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L291">                return;</span>
+            }
+
+<span class="fc bfc" id="L294" title="All 2 branches covered.">            if (outputFused) {</span>
+<span class="fc" id="L295">                drainFused();</span>
+            } else {
+<span class="fc" id="L297">                drainNormal();</span>
+            }
+<span class="fc" id="L299">        }</span>
+    }
+
+    interface SimpleQueueWithConsumerIndex&lt;T&gt; extends SimpleQueue&lt;T&gt; {
+
+        @Nullable
+        @Override
+        T poll();
+
+        T peek();
+
+        void drop();
+
+        int consumerIndex();
+
+        int producerIndex();
+    }
+
+    static final class MpscFillOnceSimpleQueue&lt;T&gt;
+    extends AtomicReferenceArray&lt;T&gt;
+    implements SimpleQueueWithConsumerIndex&lt;T&gt; {
+
+        private static final long serialVersionUID = -7969063454040569579L;
+        final AtomicInteger producerIndex;
+
+        int consumerIndex;
+
+        MpscFillOnceSimpleQueue(int length) {
+<span class="fc" id="L327">            super(length);</span>
+<span class="fc" id="L328">            this.producerIndex = new AtomicInteger();</span>
+<span class="fc" id="L329">        }</span>
+
+        @Override
+        public boolean offer(T value) {
+<span class="fc" id="L333">            ObjectHelper.requireNonNull(value, &quot;value is null&quot;);</span>
+<span class="fc" id="L334">            int idx = producerIndex.getAndIncrement();</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">            if (idx &lt; length()) {</span>
+<span class="fc" id="L336">                lazySet(idx, value);</span>
+<span class="fc" id="L337">                return true;</span>
+            }
+<span class="fc" id="L339">            return false;</span>
+        }
+
+        @Override
+        public boolean offer(T v1, T v2) {
+<span class="fc" id="L344">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Nullable
+        @Override
+        public T poll() {
+<span class="fc" id="L350">            int ci = consumerIndex;</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">            if (ci == length()) {</span>
+<span class="fc" id="L352">                return null;</span>
+            }
+<span class="fc" id="L354">            AtomicInteger pi = producerIndex;</span>
+            for (;;) {
+<span class="fc" id="L356">                T v = get(ci);</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">                if (v != null) {</span>
+<span class="fc" id="L358">                    consumerIndex = ci + 1;</span>
+<span class="fc" id="L359">                    lazySet(ci, null);</span>
+<span class="fc" id="L360">                    return v;</span>
+                }
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                if (pi.get() == ci) {</span>
+<span class="fc" id="L363">                    return null;</span>
+                }
+<span class="fc" id="L365">            }</span>
+        }
+
+        @Override
+        public T peek() {
+<span class="fc" id="L370">            int ci = consumerIndex;</span>
+<span class="fc bfc" id="L371" title="All 2 branches covered.">            if (ci == length()) {</span>
+<span class="fc" id="L372">                return null;</span>
+            }
+<span class="fc" id="L374">            return get(ci);</span>
+        }
+
+        @Override
+        public void drop() {
+<span class="fc" id="L379">            int ci = consumerIndex;</span>
+<span class="fc" id="L380">            lazySet(ci, null);</span>
+<span class="fc" id="L381">            consumerIndex = ci + 1;</span>
+<span class="fc" id="L382">        }</span>
+
+        @Override
+        public boolean isEmpty() {
+<span class="fc bfc" id="L386" title="All 2 branches covered.">            return consumerIndex == producerIndex();</span>
+        }
+
+        @Override
+        public void clear() {
+<span class="fc bfc" id="L391" title="All 4 branches covered.">            while (poll() != null &amp;&amp; !isEmpty()) { }</span>
+<span class="fc" id="L392">        }</span>
+
+        @Override
+        public int consumerIndex() {
+<span class="fc" id="L396">            return consumerIndex;</span>
+        }
+
+        @Override
+        public int producerIndex() {
+<span class="fc" id="L401">            return producerIndex.get();</span>
+        }
+    }
+
+    static final class ClqSimpleQueue&lt;T&gt; extends ConcurrentLinkedQueue&lt;T&gt; implements SimpleQueueWithConsumerIndex&lt;T&gt; {
+
+        private static final long serialVersionUID = -4025173261791142821L;
+
+        int consumerIndex;
+
+        final AtomicInteger producerIndex;
+
+<span class="fc" id="L413">        ClqSimpleQueue() {</span>
+<span class="fc" id="L414">            this.producerIndex = new AtomicInteger();</span>
+<span class="fc" id="L415">        }</span>
+
+        @Override
+        public boolean offer(T v1, T v2) {
+<span class="fc" id="L419">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Override
+        public boolean offer(T e) {
+<span class="fc" id="L424">            producerIndex.getAndIncrement();</span>
+<span class="fc" id="L425">            return super.offer(e);</span>
+        }
+
+        @Nullable
+        @Override
+        public T poll() {
+<span class="fc" id="L431">            T v = super.poll();</span>
+<span class="fc bfc" id="L432" title="All 2 branches covered.">            if (v != null) {</span>
+<span class="fc" id="L433">                consumerIndex++;</span>
+            }
+<span class="fc" id="L435">            return v;</span>
+        }
+
+        @Override
+        public int consumerIndex() {
+<span class="fc" id="L440">            return consumerIndex;</span>
+        }
+
+        @Override
+        public int producerIndex() {
+<span class="fc" id="L445">            return producerIndex.get();</span>
+        }
+
+        @Override
+        public void drop() {
+<span class="fc" id="L450">            poll();</span>
+<span class="fc" id="L451">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

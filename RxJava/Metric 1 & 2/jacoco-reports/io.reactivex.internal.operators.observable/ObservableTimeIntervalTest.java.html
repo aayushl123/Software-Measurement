@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableTimeIntervalTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableTimeIntervalTest.java</span></div><h1>ObservableTimeIntervalTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.mockito.Mockito.*;
+
+import java.util.concurrent.TimeUnit;
+
+import org.junit.*;
+import org.mockito.InOrder;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.*;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L30">public class ObservableTimeIntervalTest {</span>
+
+<span class="fc" id="L32">    private static final TimeUnit TIME_UNIT = TimeUnit.MILLISECONDS;</span>
+
+    private Observer&lt;Timed&lt;Integer&gt;&gt; observer;
+
+    private TestScheduler testScheduler;
+    private PublishSubject&lt;Integer&gt; subject;
+    private Observable&lt;Timed&lt;Integer&gt;&gt; observable;
+
+    @Before
+    public void setUp() {
+<span class="fc" id="L42">        observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L43">        testScheduler = new TestScheduler();</span>
+<span class="fc" id="L44">        subject = PublishSubject.create();</span>
+<span class="fc" id="L45">        observable = subject.timeInterval(testScheduler);</span>
+<span class="fc" id="L46">    }</span>
+
+    @Test
+    public void testTimeInterval() {
+<span class="fc" id="L50">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L51">        observable.subscribe(observer);</span>
+
+<span class="fc" id="L53">        testScheduler.advanceTimeBy(1000, TIME_UNIT);</span>
+<span class="fc" id="L54">        subject.onNext(1);</span>
+<span class="fc" id="L55">        testScheduler.advanceTimeBy(2000, TIME_UNIT);</span>
+<span class="fc" id="L56">        subject.onNext(2);</span>
+<span class="fc" id="L57">        testScheduler.advanceTimeBy(3000, TIME_UNIT);</span>
+<span class="fc" id="L58">        subject.onNext(3);</span>
+<span class="fc" id="L59">        subject.onComplete();</span>
+
+<span class="fc" id="L61">        inOrder.verify(observer, times(1)).onNext(</span>
+<span class="fc" id="L62">                new Timed&lt;Integer&gt;(1, 1000, TIME_UNIT));</span>
+<span class="fc" id="L63">        inOrder.verify(observer, times(1)).onNext(</span>
+<span class="fc" id="L64">                new Timed&lt;Integer&gt;(2, 2000, TIME_UNIT));</span>
+<span class="fc" id="L65">        inOrder.verify(observer, times(1)).onNext(</span>
+<span class="fc" id="L66">                new Timed&lt;Integer&gt;(3, 3000, TIME_UNIT));</span>
+<span class="fc" id="L67">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L68">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L69">    }</span>
+
+    @Test
+    public void timeIntervalDefault() {
+<span class="fc" id="L73">        final TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L75">        RxJavaPlugins.setComputationSchedulerHandler(new Function&lt;Scheduler, Scheduler&gt;() {</span>
+            @Override
+            public Scheduler apply(Scheduler v) throws Exception {
+<span class="fc" id="L78">                return scheduler;</span>
+            }
+        });
+
+        try {
+<span class="fc" id="L83">            Observable.range(1, 5)</span>
+<span class="fc" id="L84">            .timeInterval()</span>
+<span class="fc" id="L85">            .map(new Function&lt;Timed&lt;Integer&gt;, Long&gt;() {</span>
+                @Override
+                public Long apply(Timed&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L88">                    return v.time();</span>
+                }
+            })
+<span class="fc" id="L91">            .test()</span>
+<span class="fc" id="L92">            .assertResult(0L, 0L, 0L, 0L, 0L);</span>
+        } finally {
+<span class="fc" id="L94">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L96">    }</span>
+
+    @Test
+    public void timeIntervalDefaultSchedulerCustomUnit() {
+<span class="fc" id="L100">        final TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L102">        RxJavaPlugins.setComputationSchedulerHandler(new Function&lt;Scheduler, Scheduler&gt;() {</span>
+            @Override
+            public Scheduler apply(Scheduler v) throws Exception {
+<span class="fc" id="L105">                return scheduler;</span>
+            }
+        });
+
+        try {
+<span class="fc" id="L110">            Observable.range(1, 5)</span>
+<span class="fc" id="L111">            .timeInterval(TimeUnit.SECONDS)</span>
+<span class="fc" id="L112">            .map(new Function&lt;Timed&lt;Integer&gt;, Long&gt;() {</span>
+                @Override
+                public Long apply(Timed&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L115">                    return v.time();</span>
+                }
+            })
+<span class="fc" id="L118">            .test()</span>
+<span class="fc" id="L119">            .assertResult(0L, 0L, 0L, 0L, 0L);</span>
+        } finally {
+<span class="fc" id="L121">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L123">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L127">        TestHelper.checkDisposed(Observable.just(1).timeInterval());</span>
+<span class="fc" id="L128">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void error() {
+<span class="fc" id="L133">        Observable.error(new TestException())</span>
+<span class="fc" id="L134">        .timeInterval()</span>
+<span class="fc" id="L135">        .test()</span>
+<span class="fc" id="L136">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L137">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L141">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, Observable&lt;Timed&lt;Object&gt;&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Timed&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; f)
+                    throws Exception {
+<span class="fc" id="L145">                return f.timeInterval();</span>
+            }
+        });
+<span class="fc" id="L148">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

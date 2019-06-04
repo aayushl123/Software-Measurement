@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeferredScalarDisposable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.observers</a> &gt; <span class="el_source">DeferredScalarDisposable.java</span></div><h1>DeferredScalarDisposable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.observers;
+
+import io.reactivex.Observer;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Represents a fuseable container for a single value.
+ *
+ * @param &lt;T&gt; the value type received and emitted
+ */
+public class DeferredScalarDisposable&lt;T&gt; extends BasicIntQueueDisposable&lt;T&gt; {
+
+    private static final long serialVersionUID = -5502432239815349361L;
+
+    /** The target of the events. */
+    protected final Observer&lt;? super T&gt; downstream;
+
+    /** The value stored temporarily when in fusion mode. */
+    protected T value;
+
+    /** Indicates there was a call to complete(T). */
+    static final int TERMINATED = 2;
+
+    /** Indicates the Disposable has been disposed. */
+    static final int DISPOSED = 4;
+
+    /** Indicates this Disposable is in fusion mode and is currently empty. */
+    static final int FUSED_EMPTY = 8;
+    /** Indicates this Disposable is in fusion mode and has a value. */
+    static final int FUSED_READY = 16;
+    /** Indicates this Disposable is in fusion mode and its value has been consumed. */
+    static final int FUSED_CONSUMED = 32;
+
+    /**
+     * Constructs a DeferredScalarDisposable by wrapping the Observer.
+     * @param downstream the Observer to wrap, not null (not verified)
+     */
+<span class="fc" id="L52">    public DeferredScalarDisposable(Observer&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L53">        this.downstream = downstream;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Override
+    public final int requestFusion(int mode) {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if ((mode &amp; ASYNC) != 0) {</span>
+<span class="fc" id="L59">            lazySet(FUSED_EMPTY);</span>
+<span class="fc" id="L60">            return ASYNC;</span>
+        }
+<span class="fc" id="L62">        return NONE;</span>
+    }
+
+    /**
+     * Complete the target with a single value or indicate there is a value available in
+     * fusion mode.
+     * @param value the value to signal, not null (not verified)
+     */
+    public final void complete(T value) {
+<span class="fc" id="L71">        int state = get();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if ((state &amp; (FUSED_READY | FUSED_CONSUMED | TERMINATED | DISPOSED)) != 0) {</span>
+<span class="fc" id="L73">            return;</span>
+        }
+<span class="fc" id="L75">        Observer&lt;? super T&gt; a = downstream;</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (state == FUSED_EMPTY) {</span>
+<span class="fc" id="L77">            this.value = value;</span>
+<span class="fc" id="L78">            lazySet(FUSED_READY);</span>
+<span class="fc" id="L79">            a.onNext(null);</span>
+        } else {
+<span class="fc" id="L81">            lazySet(TERMINATED);</span>
+<span class="fc" id="L82">            a.onNext(value);</span>
+        }
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (get() != DISPOSED) {</span>
+<span class="fc" id="L85">            a.onComplete();</span>
+        }
+<span class="fc" id="L87">    }</span>
+
+    /**
+     * Complete the target with an error signal.
+     * @param t the Throwable to signal, not null (not verified)
+     */
+     public final void error(Throwable t) {
+<span class="fc" id="L94">        int state = get();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if ((state &amp; (FUSED_READY | FUSED_CONSUMED | TERMINATED | DISPOSED)) != 0) {</span>
+<span class="fc" id="L96">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L97">            return;</span>
+        }
+<span class="fc" id="L99">        lazySet(TERMINATED);</span>
+<span class="fc" id="L100">        downstream.onError(t);</span>
+<span class="fc" id="L101">    }</span>
+
+     /**
+      * Complete the target without any value.
+      */
+    public final void complete() {
+<span class="fc" id="L107">        int state = get();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if ((state &amp; (FUSED_READY | FUSED_CONSUMED | TERMINATED | DISPOSED)) != 0) {</span>
+<span class="fc" id="L109">            return;</span>
+        }
+<span class="fc" id="L111">        lazySet(TERMINATED);</span>
+<span class="fc" id="L112">        downstream.onComplete();</span>
+<span class="fc" id="L113">    }</span>
+
+    @Nullable
+    @Override
+    public final T poll() throws Exception {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (get() == FUSED_READY) {</span>
+<span class="fc" id="L119">            T v = value;</span>
+<span class="fc" id="L120">            value = null;</span>
+<span class="fc" id="L121">            lazySet(FUSED_CONSUMED);</span>
+<span class="fc" id="L122">            return v;</span>
+        }
+<span class="fc" id="L124">        return null;</span>
+    }
+
+    @Override
+    public final boolean isEmpty() {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        return get() != FUSED_READY;</span>
+    }
+
+    @Override
+    public final void clear() {
+<span class="fc" id="L134">        lazySet(FUSED_CONSUMED);</span>
+<span class="fc" id="L135">        value = null;</span>
+<span class="fc" id="L136">    }</span>
+
+    @Override
+    public void dispose() {
+<span class="fc" id="L140">        set(DISPOSED);</span>
+<span class="fc" id="L141">        value = null;</span>
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * Try disposing this Disposable and return true if the current thread succeeded.
+     * @return true if the current thread succeeded
+     */
+    public final boolean tryDispose() {
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        return getAndSet(DISPOSED) != DISPOSED;</span>
+    }
+
+    @Override
+    public final boolean isDisposed() {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        return get() == DISPOSED;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

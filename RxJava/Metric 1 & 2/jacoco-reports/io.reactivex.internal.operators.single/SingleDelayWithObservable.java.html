@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleDelayWithObservable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleDelayWithObservable.java</span></div><h1>SingleDelayWithObservable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.observers.ResumeSingleObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class SingleDelayWithObservable&lt;T, U&gt; extends Single&lt;T&gt; {
+
+    final SingleSource&lt;T&gt; source;
+
+    final ObservableSource&lt;U&gt; other;
+
+<span class="fc" id="L30">    public SingleDelayWithObservable(SingleSource&lt;T&gt; source, ObservableSource&lt;U&gt; other) {</span>
+<span class="fc" id="L31">        this.source = source;</span>
+<span class="fc" id="L32">        this.other = other;</span>
+<span class="fc" id="L33">    }</span>
+
+    @Override
+    protected void subscribeActual(SingleObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L37">        other.subscribe(new OtherSubscriber&lt;T, U&gt;(observer, source));</span>
+<span class="fc" id="L38">    }</span>
+
+    static final class OtherSubscriber&lt;T, U&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements Observer&lt;U&gt;, Disposable {
+
+        private static final long serialVersionUID = -8565274649390031272L;
+
+        final SingleObserver&lt;? super T&gt; downstream;
+
+        final SingleSource&lt;T&gt; source;
+
+        boolean done;
+
+<span class="fc" id="L52">        OtherSubscriber(SingleObserver&lt;? super T&gt; actual, SingleSource&lt;T&gt; source) {</span>
+<span class="fc" id="L53">            this.downstream = actual;</span>
+<span class="fc" id="L54">            this.source = source;</span>
+<span class="fc" id="L55">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            if (DisposableHelper.set(this, d)) {</span>
+
+<span class="fc" id="L61">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L63">        }</span>
+
+        @Override
+        public void onNext(U value) {
+<span class="fc" id="L67">            get().dispose();</span>
+<span class="fc" id="L68">            onComplete();</span>
+<span class="fc" id="L69">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L74">                RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L75">                return;</span>
+            }
+<span class="fc" id="L77">            done = true;</span>
+<span class="fc" id="L78">            downstream.onError(e);</span>
+<span class="fc" id="L79">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L84">                return;</span>
+            }
+<span class="fc" id="L86">            done = true;</span>
+<span class="fc" id="L87">            source.subscribe(new ResumeSingleObserver&lt;T&gt;(this, downstream));</span>
+<span class="fc" id="L88">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L92">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L93">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L97">            return DisposableHelper.isDisposed(get());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,415 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableFromIterable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableFromIterable.java</span></div><h1>FlowableFromIterable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.Iterator;
+
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.Flowable;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.ConditionalSubscriber;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.BackpressureHelper;
+
+public final class FlowableFromIterable&lt;T&gt; extends Flowable&lt;T&gt; {
+
+    final Iterable&lt;? extends T&gt; source;
+
+<span class="fc" id="L32">    public FlowableFromIterable(Iterable&lt;? extends T&gt; source) {</span>
+<span class="fc" id="L33">        this.source = source;</span>
+<span class="fc" id="L34">    }</span>
+
+    @Override
+    public void subscribeActual(Subscriber&lt;? super T&gt; s) {
+        Iterator&lt;? extends T&gt; it;
+        try {
+<span class="fc" id="L40">            it = source.iterator();</span>
+<span class="fc" id="L41">        } catch (Throwable e) {</span>
+<span class="fc" id="L42">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L43">            EmptySubscription.error(e, s);</span>
+<span class="fc" id="L44">            return;</span>
+<span class="fc" id="L45">        }</span>
+
+<span class="fc" id="L47">        subscribe(s, it);</span>
+<span class="fc" id="L48">    }</span>
+
+    public static &lt;T&gt; void subscribe(Subscriber&lt;? super T&gt; s, Iterator&lt;? extends T&gt; it) {
+        boolean hasNext;
+        try {
+<span class="fc" id="L53">            hasNext = it.hasNext();</span>
+<span class="fc" id="L54">        } catch (Throwable e) {</span>
+<span class="fc" id="L55">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L56">            EmptySubscription.error(e, s);</span>
+<span class="fc" id="L57">            return;</span>
+<span class="fc" id="L58">        }</span>
+
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (!hasNext) {</span>
+<span class="fc" id="L61">            EmptySubscription.complete(s);</span>
+<span class="fc" id="L62">            return;</span>
+        }
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (s instanceof ConditionalSubscriber) {</span>
+<span class="fc" id="L66">            s.onSubscribe(new IteratorConditionalSubscription&lt;T&gt;(</span>
+                    (ConditionalSubscriber&lt;? super T&gt;)s, it));
+        } else {
+<span class="fc" id="L69">            s.onSubscribe(new IteratorSubscription&lt;T&gt;(s, it));</span>
+        }
+<span class="fc" id="L71">    }</span>
+
+    abstract static class BaseRangeSubscription&lt;T&gt; extends BasicQueueSubscription&lt;T&gt; {
+        private static final long serialVersionUID = -2252972430506210021L;
+
+        Iterator&lt;? extends T&gt; it;
+
+        volatile boolean cancelled;
+
+        boolean once;
+
+<span class="fc" id="L82">        BaseRangeSubscription(Iterator&lt;? extends T&gt; it) {</span>
+<span class="fc" id="L83">            this.it = it;</span>
+<span class="fc" id="L84">        }</span>
+
+        @Override
+        public final int requestFusion(int mode) {
+<span class="fc" id="L88">            return mode &amp; SYNC;</span>
+        }
+
+        @Nullable
+        @Override
+        public final T poll() {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (it == null) {</span>
+<span class="fc" id="L95">                return null;</span>
+            }
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (!once) {</span>
+<span class="fc" id="L98">                once = true;</span>
+            } else {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                if (!it.hasNext()) {</span>
+<span class="fc" id="L101">                    return null;</span>
+                }
+            }
+<span class="fc" id="L104">            return ObjectHelper.requireNonNull(it.next(), &quot;Iterator.next() returned a null value&quot;);</span>
+        }
+
+        @Override
+        public final boolean isEmpty() {
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">            return it == null || !it.hasNext();</span>
+        }
+
+        @Override
+        public final void clear() {
+<span class="fc" id="L114">            it = null;</span>
+<span class="fc" id="L115">        }</span>
+
+        @Override
+        public final void request(long n) {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (BackpressureHelper.add(this, n) == 0L) {</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                    if (n == Long.MAX_VALUE) {</span>
+<span class="fc" id="L122">                        fastPath();</span>
+                    } else {
+<span class="fc" id="L124">                        slowPath(n);</span>
+                    }
+                }
+            }
+<span class="fc" id="L128">        }</span>
+
+        @Override
+        public final void cancel() {
+<span class="fc" id="L132">            cancelled = true;</span>
+<span class="fc" id="L133">        }</span>
+
+        abstract void fastPath();
+
+        abstract void slowPath(long r);
+    }
+
+    static final class IteratorSubscription&lt;T&gt; extends BaseRangeSubscription&lt;T&gt; {
+
+        private static final long serialVersionUID = -6022804456014692607L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        IteratorSubscription(Subscriber&lt;? super T&gt; actual, Iterator&lt;? extends T&gt; it) {
+<span class="fc" id="L147">            super(it);</span>
+<span class="fc" id="L148">            this.downstream = actual;</span>
+<span class="fc" id="L149">        }</span>
+
+        @Override
+        void fastPath() {
+<span class="fc" id="L153">            Iterator&lt;? extends T&gt; it = this.it;</span>
+<span class="fc" id="L154">            Subscriber&lt;? super T&gt; a = downstream;</span>
+            for (;;) {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L157">                    return;</span>
+                }
+
+                T t;
+
+                try {
+<span class="fc" id="L163">                    t = it.next();</span>
+<span class="fc" id="L164">                } catch (Throwable ex) {</span>
+<span class="fc" id="L165">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L166">                    a.onError(ex);</span>
+<span class="fc" id="L167">                    return;</span>
+<span class="fc" id="L168">                }</span>
+
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L171">                    return;</span>
+                }
+
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                if (t == null) {</span>
+<span class="fc" id="L175">                    a.onError(new NullPointerException(&quot;Iterator.next() returned a null value&quot;));</span>
+<span class="fc" id="L176">                    return;</span>
+                } else {
+<span class="fc" id="L178">                    a.onNext(t);</span>
+                }
+
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L182">                    return;</span>
+                }
+
+                boolean b;
+
+                try {
+<span class="fc" id="L188">                    b = it.hasNext();</span>
+<span class="fc" id="L189">                } catch (Throwable ex) {</span>
+<span class="fc" id="L190">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L191">                    a.onError(ex);</span>
+<span class="fc" id="L192">                    return;</span>
+<span class="fc" id="L193">                }</span>
+
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                if (!b) {</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">                    if (!cancelled) {</span>
+<span class="fc" id="L197">                        a.onComplete();</span>
+                    }
+<span class="fc" id="L199">                    return;</span>
+                }
+<span class="fc" id="L201">            }</span>
+        }
+
+        @Override
+        void slowPath(long r) {
+<span class="fc" id="L206">            long e = 0L;</span>
+<span class="fc" id="L207">            Iterator&lt;? extends T&gt; it = this.it;</span>
+<span class="fc" id="L208">            Subscriber&lt;? super T&gt; a = downstream;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                while (e != r) {</span>
+
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L215">                        return;</span>
+                    }
+
+                    T t;
+
+                    try {
+<span class="fc" id="L221">                        t = it.next();</span>
+<span class="fc" id="L222">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L223">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L224">                        a.onError(ex);</span>
+<span class="fc" id="L225">                        return;</span>
+<span class="fc" id="L226">                    }</span>
+
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L229">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                    if (t == null) {</span>
+<span class="fc" id="L233">                        a.onError(new NullPointerException(&quot;Iterator.next() returned a null value&quot;));</span>
+<span class="fc" id="L234">                        return;</span>
+                    } else {
+<span class="fc" id="L236">                        a.onNext(t);</span>
+                    }
+
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L240">                        return;</span>
+                    }
+
+                    boolean b;
+
+                    try {
+<span class="fc" id="L246">                        b = it.hasNext();</span>
+<span class="fc" id="L247">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L248">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L249">                        a.onError(ex);</span>
+<span class="fc" id="L250">                        return;</span>
+<span class="fc" id="L251">                    }</span>
+
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                    if (!b) {</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">                        if (!cancelled) {</span>
+<span class="fc" id="L255">                            a.onComplete();</span>
+                        }
+<span class="fc" id="L257">                        return;</span>
+                    }
+
+<span class="fc" id="L260">                    e++;</span>
+<span class="fc" id="L261">                }</span>
+
+<span class="fc" id="L263">                r = get();</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc" id="L265">                    r = addAndGet(-e);</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">                    if (r == 0L) {</span>
+<span class="fc" id="L267">                        return;</span>
+                    }
+<span class="nc" id="L269">                    e = 0L;</span>
+                }
+            }
+        }
+
+    }
+
+    static final class IteratorConditionalSubscription&lt;T&gt; extends BaseRangeSubscription&lt;T&gt; {
+
+        private static final long serialVersionUID = -6022804456014692607L;
+
+        final ConditionalSubscriber&lt;? super T&gt; downstream;
+
+        IteratorConditionalSubscription(ConditionalSubscriber&lt;? super T&gt; actual, Iterator&lt;? extends T&gt; it) {
+<span class="fc" id="L283">            super(it);</span>
+<span class="fc" id="L284">            this.downstream = actual;</span>
+<span class="fc" id="L285">        }</span>
+
+        @Override
+        void fastPath() {
+<span class="fc" id="L289">            Iterator&lt;? extends T&gt; it = this.it;</span>
+<span class="fc" id="L290">            ConditionalSubscriber&lt;? super T&gt; a = downstream;</span>
+            for (;;) {
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L293">                    return;</span>
+                }
+
+                T t;
+
+                try {
+<span class="fc" id="L299">                    t = it.next();</span>
+<span class="fc" id="L300">                } catch (Throwable ex) {</span>
+<span class="fc" id="L301">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L302">                    a.onError(ex);</span>
+<span class="fc" id="L303">                    return;</span>
+<span class="fc" id="L304">                }</span>
+
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L307">                    return;</span>
+                }
+
+<span class="fc bfc" id="L310" title="All 2 branches covered.">                if (t == null) {</span>
+<span class="fc" id="L311">                    a.onError(new NullPointerException(&quot;Iterator.next() returned a null value&quot;));</span>
+<span class="fc" id="L312">                    return;</span>
+                } else {
+<span class="fc" id="L314">                    a.tryOnNext(t);</span>
+                }
+
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L318">                    return;</span>
+                }
+
+                boolean b;
+
+                try {
+<span class="fc" id="L324">                    b = it.hasNext();</span>
+<span class="fc" id="L325">                } catch (Throwable ex) {</span>
+<span class="fc" id="L326">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L327">                    a.onError(ex);</span>
+<span class="fc" id="L328">                    return;</span>
+<span class="fc" id="L329">                }</span>
+
+<span class="fc bfc" id="L331" title="All 2 branches covered.">                if (!b) {</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">                    if (!cancelled) {</span>
+<span class="fc" id="L333">                        a.onComplete();</span>
+                    }
+<span class="fc" id="L335">                    return;</span>
+                }
+<span class="fc" id="L337">            }</span>
+        }
+
+        @Override
+        void slowPath(long r) {
+<span class="fc" id="L342">            long e = 0L;</span>
+<span class="fc" id="L343">            Iterator&lt;? extends T&gt; it = this.it;</span>
+<span class="fc" id="L344">            ConditionalSubscriber&lt;? super T&gt; a = downstream;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L348" title="All 2 branches covered.">                while (e != r) {</span>
+
+<span class="fc bfc" id="L350" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L351">                        return;</span>
+                    }
+
+                    T t;
+
+                    try {
+<span class="fc" id="L357">                        t = it.next();</span>
+<span class="fc" id="L358">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L359">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L360">                        a.onError(ex);</span>
+<span class="fc" id="L361">                        return;</span>
+<span class="fc" id="L362">                    }</span>
+
+<span class="fc bfc" id="L364" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L365">                        return;</span>
+                    }
+
+                    boolean b;
+<span class="fc bfc" id="L369" title="All 2 branches covered.">                    if (t == null) {</span>
+<span class="fc" id="L370">                        a.onError(new NullPointerException(&quot;Iterator.next() returned a null value&quot;));</span>
+<span class="fc" id="L371">                        return;</span>
+                    } else {
+<span class="fc" id="L373">                        b = a.tryOnNext(t);</span>
+                    }
+
+<span class="fc bfc" id="L376" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L377">                        return;</span>
+                    }
+
+                    boolean hasNext;
+
+                    try {
+<span class="fc" id="L383">                        hasNext = it.hasNext();</span>
+<span class="fc" id="L384">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L385">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L386">                        a.onError(ex);</span>
+<span class="fc" id="L387">                        return;</span>
+<span class="fc" id="L388">                    }</span>
+
+<span class="fc bfc" id="L390" title="All 2 branches covered.">                    if (!hasNext) {</span>
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">                        if (!cancelled) {</span>
+<span class="fc" id="L392">                            a.onComplete();</span>
+                        }
+<span class="fc" id="L394">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L397" title="All 2 branches covered.">                    if (b) {</span>
+<span class="fc" id="L398">                        e++;</span>
+                    }
+<span class="fc" id="L400">                }</span>
+
+<span class="fc" id="L402">                r = get();</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc" id="L404">                    r = addAndGet(-e);</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">                    if (r == 0L) {</span>
+<span class="fc" id="L406">                        return;</span>
+                    }
+<span class="fc" id="L408">                    e = 0L;</span>
+                }
+            }
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

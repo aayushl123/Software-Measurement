@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSwitchMapSingle.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.mixed</a> &gt; <span class="el_source">FlowableSwitchMapSingle.java</span></div><h1>FlowableSwitchMapSingle.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.mixed;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Maps the upstream items into {@link SingleSource}s and switches (subscribes) to the newer ones
+ * while disposing the older ones and emits the latest success value, optionally delaying
+ * errors from the main source or the inner sources.
+ * &lt;p&gt;History: 2.1.11 - experimental
+ * @param &lt;T&gt; the upstream value type
+ * @param &lt;R&gt; the downstream value type
+ * @since 2.2
+ */
+public final class FlowableSwitchMapSingle&lt;T, R&gt; extends Flowable&lt;R&gt; {
+
+    final Flowable&lt;T&gt; source;
+
+    final Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper;
+
+    final boolean delayErrors;
+
+    public FlowableSwitchMapSingle(Flowable&lt;T&gt; source,
+            Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper,
+<span class="fc" id="L49">            boolean delayErrors) {</span>
+<span class="fc" id="L50">        this.source = source;</span>
+<span class="fc" id="L51">        this.mapper = mapper;</span>
+<span class="fc" id="L52">        this.delayErrors = delayErrors;</span>
+<span class="fc" id="L53">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super R&gt; s) {
+<span class="fc" id="L57">        source.subscribe(new SwitchMapSingleSubscriber&lt;T, R&gt;(s, mapper, delayErrors));</span>
+<span class="fc" id="L58">    }</span>
+
+    static final class SwitchMapSingleSubscriber&lt;T, R&gt; extends AtomicInteger
+    implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = -5402190102429853762L;
+
+        final Subscriber&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper;
+
+        final boolean delayErrors;
+
+        final AtomicThrowable errors;
+
+        final AtomicLong requested;
+
+        final AtomicReference&lt;SwitchMapSingleObserver&lt;R&gt;&gt; inner;
+
+<span class="fc" id="L77">        static final SwitchMapSingleObserver&lt;Object&gt; INNER_DISPOSED =</span>
+                new SwitchMapSingleObserver&lt;Object&gt;(null);
+
+        Subscription upstream;
+
+        volatile boolean done;
+
+        volatile boolean cancelled;
+
+        long emitted;
+
+        SwitchMapSingleSubscriber(Subscriber&lt;? super R&gt; downstream,
+                Function&lt;? super T, ? extends SingleSource&lt;? extends R&gt;&gt; mapper,
+<span class="fc" id="L90">                boolean delayErrors) {</span>
+<span class="fc" id="L91">            this.downstream = downstream;</span>
+<span class="fc" id="L92">            this.mapper = mapper;</span>
+<span class="fc" id="L93">            this.delayErrors = delayErrors;</span>
+<span class="fc" id="L94">            this.errors = new AtomicThrowable();</span>
+<span class="fc" id="L95">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L96">            this.inner = new AtomicReference&lt;SwitchMapSingleObserver&lt;R&gt;&gt;();</span>
+<span class="fc" id="L97">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (SubscriptionHelper.validate(upstream, s)) {</span>
+<span class="fc" id="L102">                upstream = s;</span>
+<span class="fc" id="L103">                downstream.onSubscribe(this);</span>
+<span class="fc" id="L104">                s.request(Long.MAX_VALUE);</span>
+            }
+<span class="fc" id="L106">        }</span>
+
+        @Override
+        @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+        public void onNext(T t) {
+<span class="fc" id="L111">            SwitchMapSingleObserver&lt;R&gt; current = inner.get();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (current != null) {</span>
+<span class="fc" id="L113">                current.dispose();</span>
+            }
+
+            SingleSource&lt;? extends R&gt; ss;
+
+            try {
+<span class="fc" id="L119">                ss = ObjectHelper.requireNonNull(mapper.apply(t), &quot;The mapper returned a null SingleSource&quot;);</span>
+<span class="fc" id="L120">            } catch (Throwable ex) {</span>
+<span class="fc" id="L121">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L122">                upstream.cancel();</span>
+<span class="fc" id="L123">                inner.getAndSet((SwitchMapSingleObserver)INNER_DISPOSED);</span>
+<span class="fc" id="L124">                onError(ex);</span>
+<span class="fc" id="L125">                return;</span>
+<span class="fc" id="L126">            }</span>
+
+<span class="fc" id="L128">            SwitchMapSingleObserver&lt;R&gt; observer = new SwitchMapSingleObserver&lt;R&gt;(this);</span>
+
+            for (;;) {
+<span class="fc" id="L131">                current = inner.get();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (current == INNER_DISPOSED) {</span>
+<span class="fc" id="L133">                    break;</span>
+                }
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                if (inner.compareAndSet(current, observer)) {</span>
+<span class="fc" id="L136">                    ss.subscribe(observer);</span>
+<span class="fc" id="L137">                    break;</span>
+                }
+            }
+<span class="fc" id="L140">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (errors.addThrowable(t)) {</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                if (!delayErrors) {</span>
+<span class="fc" id="L146">                    disposeInner();</span>
+                }
+<span class="fc" id="L148">                done = true;</span>
+<span class="fc" id="L149">                drain();</span>
+            } else {
+<span class="fc" id="L151">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L153">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L157">            done = true;</span>
+<span class="fc" id="L158">            drain();</span>
+<span class="fc" id="L159">        }</span>
+
+        @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+        void disposeInner() {
+<span class="fc" id="L163">            SwitchMapSingleObserver&lt;R&gt; current = inner.getAndSet((SwitchMapSingleObserver)INNER_DISPOSED);</span>
+<span class="fc bfc" id="L164" title="All 4 branches covered.">            if (current != null &amp;&amp; current != INNER_DISPOSED) {</span>
+<span class="fc" id="L165">                current.dispose();</span>
+            }
+<span class="fc" id="L167">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L171">            BackpressureHelper.add(requested, n);</span>
+<span class="fc" id="L172">            drain();</span>
+<span class="fc" id="L173">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L177">            cancelled = true;</span>
+<span class="fc" id="L178">            upstream.cancel();</span>
+<span class="fc" id="L179">            disposeInner();</span>
+<span class="fc" id="L180">        }</span>
+
+        void innerError(SwitchMapSingleObserver&lt;R&gt; sender, Throwable ex) {
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (inner.compareAndSet(sender, null)) {</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">                if (errors.addThrowable(ex)) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                    if (!delayErrors) {</span>
+<span class="fc" id="L186">                        upstream.cancel();</span>
+<span class="fc" id="L187">                        disposeInner();</span>
+                    }
+<span class="fc" id="L189">                    drain();</span>
+<span class="fc" id="L190">                    return;</span>
+                }
+            }
+<span class="fc" id="L193">            RxJavaPlugins.onError(ex);</span>
+<span class="fc" id="L194">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L198">                return;</span>
+            }
+
+<span class="fc" id="L201">            int missed = 1;</span>
+<span class="fc" id="L202">            Subscriber&lt;? super R&gt; downstream = this.downstream;</span>
+<span class="fc" id="L203">            AtomicThrowable errors = this.errors;</span>
+<span class="fc" id="L204">            AtomicReference&lt;SwitchMapSingleObserver&lt;R&gt;&gt; inner = this.inner;</span>
+<span class="fc" id="L205">            AtomicLong requested = this.requested;</span>
+<span class="fc" id="L206">            long emitted = this.emitted;</span>
+
+            for (;;) {
+
+                for (;;) {
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L212">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                    if (errors.get() != null) {</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                        if (!delayErrors) {</span>
+<span class="fc" id="L217">                            Throwable ex = errors.terminate();</span>
+<span class="fc" id="L218">                            downstream.onError(ex);</span>
+<span class="fc" id="L219">                            return;</span>
+                        }
+                    }
+
+<span class="fc" id="L223">                    boolean d = done;</span>
+<span class="fc" id="L224">                    SwitchMapSingleObserver&lt;R&gt; current = inner.get();</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                    boolean empty = current == null;</span>
+
+<span class="fc bfc" id="L227" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L228">                        Throwable ex = errors.terminate();</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L230">                            downstream.onError(ex);</span>
+                        } else {
+<span class="fc" id="L232">                            downstream.onComplete();</span>
+                        }
+<span class="fc" id="L234">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L237" title="All 6 branches covered.">                    if (empty || current.item == null || emitted == requested.get()) {</span>
+<span class="fc" id="L238">                        break;</span>
+                    }
+
+<span class="fc" id="L241">                    inner.compareAndSet(current, null);</span>
+
+<span class="fc" id="L243">                    downstream.onNext(current.item);</span>
+
+<span class="fc" id="L245">                    emitted++;</span>
+<span class="fc" id="L246">                }</span>
+
+<span class="fc" id="L248">                this.emitted = emitted;</span>
+<span class="fc" id="L249">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L251">                    break;</span>
+                }
+            }
+<span class="fc" id="L254">        }</span>
+
+        static final class SwitchMapSingleObserver&lt;R&gt;
+        extends AtomicReference&lt;Disposable&gt; implements SingleObserver&lt;R&gt; {
+
+            private static final long serialVersionUID = 8042919737683345351L;
+
+            final SwitchMapSingleSubscriber&lt;?, R&gt; parent;
+
+            volatile R item;
+
+<span class="fc" id="L265">            SwitchMapSingleObserver(SwitchMapSingleSubscriber&lt;?, R&gt; parent) {</span>
+<span class="fc" id="L266">                this.parent = parent;</span>
+<span class="fc" id="L267">            }</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L271">                DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L272">            }</span>
+
+            @Override
+            public void onSuccess(R t) {
+<span class="fc" id="L276">                item = t;</span>
+<span class="fc" id="L277">                parent.drain();</span>
+<span class="fc" id="L278">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L282">                parent.innerError(this, e);</span>
+<span class="fc" id="L283">            }</span>
+
+            void dispose() {
+<span class="fc" id="L286">                DisposableHelper.dispose(this);</span>
+<span class="fc" id="L287">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

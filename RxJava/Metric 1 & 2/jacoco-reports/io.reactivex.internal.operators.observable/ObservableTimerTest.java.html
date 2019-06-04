@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableTimerTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableTimerTest.java</span></div><h1>ObservableTimerTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.*;
+import org.mockito.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.operators.observable.ObservableTimer.TimerObserver;
+import io.reactivex.observables.ConnectableObservable;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.*;
+
+<span class="fc" id="L37">public class ObservableTimerTest {</span>
+    @Mock
+    Observer&lt;Object&gt; observer;
+    @Mock
+    Observer&lt;Long&gt; observer2;
+
+    TestScheduler scheduler;
+
+    @Before
+    public void before() {
+<span class="fc" id="L47">        observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L49">        observer2 = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L51">        scheduler = new TestScheduler();</span>
+<span class="fc" id="L52">    }</span>
+
+    @Test
+    public void testTimerOnce() {
+<span class="fc" id="L56">        Observable.timer(100, TimeUnit.MILLISECONDS, scheduler).subscribe(observer);</span>
+<span class="fc" id="L57">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L59">        verify(observer, times(1)).onNext(0L);</span>
+<span class="fc" id="L60">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L61">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L62">    }</span>
+
+    @Test
+    public void testTimerPeriodically() {
+<span class="fc" id="L66">        TestObserver&lt;Long&gt; to = new TestObserver&lt;Long&gt;();</span>
+
+<span class="fc" id="L68">        Observable.interval(100, 100, TimeUnit.MILLISECONDS, scheduler).subscribe(to);</span>
+
+<span class="fc" id="L70">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L72">        to.assertValue(0L);</span>
+
+<span class="fc" id="L74">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L75">        to.assertValues(0L, 1L);</span>
+
+<span class="fc" id="L77">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L78">        to.assertValues(0L, 1L, 2L);</span>
+
+<span class="fc" id="L80">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L81">        to.assertValues(0L, 1L, 2L, 3L);</span>
+
+<span class="fc" id="L83">        to.dispose();</span>
+<span class="fc" id="L84">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L85">        to.assertValues(0L, 1L, 2L, 3L);</span>
+
+<span class="fc" id="L87">        to.assertNotComplete();</span>
+<span class="fc" id="L88">        to.assertNoErrors();</span>
+<span class="fc" id="L89">    }</span>
+
+    @Test
+    public void testInterval() {
+<span class="fc" id="L93">        Observable&lt;Long&gt; w = Observable.interval(1, TimeUnit.SECONDS, scheduler);</span>
+<span class="fc" id="L94">        TestObserver&lt;Long&gt; to = new TestObserver&lt;Long&gt;();</span>
+<span class="fc" id="L95">        w.subscribe(to);</span>
+
+<span class="fc" id="L97">        to.assertNoValues();</span>
+<span class="fc" id="L98">        to.assertNoErrors();</span>
+<span class="fc" id="L99">        to.assertNotComplete();</span>
+
+<span class="fc" id="L101">        scheduler.advanceTimeTo(2, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L103">        to.assertValues(0L, 1L);</span>
+<span class="fc" id="L104">        to.assertNoErrors();</span>
+<span class="fc" id="L105">        to.assertNotComplete();</span>
+
+<span class="fc" id="L107">        to.dispose();</span>
+
+<span class="fc" id="L109">        scheduler.advanceTimeTo(4, TimeUnit.SECONDS);</span>
+<span class="fc" id="L110">        to.assertValues(0L, 1L);</span>
+<span class="fc" id="L111">        to.assertNoErrors();</span>
+<span class="fc" id="L112">        to.assertNotComplete();</span>
+<span class="fc" id="L113">    }</span>
+
+    @Test
+    public void testWithMultipleSubscribersStartingAtSameTime() {
+<span class="fc" id="L117">        Observable&lt;Long&gt; w = Observable.interval(1, TimeUnit.SECONDS, scheduler);</span>
+
+<span class="fc" id="L119">        TestObserver&lt;Long&gt; to1 = new TestObserver&lt;Long&gt;();</span>
+<span class="fc" id="L120">        TestObserver&lt;Long&gt; to2 = new TestObserver&lt;Long&gt;();</span>
+
+<span class="fc" id="L122">        w.subscribe(to1);</span>
+<span class="fc" id="L123">        w.subscribe(to2);</span>
+
+<span class="fc" id="L125">        to1.assertNoValues();</span>
+<span class="fc" id="L126">        to2.assertNoValues();</span>
+
+<span class="fc" id="L128">        scheduler.advanceTimeTo(2, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L130">        to1.assertValues(0L, 1L);</span>
+<span class="fc" id="L131">        to1.assertNoErrors();</span>
+<span class="fc" id="L132">        to1.assertNotComplete();</span>
+
+<span class="fc" id="L134">        to2.assertValues(0L, 1L);</span>
+<span class="fc" id="L135">        to2.assertNoErrors();</span>
+<span class="fc" id="L136">        to2.assertNotComplete();</span>
+
+<span class="fc" id="L138">        to1.dispose();</span>
+<span class="fc" id="L139">        to2.dispose();</span>
+
+<span class="fc" id="L141">        scheduler.advanceTimeTo(4, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L143">        to1.assertValues(0L, 1L);</span>
+<span class="fc" id="L144">        to1.assertNoErrors();</span>
+<span class="fc" id="L145">        to1.assertNotComplete();</span>
+
+<span class="fc" id="L147">        to2.assertValues(0L, 1L);</span>
+<span class="fc" id="L148">        to2.assertNoErrors();</span>
+<span class="fc" id="L149">        to2.assertNotComplete();</span>
+<span class="fc" id="L150">    }</span>
+
+    @Test
+    public void testWithMultipleStaggeredSubscribers() {
+<span class="fc" id="L154">        Observable&lt;Long&gt; w = Observable.interval(1, TimeUnit.SECONDS, scheduler);</span>
+
+<span class="fc" id="L156">        TestObserver&lt;Long&gt; to1 = new TestObserver&lt;Long&gt;();</span>
+
+<span class="fc" id="L158">        w.subscribe(to1);</span>
+
+<span class="fc" id="L160">        to1.assertNoErrors();</span>
+
+<span class="fc" id="L162">        scheduler.advanceTimeTo(2, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L164">        TestObserver&lt;Long&gt; to2 = new TestObserver&lt;Long&gt;();</span>
+
+<span class="fc" id="L166">        w.subscribe(to2);</span>
+
+<span class="fc" id="L168">        to1.assertValues(0L, 1L);</span>
+<span class="fc" id="L169">        to1.assertNoErrors();</span>
+<span class="fc" id="L170">        to1.assertNotComplete();</span>
+
+<span class="fc" id="L172">        to2.assertNoValues();</span>
+
+<span class="fc" id="L174">        scheduler.advanceTimeTo(4, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L176">        to1.assertValues(0L, 1L, 2L, 3L);</span>
+
+<span class="fc" id="L178">        to2.assertValues(0L, 1L);</span>
+
+<span class="fc" id="L180">        to1.dispose();</span>
+<span class="fc" id="L181">        to2.dispose();</span>
+
+<span class="fc" id="L183">        to1.assertValues(0L, 1L, 2L, 3L);</span>
+<span class="fc" id="L184">        to1.assertNoErrors();</span>
+<span class="fc" id="L185">        to1.assertNotComplete();</span>
+
+<span class="fc" id="L187">        to2.assertValues(0L, 1L);</span>
+<span class="fc" id="L188">        to2.assertNoErrors();</span>
+<span class="fc" id="L189">        to2.assertNotComplete();</span>
+<span class="fc" id="L190">    }</span>
+
+    @Test
+    public void testWithMultipleStaggeredSubscribersAndPublish() {
+<span class="fc" id="L194">        ConnectableObservable&lt;Long&gt; w = Observable.interval(1, TimeUnit.SECONDS, scheduler).publish();</span>
+
+<span class="fc" id="L196">        TestObserver&lt;Long&gt; to1 = new TestObserver&lt;Long&gt;();</span>
+
+<span class="fc" id="L198">        w.subscribe(to1);</span>
+<span class="fc" id="L199">        w.connect();</span>
+
+<span class="fc" id="L201">        to1.assertNoValues();</span>
+
+<span class="fc" id="L203">        scheduler.advanceTimeTo(2, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L205">        TestObserver&lt;Long&gt; to2 = new TestObserver&lt;Long&gt;();</span>
+<span class="fc" id="L206">        w.subscribe(to2);</span>
+
+<span class="fc" id="L208">        to1.assertValues(0L, 1L);</span>
+<span class="fc" id="L209">        to1.assertNoErrors();</span>
+<span class="fc" id="L210">        to1.assertNotComplete();</span>
+
+<span class="fc" id="L212">        to2.assertNoValues();</span>
+
+<span class="fc" id="L214">        scheduler.advanceTimeTo(4, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L216">        to1.assertValues(0L, 1L, 2L, 3L);</span>
+
+<span class="fc" id="L218">        to2.assertValues(2L, 3L);</span>
+
+<span class="fc" id="L220">        to1.dispose();</span>
+<span class="fc" id="L221">        to2.dispose();</span>
+
+<span class="fc" id="L223">        to1.assertValues(0L, 1L, 2L, 3L);</span>
+<span class="fc" id="L224">        to1.assertNoErrors();</span>
+<span class="fc" id="L225">        to1.assertNotComplete();</span>
+
+<span class="fc" id="L227">        to2.assertValues(2L, 3L);</span>
+<span class="fc" id="L228">        to2.assertNoErrors();</span>
+<span class="fc" id="L229">        to2.assertNotComplete();</span>
+<span class="fc" id="L230">    }</span>
+
+    @Test
+    public void testOnceObserverThrows() {
+<span class="fc" id="L234">        Observable&lt;Long&gt; source = Observable.timer(100, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L236">        source.safeSubscribe(new DefaultObserver&lt;Long&gt;() {</span>
+
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L240">                throw new TestException();</span>
+            }
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L245">                observer.onError(e);</span>
+<span class="fc" id="L246">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L250">                observer.onComplete();</span>
+<span class="nc" id="L251">            }</span>
+        });
+
+<span class="fc" id="L254">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L256">        verify(observer).onError(any(TestException.class));</span>
+<span class="fc" id="L257">        verify(observer, never()).onNext(anyLong());</span>
+<span class="fc" id="L258">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L259">    }</span>
+
+    @Test
+    public void testPeriodicObserverThrows() {
+<span class="fc" id="L263">        Observable&lt;Long&gt; source = Observable.interval(100, 100, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L265">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L267">        source.safeSubscribe(new DefaultObserver&lt;Long&gt;() {</span>
+
+            @Override
+            public void onNext(Long t) {
+<span class="fc bfc" id="L271" title="All 2 branches covered.">                if (t &gt; 0) {</span>
+<span class="fc" id="L272">                    throw new TestException();</span>
+                }
+<span class="fc" id="L274">                observer.onNext(t);</span>
+<span class="fc" id="L275">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L279">                observer.onError(e);</span>
+<span class="fc" id="L280">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L284">                observer.onComplete();</span>
+<span class="nc" id="L285">            }</span>
+        });
+
+<span class="fc" id="L288">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L290">        inOrder.verify(observer).onNext(0L);</span>
+<span class="fc" id="L291">        inOrder.verify(observer).onError(any(TestException.class));</span>
+<span class="fc" id="L292">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L293">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L294">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L298">        TestHelper.checkDisposed(Observable.timer(1, TimeUnit.DAYS));</span>
+<span class="fc" id="L299">    }</span>
+
+    @Test
+    public void timerDelayZero() {
+<span class="fc" id="L303">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L306">                Observable.timer(0, TimeUnit.MILLISECONDS).blockingFirst();</span>
+            }
+
+<span class="fc" id="L309">            assertTrue(errors.toString(), errors.isEmpty());</span>
+        } finally {
+<span class="fc" id="L311">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L313">    }</span>
+
+    @Test
+    public void timerInterruptible() throws Exception {
+<span class="fc" id="L317">        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();</span>
+        try {
+<span class="fc bfc" id="L319" title="All 2 branches covered.">            for (Scheduler s : new Scheduler[] { Schedulers.single(), Schedulers.computation(), Schedulers.newThread(), Schedulers.io(), Schedulers.from(exec) }) {</span>
+<span class="fc" id="L320">                final AtomicBoolean interrupted = new AtomicBoolean();</span>
+<span class="fc" id="L321">                TestObserver&lt;Long&gt; to = Observable.timer(1, TimeUnit.MILLISECONDS, s)</span>
+<span class="fc" id="L322">                .map(new Function&lt;Long, Long&gt;() {</span>
+                    @Override
+                    public Long apply(Long v) throws Exception {
+                        try {
+<span class="nc" id="L326">                        Thread.sleep(3000);</span>
+<span class="fc" id="L327">                        } catch (InterruptedException ex) {</span>
+<span class="fc" id="L328">                            interrupted.set(true);</span>
+<span class="nc" id="L329">                        }</span>
+<span class="fc" id="L330">                        return v;</span>
+                    }
+                })
+<span class="fc" id="L333">                .test();</span>
+
+<span class="fc" id="L335">                Thread.sleep(500);</span>
+
+<span class="fc" id="L337">                to.cancel();</span>
+
+<span class="fc" id="L339">                Thread.sleep(500);</span>
+
+<span class="fc" id="L341">                assertTrue(s.getClass().getSimpleName(), interrupted.get());</span>
+            }
+        } finally {
+<span class="fc" id="L344">            exec.shutdown();</span>
+        }
+<span class="fc" id="L346">    }</span>
+
+    @Test
+    public void cancelledAndRun() {
+<span class="fc" id="L350">        TestObserver&lt;Long&gt; to = new TestObserver&lt;Long&gt;();</span>
+<span class="fc" id="L351">        to.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L352">        TimerObserver tm = new TimerObserver(to);</span>
+
+<span class="fc" id="L354">        tm.dispose();</span>
+
+<span class="fc" id="L356">        tm.run();</span>
+
+<span class="fc" id="L358">        to.assertEmpty();</span>
+<span class="fc" id="L359">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

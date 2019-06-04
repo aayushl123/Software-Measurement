@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableConcatWithCompletableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableConcatWithCompletableTest.java</span></div><h1>FlowableConcatWithCompletableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+
+import org.junit.Test;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Action;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.CompletableSubject;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L31">public class FlowableConcatWithCompletableTest {</span>
+
+    @Test
+    public void normal() {
+<span class="fc" id="L35">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L37">        Flowable.range(1, 5)</span>
+<span class="fc" id="L38">        .concatWith(Completable.fromAction(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L41">                ts.onNext(100);</span>
+<span class="fc" id="L42">            }</span>
+        }))
+<span class="fc" id="L44">        .subscribe(ts);</span>
+
+<span class="fc" id="L46">        ts.assertResult(1, 2, 3, 4, 5, 100);</span>
+<span class="fc" id="L47">    }</span>
+
+    @Test
+    public void mainError() {
+<span class="fc" id="L51">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L53">        Flowable.&lt;Integer&gt;error(new TestException())</span>
+<span class="fc" id="L54">        .concatWith(Completable.fromAction(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L57">                ts.onNext(100);</span>
+<span class="nc" id="L58">            }</span>
+        }))
+<span class="fc" id="L60">        .subscribe(ts);</span>
+
+<span class="fc" id="L62">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L63">    }</span>
+
+    @Test
+    public void otherError() {
+<span class="fc" id="L67">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L69">        Flowable.range(1, 5)</span>
+<span class="fc" id="L70">        .concatWith(Completable.error(new TestException()))</span>
+<span class="fc" id="L71">        .subscribe(ts);</span>
+
+<span class="fc" id="L73">        ts.assertFailure(TestException.class, 1, 2, 3, 4, 5);</span>
+<span class="fc" id="L74">    }</span>
+
+    @Test
+    public void takeMain() {
+<span class="fc" id="L78">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L80">        Flowable.range(1, 5)</span>
+<span class="fc" id="L81">        .concatWith(Completable.fromAction(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L84">                ts.onNext(100);</span>
+<span class="nc" id="L85">            }</span>
+        }))
+<span class="fc" id="L87">        .take(3)</span>
+<span class="fc" id="L88">        .subscribe(ts);</span>
+
+<span class="fc" id="L90">        ts.assertResult(1, 2, 3);</span>
+<span class="fc" id="L91">    }</span>
+
+    @Test
+    public void cancelOther() {
+<span class="fc" id="L95">        CompletableSubject other = CompletableSubject.create();</span>
+
+<span class="fc" id="L97">        TestSubscriber&lt;Object&gt; ts = Flowable.empty()</span>
+<span class="fc" id="L98">                .concatWith(other)</span>
+<span class="fc" id="L99">                .test();</span>
+
+<span class="fc" id="L101">        assertTrue(other.hasObservers());</span>
+
+<span class="fc" id="L103">        ts.cancel();</span>
+
+<span class="fc" id="L105">        assertFalse(other.hasObservers());</span>
+<span class="fc" id="L106">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L110">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L112">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L115">                    BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L116">                    s.onSubscribe(bs1);</span>
+
+<span class="fc" id="L118">                    BooleanSubscription bs2 = new BooleanSubscription();</span>
+<span class="fc" id="L119">                    s.onSubscribe(bs2);</span>
+
+<span class="fc" id="L121">                    assertFalse(bs1.isCancelled());</span>
+<span class="fc" id="L122">                    assertTrue(bs2.isCancelled());</span>
+
+<span class="fc" id="L124">                    s.onComplete();</span>
+<span class="fc" id="L125">                }</span>
+<span class="fc" id="L126">            }.concatWith(Completable.complete())</span>
+<span class="fc" id="L127">            .test()</span>
+<span class="fc" id="L128">            .assertResult();</span>
+
+<span class="fc" id="L130">            TestHelper.assertError(errors, 0, ProtocolViolationException.class);</span>
+        } finally {
+<span class="fc" id="L132">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L134">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

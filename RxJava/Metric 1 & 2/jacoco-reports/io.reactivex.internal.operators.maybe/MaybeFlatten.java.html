@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeFlatten.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeFlatten.java</span></div><h1>MaybeFlatten.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+
+/**
+ * Maps a value into a MaybeSource and relays its signal.
+ *
+ * @param &lt;T&gt; the source value type
+ * @param &lt;R&gt; the result value type
+ */
+public final class MaybeFlatten&lt;T, R&gt; extends AbstractMaybeWithUpstream&lt;T, R&gt; {
+
+    final Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper;
+
+    public MaybeFlatten(MaybeSource&lt;T&gt; source, Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper) {
+<span class="fc" id="L36">        super(source);</span>
+<span class="fc" id="L37">        this.mapper = mapper;</span>
+<span class="fc" id="L38">    }</span>
+
+    @Override
+    protected void subscribeActual(MaybeObserver&lt;? super R&gt; observer) {
+<span class="fc" id="L42">        source.subscribe(new FlatMapMaybeObserver&lt;T, R&gt;(observer, mapper));</span>
+<span class="fc" id="L43">    }</span>
+
+    static final class FlatMapMaybeObserver&lt;T, R&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements MaybeObserver&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = 4375739915521278546L;
+
+        final MaybeObserver&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper;
+
+        Disposable upstream;
+
+        FlatMapMaybeObserver(MaybeObserver&lt;? super R&gt; actual,
+<span class="fc" id="L58">                Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper) {</span>
+<span class="fc" id="L59">            this.downstream = actual;</span>
+<span class="fc" id="L60">            this.mapper = mapper;</span>
+<span class="fc" id="L61">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L65">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L66">            upstream.dispose();</span>
+<span class="fc" id="L67">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L71">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (DisposableHelper.validate(this.upstream, d)) {</span>
+<span class="fc" id="L77">                this.upstream = d;</span>
+
+<span class="fc" id="L79">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L81">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+            MaybeSource&lt;? extends R&gt; source;
+
+            try {
+<span class="fc" id="L88">                source = ObjectHelper.requireNonNull(mapper.apply(value), &quot;The mapper returned a null MaybeSource&quot;);</span>
+<span class="fc" id="L89">            } catch (Exception ex) {</span>
+<span class="fc" id="L90">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L91">                downstream.onError(ex);</span>
+<span class="fc" id="L92">                return;</span>
+<span class="fc" id="L93">            }</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            if (!isDisposed()) {</span>
+<span class="fc" id="L96">                source.subscribe(new InnerObserver());</span>
+            }
+<span class="fc" id="L98">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L102">            downstream.onError(e);</span>
+<span class="fc" id="L103">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L107">            downstream.onComplete();</span>
+<span class="fc" id="L108">        }</span>
+
+<span class="fc" id="L110">        final class InnerObserver implements MaybeObserver&lt;R&gt; {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L114">                DisposableHelper.setOnce(FlatMapMaybeObserver.this, d);</span>
+<span class="fc" id="L115">            }</span>
+
+            @Override
+            public void onSuccess(R value) {
+<span class="fc" id="L119">                downstream.onSuccess(value);</span>
+<span class="fc" id="L120">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L124">                downstream.onError(e);</span>
+<span class="fc" id="L125">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L129">                downstream.onComplete();</span>
+<span class="fc" id="L130">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

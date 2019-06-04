@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BoundedSubscriber.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.subscribers</a> &gt; <span class="el_source">BoundedSubscriber.java</span></div><h1>BoundedSubscriber.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.subscribers;
+
+import io.reactivex.FlowableSubscriber;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.CompositeException;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.Consumer;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.observers.LambdaConsumerIntrospection;
+import io.reactivex.plugins.RxJavaPlugins;
+import org.reactivestreams.Subscription;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+public final class BoundedSubscriber&lt;T&gt; extends AtomicReference&lt;Subscription&gt;
+        implements FlowableSubscriber&lt;T&gt;, Subscription, Disposable, LambdaConsumerIntrospection {
+
+    private static final long serialVersionUID = -7251123623727029452L;
+    final Consumer&lt;? super T&gt; onNext;
+    final Consumer&lt;? super Throwable&gt; onError;
+    final Action onComplete;
+    final Consumer&lt;? super Subscription&gt; onSubscribe;
+
+    final int bufferSize;
+    int consumed;
+    final int limit;
+
+    public BoundedSubscriber(Consumer&lt;? super T&gt; onNext, Consumer&lt;? super Throwable&gt; onError,
+                            Action onComplete, Consumer&lt;? super Subscription&gt; onSubscribe, int bufferSize) {
+<span class="fc" id="L45">        super();</span>
+<span class="fc" id="L46">        this.onNext = onNext;</span>
+<span class="fc" id="L47">        this.onError = onError;</span>
+<span class="fc" id="L48">        this.onComplete = onComplete;</span>
+<span class="fc" id="L49">        this.onSubscribe = onSubscribe;</span>
+<span class="fc" id="L50">        this.bufferSize = bufferSize;</span>
+<span class="fc" id="L51">        this.limit = bufferSize - (bufferSize &gt;&gt; 2);</span>
+<span class="fc" id="L52">    }</span>
+
+    @Override
+    public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (SubscriptionHelper.setOnce(this, s)) {</span>
+            try {
+<span class="fc" id="L58">                onSubscribe.accept(this);</span>
+<span class="fc" id="L59">            } catch (Throwable e) {</span>
+<span class="fc" id="L60">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L61">                s.cancel();</span>
+<span class="fc" id="L62">                onError(e);</span>
+<span class="fc" id="L63">            }</span>
+        }
+<span class="fc" id="L65">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (!isDisposed()) {</span>
+            try {
+<span class="fc" id="L71">                onNext.accept(t);</span>
+
+<span class="fc" id="L73">                int c = consumed + 1;</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                if (c == limit) {</span>
+<span class="fc" id="L75">                    consumed = 0;</span>
+<span class="fc" id="L76">                    get().request(limit);</span>
+                } else {
+<span class="fc" id="L78">                    consumed = c;</span>
+                }
+<span class="fc" id="L80">            } catch (Throwable e) {</span>
+<span class="fc" id="L81">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L82">                get().cancel();</span>
+<span class="fc" id="L83">                onError(e);</span>
+<span class="fc" id="L84">            }</span>
+        }
+<span class="fc" id="L86">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (get() != SubscriptionHelper.CANCELLED) {</span>
+<span class="fc" id="L91">            lazySet(SubscriptionHelper.CANCELLED);</span>
+            try {
+<span class="fc" id="L93">                onError.accept(t);</span>
+<span class="fc" id="L94">            } catch (Throwable e) {</span>
+<span class="fc" id="L95">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L96">                RxJavaPlugins.onError(new CompositeException(t, e));</span>
+<span class="fc" id="L97">            }</span>
+        } else {
+<span class="fc" id="L99">            RxJavaPlugins.onError(t);</span>
+        }
+<span class="fc" id="L101">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (get() != SubscriptionHelper.CANCELLED) {</span>
+<span class="fc" id="L106">            lazySet(SubscriptionHelper.CANCELLED);</span>
+            try {
+<span class="fc" id="L108">                onComplete.run();</span>
+<span class="fc" id="L109">            } catch (Throwable e) {</span>
+<span class="fc" id="L110">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L111">                RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L112">            }</span>
+        }
+<span class="fc" id="L114">    }</span>
+
+    @Override
+    public void dispose() {
+<span class="nc" id="L118">        cancel();</span>
+<span class="nc" id="L119">    }</span>
+
+    @Override
+    public boolean isDisposed() {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        return get() == SubscriptionHelper.CANCELLED;</span>
+    }
+
+    @Override
+    public void request(long n) {
+<span class="fc" id="L128">        get().request(n);</span>
+<span class="fc" id="L129">    }</span>
+
+    @Override
+    public void cancel() {
+<span class="nc" id="L133">        SubscriptionHelper.cancel(this);</span>
+<span class="nc" id="L134">    }</span>
+
+    @Override
+    public boolean hasCustomOnError() {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        return onError != Functions.ON_ERROR_MISSING;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BasicFuseableObserver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.observers</a> &gt; <span class="el_source">BasicFuseableObserver.java</span></div><h1>BasicFuseableObserver.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.observers;
+
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.fuseable.QueueDisposable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Base class for a fuseable intermediate observer.
+ * @param &lt;T&gt; the upstream value type
+ * @param &lt;R&gt; the downstream value type
+ */
+public abstract class BasicFuseableObserver&lt;T, R&gt; implements Observer&lt;T&gt;, QueueDisposable&lt;R&gt; {
+
+    /** The downstream subscriber. */
+    protected final Observer&lt;? super R&gt; downstream;
+
+    /** The upstream subscription. */
+    protected Disposable upstream;
+
+    /** The upstream's QueueDisposable if not null. */
+    protected QueueDisposable&lt;T&gt; qd;
+
+    /** Flag indicating no further onXXX event should be accepted. */
+    protected boolean done;
+
+    /** Holds the established fusion mode of the upstream. */
+    protected int sourceMode;
+
+    /**
+     * Construct a BasicFuseableObserver by wrapping the given subscriber.
+     * @param downstream the subscriber, not null (not verified)
+     */
+<span class="fc" id="L49">    public BasicFuseableObserver(Observer&lt;? super R&gt; downstream) {</span>
+<span class="fc" id="L50">        this.downstream = downstream;</span>
+<span class="fc" id="L51">    }</span>
+
+    // final: fixed protocol steps to support fuseable and non-fuseable upstream
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public final void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (DisposableHelper.validate(this.upstream, d)) {</span>
+
+<span class="fc" id="L59">            this.upstream = d;</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (d instanceof QueueDisposable) {</span>
+<span class="fc" id="L61">                this.qd = (QueueDisposable&lt;T&gt;)d;</span>
+            }
+
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (beforeDownstream()) {</span>
+
+<span class="fc" id="L66">                downstream.onSubscribe(this);</span>
+
+<span class="fc" id="L68">                afterDownstream();</span>
+            }
+
+        }
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * Override this to perform actions before the call {@code actual.onSubscribe(this)} happens.
+     * @return true if onSubscribe should continue with the call
+     */
+    protected boolean beforeDownstream() {
+<span class="fc" id="L79">        return true;</span>
+    }
+
+    /**
+     * Override this to perform actions after the call to {@code actual.onSubscribe(this)} happened.
+     */
+    protected void afterDownstream() {
+        // default no-op
+<span class="fc" id="L87">    }</span>
+
+    // -----------------------------------
+    // Convenience and state-aware methods
+    // -----------------------------------
+
+    @Override
+    public void onError(Throwable t) {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L96">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L97">            return;</span>
+        }
+<span class="fc" id="L99">        done = true;</span>
+<span class="fc" id="L100">        downstream.onError(t);</span>
+<span class="fc" id="L101">    }</span>
+
+    /**
+     * Rethrows the throwable if it is a fatal exception or calls {@link #onError(Throwable)}.
+     * @param t the throwable to rethrow or signal to the actual subscriber
+     */
+    protected final void fail(Throwable t) {
+<span class="fc" id="L108">        Exceptions.throwIfFatal(t);</span>
+<span class="fc" id="L109">        upstream.dispose();</span>
+<span class="fc" id="L110">        onError(t);</span>
+<span class="fc" id="L111">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L116">            return;</span>
+        }
+<span class="fc" id="L118">        done = true;</span>
+<span class="fc" id="L119">        downstream.onComplete();</span>
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * Calls the upstream's QueueDisposable.requestFusion with the mode and
+     * saves the established mode in {@link #sourceMode} if that mode doesn't
+     * have the {@link QueueDisposable#BOUNDARY} flag set.
+     * &lt;p&gt;
+     * If the upstream doesn't support fusion ({@link #qd} is null), the method
+     * returns {@link QueueDisposable#NONE}.
+     * @param mode the fusion mode requested
+     * @return the established fusion mode
+     */
+    protected final int transitiveBoundaryFusion(int mode) {
+<span class="fc" id="L133">        QueueDisposable&lt;T&gt; qd = this.qd;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (qd != null) {</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if ((mode &amp; BOUNDARY) == 0) {</span>
+<span class="fc" id="L136">                int m = qd.requestFusion(mode);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                if (m != NONE) {</span>
+<span class="fc" id="L138">                    sourceMode = m;</span>
+                }
+<span class="fc" id="L140">                return m;</span>
+            }
+        }
+<span class="fc" id="L143">        return NONE;</span>
+    }
+
+    // --------------------------------------------------------------
+    // Default implementation of the RS and QS protocol (can be overridden)
+    // --------------------------------------------------------------
+
+    @Override
+    public void dispose() {
+<span class="fc" id="L152">        upstream.dispose();</span>
+<span class="fc" id="L153">    }</span>
+
+    @Override
+    public boolean isDisposed() {
+<span class="fc" id="L157">        return upstream.isDisposed();</span>
+    }
+
+    @Override
+    public boolean isEmpty() {
+<span class="fc" id="L162">        return qd.isEmpty();</span>
+    }
+
+    @Override
+    public void clear() {
+<span class="fc" id="L167">        qd.clear();</span>
+<span class="fc" id="L168">    }</span>
+
+    // -----------------------------------------------------------
+    // The rest of the Queue interface methods shouldn't be called
+    // -----------------------------------------------------------
+
+    @Override
+    public final boolean offer(R e) {
+<span class="fc" id="L176">        throw new UnsupportedOperationException(&quot;Should not be called!&quot;);</span>
+    }
+
+    @Override
+    public final boolean offer(R v1, R v2) {
+<span class="fc" id="L181">        throw new UnsupportedOperationException(&quot;Should not be called!&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

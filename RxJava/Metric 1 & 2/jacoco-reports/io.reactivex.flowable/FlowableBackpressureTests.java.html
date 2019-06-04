@@ -1,0 +1,751 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableBackpressureTests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.flowable</a> &gt; <span class="el_source">FlowableBackpressureTests.java</span></div><h1>FlowableBackpressureTests.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.*;
+import org.junit.rules.TestName;
+import org.reactivestreams.*;
+
+import io.reactivex.Flowable;
+import io.reactivex.exceptions.MissingBackpressureException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.BackpressureHelper;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L34">public class FlowableBackpressureTests {</span>
+
+    static final class FirehoseNoBackpressure extends AtomicBoolean implements Subscription {
+
+        private static final long serialVersionUID = -669931580197884015L;
+        final Subscriber&lt;? super Integer&gt; downstream;
+        final AtomicInteger counter;
+        volatile boolean cancelled;
+
+<span class="fc" id="L43">        private FirehoseNoBackpressure(AtomicInteger counter, Subscriber&lt;? super Integer&gt; s) {</span>
+<span class="fc" id="L44">            this.counter = counter;</span>
+<span class="fc" id="L45">            this.downstream = s;</span>
+<span class="fc" id="L46">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (!SubscriptionHelper.validate(n)) {</span>
+<span class="nc" id="L51">                return;</span>
+            }
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">            if (compareAndSet(false, true)) {</span>
+<span class="fc" id="L54">                int i = 0;</span>
+<span class="fc" id="L55">                final Subscriber&lt;? super Integer&gt; a = downstream;</span>
+<span class="fc" id="L56">                final AtomicInteger c = counter;</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                while (!cancelled) {</span>
+<span class="fc" id="L59">                    a.onNext(i++);</span>
+<span class="fc" id="L60">                    c.incrementAndGet();</span>
+                }
+<span class="fc" id="L62">                System.out.println(&quot;unsubscribed after: &quot; + i);</span>
+            }
+<span class="fc" id="L64">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L68">            cancelled = true;</span>
+<span class="fc" id="L69">        }</span>
+    }
+
+<span class="fc" id="L72">    @Rule</span>
+    public TestName testName = new TestName();
+
+    @After
+    public void doAfterTest() {
+        // FIXME LATER
+//        TestObstructionDetection.checkObstruction();
+<span class="fc" id="L79">    }</span>
+
+    @Test
+    public void testObserveOn() {
+<span class="fc" id="L83">        int num = (int) (Flowable.bufferSize() * 2.1);</span>
+<span class="fc" id="L84">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L85">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L86">        incrementingIntegers(c).observeOn(Schedulers.computation()).take(num).subscribe(ts);</span>
+<span class="fc" id="L87">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L88">        ts.assertNoErrors();</span>
+<span class="fc" id="L89">        System.out.println(&quot;testObserveOn =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get());</span>
+<span class="fc" id="L90">        assertEquals(num, ts.valueCount());</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        assertTrue(c.get() &lt; Flowable.bufferSize() * 4);</span>
+<span class="fc" id="L92">    }</span>
+
+    @Test
+    public void testObserveOnWithSlowConsumer() {
+<span class="fc" id="L96">        int num = (int) (Flowable.bufferSize() * 0.2);</span>
+<span class="fc" id="L97">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L98">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L99">        incrementingIntegers(c).observeOn(Schedulers.computation()).map(</span>
+<span class="fc" id="L100">            new Function&lt;Integer, Integer&gt;() {</span>
+                @Override
+                public Integer apply(Integer i) {
+                    try {
+<span class="fc" id="L104">                        Thread.sleep(1);</span>
+<span class="nc" id="L105">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L106">                        e.printStackTrace();</span>
+<span class="fc" id="L107">                    }</span>
+<span class="fc" id="L108">                    return i;</span>
+                }
+            }
+<span class="fc" id="L111">        ).take(num).subscribe(ts);</span>
+<span class="fc" id="L112">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L113">        ts.assertNoErrors();</span>
+<span class="fc" id="L114">        System.out.println(&quot;testObserveOnWithSlowConsumer =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get());</span>
+<span class="fc" id="L115">        assertEquals(num, ts.valueCount());</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        assertTrue(c.get() &lt; Flowable.bufferSize() * 2);</span>
+<span class="fc" id="L117">    }</span>
+
+    @Test
+    public void testMergeSync() {
+<span class="fc" id="L121">        int num = (int) (Flowable.bufferSize() * 4.1);</span>
+<span class="fc" id="L122">        AtomicInteger c1 = new AtomicInteger();</span>
+<span class="fc" id="L123">        AtomicInteger c2 = new AtomicInteger();</span>
+<span class="fc" id="L124">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L125">        Flowable&lt;Integer&gt; merged = Flowable.merge(incrementingIntegers(c1), incrementingIntegers(c2));</span>
+
+<span class="fc" id="L127">        merged.take(num).subscribe(ts);</span>
+<span class="fc" id="L128">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L129">        ts.assertNoErrors();</span>
+<span class="fc" id="L130">        System.out.println(&quot;Expected: &quot; + num + &quot; got: &quot; + ts.valueCount());</span>
+<span class="fc" id="L131">        System.out.println(&quot;testMergeSync =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c1.get() + &quot; / &quot; + c2.get());</span>
+<span class="fc" id="L132">        assertEquals(num, ts.valueCount());</span>
+        // either one can starve the other, but neither should be capable of doing more than 5 batches (taking 4.1)
+        // TODO is it possible to make this deterministic rather than one possibly starving the other?
+        // benjchristensen =&gt; In general I'd say it's not worth trying to make it so, as &quot;fair&quot; algoritms generally take a performance hit
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        assertTrue(c1.get() &lt; Flowable.bufferSize() * 5);</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        assertTrue(c2.get() &lt; Flowable.bufferSize() * 5);</span>
+<span class="fc" id="L138">    }</span>
+
+    @Test
+    public void testMergeAsync() {
+<span class="fc" id="L142">        int num = (int) (Flowable.bufferSize() * 4.1);</span>
+<span class="fc" id="L143">        AtomicInteger c1 = new AtomicInteger();</span>
+<span class="fc" id="L144">        AtomicInteger c2 = new AtomicInteger();</span>
+<span class="fc" id="L145">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L146">        Flowable&lt;Integer&gt; merged = Flowable.merge(</span>
+<span class="fc" id="L147">                incrementingIntegers(c1).subscribeOn(Schedulers.computation()),</span>
+<span class="fc" id="L148">                incrementingIntegers(c2).subscribeOn(Schedulers.computation()));</span>
+
+<span class="fc" id="L150">        merged.take(num).subscribe(ts);</span>
+<span class="fc" id="L151">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L152">        ts.assertNoErrors();</span>
+<span class="fc" id="L153">        System.out.println(&quot;testMergeAsync =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c1.get() + &quot; / &quot; + c2.get());</span>
+<span class="fc" id="L154">        assertEquals(num, ts.valueCount());</span>
+        // either one can starve the other, but neither should be capable of doing more than 5 batches (taking 4.1)
+        // TODO is it possible to make this deterministic rather than one possibly starving the other?
+        // benjchristensen =&gt; In general I'd say it's not worth trying to make it so, as &quot;fair&quot; algoritms generally take a performance hit
+<span class="fc" id="L158">        int max = Flowable.bufferSize() * 7;</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        assertTrue(&quot;&quot; + c1.get() + &quot; &gt;= &quot; + max, c1.get() &lt; max);</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        assertTrue(&quot;&quot; + c2.get() + &quot; &gt;= &quot; + max, c2.get() &lt; max);</span>
+<span class="fc" id="L161">    }</span>
+
+    @Test
+    public void testMergeAsyncThenObserveOnLoop() {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (i % 10 == 0) {</span>
+<span class="fc" id="L167">                System.out.println(&quot;testMergeAsyncThenObserveOnLoop &gt;&gt; &quot; + i);</span>
+            }
+            // Verify there is no MissingBackpressureException
+<span class="fc" id="L170">            int num = (int) (Flowable.bufferSize() * 4.1);</span>
+<span class="fc" id="L171">            AtomicInteger c1 = new AtomicInteger();</span>
+<span class="fc" id="L172">            AtomicInteger c2 = new AtomicInteger();</span>
+
+<span class="fc" id="L174">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L175">            Flowable&lt;Integer&gt; merged = Flowable.merge(</span>
+<span class="fc" id="L176">                    incrementingIntegers(c1).subscribeOn(Schedulers.computation()),</span>
+<span class="fc" id="L177">                    incrementingIntegers(c2).subscribeOn(Schedulers.computation()));</span>
+
+<span class="fc" id="L179">            merged</span>
+<span class="fc" id="L180">            .observeOn(Schedulers.io())</span>
+<span class="fc" id="L181">            .take(num)</span>
+<span class="fc" id="L182">            .subscribe(ts);</span>
+
+<span class="fc" id="L184">            ts.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L185">            ts.assertComplete();</span>
+<span class="fc" id="L186">            ts.assertNoErrors();</span>
+<span class="fc" id="L187">            System.out.println(&quot;testMergeAsyncThenObserveOn =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c1.get() + &quot; / &quot; + c2.get());</span>
+<span class="fc" id="L188">            assertEquals(num, ts.valueCount());</span>
+        }
+<span class="fc" id="L190">    }</span>
+
+    @Test
+    public void testMergeAsyncThenObserveOn() {
+<span class="fc" id="L194">        int num = (int) (Flowable.bufferSize() * 4.1);</span>
+<span class="fc" id="L195">        AtomicInteger c1 = new AtomicInteger();</span>
+<span class="fc" id="L196">        AtomicInteger c2 = new AtomicInteger();</span>
+<span class="fc" id="L197">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L198">        Flowable&lt;Integer&gt; merged = Flowable.merge(</span>
+<span class="fc" id="L199">                incrementingIntegers(c1).subscribeOn(Schedulers.computation()),</span>
+<span class="fc" id="L200">                incrementingIntegers(c2).subscribeOn(Schedulers.computation()));</span>
+
+<span class="fc" id="L202">        merged.observeOn(Schedulers.newThread()).take(num).subscribe(ts);</span>
+<span class="fc" id="L203">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L204">        ts.assertNoErrors();</span>
+<span class="fc" id="L205">        System.out.println(&quot;testMergeAsyncThenObserveOn =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c1.get() + &quot; / &quot; + c2.get());</span>
+<span class="fc" id="L206">        assertEquals(num, ts.valueCount());</span>
+        // either one can starve the other, but neither should be capable of doing more than 5 batches (taking 4.1)
+        // TODO is it possible to make this deterministic rather than one possibly starving the other?
+        // benjchristensen =&gt; In general I'd say it's not worth trying to make it so, as &quot;fair&quot; algoritms generally take a performance hit
+        // akarnokd =&gt; run this in a loop over 10k times and never saw values get as high as 7*SIZE, but since observeOn delays the unsubscription non-deterministically, the test will remain unreliable
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        assertTrue(c1.get() &lt; Flowable.bufferSize() * 7);</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        assertTrue(c2.get() &lt; Flowable.bufferSize() * 7);</span>
+<span class="fc" id="L213">    }</span>
+
+    @Test
+    public void testFlatMapSync() {
+<span class="fc" id="L217">        int num = (int) (Flowable.bufferSize() * 2.1);</span>
+<span class="fc" id="L218">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L219">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L221">        incrementingIntegers(c)</span>
+<span class="fc" id="L222">        .flatMap(new Function&lt;Integer, Publisher&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Integer&gt; apply(Integer i) {
+<span class="fc" id="L225">                return incrementingIntegers(new AtomicInteger()).take(10);</span>
+            }
+        })
+<span class="fc" id="L228">        .take(num).subscribe(ts);</span>
+
+<span class="fc" id="L230">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L231">        ts.assertNoErrors();</span>
+<span class="fc" id="L232">        System.out.println(&quot;testFlatMapSync =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get());</span>
+<span class="fc" id="L233">        assertEquals(num, ts.valueCount());</span>
+        // expect less than 1 buffer since the flatMap is emitting 10 each time, so it is num/10 that will be taken.
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">        assertTrue(c.get() &lt; Flowable.bufferSize());</span>
+<span class="fc" id="L236">    }</span>
+
+    @Test
+    @Ignore(&quot;The test is non-deterministic and can't be made deterministic&quot;)
+    public void testFlatMapAsync() {
+<span class="nc" id="L241">        int num = (int) (Flowable.bufferSize() * 2.1);</span>
+<span class="nc" id="L242">        AtomicInteger c = new AtomicInteger();</span>
+<span class="nc" id="L243">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="nc" id="L245">        incrementingIntegers(c)</span>
+<span class="nc" id="L246">        .subscribeOn(Schedulers.computation())</span>
+<span class="nc" id="L247">        .flatMap(new Function&lt;Integer, Publisher&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Integer&gt; apply(Integer i) {
+<span class="nc" id="L250">                return incrementingIntegers(new AtomicInteger())</span>
+<span class="nc" id="L251">                        .take(10)</span>
+<span class="nc" id="L252">                        .subscribeOn(Schedulers.computation());</span>
+            }
+        }
+        )
+<span class="nc" id="L256">        .take(num).subscribe(ts);</span>
+
+<span class="nc" id="L258">        ts.awaitTerminalEvent();</span>
+<span class="nc" id="L259">        ts.assertNoErrors();</span>
+<span class="nc" id="L260">        System.out.println(&quot;testFlatMapAsync =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get() + &quot; Size: &quot; + Flowable.bufferSize());</span>
+<span class="nc" id="L261">        assertEquals(num, ts.valueCount());</span>
+        // even though we only need 10, it will request at least Flowable.bufferSize(), and then as it drains keep requesting more
+        // and then it will be non-deterministic when the take() causes the unsubscribe as it is scheduled on 10 different schedulers (threads)
+        // normally this number is ~250 but can get up to ~1200 when Flowable.bufferSize() == 1024
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        assertTrue(c.get() &lt;= Flowable.bufferSize() * 2);</span>
+<span class="nc" id="L266">    }</span>
+
+    @Test
+    public void testZipSync() {
+<span class="fc" id="L270">        int num = (int) (Flowable.bufferSize() * 4.1);</span>
+<span class="fc" id="L271">        AtomicInteger c1 = new AtomicInteger();</span>
+<span class="fc" id="L272">        AtomicInteger c2 = new AtomicInteger();</span>
+<span class="fc" id="L273">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L275">        Flowable&lt;Integer&gt; zipped = Flowable.zip(</span>
+<span class="fc" id="L276">                incrementingIntegers(c1),</span>
+<span class="fc" id="L277">                incrementingIntegers(c2),</span>
+<span class="fc" id="L278">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L281">                        return t1 + t2;</span>
+                    }
+                });
+
+<span class="fc" id="L285">        zipped.take(num)</span>
+<span class="fc" id="L286">        .subscribe(ts);</span>
+
+<span class="fc" id="L288">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L289">        ts.assertNoErrors();</span>
+<span class="fc" id="L290">        System.out.println(&quot;testZipSync =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c1.get() + &quot; / &quot; + c2.get());</span>
+<span class="fc" id="L291">        assertEquals(num, ts.valueCount());</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        assertTrue(c1.get() &lt; Flowable.bufferSize() * 7);</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">        assertTrue(c2.get() &lt; Flowable.bufferSize() * 7);</span>
+<span class="fc" id="L294">    }</span>
+
+    @Test
+    public void testZipAsync() {
+<span class="fc" id="L298">        int num = (int) (Flowable.bufferSize() * 2.1);</span>
+<span class="fc" id="L299">        AtomicInteger c1 = new AtomicInteger();</span>
+<span class="fc" id="L300">        AtomicInteger c2 = new AtomicInteger();</span>
+<span class="fc" id="L301">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L302">        Flowable&lt;Integer&gt; zipped = Flowable.zip(</span>
+<span class="fc" id="L303">                incrementingIntegers(c1).subscribeOn(Schedulers.computation()),</span>
+<span class="fc" id="L304">                incrementingIntegers(c2).subscribeOn(Schedulers.computation()),</span>
+<span class="fc" id="L305">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L308">                        return t1 + t2;</span>
+                    }
+                });
+
+<span class="fc" id="L312">        zipped.take(num).subscribe(ts);</span>
+<span class="fc" id="L313">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L314">        ts.assertNoErrors();</span>
+<span class="fc" id="L315">        System.out.println(&quot;testZipAsync =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c1.get() + &quot; / &quot; + c2.get());</span>
+<span class="fc" id="L316">        assertEquals(num, ts.valueCount());</span>
+<span class="fc" id="L317">        int max = Flowable.bufferSize() * 5;</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">        assertTrue(&quot;&quot; + c1.get() + &quot; &gt;= &quot; + max, c1.get() &lt; max);</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">        assertTrue(&quot;&quot; + c2.get() + &quot; &gt;= &quot; + max, c2.get() &lt; max);</span>
+<span class="fc" id="L320">    }</span>
+
+    @Test
+    public void testSubscribeOnScheduling() {
+        // in a loop for repeating the concurrency in this to increase chance of failure
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L326">            int num = (int) (Flowable.bufferSize() * 2.1);</span>
+<span class="fc" id="L327">            AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L328">            ConcurrentLinkedQueue&lt;Thread&gt; threads = new ConcurrentLinkedQueue&lt;Thread&gt;();</span>
+<span class="fc" id="L329">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+            // observeOn is there to make it async and need backpressure
+<span class="fc" id="L331">            incrementingIntegers(c, threads).subscribeOn(Schedulers.computation()).observeOn(Schedulers.computation()).take(num).subscribe(ts);</span>
+<span class="fc" id="L332">            ts.awaitTerminalEvent();</span>
+<span class="fc" id="L333">            ts.assertNoErrors();</span>
+<span class="fc" id="L334">            System.out.println(&quot;testSubscribeOnScheduling =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get());</span>
+<span class="fc" id="L335">            assertEquals(num, ts.valueCount());</span>
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">            assertTrue(c.get() &lt; Flowable.bufferSize() * 4);</span>
+<span class="fc" id="L337">            Thread first = null;</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">            for (Thread t : threads) {</span>
+<span class="fc" id="L339">                System.out.println(&quot;testSubscribeOnScheduling =&gt; thread: &quot; + t);</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">                if (first == null) {</span>
+<span class="fc" id="L341">                    first = t;</span>
+                } else {
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">                    if (!first.equals(t)) {</span>
+<span class="nc" id="L344">                        fail(&quot;Expected to see the same thread&quot;);</span>
+                    }
+                }
+<span class="fc" id="L347">            }</span>
+<span class="fc" id="L348">            System.out.println(&quot;testSubscribeOnScheduling =&gt; Number of batch requests seen: &quot; + threads.size());</span>
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">            assertTrue(threads.size() &gt; 1);</span>
+<span class="fc" id="L350">            System.out.println(&quot;-------------------------------------------------------------------------------------------&quot;);</span>
+        }
+<span class="fc" id="L352">    }</span>
+
+    @Test
+    public void testTakeFilterSkipChainAsync() {
+<span class="fc" id="L356">        int num = (int) (Flowable.bufferSize() * 2.1);</span>
+<span class="fc" id="L357">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L358">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L359">        incrementingIntegers(c).observeOn(Schedulers.computation())</span>
+<span class="fc" id="L360">                .skip(10000)</span>
+<span class="fc" id="L361">                .filter(new Predicate&lt;Integer&gt;() {</span>
+                    @Override
+                    public boolean test(Integer i) {
+<span class="fc bfc" id="L364" title="All 2 branches covered.">                        return i &gt; 11000;</span>
+                    }
+<span class="fc" id="L366">                }).take(num).subscribe(ts);</span>
+
+<span class="fc" id="L368">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L369">        ts.assertNoErrors();</span>
+
+        // emit 10000 that are skipped
+        // emit next 1000 that are filtered out
+        // take num
+        // so emitted is at least 10000+1000+num + extra for buffer size/threshold
+<span class="fc" id="L375">        int expected = 10000 + 1000 + Flowable.bufferSize() * 3 + Flowable.bufferSize() / 2;</span>
+
+<span class="fc" id="L377">        System.out.println(&quot;testTakeFilterSkipChain =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get() + &quot; Expected: &quot; + expected);</span>
+<span class="fc" id="L378">        assertEquals(num, ts.valueCount());</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        assertTrue(c.get() &lt; expected);</span>
+<span class="fc" id="L380">    }</span>
+
+    @Test
+    public void testUserSubscriberUsingRequestSync() {
+<span class="fc" id="L384">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L385">        final AtomicInteger totalReceived = new AtomicInteger();</span>
+<span class="fc" id="L386">        final AtomicInteger batches = new AtomicInteger();</span>
+<span class="fc" id="L387">        final AtomicInteger received = new AtomicInteger();</span>
+<span class="fc" id="L388">        incrementingIntegers(c).subscribe(new ResourceSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onStart() {
+<span class="fc" id="L392">                request(100);</span>
+<span class="fc" id="L393">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L398">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L403">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L407">                int total = totalReceived.incrementAndGet();</span>
+<span class="fc" id="L408">                received.incrementAndGet();</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">                if (total &gt;= 2000) {</span>
+<span class="fc" id="L410">                    dispose();</span>
+                }
+<span class="fc bfc" id="L412" title="All 2 branches covered.">                if (received.get() == 100) {</span>
+<span class="fc" id="L413">                    batches.incrementAndGet();</span>
+<span class="fc" id="L414">                    request(100);</span>
+<span class="fc" id="L415">                    received.set(0);</span>
+                }
+<span class="fc" id="L417">            }</span>
+
+        });
+
+<span class="fc" id="L421">        System.out.println(&quot;testUserSubscriberUsingRequestSync =&gt; Received: &quot; + totalReceived.get() + &quot;  Emitted: &quot; + c.get() + &quot; Request Batches: &quot; + batches.get());</span>
+<span class="fc" id="L422">        assertEquals(2000, c.get());</span>
+<span class="fc" id="L423">        assertEquals(2000, totalReceived.get());</span>
+<span class="fc" id="L424">        assertEquals(20, batches.get());</span>
+<span class="fc" id="L425">    }</span>
+
+    @Test
+    public void testUserSubscriberUsingRequestAsync() throws InterruptedException {
+<span class="fc" id="L429">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L430">        final AtomicInteger totalReceived = new AtomicInteger();</span>
+<span class="fc" id="L431">        final AtomicInteger received = new AtomicInteger();</span>
+<span class="fc" id="L432">        final AtomicInteger batches = new AtomicInteger();</span>
+<span class="fc" id="L433">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L434">        incrementingIntegers(c).subscribeOn(Schedulers.newThread()).subscribe(</span>
+<span class="fc" id="L435">                new ResourceSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onStart() {
+<span class="fc" id="L439">                request(100);</span>
+<span class="fc" id="L440">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L444">                latch.countDown();</span>
+<span class="nc" id="L445">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L449">                latch.countDown();</span>
+<span class="nc" id="L450">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L454">                int total = totalReceived.incrementAndGet();</span>
+<span class="fc" id="L455">                received.incrementAndGet();</span>
+<span class="fc" id="L456">                boolean done = false;</span>
+<span class="fc bfc" id="L457" title="All 2 branches covered.">                if (total &gt;= 2000) {</span>
+<span class="fc" id="L458">                    done = true;</span>
+<span class="fc" id="L459">                    dispose();</span>
+                }
+<span class="fc bfc" id="L461" title="All 2 branches covered.">                if (received.get() == 100) {</span>
+<span class="fc" id="L462">                    batches.incrementAndGet();</span>
+<span class="fc" id="L463">                    received.set(0);</span>
+<span class="fc bfc" id="L464" title="All 2 branches covered.">                    if (!done) {</span>
+<span class="fc" id="L465">                        request(100);</span>
+                    }
+                }
+<span class="fc bfc" id="L468" title="All 2 branches covered.">                if (done) {</span>
+<span class="fc" id="L469">                    latch.countDown();</span>
+                }
+<span class="fc" id="L471">            }</span>
+
+        });
+
+<span class="fc" id="L475">        latch.await();</span>
+<span class="fc" id="L476">        System.out.println(&quot;testUserSubscriberUsingRequestAsync =&gt; Received: &quot; + totalReceived.get() + &quot;  Emitted: &quot; + c.get() + &quot; Request Batches: &quot; + batches.get());</span>
+<span class="fc" id="L477">        assertEquals(2000, c.get());</span>
+<span class="fc" id="L478">        assertEquals(2000, totalReceived.get());</span>
+<span class="fc" id="L479">        assertEquals(20, batches.get());</span>
+<span class="fc" id="L480">    }</span>
+
+    @Test(timeout = 2000)
+    public void testFirehoseFailsAsExpected() {
+<span class="fc" id="L484">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L485">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L487">        firehose(c).observeOn(Schedulers.computation())</span>
+<span class="fc" id="L488">        .map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer v) {
+                try {
+<span class="fc" id="L492">                    Thread.sleep(10);</span>
+<span class="nc" id="L493">                } catch (Exception e) {</span>
+<span class="nc" id="L494">                    e.printStackTrace();</span>
+<span class="fc" id="L495">                }</span>
+<span class="fc" id="L496">                return v;</span>
+            }
+        })
+<span class="fc" id="L499">        .subscribe(ts);</span>
+
+<span class="fc" id="L501">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L502">        System.out.println(&quot;testFirehoseFailsAsExpected =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get());</span>
+
+        // FIXME it is possible slow is not slow enough or the main gets delayed and thus more than one source value is emitted.
+<span class="fc" id="L505">        int vc = ts.valueCount();</span>
+<span class="pc bpc" id="L506" title="1 of 2 branches missed.">        assertTrue(&quot;10 &lt; &quot; + vc, vc &lt;= 10);</span>
+
+<span class="fc" id="L508">        ts.assertError(MissingBackpressureException.class);</span>
+<span class="fc" id="L509">    }</span>
+
+    @Test
+    public void testFirehoseFailsAsExpectedLoop() {
+<span class="fc bfc" id="L513" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L514">            testFirehoseFailsAsExpected();</span>
+        }
+<span class="fc" id="L516">    }</span>
+
+    @Test(timeout = 10000)
+    public void testOnBackpressureDrop() {
+<span class="fc" id="L520">        long t = System.currentTimeMillis();</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+            // stop the test if we are getting close to the timeout because slow machines
+            // may not get through 100 iterations
+<span class="pc bpc" id="L524" title="1 of 2 branches missed.">            if (System.currentTimeMillis() - t &gt; TimeUnit.SECONDS.toMillis(9)) {</span>
+<span class="nc" id="L525">                break;</span>
+            }
+<span class="fc" id="L527">            int num = (int) (Flowable.bufferSize() * 1.1); // &gt; 1 so that take doesn't prevent buffer overflow</span>
+<span class="fc" id="L528">            AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L529">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L530">            firehose(c).onBackpressureDrop()</span>
+<span class="fc" id="L531">            .observeOn(Schedulers.computation())</span>
+<span class="fc" id="L532">            .map(SLOW_PASS_THRU).take(num).subscribe(ts);</span>
+<span class="fc" id="L533">            ts.awaitTerminalEvent();</span>
+<span class="fc" id="L534">            ts.assertNoErrors();</span>
+
+<span class="fc" id="L536">            List&lt;Integer&gt; onNextEvents = ts.values();</span>
+<span class="fc" id="L537">            assertEquals(num, onNextEvents.size());</span>
+
+<span class="fc" id="L539">            Integer lastEvent = onNextEvents.get(num - 1);</span>
+
+<span class="fc" id="L541">            System.out.println(&quot;testOnBackpressureDrop =&gt; Received: &quot; + onNextEvents.size() + &quot;  Emitted: &quot; + c.get() + &quot; Last value: &quot; + lastEvent);</span>
+            // it drop, so we should get some number far higher than what would have sequentially incremented
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">            assertTrue(num - 1 &lt;= lastEvent.intValue());</span>
+        }
+<span class="fc" id="L545">    }</span>
+
+    @Test(timeout = 20000)
+    public void testOnBackpressureDropWithAction() {
+<span class="fc bfc" id="L549" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L550">            final AtomicInteger emitCount = new AtomicInteger();</span>
+<span class="fc" id="L551">            final AtomicInteger dropCount = new AtomicInteger();</span>
+<span class="fc" id="L552">            final AtomicInteger passCount = new AtomicInteger();</span>
+<span class="fc" id="L553">            final int num = Flowable.bufferSize() * 3; // &gt; 1 so that take doesn't prevent buffer overflow</span>
+<span class="fc" id="L554">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L556">            firehose(emitCount)</span>
+<span class="fc" id="L557">            .onBackpressureDrop(new Consumer&lt;Integer&gt;() {</span>
+                @Override
+                public void accept(Integer v) {
+<span class="fc" id="L560">                    dropCount.incrementAndGet();</span>
+<span class="fc" id="L561">                }</span>
+            })
+<span class="fc" id="L563">            .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+                @Override
+                public void accept(Integer v) {
+<span class="fc" id="L566">                    passCount.incrementAndGet();</span>
+<span class="fc" id="L567">                }</span>
+            })
+<span class="fc" id="L569">            .observeOn(Schedulers.computation())</span>
+<span class="fc" id="L570">            .map(SLOW_PASS_THRU)</span>
+<span class="fc" id="L571">            .take(num).subscribe(ts);</span>
+
+<span class="fc" id="L573">            ts.awaitTerminalEvent();</span>
+<span class="fc" id="L574">            ts.assertNoErrors();</span>
+
+<span class="fc" id="L576">            List&lt;Integer&gt; onNextEvents = ts.values();</span>
+<span class="fc" id="L577">            Integer lastEvent = onNextEvents.get(num - 1);</span>
+<span class="fc" id="L578">            System.out.println(testName.getMethodName() + &quot; =&gt; Received: &quot; + onNextEvents.size() + &quot; Passed: &quot; + passCount.get() + &quot; Dropped: &quot; + dropCount.get() + &quot;  Emitted: &quot; + emitCount.get() + &quot; Last value: &quot; + lastEvent);</span>
+<span class="fc" id="L579">            assertEquals(num, onNextEvents.size());</span>
+            // in reality, num &lt; passCount
+<span class="pc bpc" id="L581" title="1 of 2 branches missed.">            assertTrue(num &lt;= passCount.get());</span>
+            // it drop, so we should get some number far higher than what would have sequentially incremented
+<span class="pc bpc" id="L583" title="1 of 2 branches missed.">            assertTrue(num - 1 &lt;= lastEvent.intValue());</span>
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">            assertTrue(0 &lt; dropCount.get());</span>
+<span class="fc" id="L585">            assertEquals(emitCount.get(), passCount.get() + dropCount.get());</span>
+        }
+<span class="fc" id="L587">    }</span>
+
+    @Test(timeout = 10000)
+    public void testOnBackpressureDropSynchronous() {
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L592">            int num = (int) (Flowable.bufferSize() * 1.1); // &gt; 1 so that take doesn't prevent buffer overflow</span>
+<span class="fc" id="L593">            AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L594">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L595">            firehose(c).onBackpressureDrop()</span>
+<span class="fc" id="L596">            .map(SLOW_PASS_THRU).take(num).subscribe(ts);</span>
+<span class="fc" id="L597">            ts.awaitTerminalEvent();</span>
+<span class="fc" id="L598">            ts.assertNoErrors();</span>
+
+<span class="fc" id="L600">            List&lt;Integer&gt; onNextEvents = ts.values();</span>
+<span class="fc" id="L601">            assertEquals(num, onNextEvents.size());</span>
+
+<span class="fc" id="L603">            Integer lastEvent = onNextEvents.get(num - 1);</span>
+
+<span class="fc" id="L605">            System.out.println(&quot;testOnBackpressureDrop =&gt; Received: &quot; + onNextEvents.size() + &quot;  Emitted: &quot; + c.get() + &quot; Last value: &quot; + lastEvent);</span>
+            // it drop, so we should get some number far higher than what would have sequentially incremented
+<span class="pc bpc" id="L607" title="1 of 2 branches missed.">            assertTrue(num - 1 &lt;= lastEvent.intValue());</span>
+        }
+<span class="fc" id="L609">    }</span>
+
+    @Test(timeout = 10000)
+    public void testOnBackpressureDropSynchronousWithAction() {
+<span class="fc bfc" id="L613" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L614">            final AtomicInteger dropCount = new AtomicInteger();</span>
+<span class="fc" id="L615">            int num = (int) (Flowable.bufferSize() * 1.1); // &gt; 1 so that take doesn't prevent buffer overflow</span>
+<span class="fc" id="L616">            AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L617">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L618">            firehose(c).onBackpressureDrop(new Consumer&lt;Integer&gt;() {</span>
+                @Override
+                public void accept(Integer j) {
+<span class="nc" id="L621">                    dropCount.incrementAndGet();</span>
+<span class="nc" id="L622">                }</span>
+            })
+<span class="fc" id="L624">            .map(SLOW_PASS_THRU).take(num).subscribe(ts);</span>
+<span class="fc" id="L625">            ts.awaitTerminalEvent();</span>
+<span class="fc" id="L626">            ts.assertNoErrors();</span>
+
+<span class="fc" id="L628">            List&lt;Integer&gt; onNextEvents = ts.values();</span>
+<span class="fc" id="L629">            assertEquals(num, onNextEvents.size());</span>
+
+<span class="fc" id="L631">            Integer lastEvent = onNextEvents.get(num - 1);</span>
+
+<span class="fc" id="L633">            System.out.println(&quot;testOnBackpressureDrop =&gt; Received: &quot; + onNextEvents.size() + &quot; Dropped: &quot; + dropCount.get() + &quot;  Emitted: &quot; + c.get() + &quot; Last value: &quot; + lastEvent);</span>
+            // it drop, so we should get some number far higher than what would have sequentially incremented
+<span class="pc bpc" id="L635" title="1 of 2 branches missed.">            assertTrue(num - 1 &lt;= lastEvent.intValue());</span>
+            // no drop in synchronous mode
+<span class="fc" id="L637">            assertEquals(0, dropCount.get());</span>
+<span class="fc" id="L638">            assertEquals(c.get(), onNextEvents.size());</span>
+        }
+<span class="fc" id="L640">    }</span>
+
+    @Test(timeout = 2000)
+    public void testOnBackpressureBuffer() {
+<span class="fc" id="L644">        int num = (int) (Flowable.bufferSize() * 1.1); // &gt; 1 so that take doesn't prevent buffer overflow</span>
+<span class="fc" id="L645">        AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L646">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L648">        firehose(c).takeWhile(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer t1) {
+<span class="fc bfc" id="L651" title="All 2 branches covered.">                return t1 &lt; 100000;</span>
+            }
+        })
+<span class="fc" id="L654">        .onBackpressureBuffer()</span>
+<span class="fc" id="L655">        .observeOn(Schedulers.computation())</span>
+<span class="fc" id="L656">        .map(SLOW_PASS_THRU).take(num).subscribe(ts);</span>
+
+<span class="fc" id="L658">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L659">        ts.assertNoErrors();</span>
+<span class="fc" id="L660">        System.out.println(&quot;testOnBackpressureBuffer =&gt; Received: &quot; + ts.valueCount() + &quot;  Emitted: &quot; + c.get());</span>
+<span class="fc" id="L661">        assertEquals(num, ts.valueCount());</span>
+        // it buffers, so we should get the right value sequentially
+<span class="fc" id="L663">        assertEquals(num - 1, ts.values().get(num - 1).intValue());</span>
+<span class="fc" id="L664">    }</span>
+
+    /**
+     * A synchronous Observable that will emit incrementing integers as requested.
+     *
+     * @param counter
+     * @return
+     */
+    private static Flowable&lt;Integer&gt; incrementingIntegers(final AtomicInteger counter) {
+<span class="fc" id="L673">        return incrementingIntegers(counter, null);</span>
+    }
+
+    private static Flowable&lt;Integer&gt; incrementingIntegers(final AtomicInteger counter, final ConcurrentLinkedQueue&lt;Thread&gt; threadsSeen) {
+<span class="fc" id="L677">        return Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(final Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L681">                s.onSubscribe(new Subscription() {</span>
+                    int i;
+
+                    volatile boolean cancelled;
+
+<span class="fc" id="L686">                    final AtomicLong requested = new AtomicLong();</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">                        if (!SubscriptionHelper.validate(n)) {</span>
+<span class="nc" id="L691">                            return;</span>
+                        }
+<span class="fc bfc" id="L693" title="All 2 branches covered.">                        if (threadsSeen != null) {</span>
+<span class="fc" id="L694">                            threadsSeen.offer(Thread.currentThread());</span>
+                        }
+<span class="fc" id="L696">                        long c = BackpressureHelper.add(requested, n);</span>
+<span class="fc bfc" id="L697" title="All 2 branches covered.">                        if (c == 0) {</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">                            while (!cancelled) {</span>
+<span class="fc" id="L699">                                counter.incrementAndGet();</span>
+<span class="fc" id="L700">                                s.onNext(i++);</span>
+<span class="fc bfc" id="L701" title="All 2 branches covered.">                                if (requested.decrementAndGet() == 0) {</span>
+                                    // we're done emitting the number requested so return
+<span class="fc" id="L703">                                    return;</span>
+                                }
+                            }
+                        }
+<span class="fc" id="L707">                    }</span>
+
+                    @Override
+                    public void cancel() {
+<span class="fc" id="L711">                        cancelled = true;</span>
+<span class="fc" id="L712">                    }</span>
+                });
+<span class="fc" id="L714">            }</span>
+
+        });
+    }
+
+    /**
+     * Incrementing int without backpressure.
+     *
+     * @param counter
+     * @return
+     */
+    private static Flowable&lt;Integer&gt; firehose(final AtomicInteger counter) {
+<span class="fc" id="L726">        return Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L729">                Subscription s2 = new FirehoseNoBackpressure(counter, s);</span>
+<span class="fc" id="L730">                s.onSubscribe(s2);</span>
+<span class="fc" id="L731">            }</span>
+        });
+    }
+
+<span class="fc" id="L735">    static final Function&lt;Integer, Integer&gt; SLOW_PASS_THRU = new Function&lt;Integer, Integer&gt;() {</span>
+        volatile int sink;
+        @Override
+        public Integer apply(Integer t1) {
+            // be slow ... but faster than Thread.sleep(1)
+<span class="fc" id="L740">            String t = &quot;&quot;;</span>
+<span class="fc" id="L741">            int s = sink;</span>
+<span class="fc bfc" id="L742" title="All 2 branches covered.">            for (int i = 2000; i &gt;= 0; i--) {</span>
+<span class="fc" id="L743">                t = String.valueOf(i + t.hashCode() + s);</span>
+            }
+<span class="fc" id="L745">            sink = t.hashCode();</span>
+<span class="fc" id="L746">            return t1;</span>
+        }
+
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableWithLatestFrom.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableWithLatestFrom.java</span></div><h1>FlowableWithLatestFrom.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.ConditionalSubscriber;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.subscribers.SerializedSubscriber;
+
+public final class FlowableWithLatestFrom&lt;T, U, R&gt; extends AbstractFlowableWithUpstream&lt;T, R&gt; {
+    final BiFunction&lt;? super T, ? super U, ? extends R&gt; combiner;
+    final Publisher&lt;? extends U&gt; other;
+    public FlowableWithLatestFrom(Flowable&lt;T&gt; source, BiFunction&lt;? super T, ? super U, ? extends R&gt; combiner, Publisher&lt;? extends U&gt; other) {
+<span class="fc" id="L32">        super(source);</span>
+<span class="fc" id="L33">        this.combiner = combiner;</span>
+<span class="fc" id="L34">        this.other = other;</span>
+<span class="fc" id="L35">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super R&gt; s) {
+<span class="fc" id="L39">        final SerializedSubscriber&lt;R&gt; serial = new SerializedSubscriber&lt;R&gt;(s);</span>
+<span class="fc" id="L40">        final WithLatestFromSubscriber&lt;T, U, R&gt; wlf = new WithLatestFromSubscriber&lt;T, U, R&gt;(serial, combiner);</span>
+
+<span class="fc" id="L42">        serial.onSubscribe(wlf);</span>
+
+<span class="fc" id="L44">        other.subscribe(new FlowableWithLatestSubscriber(wlf));</span>
+
+<span class="fc" id="L46">        source.subscribe(wlf);</span>
+<span class="fc" id="L47">    }</span>
+
+    static final class WithLatestFromSubscriber&lt;T, U, R&gt; extends AtomicReference&lt;U&gt;
+    implements ConditionalSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = -312246233408980075L;
+
+        final Subscriber&lt;? super R&gt; downstream;
+
+        final BiFunction&lt;? super T, ? super U, ? extends R&gt; combiner;
+
+<span class="fc" id="L58">        final AtomicReference&lt;Subscription&gt; upstream = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L60">        final AtomicLong requested = new AtomicLong();</span>
+
+<span class="fc" id="L62">        final AtomicReference&lt;Subscription&gt; other = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L64">        WithLatestFromSubscriber(Subscriber&lt;? super R&gt; actual, BiFunction&lt;? super T, ? super U, ? extends R&gt; combiner) {</span>
+<span class="fc" id="L65">            this.downstream = actual;</span>
+<span class="fc" id="L66">            this.combiner = combiner;</span>
+<span class="fc" id="L67">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L71">            SubscriptionHelper.deferredSetOnce(this.upstream, requested, s);</span>
+<span class="fc" id="L72">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (!tryOnNext(t)) {</span>
+<span class="fc" id="L77">                upstream.get().request(1);</span>
+            }
+<span class="fc" id="L79">        }</span>
+
+        @Override
+        public boolean tryOnNext(T t) {
+<span class="fc" id="L83">            U u = get();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (u != null) {</span>
+                R r;
+                try {
+<span class="fc" id="L87">                    r = ObjectHelper.requireNonNull(combiner.apply(t, u), &quot;The combiner returned a null value&quot;);</span>
+<span class="fc" id="L88">                } catch (Throwable e) {</span>
+<span class="fc" id="L89">                    Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L90">                    cancel();</span>
+<span class="fc" id="L91">                    downstream.onError(e);</span>
+<span class="fc" id="L92">                    return false;</span>
+<span class="fc" id="L93">                }</span>
+<span class="fc" id="L94">                downstream.onNext(r);</span>
+<span class="fc" id="L95">                return true;</span>
+            } else {
+<span class="fc" id="L97">                return false;</span>
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L103">            SubscriptionHelper.cancel(other);</span>
+<span class="fc" id="L104">            downstream.onError(t);</span>
+<span class="fc" id="L105">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L109">            SubscriptionHelper.cancel(other);</span>
+<span class="fc" id="L110">            downstream.onComplete();</span>
+<span class="fc" id="L111">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L115">            SubscriptionHelper.deferredRequest(upstream, requested, n);</span>
+<span class="fc" id="L116">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L120">            SubscriptionHelper.cancel(upstream);</span>
+<span class="fc" id="L121">            SubscriptionHelper.cancel(other);</span>
+<span class="fc" id="L122">        }</span>
+
+        public boolean setOther(Subscription o) {
+<span class="fc" id="L125">            return SubscriptionHelper.setOnce(other, o);</span>
+        }
+
+        public void otherError(Throwable e) {
+<span class="fc" id="L129">            SubscriptionHelper.cancel(upstream);</span>
+<span class="fc" id="L130">            downstream.onError(e);</span>
+<span class="fc" id="L131">        }</span>
+    }
+
+    final class FlowableWithLatestSubscriber implements FlowableSubscriber&lt;U&gt; {
+        private final WithLatestFromSubscriber&lt;T, U, R&gt; wlf;
+
+<span class="fc" id="L137">        FlowableWithLatestSubscriber(WithLatestFromSubscriber&lt;T, U, R&gt; wlf) {</span>
+<span class="fc" id="L138">            this.wlf = wlf;</span>
+<span class="fc" id="L139">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (wlf.setOther(s)) {</span>
+<span class="fc" id="L144">                s.request(Long.MAX_VALUE);</span>
+            }
+<span class="fc" id="L146">        }</span>
+
+        @Override
+        public void onNext(U t) {
+<span class="fc" id="L150">            wlf.lazySet(t);</span>
+<span class="fc" id="L151">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L155">            wlf.otherError(t);</span>
+<span class="fc" id="L156">        }</span>
+
+        @Override
+        public void onComplete() {
+            // nothing to do, the wlf will complete on its own pace
+<span class="fc" id="L161">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

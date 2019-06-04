@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.subscriptions</a> &gt; <span class="el_source">SubscriptionHelper.java</span></div><h1>SubscriptionHelper.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.subscriptions;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.Subscription;
+
+import io.reactivex.exceptions.ProtocolViolationException;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.util.BackpressureHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Utility methods to validate Subscriptions in the various onSubscribe calls.
+ */
+<span class="fc" id="L28">public enum SubscriptionHelper implements Subscription {</span>
+    /**
+     * Represents a cancelled Subscription.
+     * &lt;p&gt;Don't leak this instance!
+     */
+<span class="fc" id="L33">    CANCELLED</span>
+    ;
+
+    @Override
+    public void request(long n) {
+        // deliberately ignored
+<span class="fc" id="L39">    }</span>
+
+    @Override
+    public void cancel() {
+        // deliberately ignored
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * Verifies that current is null, next is not null, otherwise signals errors
+     * to the RxJavaPlugins and returns false.
+     * @param current the current Subscription, expected to be null
+     * @param next the next Subscription, expected to be non-null
+     * @return true if the validation succeeded
+     */
+    public static boolean validate(Subscription current, Subscription next) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (next == null) {</span>
+<span class="fc" id="L55">            RxJavaPlugins.onError(new NullPointerException(&quot;next is null&quot;));</span>
+<span class="fc" id="L56">            return false;</span>
+        }
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if (current != null) {</span>
+<span class="fc" id="L59">            next.cancel();</span>
+<span class="fc" id="L60">            reportSubscriptionSet();</span>
+<span class="fc" id="L61">            return false;</span>
+        }
+<span class="fc" id="L63">        return true;</span>
+    }
+
+    /**
+     * Reports that the subscription is already set to the RxJavaPlugins error handler,
+     * which is an indication of a onSubscribe management bug.
+     */
+    public static void reportSubscriptionSet() {
+<span class="fc" id="L71">        RxJavaPlugins.onError(new ProtocolViolationException(&quot;Subscription already set!&quot;));</span>
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * Validates that the n is positive.
+     * @param n the request amount
+     * @return false if n is non-positive.
+     */
+    public static boolean validate(long n) {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (n &lt;= 0) {</span>
+<span class="fc" id="L81">            RxJavaPlugins.onError(new IllegalArgumentException(&quot;n &gt; 0 required but it was &quot; + n));</span>
+<span class="fc" id="L82">            return false;</span>
+        }
+<span class="fc" id="L84">        return true;</span>
+    }
+
+    /**
+     * Reports to the plugin error handler that there were more values produced than requested, which
+     * is a sign of internal backpressure handling bug.
+     * @param n the overproduction amount
+     */
+    public static void reportMoreProduced(long n) {
+<span class="fc" id="L93">        RxJavaPlugins.onError(new ProtocolViolationException(&quot;More produced than requested: &quot; + n));</span>
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Atomically sets the subscription on the field and cancels the
+     * previous subscription if any.
+     * @param field the target field to set the new subscription on
+     * @param s the new subscription
+     * @return true if the operation succeeded, false if the target field
+     * holds the {@link #CANCELLED} instance.
+     * @see #replace(AtomicReference, Subscription)
+     */
+    public static boolean set(AtomicReference&lt;Subscription&gt; field, Subscription s) {
+        for (;;) {
+<span class="fc" id="L107">            Subscription current = field.get();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (current == CANCELLED) {</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                if (s != null) {</span>
+<span class="fc" id="L110">                    s.cancel();</span>
+                }
+<span class="fc" id="L112">                return false;</span>
+            }
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (field.compareAndSet(current, s)) {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                if (current != null) {</span>
+<span class="fc" id="L116">                    current.cancel();</span>
+                }
+<span class="fc" id="L118">                return true;</span>
+            }
+<span class="fc" id="L120">        }</span>
+    }
+
+    /**
+     * Atomically sets the subscription on the field if it is still null.
+     * &lt;p&gt;If the field is not null and doesn't contain the {@link #CANCELLED}
+     * instance, the {@link #reportSubscriptionSet()} is called.
+     * @param field the target field
+     * @param s the new subscription to set
+     * @return true if the operation succeeded, false if the target field was not null.
+     */
+    public static boolean setOnce(AtomicReference&lt;Subscription&gt; field, Subscription s) {
+<span class="fc" id="L132">        ObjectHelper.requireNonNull(s, &quot;s is null&quot;);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (!field.compareAndSet(null, s)) {</span>
+<span class="fc" id="L134">            s.cancel();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (field.get() != CANCELLED) {</span>
+<span class="fc" id="L136">                reportSubscriptionSet();</span>
+            }
+<span class="fc" id="L138">            return false;</span>
+        }
+<span class="fc" id="L140">        return true;</span>
+    }
+
+    /**
+     * Atomically sets the subscription on the field but does not
+     * cancel the previous subscription.
+     * @param field the target field to set the new subscription on
+     * @param s the new subscription
+     * @return true if the operation succeeded, false if the target field
+     * holds the {@link #CANCELLED} instance.
+     * @see #set(AtomicReference, Subscription)
+     */
+    public static boolean replace(AtomicReference&lt;Subscription&gt; field, Subscription s) {
+        for (;;) {
+<span class="fc" id="L154">            Subscription current = field.get();</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (current == CANCELLED) {</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                if (s != null) {</span>
+<span class="fc" id="L157">                    s.cancel();</span>
+                }
+<span class="fc" id="L159">                return false;</span>
+            }
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (field.compareAndSet(current, s)) {</span>
+<span class="fc" id="L162">                return true;</span>
+            }
+<span class="fc" id="L164">        }</span>
+    }
+
+    /**
+     * Atomically swaps in the common cancelled subscription instance
+     * and cancels the previous subscription if any.
+     * @param field the target field to dispose the contents of
+     * @return true if the swap from the non-cancelled instance to the
+     * common cancelled instance happened in the caller's thread (allows
+     * further one-time actions).
+     */
+    public static boolean cancel(AtomicReference&lt;Subscription&gt; field) {
+<span class="fc" id="L176">        Subscription current = field.get();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (current != CANCELLED) {</span>
+<span class="fc" id="L178">            current = field.getAndSet(CANCELLED);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            if (current != CANCELLED) {</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                if (current != null) {</span>
+<span class="fc" id="L181">                    current.cancel();</span>
+                }
+<span class="fc" id="L183">                return true;</span>
+            }
+        }
+<span class="fc" id="L186">        return false;</span>
+    }
+
+    /**
+     * Atomically sets the new Subscription on the field and requests any accumulated amount
+     * from the requested field.
+     * @param field the target field for the new Subscription
+     * @param requested the current requested amount
+     * @param s the new Subscription, not null (verified)
+     * @return true if the Subscription was set the first time
+     */
+    public static boolean deferredSetOnce(AtomicReference&lt;Subscription&gt; field, AtomicLong requested,
+            Subscription s) {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (SubscriptionHelper.setOnce(field, s)) {</span>
+<span class="fc" id="L200">            long r = requested.getAndSet(0L);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">            if (r != 0L) {</span>
+<span class="fc" id="L202">                s.request(r);</span>
+            }
+<span class="fc" id="L204">            return true;</span>
+        }
+<span class="fc" id="L206">        return false;</span>
+    }
+
+    /**
+     * Atomically requests from the Subscription in the field if not null, otherwise accumulates
+     * the request amount in the requested field to be requested once the field is set to non-null.
+     * @param field the target field that may already contain a Subscription
+     * @param requested the current requested amount
+     * @param n the request amount, positive (verified)
+     */
+    public static void deferredRequest(AtomicReference&lt;Subscription&gt; field, AtomicLong requested, long n) {
+<span class="fc" id="L217">        Subscription s = field.get();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (s != null) {</span>
+<span class="fc" id="L219">            s.request(n);</span>
+        } else {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L222">                BackpressureHelper.add(requested, n);</span>
+
+<span class="fc" id="L224">                s = field.get();</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                if (s != null) {</span>
+<span class="fc" id="L226">                    long r = requested.getAndSet(0L);</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                    if (r != 0L) {</span>
+<span class="fc" id="L228">                        s.request(r);</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L233">    }</span>
+
+    /**
+     * Atomically sets the subscription on the field if it is still null and issues a positive request
+     * to the given {@link Subscription}.
+     * &lt;p&gt;
+     * If the field is not null and doesn't contain the {@link #CANCELLED}
+     * instance, the {@link #reportSubscriptionSet()} is called.
+     * @param field the target field
+     * @param s the new subscription to set
+     * @param request the amount to request, positive (not verified)
+     * @return true if the operation succeeded, false if the target field was not null.
+     * @since 2.1.11
+     */
+    public static boolean setOnce(AtomicReference&lt;Subscription&gt; field, Subscription s, long request) {
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (setOnce(field, s)) {</span>
+<span class="fc" id="L249">            s.request(request);</span>
+<span class="fc" id="L250">            return true;</span>
+        }
+<span class="fc" id="L252">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

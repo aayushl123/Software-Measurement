@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleResumeNext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleResumeNext.java</span></div><h1>SingleResumeNext.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.observers.ResumeSingleObserver;
+
+public final class SingleResumeNext&lt;T&gt; extends Single&lt;T&gt; {
+    final SingleSource&lt;? extends T&gt; source;
+
+    final Function&lt;? super Throwable, ? extends SingleSource&lt;? extends T&gt;&gt; nextFunction;
+
+    public SingleResumeNext(SingleSource&lt;? extends T&gt; source,
+<span class="fc" id="L32">            Function&lt;? super Throwable, ? extends SingleSource&lt;? extends T&gt;&gt; nextFunction) {</span>
+<span class="fc" id="L33">        this.source = source;</span>
+<span class="fc" id="L34">        this.nextFunction = nextFunction;</span>
+<span class="fc" id="L35">    }</span>
+
+    @Override
+    protected void subscribeActual(final SingleObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L39">        source.subscribe(new ResumeMainSingleObserver&lt;T&gt;(observer, nextFunction));</span>
+<span class="fc" id="L40">    }</span>
+
+    static final class ResumeMainSingleObserver&lt;T&gt; extends AtomicReference&lt;Disposable&gt;
+    implements SingleObserver&lt;T&gt;, Disposable {
+        private static final long serialVersionUID = -5314538511045349925L;
+
+        final SingleObserver&lt;? super T&gt; downstream;
+
+        final Function&lt;? super Throwable, ? extends SingleSource&lt;? extends T&gt;&gt; nextFunction;
+
+        ResumeMainSingleObserver(SingleObserver&lt;? super T&gt; actual,
+<span class="fc" id="L51">                Function&lt;? super Throwable, ? extends SingleSource&lt;? extends T&gt;&gt; nextFunction) {</span>
+<span class="fc" id="L52">            this.downstream = actual;</span>
+<span class="fc" id="L53">            this.nextFunction = nextFunction;</span>
+<span class="fc" id="L54">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            if (DisposableHelper.setOnce(this, d)) {</span>
+<span class="fc" id="L59">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L61">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L65">            downstream.onSuccess(value);</span>
+<span class="fc" id="L66">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+            SingleSource&lt;? extends T&gt; source;
+
+            try {
+<span class="fc" id="L73">                source = ObjectHelper.requireNonNull(nextFunction.apply(e), &quot;The nextFunction returned a null SingleSource.&quot;);</span>
+<span class="fc" id="L74">            } catch (Throwable ex) {</span>
+<span class="fc" id="L75">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L76">                downstream.onError(new CompositeException(e, ex));</span>
+<span class="fc" id="L77">                return;</span>
+<span class="fc" id="L78">            }</span>
+
+<span class="fc" id="L80">            source.subscribe(new ResumeSingleObserver&lt;T&gt;(this, downstream));</span>
+<span class="fc" id="L81">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L85">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L86">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L90">            return DisposableHelper.isDisposed(get());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

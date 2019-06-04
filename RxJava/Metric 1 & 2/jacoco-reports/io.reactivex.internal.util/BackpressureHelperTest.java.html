@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BackpressureHelperTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.util</a> &gt; <span class="el_source">BackpressureHelperTest.java</span></div><h1>BackpressureHelperTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+package io.reactivex.internal.util;
+
+import static org.junit.Assert.assertEquals;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.junit.*;
+
+import io.reactivex.TestHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L28">public class BackpressureHelperTest {</span>
+    @Ignore(&quot;BackpressureHelper is an enum&quot;)
+    @Test
+    public void constructorShouldBePrivate() {
+<span class="nc" id="L32">        TestHelper.checkUtilityClass(BackpressureHelper.class);</span>
+<span class="nc" id="L33">    }</span>
+
+    @Test
+    public void testAddCap() {
+<span class="fc" id="L37">        assertEquals(2L, BackpressureHelper.addCap(1, 1));</span>
+<span class="fc" id="L38">        assertEquals(Long.MAX_VALUE, BackpressureHelper.addCap(1, Long.MAX_VALUE - 1));</span>
+<span class="fc" id="L39">        assertEquals(Long.MAX_VALUE, BackpressureHelper.addCap(1, Long.MAX_VALUE));</span>
+<span class="fc" id="L40">        assertEquals(Long.MAX_VALUE, BackpressureHelper.addCap(Long.MAX_VALUE - 1, Long.MAX_VALUE - 1));</span>
+<span class="fc" id="L41">        assertEquals(Long.MAX_VALUE, BackpressureHelper.addCap(Long.MAX_VALUE, Long.MAX_VALUE));</span>
+<span class="fc" id="L42">    }</span>
+
+    @Test
+    public void testMultiplyCap() {
+<span class="fc" id="L46">        assertEquals(6, BackpressureHelper.multiplyCap(2, 3));</span>
+<span class="fc" id="L47">        assertEquals(Long.MAX_VALUE, BackpressureHelper.multiplyCap(2, Long.MAX_VALUE));</span>
+<span class="fc" id="L48">        assertEquals(Long.MAX_VALUE, BackpressureHelper.multiplyCap(Long.MAX_VALUE, Long.MAX_VALUE));</span>
+<span class="fc" id="L49">        assertEquals(Long.MAX_VALUE, BackpressureHelper.multiplyCap(1L &lt;&lt; 32, 1L &lt;&lt; 32));</span>
+
+<span class="fc" id="L51">    }</span>
+
+    @Test
+    public void producedMore() {
+<span class="fc" id="L55">        List&lt;Throwable&gt; list = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L58">            AtomicLong requested = new AtomicLong(1);</span>
+
+<span class="fc" id="L60">            assertEquals(0, BackpressureHelper.produced(requested, 2));</span>
+
+<span class="fc" id="L62">            TestHelper.assertError(list, 0, IllegalStateException.class, &quot;More produced than requested: -1&quot;);</span>
+        } finally {
+<span class="fc" id="L64">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L66">    }</span>
+
+    @Test
+    public void producedMoreCancel() {
+<span class="fc" id="L70">        List&lt;Throwable&gt; list = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L73">            AtomicLong requested = new AtomicLong(1);</span>
+
+<span class="fc" id="L75">            assertEquals(0, BackpressureHelper.producedCancel(requested, 2));</span>
+
+<span class="fc" id="L77">            TestHelper.assertError(list, 0, IllegalStateException.class, &quot;More produced than requested: -1&quot;);</span>
+        } finally {
+<span class="fc" id="L79">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L81">    }</span>
+
+    @Test
+    public void requestProduceRace() {
+<span class="fc" id="L85">        final AtomicLong requested = new AtomicLong(1);</span>
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L89">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L92">                    BackpressureHelper.produced(requested, 1);</span>
+<span class="fc" id="L93">                }</span>
+            };
+
+<span class="fc" id="L96">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L99">                    BackpressureHelper.add(requested, 1);</span>
+<span class="fc" id="L100">                }</span>
+            };
+
+<span class="fc" id="L103">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L105">    }</span>
+
+    @Test
+    public void requestCancelProduceRace() {
+<span class="fc" id="L109">        final AtomicLong requested = new AtomicLong(1);</span>
+
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L113">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L116">                    BackpressureHelper.produced(requested, 1);</span>
+<span class="fc" id="L117">                }</span>
+            };
+
+<span class="fc" id="L120">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L123">                    BackpressureHelper.addCancel(requested, 1);</span>
+<span class="fc" id="L124">                }</span>
+            };
+
+<span class="fc" id="L127">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L129">    }</span>
+
+    @Test
+    public void utilityClass() {
+<span class="fc" id="L133">        TestHelper.checkUtilityClass(BackpressureHelper.class);</span>
+<span class="fc" id="L134">    }</span>
+
+    @Test
+    public void capped() {
+<span class="fc" id="L138">        final AtomicLong requested = new AtomicLong(Long.MIN_VALUE);</span>
+
+<span class="fc" id="L140">        assertEquals(Long.MIN_VALUE, BackpressureHelper.addCancel(requested, 1));</span>
+<span class="fc" id="L141">        assertEquals(Long.MIN_VALUE, BackpressureHelper.addCancel(requested, Long.MAX_VALUE));</span>
+
+<span class="fc" id="L143">        requested.set(0);</span>
+
+<span class="fc" id="L145">        assertEquals(0, BackpressureHelper.addCancel(requested, Long.MAX_VALUE));</span>
+<span class="fc" id="L146">        assertEquals(Long.MAX_VALUE, BackpressureHelper.addCancel(requested, 1));</span>
+<span class="fc" id="L147">        assertEquals(Long.MAX_VALUE, BackpressureHelper.addCancel(requested, Long.MAX_VALUE));</span>
+
+<span class="fc" id="L149">        requested.set(0);</span>
+
+<span class="fc" id="L151">        assertEquals(0, BackpressureHelper.add(requested, Long.MAX_VALUE));</span>
+<span class="fc" id="L152">        assertEquals(Long.MAX_VALUE, BackpressureHelper.add(requested, 1));</span>
+<span class="fc" id="L153">        assertEquals(Long.MAX_VALUE, BackpressureHelper.add(requested, Long.MAX_VALUE));</span>
+
+<span class="fc" id="L155">        assertEquals(Long.MAX_VALUE, BackpressureHelper.produced(requested, 1));</span>
+<span class="fc" id="L156">        assertEquals(Long.MAX_VALUE, BackpressureHelper.produced(requested, Long.MAX_VALUE));</span>
+<span class="fc" id="L157">    }</span>
+
+    @Test
+    public void multiplyCap() {
+<span class="fc" id="L161">        assertEquals(Long.MAX_VALUE, BackpressureHelper.multiplyCap(3, Long.MAX_VALUE &gt;&gt; 1));</span>
+
+<span class="fc" id="L163">        assertEquals(Long.MAX_VALUE, BackpressureHelper.multiplyCap(1, Long.MAX_VALUE));</span>
+<span class="fc" id="L164">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

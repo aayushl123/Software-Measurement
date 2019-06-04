@@ -1,0 +1,434 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableZipIterableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableZipIterableTest.java</span></div><h1>ObservableZipIterableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.mockito.InOrder;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.util.CrashingIterable;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L36">public class ObservableZipIterableTest {</span>
+    BiFunction&lt;String, String, String&gt; concat2Strings;
+    PublishSubject&lt;String&gt; s1;
+    PublishSubject&lt;String&gt; s2;
+    Observable&lt;String&gt; zipped;
+
+    Observer&lt;String&gt; observer;
+    InOrder inOrder;
+
+    @Before
+    public void setUp() {
+<span class="fc" id="L47">        concat2Strings = new BiFunction&lt;String, String, String&gt;() {</span>
+            @Override
+            public String apply(String t1, String t2) {
+<span class="fc" id="L50">                return t1 + &quot;-&quot; + t2;</span>
+            }
+        };
+
+<span class="fc" id="L54">        s1 = PublishSubject.create();</span>
+<span class="fc" id="L55">        s2 = PublishSubject.create();</span>
+<span class="fc" id="L56">        zipped = Observable.zip(s1, s2, concat2Strings);</span>
+
+<span class="fc" id="L58">        observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L59">        inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L61">        zipped.subscribe(observer);</span>
+<span class="fc" id="L62">    }</span>
+
+<span class="fc" id="L64">    BiFunction&lt;Object, Object, String&gt; zipr2 = new BiFunction&lt;Object, Object, String&gt;() {</span>
+
+        @Override
+        public String apply(Object t1, Object t2) {
+<span class="fc" id="L68">            return &quot;&quot; + t1 + t2;</span>
+        }
+
+    };
+<span class="fc" id="L72">    Function3&lt;Object, Object, Object, String&gt; zipr3 = new Function3&lt;Object, Object, Object, String&gt;() {</span>
+
+        @Override
+        public String apply(Object t1, Object t2, Object t3) {
+<span class="nc" id="L76">            return &quot;&quot; + t1 + t2 + t3;</span>
+        }
+
+    };
+
+    @Test
+    public void testZipIterableSameSize() {
+<span class="fc" id="L83">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L85">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L86">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L88">        Iterable&lt;String&gt; r2 = Arrays.asList(&quot;1&quot;, &quot;2&quot;, &quot;3&quot;);</span>
+
+<span class="fc" id="L90">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L92">        r1.onNext(&quot;one-&quot;);</span>
+<span class="fc" id="L93">        r1.onNext(&quot;two-&quot;);</span>
+<span class="fc" id="L94">        r1.onNext(&quot;three-&quot;);</span>
+<span class="fc" id="L95">        r1.onComplete();</span>
+
+<span class="fc" id="L97">        io.verify(o).onNext(&quot;one-1&quot;);</span>
+<span class="fc" id="L98">        io.verify(o).onNext(&quot;two-2&quot;);</span>
+<span class="fc" id="L99">        io.verify(o).onNext(&quot;three-3&quot;);</span>
+<span class="fc" id="L100">        io.verify(o).onComplete();</span>
+
+<span class="fc" id="L102">        verify(o, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L104">    }</span>
+
+    @Test
+    public void testZipIterableEmptyFirstSize() {
+<span class="fc" id="L108">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L110">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L111">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L113">        Iterable&lt;String&gt; r2 = Arrays.asList(&quot;1&quot;, &quot;2&quot;, &quot;3&quot;);</span>
+
+<span class="fc" id="L115">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L117">        r1.onComplete();</span>
+
+<span class="fc" id="L119">        io.verify(o).onComplete();</span>
+
+<span class="fc" id="L121">        verify(o, never()).onNext(any(String.class));</span>
+<span class="fc" id="L122">        verify(o, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L124">    }</span>
+
+    @Test
+    public void testZipIterableEmptySecond() {
+<span class="fc" id="L128">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L130">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L131">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L133">        Iterable&lt;String&gt; r2 = Arrays.asList();</span>
+
+<span class="fc" id="L135">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L137">        r1.onNext(&quot;one-&quot;);</span>
+<span class="fc" id="L138">        r1.onNext(&quot;two-&quot;);</span>
+<span class="fc" id="L139">        r1.onNext(&quot;three-&quot;);</span>
+<span class="fc" id="L140">        r1.onComplete();</span>
+
+<span class="fc" id="L142">        io.verify(o).onComplete();</span>
+
+<span class="fc" id="L144">        verify(o, never()).onNext(any(String.class));</span>
+<span class="fc" id="L145">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L146">    }</span>
+
+    @Test
+    public void testZipIterableFirstShorter() {
+<span class="fc" id="L150">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L152">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L153">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L155">        Iterable&lt;String&gt; r2 = Arrays.asList(&quot;1&quot;, &quot;2&quot;, &quot;3&quot;);</span>
+
+<span class="fc" id="L157">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L159">        r1.onNext(&quot;one-&quot;);</span>
+<span class="fc" id="L160">        r1.onNext(&quot;two-&quot;);</span>
+<span class="fc" id="L161">        r1.onComplete();</span>
+
+<span class="fc" id="L163">        io.verify(o).onNext(&quot;one-1&quot;);</span>
+<span class="fc" id="L164">        io.verify(o).onNext(&quot;two-2&quot;);</span>
+<span class="fc" id="L165">        io.verify(o).onComplete();</span>
+
+<span class="fc" id="L167">        verify(o, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L169">    }</span>
+
+    @Test
+    public void testZipIterableSecondShorter() {
+<span class="fc" id="L173">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L175">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L176">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L178">        Iterable&lt;String&gt; r2 = Arrays.asList(&quot;1&quot;, &quot;2&quot;);</span>
+
+<span class="fc" id="L180">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L182">        r1.onNext(&quot;one-&quot;);</span>
+<span class="fc" id="L183">        r1.onNext(&quot;two-&quot;);</span>
+<span class="fc" id="L184">        r1.onNext(&quot;three-&quot;);</span>
+<span class="fc" id="L185">        r1.onComplete();</span>
+
+<span class="fc" id="L187">        io.verify(o).onNext(&quot;one-1&quot;);</span>
+<span class="fc" id="L188">        io.verify(o).onNext(&quot;two-2&quot;);</span>
+<span class="fc" id="L189">        io.verify(o).onComplete();</span>
+
+<span class="fc" id="L191">        verify(o, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L193">    }</span>
+
+    @Test
+    public void testZipIterableFirstThrows() {
+<span class="fc" id="L197">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L199">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L200">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L202">        Iterable&lt;String&gt; r2 = Arrays.asList(&quot;1&quot;, &quot;2&quot;, &quot;3&quot;);</span>
+
+<span class="fc" id="L204">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L206">        r1.onNext(&quot;one-&quot;);</span>
+<span class="fc" id="L207">        r1.onNext(&quot;two-&quot;);</span>
+<span class="fc" id="L208">        r1.onError(new TestException());</span>
+
+<span class="fc" id="L210">        io.verify(o).onNext(&quot;one-1&quot;);</span>
+<span class="fc" id="L211">        io.verify(o).onNext(&quot;two-2&quot;);</span>
+<span class="fc" id="L212">        io.verify(o).onError(any(TestException.class));</span>
+
+<span class="fc" id="L214">        verify(o, never()).onComplete();</span>
+
+<span class="fc" id="L216">    }</span>
+
+    @Test
+    public void testZipIterableIteratorThrows() {
+<span class="fc" id="L220">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L222">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L223">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L225">        Iterable&lt;String&gt; r2 = new Iterable&lt;String&gt;() {</span>
+            @Override
+            public Iterator&lt;String&gt; iterator() {
+<span class="fc" id="L228">                throw new TestException();</span>
+            }
+        };
+
+<span class="fc" id="L232">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L234">        r1.onNext(&quot;one-&quot;);</span>
+<span class="fc" id="L235">        r1.onNext(&quot;two-&quot;);</span>
+<span class="fc" id="L236">        r1.onError(new TestException());</span>
+
+<span class="fc" id="L238">        io.verify(o).onError(any(TestException.class));</span>
+
+<span class="fc" id="L240">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L241">        verify(o, never()).onNext(any(String.class));</span>
+
+<span class="fc" id="L243">    }</span>
+
+    @Test
+    public void testZipIterableHasNextThrows() {
+<span class="fc" id="L247">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L249">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L250">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L252">        Iterable&lt;String&gt; r2 = new Iterable&lt;String&gt;() {</span>
+
+            @Override
+            public Iterator&lt;String&gt; iterator() {
+<span class="fc" id="L256">                return new Iterator&lt;String&gt;() {</span>
+                    int count;
+
+                    @Override
+                    public boolean hasNext() {
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                        if (count == 0) {</span>
+<span class="fc" id="L262">                            return true;</span>
+                        }
+<span class="fc" id="L264">                        throw new TestException();</span>
+                    }
+
+                    @Override
+                    public String next() {
+<span class="fc" id="L269">                        count++;</span>
+<span class="fc" id="L270">                        return &quot;1&quot;;</span>
+                    }
+
+                    @Override
+                    public void remove() {
+<span class="nc" id="L275">                        throw new UnsupportedOperationException(&quot;Not supported yet.&quot;);</span>
+                    }
+
+                };
+            }
+
+        };
+
+<span class="fc" id="L283">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L285">        r1.onNext(&quot;one-&quot;);</span>
+<span class="fc" id="L286">        r1.onError(new TestException());</span>
+
+<span class="fc" id="L288">        io.verify(o).onNext(&quot;one-1&quot;);</span>
+<span class="fc" id="L289">        io.verify(o).onError(any(TestException.class));</span>
+
+<span class="fc" id="L291">        verify(o, never()).onComplete();</span>
+
+<span class="fc" id="L293">    }</span>
+
+    @Test
+    public void testZipIterableNextThrows() {
+<span class="fc" id="L297">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L299">        Observer&lt;String&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L300">        InOrder io = inOrder(o);</span>
+
+<span class="fc" id="L302">        Iterable&lt;String&gt; r2 = new Iterable&lt;String&gt;() {</span>
+
+            @Override
+            public Iterator&lt;String&gt; iterator() {
+<span class="fc" id="L306">                return new Iterator&lt;String&gt;() {</span>
+                    @Override
+                    public boolean hasNext() {
+<span class="fc" id="L309">                        return true;</span>
+                    }
+
+                    @Override
+                    public String next() {
+<span class="nc" id="L314">                        throw new TestException();</span>
+                    }
+
+                    @Override
+                    public void remove() {
+<span class="nc" id="L319">                        throw new UnsupportedOperationException(&quot;Not supported yet.&quot;);</span>
+                    }
+
+                };
+            }
+
+        };
+
+<span class="fc" id="L327">        r1.zipWith(r2, zipr2).subscribe(o);</span>
+
+<span class="fc" id="L329">        r1.onError(new TestException());</span>
+
+<span class="fc" id="L331">        io.verify(o).onError(any(TestException.class));</span>
+
+<span class="fc" id="L333">        verify(o, never()).onNext(any(String.class));</span>
+<span class="fc" id="L334">        verify(o, never()).onComplete();</span>
+
+<span class="fc" id="L336">    }</span>
+
+<span class="fc" id="L338">    Consumer&lt;String&gt; printer = new Consumer&lt;String&gt;() {</span>
+        @Override
+        public void accept(String pv) {
+<span class="fc" id="L341">            System.out.println(pv);</span>
+<span class="fc" id="L342">        }</span>
+    };
+
+<span class="fc" id="L345">    static final class SquareStr implements Function&lt;Integer, String&gt; {</span>
+<span class="fc" id="L346">        final AtomicInteger counter = new AtomicInteger();</span>
+        @Override
+        public String apply(Integer t1) {
+<span class="fc" id="L349">            counter.incrementAndGet();</span>
+<span class="fc" id="L350">            System.out.println(&quot;Omg I'm calculating so hard: &quot; + t1 + &quot;*&quot; + t1 + &quot;=&quot; + (t1 * t1));</span>
+<span class="fc" id="L351">            return &quot; &quot; + (t1 * t1);</span>
+        }
+    }
+
+    @Test
+    public void testTake2() {
+<span class="fc" id="L357">        Observable&lt;Integer&gt; o = Observable.just(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L358">        Iterable&lt;String&gt; it = Arrays.asList(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;, &quot;d&quot;, &quot;e&quot;);</span>
+
+<span class="fc" id="L360">        SquareStr squareStr = new SquareStr();</span>
+
+<span class="fc" id="L362">        o.map(squareStr).zipWith(it, concat2Strings).take(2).subscribe(printer);</span>
+
+<span class="fc" id="L364">        assertEquals(2, squareStr.counter.get());</span>
+<span class="fc" id="L365">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L369">        TestHelper.checkDisposed(Observable.just(1).zipWith(Arrays.asList(1), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L372">                return a + b;</span>
+            }
+        }));
+<span class="fc" id="L375">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L379">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Integer&gt;, ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; apply(Observable&lt;Integer&gt; o) throws Exception {
+<span class="fc" id="L382">                return o.zipWith(Arrays.asList(1), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                    @Override
+                    public Object apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L385">                        return a + b;</span>
+                    }
+                });
+            }
+        });
+<span class="fc" id="L390">    }</span>
+
+    @Test
+    public void iteratorThrows() {
+<span class="fc" id="L394">        Observable.just(1).zipWith(new CrashingIterable(100, 1, 100), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L397">                return a + b;</span>
+            }
+        })
+<span class="fc" id="L400">        .test()</span>
+<span class="fc" id="L401">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;);</span>
+<span class="fc" id="L402">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L406">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L408">            new Observable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L411">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L412">                    observer.onNext(1);</span>
+<span class="fc" id="L413">                    observer.onComplete();</span>
+<span class="fc" id="L414">                    observer.onNext(2);</span>
+<span class="fc" id="L415">                    observer.onError(new TestException());</span>
+<span class="fc" id="L416">                    observer.onComplete();</span>
+<span class="fc" id="L417">                }</span>
+            }
+<span class="fc" id="L419">            .zipWith(Arrays.asList(1), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L422">                    return a + b;</span>
+                }
+            })
+<span class="fc" id="L425">            .test()</span>
+<span class="fc" id="L426">            .assertResult(2);</span>
+
+<span class="fc" id="L428">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L430">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L432">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

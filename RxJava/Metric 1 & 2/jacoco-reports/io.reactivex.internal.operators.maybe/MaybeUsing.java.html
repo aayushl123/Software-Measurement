@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeUsing.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeUsing.java</span></div><h1>MaybeUsing.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Creates a resource and a dependent Maybe for each incoming Observer and optionally
+ * disposes the resource eagerly (before the terminal event is send out).
+ *
+ * @param &lt;T&gt; the value type
+ * @param &lt;D&gt; the resource type
+ */
+public final class MaybeUsing&lt;T, D&gt; extends Maybe&lt;T&gt; {
+
+    final Callable&lt;? extends D&gt; resourceSupplier;
+
+    final Function&lt;? super D, ? extends MaybeSource&lt;? extends T&gt;&gt; sourceSupplier;
+
+    final Consumer&lt;? super D&gt; resourceDisposer;
+
+    final boolean eager;
+
+    public MaybeUsing(Callable&lt;? extends D&gt; resourceSupplier,
+            Function&lt;? super D, ? extends MaybeSource&lt;? extends T&gt;&gt; sourceSupplier,
+            Consumer&lt;? super D&gt; resourceDisposer,
+<span class="fc" id="L47">            boolean eager) {</span>
+<span class="fc" id="L48">        this.resourceSupplier = resourceSupplier;</span>
+<span class="fc" id="L49">        this.sourceSupplier = sourceSupplier;</span>
+<span class="fc" id="L50">        this.resourceDisposer = resourceDisposer;</span>
+<span class="fc" id="L51">        this.eager = eager;</span>
+<span class="fc" id="L52">    }</span>
+
+    @Override
+    protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+        D resource;
+
+        try {
+<span class="fc" id="L59">            resource = resourceSupplier.call();</span>
+<span class="fc" id="L60">        } catch (Throwable ex) {</span>
+<span class="fc" id="L61">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L62">            EmptyDisposable.error(ex, observer);</span>
+<span class="fc" id="L63">            return;</span>
+<span class="fc" id="L64">        }</span>
+
+        MaybeSource&lt;? extends T&gt; source;
+
+        try {
+<span class="fc" id="L69">            source = ObjectHelper.requireNonNull(sourceSupplier.apply(resource), &quot;The sourceSupplier returned a null MaybeSource&quot;);</span>
+<span class="fc" id="L70">        } catch (Throwable ex) {</span>
+<span class="fc" id="L71">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (eager) {</span>
+                try {
+<span class="fc" id="L74">                    resourceDisposer.accept(resource);</span>
+<span class="fc" id="L75">                } catch (Throwable exc) {</span>
+<span class="fc" id="L76">                    Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L77">                    EmptyDisposable.error(new CompositeException(ex, exc), observer);</span>
+<span class="fc" id="L78">                    return;</span>
+<span class="fc" id="L79">                }</span>
+            }
+
+<span class="fc" id="L82">            EmptyDisposable.error(ex, observer);</span>
+
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (!eager) {</span>
+                try {
+<span class="fc" id="L86">                    resourceDisposer.accept(resource);</span>
+<span class="fc" id="L87">                } catch (Throwable exc) {</span>
+<span class="fc" id="L88">                    Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L89">                    RxJavaPlugins.onError(exc);</span>
+<span class="fc" id="L90">                }</span>
+            }
+<span class="fc" id="L92">            return;</span>
+<span class="fc" id="L93">        }</span>
+
+<span class="fc" id="L95">        source.subscribe(new UsingObserver&lt;T, D&gt;(observer, resource, resourceDisposer, eager));</span>
+<span class="fc" id="L96">    }</span>
+
+    static final class UsingObserver&lt;T, D&gt;
+    extends AtomicReference&lt;Object&gt;
+    implements MaybeObserver&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = -674404550052917487L;
+
+        final MaybeObserver&lt;? super T&gt; downstream;
+
+        final Consumer&lt;? super D&gt; disposer;
+
+        final boolean eager;
+
+        Disposable upstream;
+
+        UsingObserver(MaybeObserver&lt;? super T&gt; actual, D resource, Consumer&lt;? super D&gt; disposer, boolean eager) {
+<span class="fc" id="L113">            super(resource);</span>
+<span class="fc" id="L114">            this.downstream = actual;</span>
+<span class="fc" id="L115">            this.disposer = disposer;</span>
+<span class="fc" id="L116">            this.eager = eager;</span>
+<span class="fc" id="L117">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L121">            upstream.dispose();</span>
+<span class="fc" id="L122">            upstream = DisposableHelper.DISPOSED;</span>
+<span class="fc" id="L123">            disposeResourceAfter();</span>
+<span class="fc" id="L124">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        void disposeResourceAfter() {
+<span class="fc" id="L128">            Object resource = getAndSet(this);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            if (resource != this) {</span>
+                try {
+<span class="fc" id="L131">                    disposer.accept((D)resource);</span>
+<span class="fc" id="L132">                } catch (Throwable ex) {</span>
+<span class="fc" id="L133">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L134">                    RxJavaPlugins.onError(ex);</span>
+<span class="fc" id="L135">                }</span>
+            }
+<span class="fc" id="L137">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L141">            return upstream.isDisposed();</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (DisposableHelper.validate(this.upstream, d)) {</span>
+<span class="fc" id="L147">                this.upstream = d;</span>
+
+<span class="fc" id="L149">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L151">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L156">            upstream = DisposableHelper.DISPOSED;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (eager) {</span>
+<span class="fc" id="L158">                Object resource = getAndSet(this);</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                if (resource != this) {</span>
+                    try {
+<span class="fc" id="L161">                        disposer.accept((D)resource);</span>
+<span class="fc" id="L162">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L163">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L164">                        downstream.onError(ex);</span>
+<span class="fc" id="L165">                        return;</span>
+<span class="fc" id="L166">                    }</span>
+                } else {
+<span class="fc" id="L168">                    return;</span>
+                }
+            }
+
+<span class="fc" id="L172">            downstream.onSuccess(value);</span>
+
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            if (!eager) {</span>
+<span class="fc" id="L175">                disposeResourceAfter();</span>
+            }
+<span class="fc" id="L177">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L182">            upstream = DisposableHelper.DISPOSED;</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (eager) {</span>
+<span class="fc" id="L184">                Object resource = getAndSet(this);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (resource != this) {</span>
+                    try {
+<span class="fc" id="L187">                        disposer.accept((D)resource);</span>
+<span class="fc" id="L188">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L189">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L190">                        e = new CompositeException(e, ex);</span>
+<span class="fc" id="L191">                    }</span>
+                } else {
+<span class="fc" id="L193">                    return;</span>
+                }
+            }
+
+<span class="fc" id="L197">            downstream.onError(e);</span>
+
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (!eager) {</span>
+<span class="fc" id="L200">                disposeResourceAfter();</span>
+            }
+<span class="fc" id="L202">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public void onComplete() {
+<span class="fc" id="L207">            upstream = DisposableHelper.DISPOSED;</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            if (eager) {</span>
+<span class="fc" id="L209">                Object resource = getAndSet(this);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                if (resource != this) {</span>
+                    try {
+<span class="fc" id="L212">                        disposer.accept((D)resource);</span>
+<span class="fc" id="L213">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L214">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L215">                        downstream.onError(ex);</span>
+<span class="fc" id="L216">                        return;</span>
+<span class="fc" id="L217">                    }</span>
+                } else {
+<span class="fc" id="L219">                    return;</span>
+                }
+            }
+
+<span class="fc" id="L223">            downstream.onComplete();</span>
+
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            if (!eager) {</span>
+<span class="fc" id="L226">                disposeResourceAfter();</span>
+            }
+<span class="fc" id="L228">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableToSortedListTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableToSortedListTest.java</span></div><h1>FlowableToSortedListTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+import org.junit.*;
+import org.mockito.Mockito;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L32">public class FlowableToSortedListTest {</span>
+
+    @Test
+    public void testSortedListFlowable() {
+<span class="fc" id="L36">        Flowable&lt;Integer&gt; w = Flowable.just(1, 3, 2, 5, 4);</span>
+<span class="fc" id="L37">        Flowable&lt;List&lt;Integer&gt;&gt; flowable = w.toSortedList().toFlowable();</span>
+
+<span class="fc" id="L39">        Subscriber&lt;List&lt;Integer&gt;&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L40">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L42">        verify(subscriber, times(1)).onNext(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L43">        verify(subscriber, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L44">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L45">    }</span>
+
+    @Test
+    public void testSortedListWithCustomFunctionFlowable() {
+<span class="fc" id="L49">        Flowable&lt;Integer&gt; w = Flowable.just(1, 3, 2, 5, 4);</span>
+<span class="fc" id="L50">        Flowable&lt;List&lt;Integer&gt;&gt; flowable = w.toSortedList(new Comparator&lt;Integer&gt;() {</span>
+
+            @Override
+            public int compare(Integer t1, Integer t2) {
+<span class="fc" id="L54">                return t2 - t1;</span>
+            }
+
+<span class="fc" id="L57">        }).toFlowable();</span>
+
+<span class="fc" id="L59">        Subscriber&lt;List&lt;Integer&gt;&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L60">        flowable.subscribe(subscriber);</span>
+
+<span class="fc" id="L62">        verify(subscriber, times(1)).onNext(Arrays.asList(5, 4, 3, 2, 1));</span>
+<span class="fc" id="L63">        verify(subscriber, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L64">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L65">    }</span>
+
+    @Test
+    public void testWithFollowingFirstFlowable() {
+<span class="fc" id="L69">        Flowable&lt;Integer&gt; f = Flowable.just(1, 3, 2, 5, 4);</span>
+<span class="fc" id="L70">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), f.toSortedList().toFlowable().blockingFirst());</span>
+<span class="fc" id="L71">    }</span>
+
+    @Test
+    public void testBackpressureHonoredFlowable() {
+<span class="fc" id="L75">        Flowable&lt;List&lt;Integer&gt;&gt; w = Flowable.just(1, 3, 2, 5, 4).toSortedList().toFlowable();</span>
+<span class="fc" id="L76">        TestSubscriber&lt;List&lt;Integer&gt;&gt; ts = new TestSubscriber&lt;List&lt;Integer&gt;&gt;(0L);</span>
+
+<span class="fc" id="L78">        w.subscribe(ts);</span>
+
+<span class="fc" id="L80">        ts.assertNoValues();</span>
+<span class="fc" id="L81">        ts.assertNoErrors();</span>
+<span class="fc" id="L82">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L84">        ts.request(1);</span>
+
+<span class="fc" id="L86">        ts.assertValue(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L87">        ts.assertNoErrors();</span>
+<span class="fc" id="L88">        ts.assertComplete();</span>
+
+<span class="fc" id="L90">        ts.request(1);</span>
+
+<span class="fc" id="L92">        ts.assertValue(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L93">        ts.assertNoErrors();</span>
+<span class="fc" id="L94">        ts.assertComplete();</span>
+<span class="fc" id="L95">    }</span>
+
+    @Test(timeout = 2000)
+    @Ignore(&quot;PublishProcessor no longer emits without requests so this test fails due to the race of onComplete and request&quot;)
+    public void testAsyncRequestedFlowable() {
+<span class="nc" id="L100">        Scheduler.Worker w = Schedulers.newThread().createWorker();</span>
+        try {
+<span class="nc bnc" id="L102" title="All 2 branches missed.">            for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">                if (i % 50 == 0) {</span>
+<span class="nc" id="L104">                    System.out.println(&quot;testAsyncRequested -&gt; &quot; + i);</span>
+                }
+<span class="nc" id="L106">                PublishProcessor&lt;Integer&gt; source = PublishProcessor.create();</span>
+<span class="nc" id="L107">                Flowable&lt;List&lt;Integer&gt;&gt; sorted = source.toSortedList().toFlowable();</span>
+
+<span class="nc" id="L109">                final CyclicBarrier cb = new CyclicBarrier(2);</span>
+<span class="nc" id="L110">                final TestSubscriber&lt;List&lt;Integer&gt;&gt; ts = new TestSubscriber&lt;List&lt;Integer&gt;&gt;(0L);</span>
+<span class="nc" id="L111">                sorted.subscribe(ts);</span>
+<span class="nc" id="L112">                w.schedule(new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="nc" id="L115">                        await(cb);</span>
+<span class="nc" id="L116">                        ts.request(1);</span>
+<span class="nc" id="L117">                    }</span>
+                });
+<span class="nc" id="L119">                source.onNext(1);</span>
+<span class="nc" id="L120">                await(cb);</span>
+<span class="nc" id="L121">                source.onComplete();</span>
+<span class="nc" id="L122">                ts.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+<span class="nc" id="L123">                ts.assertTerminated();</span>
+<span class="nc" id="L124">                ts.assertNoErrors();</span>
+<span class="nc" id="L125">                ts.assertValue(Arrays.asList(1));</span>
+            }
+        } finally {
+<span class="nc" id="L128">            w.dispose();</span>
+        }
+<span class="nc" id="L130">    }</span>
+
+    @Test
+    public void sorted() {
+<span class="fc" id="L134">        Flowable.just(5, 1, 2, 4, 3).sorted()</span>
+<span class="fc" id="L135">        .test()</span>
+<span class="fc" id="L136">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L137">    }</span>
+
+    @Test
+    public void sortedComparator() {
+<span class="fc" id="L141">        Flowable.just(5, 1, 2, 4, 3).sorted(new Comparator&lt;Integer&gt;() {</span>
+            @Override
+            public int compare(Integer a, Integer b) {
+<span class="fc" id="L144">                return b - a;</span>
+            }
+        })
+<span class="fc" id="L147">        .test()</span>
+<span class="fc" id="L148">        .assertResult(5, 4, 3, 2, 1);</span>
+<span class="fc" id="L149">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void toSortedListCapacityFlowable() {
+<span class="fc" id="L154">        Flowable.just(5, 1, 2, 4, 3).toSortedList(4).toFlowable()</span>
+<span class="fc" id="L155">        .test()</span>
+<span class="fc" id="L156">        .assertResult(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L157">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void toSortedListComparatorCapacityFlowable() {
+<span class="fc" id="L162">        Flowable.just(5, 1, 2, 4, 3).toSortedList(new Comparator&lt;Integer&gt;() {</span>
+            @Override
+            public int compare(Integer a, Integer b) {
+<span class="fc" id="L165">                return b - a;</span>
+            }
+<span class="fc" id="L167">        }, 4).toFlowable()</span>
+<span class="fc" id="L168">        .test()</span>
+<span class="fc" id="L169">        .assertResult(Arrays.asList(5, 4, 3, 2, 1));</span>
+<span class="fc" id="L170">    }</span>
+
+    @Test
+    public void testSortedList() {
+<span class="fc" id="L174">        Flowable&lt;Integer&gt; w = Flowable.just(1, 3, 2, 5, 4);</span>
+<span class="fc" id="L175">        Single&lt;List&lt;Integer&gt;&gt; single = w.toSortedList();</span>
+
+<span class="fc" id="L177">        SingleObserver&lt;List&lt;Integer&gt;&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L178">        single.subscribe(observer);</span>
+<span class="fc" id="L179">        verify(observer, times(1)).onSuccess(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L180">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L181">    }</span>
+
+    @Test
+    public void testSortedListWithCustomFunction() {
+<span class="fc" id="L185">        Flowable&lt;Integer&gt; w = Flowable.just(1, 3, 2, 5, 4);</span>
+<span class="fc" id="L186">        Single&lt;List&lt;Integer&gt;&gt; single = w.toSortedList(new Comparator&lt;Integer&gt;() {</span>
+
+            @Override
+            public int compare(Integer t1, Integer t2) {
+<span class="fc" id="L190">                return t2 - t1;</span>
+            }
+
+        });
+
+<span class="fc" id="L195">        SingleObserver&lt;List&lt;Integer&gt;&gt; observer = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L196">        single.subscribe(observer);</span>
+<span class="fc" id="L197">        verify(observer, times(1)).onSuccess(Arrays.asList(5, 4, 3, 2, 1));</span>
+<span class="fc" id="L198">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L199">    }</span>
+
+    @Test
+    public void testWithFollowingFirst() {
+<span class="fc" id="L203">        Flowable&lt;Integer&gt; f = Flowable.just(1, 3, 2, 5, 4);</span>
+<span class="fc" id="L204">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), f.toSortedList().blockingGet());</span>
+<span class="fc" id="L205">    }</span>
+
+    @Test
+    @Ignore(&quot;Single doesn't do backpressure&quot;)
+    public void testBackpressureHonored() {
+<span class="nc" id="L210">        Single&lt;List&lt;Integer&gt;&gt; w = Flowable.just(1, 3, 2, 5, 4).toSortedList();</span>
+<span class="nc" id="L211">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+
+<span class="nc" id="L213">        w.subscribe(to);</span>
+
+<span class="nc" id="L215">        to.assertNoValues();</span>
+<span class="nc" id="L216">        to.assertNoErrors();</span>
+<span class="nc" id="L217">        to.assertNotComplete();</span>
+
+//        ts.request(1);
+
+<span class="nc" id="L221">        to.assertValue(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="nc" id="L222">        to.assertNoErrors();</span>
+<span class="nc" id="L223">        to.assertComplete();</span>
+
+//        ts.request(1);
+
+<span class="nc" id="L227">        to.assertValue(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="nc" id="L228">        to.assertNoErrors();</span>
+<span class="nc" id="L229">        to.assertComplete();</span>
+<span class="nc" id="L230">    }</span>
+
+    @Test(timeout = 2000)
+    @Ignore(&quot;PublishProcessor no longer emits without requests so this test fails due to the race of onComplete and request&quot;)
+    public void testAsyncRequested() {
+<span class="nc" id="L235">        Scheduler.Worker w = Schedulers.newThread().createWorker();</span>
+        try {
+<span class="nc bnc" id="L237" title="All 2 branches missed.">            for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">                if (i % 50 == 0) {</span>
+<span class="nc" id="L239">                    System.out.println(&quot;testAsyncRequested -&gt; &quot; + i);</span>
+                }
+<span class="nc" id="L241">                PublishProcessor&lt;Integer&gt; source = PublishProcessor.create();</span>
+<span class="nc" id="L242">                Single&lt;List&lt;Integer&gt;&gt; sorted = source.toSortedList();</span>
+
+<span class="nc" id="L244">                final CyclicBarrier cb = new CyclicBarrier(2);</span>
+<span class="nc" id="L245">                final TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+<span class="nc" id="L246">                sorted.subscribe(to);</span>
+<span class="nc" id="L247">                w.schedule(new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="nc" id="L250">                        await(cb);</span>
+//                        ts.request(1);
+<span class="nc" id="L252">                    }</span>
+                });
+<span class="nc" id="L254">                source.onNext(1);</span>
+<span class="nc" id="L255">                await(cb);</span>
+<span class="nc" id="L256">                source.onComplete();</span>
+<span class="nc" id="L257">                to.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+<span class="nc" id="L258">                to.assertTerminated();</span>
+<span class="nc" id="L259">                to.assertNoErrors();</span>
+<span class="nc" id="L260">                to.assertValue(Arrays.asList(1));</span>
+            }
+        } finally {
+<span class="nc" id="L263">            w.dispose();</span>
+        }
+<span class="nc" id="L265">    }</span>
+    static void await(CyclicBarrier cb) {
+        try {
+<span class="nc" id="L268">            cb.await();</span>
+<span class="nc" id="L269">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L270">            ex.printStackTrace();</span>
+<span class="nc" id="L271">        } catch (BrokenBarrierException ex) {</span>
+<span class="nc" id="L272">            ex.printStackTrace();</span>
+<span class="nc" id="L273">        }</span>
+<span class="nc" id="L274">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void toSortedListCapacity() {
+<span class="fc" id="L279">        Flowable.just(5, 1, 2, 4, 3).toSortedList(4)</span>
+<span class="fc" id="L280">        .test()</span>
+<span class="fc" id="L281">        .assertResult(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L282">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void toSortedListComparatorCapacity() {
+<span class="fc" id="L287">        Flowable.just(5, 1, 2, 4, 3).toSortedList(new Comparator&lt;Integer&gt;() {</span>
+            @Override
+            public int compare(Integer a, Integer b) {
+<span class="fc" id="L290">                return b - a;</span>
+            }
+        }, 4)
+<span class="fc" id="L293">        .test()</span>
+<span class="fc" id="L294">        .assertResult(Arrays.asList(5, 4, 3, 2, 1));</span>
+<span class="fc" id="L295">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

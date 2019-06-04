@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeDelay.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeDelay.java</span></div><h1>MaybeDelay.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+
+/**
+ * Delays all signal types by the given amount and re-emits them on the given scheduler.
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class MaybeDelay&lt;T&gt; extends AbstractMaybeWithUpstream&lt;T, T&gt; {
+
+    final long delay;
+
+    final TimeUnit unit;
+
+    final Scheduler scheduler;
+
+    public MaybeDelay(MaybeSource&lt;T&gt; source, long delay, TimeUnit unit, Scheduler scheduler) {
+<span class="fc" id="L37">        super(source);</span>
+<span class="fc" id="L38">        this.delay = delay;</span>
+<span class="fc" id="L39">        this.unit = unit;</span>
+<span class="fc" id="L40">        this.scheduler = scheduler;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Override
+    protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L45">        source.subscribe(new DelayMaybeObserver&lt;T&gt;(observer, delay, unit, scheduler));</span>
+<span class="fc" id="L46">    }</span>
+
+    static final class DelayMaybeObserver&lt;T&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements MaybeObserver&lt;T&gt;, Disposable, Runnable {
+
+        private static final long serialVersionUID = 5566860102500855068L;
+
+        final MaybeObserver&lt;? super T&gt; downstream;
+
+        final long delay;
+
+        final TimeUnit unit;
+
+        final Scheduler scheduler;
+
+        T value;
+
+        Throwable error;
+
+<span class="fc" id="L66">        DelayMaybeObserver(MaybeObserver&lt;? super T&gt; actual, long delay, TimeUnit unit, Scheduler scheduler) {</span>
+<span class="fc" id="L67">            this.downstream = actual;</span>
+<span class="fc" id="L68">            this.delay = delay;</span>
+<span class="fc" id="L69">            this.unit = unit;</span>
+<span class="fc" id="L70">            this.scheduler = scheduler;</span>
+<span class="fc" id="L71">        }</span>
+
+        @Override
+        public void run() {
+<span class="fc" id="L75">            Throwable ex = error;</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (ex != null) {</span>
+<span class="fc" id="L77">                downstream.onError(ex);</span>
+            } else {
+<span class="fc" id="L79">                T v = value;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                if (v != null) {</span>
+<span class="fc" id="L81">                    downstream.onSuccess(v);</span>
+                } else {
+<span class="fc" id="L83">                    downstream.onComplete();</span>
+                }
+            }
+<span class="fc" id="L86">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L90">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L91">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L95">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (DisposableHelper.setOnce(this, d)) {</span>
+<span class="fc" id="L101">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L103">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L107">            this.value = value;</span>
+<span class="fc" id="L108">            schedule();</span>
+<span class="fc" id="L109">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L113">            this.error = e;</span>
+<span class="fc" id="L114">            schedule();</span>
+<span class="fc" id="L115">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L119">            schedule();</span>
+<span class="fc" id="L120">        }</span>
+
+        void schedule() {
+<span class="fc" id="L123">            DisposableHelper.replace(this, scheduler.scheduleDirect(this, delay, unit));</span>
+<span class="fc" id="L124">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

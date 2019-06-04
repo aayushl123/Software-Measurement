@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleTimeout.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleTimeout.java</span></div><h1>SingleTimeout.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+import static io.reactivex.internal.util.ExceptionHelper.timeoutMessage;
+
+public final class SingleTimeout&lt;T&gt; extends Single&lt;T&gt; {
+
+    final SingleSource&lt;T&gt; source;
+
+    final long timeout;
+
+    final TimeUnit unit;
+
+    final Scheduler scheduler;
+
+    final SingleSource&lt;? extends T&gt; other;
+
+    public SingleTimeout(SingleSource&lt;T&gt; source, long timeout, TimeUnit unit, Scheduler scheduler,
+<span class="fc" id="L39">                         SingleSource&lt;? extends T&gt; other) {</span>
+<span class="fc" id="L40">        this.source = source;</span>
+<span class="fc" id="L41">        this.timeout = timeout;</span>
+<span class="fc" id="L42">        this.unit = unit;</span>
+<span class="fc" id="L43">        this.scheduler = scheduler;</span>
+<span class="fc" id="L44">        this.other = other;</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    protected void subscribeActual(final SingleObserver&lt;? super T&gt; observer) {
+
+<span class="fc" id="L50">        TimeoutMainObserver&lt;T&gt; parent = new TimeoutMainObserver&lt;T&gt;(observer, other, timeout, unit);</span>
+<span class="fc" id="L51">        observer.onSubscribe(parent);</span>
+
+<span class="fc" id="L53">        DisposableHelper.replace(parent.task, scheduler.scheduleDirect(parent, timeout, unit));</span>
+
+<span class="fc" id="L55">        source.subscribe(parent);</span>
+<span class="fc" id="L56">    }</span>
+
+    static final class TimeoutMainObserver&lt;T&gt; extends AtomicReference&lt;Disposable&gt;
+    implements SingleObserver&lt;T&gt;, Runnable, Disposable {
+
+        private static final long serialVersionUID = 37497744973048446L;
+
+        final SingleObserver&lt;? super T&gt; downstream;
+
+        final AtomicReference&lt;Disposable&gt; task;
+
+        final TimeoutFallbackObserver&lt;T&gt; fallback;
+
+        SingleSource&lt;? extends T&gt; other;
+
+        final long timeout;
+
+        final TimeUnit unit;
+
+        static final class TimeoutFallbackObserver&lt;T&gt; extends AtomicReference&lt;Disposable&gt;
+        implements SingleObserver&lt;T&gt; {
+
+            private static final long serialVersionUID = 2071387740092105509L;
+            final SingleObserver&lt;? super T&gt; downstream;
+
+<span class="fc" id="L81">            TimeoutFallbackObserver(SingleObserver&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L82">                this.downstream = downstream;</span>
+<span class="fc" id="L83">            }</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L87">                DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L88">            }</span>
+
+            @Override
+            public void onSuccess(T t) {
+<span class="fc" id="L92">                downstream.onSuccess(t);</span>
+<span class="fc" id="L93">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L97">                downstream.onError(e);</span>
+<span class="fc" id="L98">            }</span>
+        }
+
+<span class="fc" id="L101">        TimeoutMainObserver(SingleObserver&lt;? super T&gt; actual, SingleSource&lt;? extends T&gt; other, long timeout, TimeUnit unit) {</span>
+<span class="fc" id="L102">            this.downstream = actual;</span>
+<span class="fc" id="L103">            this.other = other;</span>
+<span class="fc" id="L104">            this.timeout = timeout;</span>
+<span class="fc" id="L105">            this.unit = unit;</span>
+<span class="fc" id="L106">            this.task = new AtomicReference&lt;Disposable&gt;();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (other != null) {</span>
+<span class="fc" id="L108">                this.fallback = new TimeoutFallbackObserver&lt;T&gt;(actual);</span>
+            } else {
+<span class="fc" id="L110">                this.fallback = null;</span>
+            }
+<span class="fc" id="L112">        }</span>
+
+        @Override
+        public void run() {
+<span class="fc" id="L116">            Disposable d = get();</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">            if (d != DisposableHelper.DISPOSED &amp;&amp; compareAndSet(d, DisposableHelper.DISPOSED)) {</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                if (d != null) {</span>
+<span class="fc" id="L119">                    d.dispose();</span>
+                }
+<span class="fc" id="L121">                SingleSource&lt;? extends T&gt; other = this.other;</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                if (other == null) {</span>
+<span class="fc" id="L123">                    downstream.onError(new TimeoutException(timeoutMessage(timeout, unit)));</span>
+                } else {
+<span class="fc" id="L125">                    this.other = null;</span>
+<span class="fc" id="L126">                    other.subscribe(fallback);</span>
+                }
+            }
+<span class="fc" id="L129">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L133">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L134">        }</span>
+
+        @Override
+        public void onSuccess(T t) {
+<span class="fc" id="L138">            Disposable d = get();</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">            if (d != DisposableHelper.DISPOSED &amp;&amp; compareAndSet(d, DisposableHelper.DISPOSED)) {</span>
+<span class="fc" id="L140">                DisposableHelper.dispose(task);</span>
+<span class="fc" id="L141">                downstream.onSuccess(t);</span>
+            }
+<span class="fc" id="L143">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L147">            Disposable d = get();</span>
+<span class="fc bfc" id="L148" title="All 4 branches covered.">            if (d != DisposableHelper.DISPOSED &amp;&amp; compareAndSet(d, DisposableHelper.DISPOSED)) {</span>
+<span class="fc" id="L149">                DisposableHelper.dispose(task);</span>
+<span class="fc" id="L150">                downstream.onError(e);</span>
+            } else {
+<span class="fc" id="L152">                RxJavaPlugins.onError(e);</span>
+            }
+<span class="fc" id="L154">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L158">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L159">            DisposableHelper.dispose(task);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">            if (fallback != null) {</span>
+<span class="fc" id="L161">                DisposableHelper.dispose(fallback);</span>
+            }
+<span class="fc" id="L163">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L167">            return DisposableHelper.isDisposed(get());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

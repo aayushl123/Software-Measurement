@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableBlockingSubscribe.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableBlockingSubscribe.java</span></div><h1>FlowableBlockingSubscribe.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.*;
+import io.reactivex.internal.subscribers.*;
+import io.reactivex.internal.util.*;
+
+/**
+ * Utility methods to consume a Publisher in a blocking manner with callbacks or Subscriber.
+ */
+public final class FlowableBlockingSubscribe {
+
+    /** Utility class. */
+<span class="fc" id="L31">    private FlowableBlockingSubscribe() {</span>
+<span class="fc" id="L32">        throw new IllegalStateException(&quot;No instances!&quot;);</span>
+    }
+
+    /**
+     * Subscribes to the source and calls the Subscriber methods on the current thread.
+     * &lt;p&gt;
+     * @param o the source publisher
+     * The cancellation and backpressure is composed through.
+     * @param subscriber the subscriber to forward events and calls to in the current thread
+     * @param &lt;T&gt; the value type
+     */
+    public static &lt;T&gt; void subscribe(Publisher&lt;? extends T&gt; o, Subscriber&lt;? super T&gt; subscriber) {
+<span class="fc" id="L44">        final BlockingQueue&lt;Object&gt; queue = new LinkedBlockingQueue&lt;Object&gt;();</span>
+
+<span class="fc" id="L46">        BlockingSubscriber&lt;T&gt; bs = new BlockingSubscriber&lt;T&gt;(queue);</span>
+
+<span class="fc" id="L48">        o.subscribe(bs);</span>
+
+        try {
+            for (;;) {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                if (bs.isCancelled()) {</span>
+<span class="fc" id="L53">                    break;</span>
+                }
+<span class="fc" id="L55">                Object v = queue.poll();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                if (v == null) {</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                    if (bs.isCancelled()) {</span>
+<span class="nc" id="L58">                        break;</span>
+                    }
+<span class="fc" id="L60">                    BlockingHelper.verifyNonBlocking();</span>
+<span class="fc" id="L61">                    v = queue.take();</span>
+                }
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                if (bs.isCancelled()) {</span>
+<span class="fc" id="L64">                    break;</span>
+                }
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                if (v == BlockingSubscriber.TERMINATED</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                        || NotificationLite.acceptFull(v, subscriber)) {</span>
+<span class="fc" id="L68">                    break;</span>
+                }
+<span class="fc" id="L70">            }</span>
+<span class="fc" id="L71">        } catch (InterruptedException e) {</span>
+<span class="fc" id="L72">            bs.cancel();</span>
+<span class="fc" id="L73">            subscriber.onError(e);</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * Runs the source observable to a terminal event, ignoring any values and rethrowing any exception.
+     * @param o the source publisher
+     * @param &lt;T&gt; the value type
+     */
+    public static &lt;T&gt; void subscribe(Publisher&lt;? extends T&gt; o) {
+<span class="fc" id="L83">        BlockingIgnoringReceiver callback = new BlockingIgnoringReceiver();</span>
+<span class="fc" id="L84">        LambdaSubscriber&lt;T&gt; ls = new LambdaSubscriber&lt;T&gt;(Functions.emptyConsumer(),</span>
+        callback, callback, Functions.REQUEST_MAX);
+
+<span class="fc" id="L87">        o.subscribe(ls);</span>
+
+<span class="fc" id="L89">        BlockingHelper.awaitForComplete(callback, ls);</span>
+<span class="fc" id="L90">        Throwable e = callback.error;</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (e != null) {</span>
+<span class="fc" id="L92">            throw ExceptionHelper.wrapOrThrow(e);</span>
+        }
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Subscribes to the source and calls the given actions on the current thread.
+     * @param o the source publisher
+     * @param onNext the callback action for each source value
+     * @param onError the callback action for an error event
+     * @param onComplete the callback action for the completion event.
+     * @param &lt;T&gt; the value type
+     */
+    public static &lt;T&gt; void subscribe(Publisher&lt;? extends T&gt; o, final Consumer&lt;? super T&gt; onNext,
+            final Consumer&lt;? super Throwable&gt; onError, final Action onComplete) {
+<span class="fc" id="L106">        ObjectHelper.requireNonNull(onNext, &quot;onNext is null&quot;);</span>
+<span class="fc" id="L107">        ObjectHelper.requireNonNull(onError, &quot;onError is null&quot;);</span>
+<span class="fc" id="L108">        ObjectHelper.requireNonNull(onComplete, &quot;onComplete is null&quot;);</span>
+<span class="fc" id="L109">        subscribe(o, new LambdaSubscriber&lt;T&gt;(onNext, onError, onComplete, Functions.REQUEST_MAX));</span>
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Subscribes to the source and calls the given actions on the current thread.
+     * @param o the source publisher
+     * @param onNext the callback action for each source value
+     * @param onError the callback action for an error event
+     * @param onComplete the callback action for the completion event.
+     * @param bufferSize the number of elements to prefetch from the source Publisher
+     * @param &lt;T&gt; the value type
+     */
+    public static &lt;T&gt; void subscribe(Publisher&lt;? extends T&gt; o, final Consumer&lt;? super T&gt; onNext,
+        final Consumer&lt;? super Throwable&gt; onError, final Action onComplete, int bufferSize) {
+<span class="fc" id="L123">        ObjectHelper.requireNonNull(onNext, &quot;onNext is null&quot;);</span>
+<span class="fc" id="L124">        ObjectHelper.requireNonNull(onError, &quot;onError is null&quot;);</span>
+<span class="fc" id="L125">        ObjectHelper.requireNonNull(onComplete, &quot;onComplete is null&quot;);</span>
+<span class="fc" id="L126">        ObjectHelper.verifyPositive(bufferSize, &quot;number &gt; 0 required&quot;);</span>
+<span class="fc" id="L127">        subscribe(o, new BoundedSubscriber&lt;T&gt;(onNext, onError, onComplete, Functions.boundedConsumer(bufferSize),</span>
+                bufferSize));
+<span class="fc" id="L129">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

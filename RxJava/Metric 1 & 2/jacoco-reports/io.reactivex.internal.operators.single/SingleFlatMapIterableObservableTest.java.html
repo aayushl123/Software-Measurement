@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleFlatMapIterableObservableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleFlatMapIterableObservableTest.java</span></div><h1>SingleFlatMapIterableObservableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.util.CrashingIterable;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="fc" id="L33">public class SingleFlatMapIterableObservableTest {</span>
+
+    @Test
+    public void normal() {
+
+<span class="fc" id="L38">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L41">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L44">        .test()</span>
+<span class="fc" id="L45">        .assertResult(1, 2);</span>
+<span class="fc" id="L46">    }</span>
+
+    @Test
+    public void emptyIterable() {
+
+<span class="fc" id="L51">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L54">                return Collections.&lt;Integer&gt;emptyList();</span>
+            }
+        })
+<span class="fc" id="L57">        .test()</span>
+<span class="fc" id="L58">        .assertResult();</span>
+<span class="fc" id="L59">    }</span>
+
+    @Test
+    public void error() {
+
+<span class="fc" id="L64">        Single.&lt;Integer&gt;error(new TestException()).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L67">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L70">        .test()</span>
+<span class="fc" id="L71">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void take() {
+<span class="fc" id="L76">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L79">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L82">        .take(1)</span>
+<span class="fc" id="L83">        .test()</span>
+<span class="fc" id="L84">        .assertResult(1);</span>
+<span class="fc" id="L85">    }</span>
+
+    @Test
+    public void fused() {
+<span class="fc" id="L89">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L91">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L94">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L97">        .subscribe(to);</span>
+
+<span class="fc" id="L99">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L100">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L101">        .assertResult(1, 2);</span>
+        ;
+<span class="fc" id="L103">    }</span>
+
+    @Test
+    public void fusedNoSync() {
+<span class="fc" id="L107">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L109">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L112">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L115">        .subscribe(to);</span>
+
+<span class="fc" id="L117">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L118">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.NONE))</span>
+<span class="fc" id="L119">        .assertResult(1, 2);</span>
+        ;
+<span class="fc" id="L121">    }</span>
+
+    @Test
+    public void iteratorCrash() {
+
+<span class="fc" id="L126">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L129">                return new CrashingIterable(1, 100, 100);</span>
+            }
+        })
+<span class="fc" id="L132">        .test()</span>
+<span class="fc" id="L133">        .assertFailureAndMessage(TestException.class, &quot;iterator()&quot;);</span>
+<span class="fc" id="L134">    }</span>
+
+    @Test
+    public void hasNextCrash() {
+
+<span class="fc" id="L139">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L142">                return new CrashingIterable(100, 1, 100);</span>
+            }
+        })
+<span class="fc" id="L145">        .test()</span>
+<span class="fc" id="L146">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;);</span>
+<span class="fc" id="L147">    }</span>
+
+    @Test
+    public void nextCrash() {
+
+<span class="fc" id="L152">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L155">                return new CrashingIterable(100, 100, 1);</span>
+            }
+        })
+<span class="fc" id="L158">        .test()</span>
+<span class="fc" id="L159">        .assertFailureAndMessage(TestException.class, &quot;next()&quot;);</span>
+<span class="fc" id="L160">    }</span>
+
+    @Test
+    public void hasNextCrash2() {
+
+<span class="fc" id="L165">        Single.just(1).flattenAsObservable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L168">                return new CrashingIterable(100, 2, 100);</span>
+            }
+        })
+<span class="fc" id="L171">        .test()</span>
+<span class="fc" id="L172">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;, 0);</span>
+<span class="fc" id="L173">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L177">        TestHelper.checkDoubleOnSubscribeSingleToObservable(new Function&lt;Single&lt;Object&gt;, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Single&lt;Object&gt; o) throws Exception {
+<span class="fc" id="L180">                return o.flattenAsObservable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="nc" id="L183">                        return Collections.singleton(1);</span>
+                    }
+                });
+            }
+        });
+<span class="fc" id="L188">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L192">        TestHelper.checkDisposed(Single.just(1).flattenAsObservable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L195">                        return Collections.singleton(1);</span>
+                    }
+                }));
+<span class="fc" id="L198">    }</span>
+
+    @Test
+    public void async1() {
+<span class="fc" id="L202">        Single.just(1)</span>
+<span class="fc" id="L203">        .flattenAsObservable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L206">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L207">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L208">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L211">        .hide()</span>
+<span class="fc" id="L212">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L213">        .test()</span>
+<span class="fc" id="L214">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L215">        .assertSubscribed()</span>
+<span class="fc" id="L216">        .assertValueCount(1000 * 1000)</span>
+<span class="fc" id="L217">        .assertNoErrors()</span>
+<span class="fc" id="L218">        .assertComplete();</span>
+<span class="fc" id="L219">    }</span>
+
+    @Test
+    public void async2() {
+<span class="fc" id="L223">        Single.just(1)</span>
+<span class="fc" id="L224">        .flattenAsObservable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L227">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L228">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L229">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L232">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L233">        .test()</span>
+<span class="fc" id="L234">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L235">        .assertSubscribed()</span>
+<span class="fc" id="L236">        .assertValueCount(1000 * 1000)</span>
+<span class="fc" id="L237">        .assertNoErrors()</span>
+<span class="fc" id="L238">        .assertComplete();</span>
+<span class="fc" id="L239">    }</span>
+
+    @Test
+    public void async3() {
+<span class="fc" id="L243">        Single.just(1)</span>
+<span class="fc" id="L244">        .flattenAsObservable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L247">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L248">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L249">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L252">        .take(500 * 1000)</span>
+<span class="fc" id="L253">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L254">        .test()</span>
+<span class="fc" id="L255">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L256">        .assertSubscribed()</span>
+<span class="fc" id="L257">        .assertValueCount(500 * 1000)</span>
+<span class="fc" id="L258">        .assertNoErrors()</span>
+<span class="fc" id="L259">        .assertComplete();</span>
+<span class="fc" id="L260">    }</span>
+
+    @Test
+    public void async4() {
+<span class="fc" id="L264">        Single.just(1)</span>
+<span class="fc" id="L265">        .flattenAsObservable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L268">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L269">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L270">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L273">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L274">        .take(500 * 1000)</span>
+<span class="fc" id="L275">        .test()</span>
+<span class="fc" id="L276">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L277">        .assertSubscribed()</span>
+<span class="fc" id="L278">        .assertValueCount(500 * 1000)</span>
+<span class="fc" id="L279">        .assertNoErrors()</span>
+<span class="fc" id="L280">        .assertComplete();</span>
+<span class="fc" id="L281">    }</span>
+
+    @Test
+    public void fusedEmptyCheck() {
+<span class="fc" id="L285">        Single.just(1)</span>
+<span class="fc" id="L286">        .flattenAsObservable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L289">                        return Arrays.asList(1, 2, 3);</span>
+                    }
+<span class="fc" id="L291">        }).subscribe(new Observer&lt;Integer&gt;() {</span>
+            QueueDisposable&lt;Integer&gt; qd;
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L296">                qd = (QueueDisposable&lt;Integer&gt;)d;</span>
+
+<span class="fc" id="L298">                assertEquals(QueueFuseable.ASYNC, qd.requestFusion(QueueFuseable.ANY));</span>
+<span class="fc" id="L299">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="fc" id="L303">                assertFalse(qd.isEmpty());</span>
+
+<span class="fc" id="L305">                qd.clear();</span>
+
+<span class="fc" id="L307">                assertTrue(qd.isEmpty());</span>
+
+<span class="fc" id="L309">                qd.dispose();</span>
+<span class="fc" id="L310">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L314">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L318">            }</span>
+        });
+<span class="fc" id="L320">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

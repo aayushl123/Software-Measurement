@@ -1,0 +1,1270 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableReplay.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableReplay.java</span></div><h1>FlowableReplay.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.flowables.ConnectableFlowable;
+import io.reactivex.functions.*;
+import io.reactivex.internal.disposables.ResettableConnectable;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.HasUpstreamPublisher;
+import io.reactivex.internal.subscribers.SubscriberResourceWrapper;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Timed;
+
+public final class FlowableReplay&lt;T&gt; extends ConnectableFlowable&lt;T&gt; implements HasUpstreamPublisher&lt;T&gt;, ResettableConnectable {
+    /** The source observable. */
+    final Flowable&lt;T&gt; source;
+    /** Holds the current subscriber that is, will be or just was subscribed to the source observable. */
+    final AtomicReference&lt;ReplaySubscriber&lt;T&gt;&gt; current;
+    /** A factory that creates the appropriate buffer for the ReplaySubscriber. */
+    final Callable&lt;? extends ReplayBuffer&lt;T&gt;&gt; bufferFactory;
+
+    final Publisher&lt;T&gt; onSubscribe;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L47">    static final Callable DEFAULT_UNBOUNDED_FACTORY = new DefaultUnboundedFactory();</span>
+
+    /**
+     * Given a connectable observable factory, it multicasts over the generated
+     * ConnectableObservable via a selector function.
+     * @param &lt;U&gt; the connectable observable type
+     * @param &lt;R&gt; the result type
+     * @param connectableFactory the factory that returns a ConnectableFlowable for each individual subscriber
+     * @param selector the function that receives a Flowable and should return another Flowable that will be subscribed to
+     * @return the new Observable instance
+     */
+    public static &lt;U, R&gt; Flowable&lt;R&gt; multicastSelector(
+            final Callable&lt;? extends ConnectableFlowable&lt;U&gt;&gt; connectableFactory,
+            final Function&lt;? super Flowable&lt;U&gt;, ? extends Publisher&lt;R&gt;&gt; selector) {
+<span class="fc" id="L61">        return new MulticastFlowable&lt;R, U&gt;(connectableFactory, selector);</span>
+    }
+
+    /**
+     * Child Subscribers will observe the events of the ConnectableObservable on the
+     * specified scheduler.
+     * @param &lt;T&gt; the value type
+     * @param cf the ConnectableFlowable to wrap
+     * @param scheduler the target scheduler
+     * @return the new ConnectableObservable instance
+     */
+    public static &lt;T&gt; ConnectableFlowable&lt;T&gt; observeOn(final ConnectableFlowable&lt;T&gt; cf, final Scheduler scheduler) {
+<span class="fc" id="L73">        final Flowable&lt;T&gt; flowable = cf.observeOn(scheduler);</span>
+<span class="fc" id="L74">        return RxJavaPlugins.onAssembly(new ConnectableFlowableReplay&lt;T&gt;(cf, flowable));</span>
+    }
+
+    /**
+     * Creates a replaying ConnectableObservable with an unbounded buffer.
+     * @param &lt;T&gt; the value type
+     * @param source the source Publisher to use
+     * @return the new ConnectableObservable instance
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; ConnectableFlowable&lt;T&gt; createFrom(Flowable&lt;? extends T&gt; source) {
+<span class="fc" id="L85">        return create(source, DEFAULT_UNBOUNDED_FACTORY);</span>
+    }
+
+    /**
+     * Creates a replaying ConnectableObservable with a size bound buffer.
+     * @param &lt;T&gt; the value type
+     * @param source the source Flowable to use
+     * @param bufferSize the maximum number of elements to hold
+     * @return the new ConnectableObservable instance
+     */
+    public static &lt;T&gt; ConnectableFlowable&lt;T&gt; create(Flowable&lt;T&gt; source,
+            final int bufferSize) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (bufferSize == Integer.MAX_VALUE) {</span>
+<span class="fc" id="L98">            return createFrom(source);</span>
+        }
+<span class="fc" id="L100">        return create(source, new ReplayBufferTask&lt;T&gt;(bufferSize));</span>
+    }
+
+    /**
+     * Creates a replaying ConnectableObservable with a time bound buffer.
+     * @param &lt;T&gt; the value type
+     * @param source the source Flowable to use
+     * @param maxAge the maximum age of entries
+     * @param unit the unit of measure of the age amount
+     * @param scheduler the target scheduler providing the current time
+     * @return the new ConnectableObservable instance
+     */
+    public static &lt;T&gt; ConnectableFlowable&lt;T&gt; create(Flowable&lt;T&gt; source,
+            long maxAge, TimeUnit unit, Scheduler scheduler) {
+<span class="fc" id="L114">        return create(source, maxAge, unit, scheduler, Integer.MAX_VALUE);</span>
+    }
+
+    /**
+     * Creates a replaying ConnectableObservable with a size and time bound buffer.
+     * @param &lt;T&gt; the value type
+     * @param source the source Flowable to use
+     * @param maxAge the maximum age of entries
+     * @param unit the unit of measure of the age amount
+     * @param scheduler the target scheduler providing the current time
+     * @param bufferSize the maximum number of elements to hold
+     * @return the new ConnectableFlowable instance
+     */
+    public static &lt;T&gt; ConnectableFlowable&lt;T&gt; create(Flowable&lt;T&gt; source,
+            final long maxAge, final TimeUnit unit, final Scheduler scheduler, final int bufferSize) {
+<span class="fc" id="L129">        return create(source, new ScheduledReplayBufferTask&lt;T&gt;(bufferSize, maxAge, unit, scheduler));</span>
+    }
+
+    /**
+     * Creates a OperatorReplay instance to replay values of the given source observable.
+     * @param source the source observable
+     * @param bufferFactory the factory to instantiate the appropriate buffer when the observable becomes active
+     * @return the connectable observable
+     */
+    static &lt;T&gt; ConnectableFlowable&lt;T&gt; create(Flowable&lt;T&gt; source,
+            final Callable&lt;? extends ReplayBuffer&lt;T&gt;&gt; bufferFactory) {
+        // the current connection to source needs to be shared between the operator and its onSubscribe call
+<span class="fc" id="L141">        final AtomicReference&lt;ReplaySubscriber&lt;T&gt;&gt; curr = new AtomicReference&lt;ReplaySubscriber&lt;T&gt;&gt;();</span>
+<span class="fc" id="L142">        Publisher&lt;T&gt; onSubscribe = new ReplayPublisher&lt;T&gt;(curr, bufferFactory);</span>
+<span class="fc" id="L143">        return RxJavaPlugins.onAssembly(new FlowableReplay&lt;T&gt;(onSubscribe, source, curr, bufferFactory));</span>
+    }
+
+    private FlowableReplay(Publisher&lt;T&gt; onSubscribe, Flowable&lt;T&gt; source,
+            final AtomicReference&lt;ReplaySubscriber&lt;T&gt;&gt; current,
+<span class="fc" id="L148">            final Callable&lt;? extends ReplayBuffer&lt;T&gt;&gt; bufferFactory) {</span>
+<span class="fc" id="L149">        this.onSubscribe = onSubscribe;</span>
+<span class="fc" id="L150">        this.source = source;</span>
+<span class="fc" id="L151">        this.current = current;</span>
+<span class="fc" id="L152">        this.bufferFactory = bufferFactory;</span>
+<span class="fc" id="L153">    }</span>
+
+    @Override
+    public Publisher&lt;T&gt; source() {
+<span class="fc" id="L157">        return source;</span>
+    }
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L162">        onSubscribe.subscribe(s);</span>
+<span class="fc" id="L163">    }</span>
+
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    @Override
+    public void resetIf(Disposable connectionObject) {
+<span class="fc" id="L168">        current.compareAndSet((ReplaySubscriber)connectionObject, null);</span>
+<span class="fc" id="L169">    }</span>
+
+    @Override
+    public void connect(Consumer&lt;? super Disposable&gt; connection) {
+        boolean doConnect;
+        ReplaySubscriber&lt;T&gt; ps;
+        // we loop because concurrent connect/disconnect and termination may change the state
+        for (;;) {
+            // retrieve the current subscriber-to-source instance
+<span class="fc" id="L178">            ps = current.get();</span>
+            // if there is none yet or the current was disposed
+<span class="fc bfc" id="L180" title="All 4 branches covered.">            if (ps == null || ps.isDisposed()) {</span>
+
+                ReplayBuffer&lt;T&gt; buf;
+
+                try {
+<span class="fc" id="L185">                    buf = bufferFactory.call();</span>
+<span class="fc" id="L186">                } catch (Throwable ex) {</span>
+<span class="fc" id="L187">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L188">                    throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L189">                }</span>
+
+                // create a new subscriber-to-source
+<span class="fc" id="L192">                ReplaySubscriber&lt;T&gt; u = new ReplaySubscriber&lt;T&gt;(buf);</span>
+                // try setting it as the current subscriber-to-source
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                if (!current.compareAndSet(ps, u)) {</span>
+                    // did not work, perhaps a new subscriber arrived
+                    // and created a new subscriber-to-source as well, retry
+<span class="fc" id="L197">                    continue;</span>
+                }
+<span class="fc" id="L199">                ps = u;</span>
+            }
+            // if connect() was called concurrently, only one of them should actually
+            // connect to the source
+<span class="fc bfc" id="L203" title="All 4 branches covered.">            doConnect = !ps.shouldConnect.get() &amp;&amp; ps.shouldConnect.compareAndSet(false, true);</span>
+<span class="fc" id="L204">            break; // NOPMD</span>
+        }
+        /*
+         * Notify the callback that we have a (new) connection which it can dispose
+         * but since ps is unique to a connection, multiple calls to connect() will return the
+         * same Subscription and even if there was a connect-disconnect-connect pair, the older
+         * references won't disconnect the newer connection.
+         * Synchronous source consumers have the opportunity to disconnect via dispose on the
+         * Disposable as unsafeSubscribe may never return in its own.
+         *
+         * Note however, that asynchronously disconnecting a running source might leave
+         * child-subscribers without any terminal event; ReplaySubject does not have this
+         * issue because the cancellation was always triggered by the child-subscribers
+         * themselves.
+         */
+        try {
+<span class="fc" id="L220">            connection.accept(ps);</span>
+<span class="fc" id="L221">        } catch (Throwable ex) {</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">            if (doConnect) {</span>
+<span class="fc" id="L223">                ps.shouldConnect.compareAndSet(true, false);</span>
+            }
+<span class="fc" id="L225">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L226">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L227">        }</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if (doConnect) {</span>
+<span class="fc" id="L229">            source.subscribe(ps);</span>
+        }
+<span class="fc" id="L231">    }</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    static final class ReplaySubscriber&lt;T&gt;
+    extends AtomicReference&lt;Subscription&gt;
+    implements FlowableSubscriber&lt;T&gt;, Disposable {
+        private static final long serialVersionUID = 7224554242710036740L;
+        /** Holds notifications from upstream. */
+        final ReplayBuffer&lt;T&gt; buffer;
+        /** Indicates this Subscriber received a terminal event. */
+        boolean done;
+
+        /** Indicates an empty array of inner subscriptions. */
+<span class="fc" id="L244">        static final InnerSubscription[] EMPTY = new InnerSubscription[0];</span>
+        /** Indicates a terminated ReplaySubscriber. */
+<span class="fc" id="L246">        static final InnerSubscription[] TERMINATED = new InnerSubscription[0];</span>
+
+        /** Tracks the subscribed InnerSubscriptions. */
+        final AtomicReference&lt;InnerSubscription&lt;T&gt;[]&gt; subscribers;
+        /**
+         * Atomically changed from false to true by connect to make sure the
+         * connection is only performed by one thread.
+         */
+        final AtomicBoolean shouldConnect;
+
+        final AtomicInteger management;
+
+        /** Contains the maximum element index the child Subscribers requested so far. Accessed while emitting is true. */
+        long maxChildRequested;
+        /** Counts the outstanding upstream requests until the producer arrives. */
+        long maxUpstreamRequested;
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L264">        ReplaySubscriber(ReplayBuffer&lt;T&gt; buffer) {</span>
+<span class="fc" id="L265">            this.buffer = buffer;</span>
+<span class="fc" id="L266">            this.management = new AtomicInteger();</span>
+<span class="fc" id="L267">            this.subscribers = new AtomicReference&lt;InnerSubscription&lt;T&gt;[]&gt;(EMPTY);</span>
+<span class="fc" id="L268">            this.shouldConnect = new AtomicBoolean();</span>
+<span class="fc" id="L269">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            return subscribers.get() == TERMINATED;</span>
+        }
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public void dispose() {
+<span class="fc" id="L279">            subscribers.set(TERMINATED);</span>
+            // unlike OperatorPublish, we can't null out the terminated so
+            // late subscribers can still get replay
+            // current.compareAndSet(ReplaySubscriber.this, null);
+            // we don't care if it fails because it means the current has
+            // been replaced in the meantime
+<span class="fc" id="L285">            SubscriptionHelper.cancel(this);</span>
+<span class="fc" id="L286">        }</span>
+
+        /**
+         * Atomically try adding a new InnerSubscription to this Subscriber or return false if this
+         * Subscriber was terminated.
+         * @param producer the producer to add
+         * @return true if succeeded, false otherwise
+         */
+        @SuppressWarnings(&quot;unchecked&quot;)
+        boolean add(InnerSubscription&lt;T&gt; producer) {
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">            if (producer == null) {</span>
+<span class="nc" id="L297">                throw new NullPointerException();</span>
+            }
+            // the state can change so we do a CAS loop to achieve atomicity
+            for (;;) {
+                // get the current producer array
+<span class="fc" id="L302">                InnerSubscription&lt;T&gt;[] c = subscribers.get();</span>
+                // if this subscriber-to-source reached a terminal state by receiving
+                // an onError or onComplete, just refuse to add the new producer
+<span class="fc bfc" id="L305" title="All 2 branches covered.">                if (c == TERMINATED) {</span>
+<span class="fc" id="L306">                    return false;</span>
+                }
+                // we perform a copy-on-write logic
+<span class="fc" id="L309">                int len = c.length;</span>
+<span class="fc" id="L310">                InnerSubscription&lt;T&gt;[] u = new InnerSubscription[len + 1];</span>
+<span class="fc" id="L311">                System.arraycopy(c, 0, u, 0, len);</span>
+<span class="fc" id="L312">                u[len] = producer;</span>
+                // try setting the subscribers array
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                if (subscribers.compareAndSet(c, u)) {</span>
+<span class="fc" id="L315">                    return true;</span>
+                }
+                // if failed, some other operation succeeded (another add, remove or termination)
+                // so retry
+<span class="fc" id="L319">            }</span>
+        }
+
+        /**
+         * Atomically removes the given InnerSubscription from the subscribers array.
+         * @param p the InnerSubscription to remove
+         */
+        @SuppressWarnings(&quot;unchecked&quot;)
+        void remove(InnerSubscription&lt;T&gt; p) {
+            // the state can change so we do a CAS loop to achieve atomicity
+            for (;;) {
+                // let's read the current subscribers array
+<span class="fc" id="L331">                InnerSubscription&lt;T&gt;[] c = subscribers.get();</span>
+<span class="fc" id="L332">                int len = c.length;</span>
+                // if it is either empty or terminated, there is nothing to remove so we quit
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                if (len == 0) {</span>
+<span class="fc" id="L335">                    return;</span>
+                }
+                // let's find the supplied producer in the array
+                // although this is O(n), we don't expect too many child subscribers in general
+<span class="fc" id="L339">                int j = -1;</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">                for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">                    if (c[i].equals(p)) {</span>
+<span class="fc" id="L342">                        j = i;</span>
+<span class="fc" id="L343">                        break;</span>
+                    }
+                }
+                // we didn't find it so just quit
+<span class="fc bfc" id="L347" title="All 2 branches covered.">                if (j &lt; 0) {</span>
+<span class="fc" id="L348">                    return;</span>
+                }
+                // we do copy-on-write logic here
+                InnerSubscription&lt;T&gt;[] u;
+                // we don't create a new empty array if producer was the single inhabitant
+                // but rather reuse an empty array
+<span class="fc bfc" id="L354" title="All 2 branches covered.">                if (len == 1) {</span>
+<span class="fc" id="L355">                    u = EMPTY;</span>
+                } else {
+                    // otherwise, create a new array one less in size
+<span class="fc" id="L358">                    u = new InnerSubscription[len - 1];</span>
+                    // copy elements being before the given producer
+<span class="fc" id="L360">                    System.arraycopy(c, 0, u, 0, j);</span>
+                    // copy elements being after the given producer
+<span class="fc" id="L362">                    System.arraycopy(c, j + 1, u, j, len - j - 1);</span>
+                }
+                // try setting this new array as
+<span class="fc bfc" id="L365" title="All 2 branches covered.">                if (subscribers.compareAndSet(c, u)) {</span>
+<span class="fc" id="L366">                    return;</span>
+                }
+                // if we failed, it means something else happened
+                // (a concurrent add/remove or termination), we need to retry
+<span class="fc" id="L370">            }</span>
+        }
+
+        @Override
+        public void onSubscribe(Subscription p) {
+<span class="fc bfc" id="L375" title="All 2 branches covered.">            if (SubscriptionHelper.setOnce(this, p)) {</span>
+<span class="fc" id="L376">                manageRequests();</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">                for (InnerSubscription&lt;T&gt; rp : subscribers.get()) {</span>
+<span class="fc" id="L378">                    buffer.replay(rp);</span>
+                }
+            }
+<span class="fc" id="L381">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L385" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L386">                buffer.next(t);</span>
+<span class="fc bfc" id="L387" title="All 2 branches covered.">                for (InnerSubscription&lt;T&gt; rp : subscribers.get()) {</span>
+<span class="fc" id="L388">                    buffer.replay(rp);</span>
+                }
+            }
+<span class="fc" id="L391">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public void onError(Throwable e) {
+            // The observer front is accessed serially as required by spec so
+            // no need to CAS in the terminal value
+<span class="fc bfc" id="L398" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L399">                done = true;</span>
+<span class="fc" id="L400">                buffer.error(e);</span>
+<span class="fc bfc" id="L401" title="All 2 branches covered.">                for (InnerSubscription&lt;T&gt; rp : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L402">                    buffer.replay(rp);</span>
+                }
+            } else {
+<span class="fc" id="L405">                RxJavaPlugins.onError(e);</span>
+            }
+<span class="fc" id="L407">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public void onComplete() {
+            // The observer front is accessed serially as required by spec so
+            // no need to CAS in the terminal value
+<span class="fc bfc" id="L414" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L415">                done = true;</span>
+<span class="fc" id="L416">                buffer.complete();</span>
+<span class="fc bfc" id="L417" title="All 2 branches covered.">                for (InnerSubscription&lt;T&gt; rp : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L418">                    buffer.replay(rp);</span>
+                }
+            }
+<span class="fc" id="L421">        }</span>
+
+        /**
+         * Coordinates the request amounts of various child Subscribers.
+         */
+        void manageRequests() {
+<span class="fc bfc" id="L427" title="All 2 branches covered.">            if (management.getAndIncrement() != 0) {</span>
+<span class="fc" id="L428">                return;</span>
+            }
+<span class="fc" id="L430">            int missed = 1;</span>
+            for (;;) {
+                // if the upstream has completed, no more requesting is possible
+<span class="fc bfc" id="L433" title="All 2 branches covered.">                if (isDisposed()) {</span>
+<span class="fc" id="L434">                    return;</span>
+                }
+
+<span class="fc" id="L437">                InnerSubscription&lt;T&gt;[] a = subscribers.get();</span>
+
+<span class="fc" id="L439">                long ri = maxChildRequested;</span>
+<span class="fc" id="L440">                long maxTotalRequests = ri;</span>
+
+<span class="fc bfc" id="L442" title="All 2 branches covered.">                for (InnerSubscription&lt;T&gt; rp : a) {</span>
+<span class="fc" id="L443">                    maxTotalRequests = Math.max(maxTotalRequests, rp.totalRequested.get());</span>
+                }
+
+<span class="fc" id="L446">                long ur = maxUpstreamRequested;</span>
+<span class="fc" id="L447">                Subscription p = get();</span>
+
+<span class="fc" id="L449">                long diff = maxTotalRequests - ri;</span>
+<span class="fc bfc" id="L450" title="All 2 branches covered.">                if (diff != 0L) {</span>
+<span class="fc" id="L451">                    maxChildRequested = maxTotalRequests;</span>
+<span class="fc bfc" id="L452" title="All 2 branches covered.">                    if (p != null) {</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">                        if (ur != 0L) {</span>
+<span class="nc" id="L454">                            maxUpstreamRequested = 0L;</span>
+<span class="nc" id="L455">                            p.request(ur + diff);</span>
+                        } else {
+<span class="fc" id="L457">                            p.request(diff);</span>
+                        }
+                    } else {
+                        // collect upstream request amounts until there is a producer for them
+<span class="fc" id="L461">                        long u = ur + diff;</span>
+<span class="pc bpc" id="L462" title="1 of 2 branches missed.">                        if (u &lt; 0) {</span>
+<span class="nc" id="L463">                            u = Long.MAX_VALUE;</span>
+                        }
+<span class="fc" id="L465">                        maxUpstreamRequested = u;</span>
+<span class="fc" id="L466">                    }</span>
+                } else
+                // if there were outstanding upstream requests and we have a producer
+<span class="fc bfc" id="L469" title="All 4 branches covered.">                if (ur != 0L &amp;&amp; p != null) {</span>
+<span class="fc" id="L470">                    maxUpstreamRequested = 0L;</span>
+                    // fire the accumulated requests
+<span class="fc" id="L472">                    p.request(ur);</span>
+                }
+
+<span class="fc" id="L475">                missed = management.addAndGet(-missed);</span>
+<span class="fc bfc" id="L476" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L477">                    break;</span>
+                }
+<span class="fc" id="L479">            }</span>
+<span class="fc" id="L480">        }</span>
+    }
+    /**
+     * A Subscription that manages the request and cancellation state of a
+     * child subscriber in thread-safe manner.
+     * @param &lt;T&gt; the value type
+     */
+    static final class InnerSubscription&lt;T&gt; extends AtomicLong implements Subscription, Disposable {
+
+        private static final long serialVersionUID = -4453897557930727610L;
+        /**
+         * The parent subscriber-to-source used to allow removing the child in case of
+         * child cancellation.
+         */
+        final ReplaySubscriber&lt;T&gt; parent;
+        /** The actual child subscriber. */
+        final Subscriber&lt;? super T&gt; child;
+        /**
+         * Holds an object that represents the current location in the buffer.
+         * Guarded by the emitter loop.
+         */
+        Object index;
+        /**
+         * Keeps the sum of all requested amounts.
+         */
+        final AtomicLong totalRequested;
+        /** Indicates an emission state. Guarded by this. */
+        boolean emitting;
+        /** Indicates a missed update. Guarded by this. */
+        boolean missed;
+        /**
+         * Indicates this child has been cancelled: the state is swapped in atomically and
+         * will prevent the dispatch() to emit (too many) values to a terminated child subscriber.
+         */
+        static final long CANCELLED = Long.MIN_VALUE;
+
+<span class="fc" id="L516">        InnerSubscription(ReplaySubscriber&lt;T&gt; parent, Subscriber&lt;? super T&gt; child) {</span>
+<span class="fc" id="L517">            this.parent = parent;</span>
+<span class="fc" id="L518">            this.child = child;</span>
+<span class="fc" id="L519">            this.totalRequested = new AtomicLong();</span>
+<span class="fc" id="L520">        }</span>
+
+        @Override
+        public void request(long n) {
+            // ignore negative requests
+<span class="fc bfc" id="L525" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+                // add to the current requested and cap it at MAX_VALUE
+                // except when there was a concurrent cancellation
+<span class="fc bfc" id="L528" title="All 2 branches covered.">                if (BackpressureHelper.addCancel(this, n) != CANCELLED) {</span>
+                    // increment the total request counter
+<span class="fc" id="L530">                    BackpressureHelper.add(totalRequested, n);</span>
+                    // if successful, notify the parent dispatcher this child can receive more
+                    // elements
+<span class="fc" id="L533">                    parent.manageRequests();</span>
+                    // try replaying any cached content
+<span class="fc" id="L535">                    parent.buffer.replay(this);</span>
+                }
+            }
+<span class="fc" id="L538">        }</span>
+
+        /**
+         * Indicate that values have been emitted to this child subscriber by the dispatch() method.
+         * @param n the number of items emitted
+         * @return the updated request value (may indicate how much can be produced or a terminal state)
+         */
+        public long produced(long n) {
+<span class="fc" id="L546">            return BackpressureHelper.producedCancel(this, n);</span>
+        }
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc bfc" id="L551" title="All 2 branches covered.">            return get() == CANCELLED;</span>
+        }
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L556">            dispose();</span>
+<span class="fc" id="L557">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L561" title="All 2 branches covered.">            if (getAndSet(CANCELLED) != CANCELLED) {</span>
+                // remove this from the parent
+<span class="fc" id="L563">                parent.remove(this);</span>
+                // After removal, we might have unblocked the other child subscribers:
+                // let's assume this child had 0 requested before the cancellation while
+                // the others had non-zero. By removing this 'blocking' child, the others
+                // are now free to receive events
+<span class="fc" id="L568">                parent.manageRequests();</span>
+                // make sure the last known node is not retained
+<span class="fc" id="L570">                index = null;</span>
+            }
+<span class="fc" id="L572">        }</span>
+        /**
+         * Convenience method to auto-cast the index object.
+         * @return the current index object
+         */
+        @SuppressWarnings(&quot;unchecked&quot;)
+        &lt;U&gt; U index() {
+<span class="fc" id="L579">            return (U)index;</span>
+        }
+    }
+    /**
+     * The interface for interacting with various buffering logic.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    interface ReplayBuffer&lt;T&gt; {
+        /**
+         * Adds a regular value to the buffer.
+         * @param value the next value to store
+         */
+        void next(T value);
+        /**
+         * Adds a terminal exception to the buffer.
+         * @param e the Throwable instance
+         */
+        void error(Throwable e);
+        /**
+         * Adds a completion event to the buffer.
+         */
+        void complete();
+        /**
+         * Tries to replay the buffered values to the
+         * subscriber inside the output if there
+         * is new value and requests available at the
+         * same time.
+         * @param output the receiver of the events
+         */
+        void replay(InnerSubscription&lt;T&gt; output);
+    }
+
+    /**
+     * Holds an unbounded list of events.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    static final class UnboundedReplayBuffer&lt;T&gt; extends ArrayList&lt;Object&gt; implements ReplayBuffer&lt;T&gt; {
+
+        private static final long serialVersionUID = 7063189396499112664L;
+        /** The total number of events in the buffer. */
+        volatile int size;
+
+        UnboundedReplayBuffer(int capacityHint) {
+<span class="fc" id="L624">            super(capacityHint);</span>
+<span class="fc" id="L625">        }</span>
+
+        @Override
+        public void next(T value) {
+<span class="fc" id="L629">            add(NotificationLite.next(value));</span>
+<span class="fc" id="L630">            size++;</span>
+<span class="fc" id="L631">        }</span>
+
+        @Override
+        public void error(Throwable e) {
+<span class="fc" id="L635">            add(NotificationLite.error(e));</span>
+<span class="fc" id="L636">            size++;</span>
+<span class="fc" id="L637">        }</span>
+
+        @Override
+        public void complete() {
+<span class="fc" id="L641">            add(NotificationLite.complete());</span>
+<span class="fc" id="L642">            size++;</span>
+<span class="fc" id="L643">        }</span>
+
+        @Override
+        public void replay(InnerSubscription&lt;T&gt; output) {
+<span class="fc" id="L647">            synchronized (output) {</span>
+<span class="fc bfc" id="L648" title="All 2 branches covered.">                if (output.emitting) {</span>
+<span class="fc" id="L649">                    output.missed = true;</span>
+<span class="fc" id="L650">                    return;</span>
+                }
+<span class="fc" id="L652">                output.emitting = true;</span>
+<span class="fc" id="L653">            }</span>
+<span class="fc" id="L654">            final Subscriber&lt;? super T&gt; child = output.child;</span>
+
+            for (;;) {
+<span class="fc bfc" id="L657" title="All 2 branches covered.">                if (output.isDisposed()) {</span>
+<span class="fc" id="L658">                    return;</span>
+                }
+<span class="fc" id="L660">                int sourceIndex = size;</span>
+
+<span class="fc" id="L662">                Integer destinationIndexObject = output.index();</span>
+<span class="fc bfc" id="L663" title="All 2 branches covered.">                int destinationIndex = destinationIndexObject != null ? destinationIndexObject : 0;</span>
+
+<span class="fc" id="L665">                long r = output.get();</span>
+<span class="fc" id="L666">                long r0 = r; // NOPMD</span>
+<span class="fc" id="L667">                long e = 0L;</span>
+
+<span class="fc bfc" id="L669" title="All 4 branches covered.">                while (r != 0L &amp;&amp; destinationIndex &lt; sourceIndex) {</span>
+<span class="fc" id="L670">                    Object o = get(destinationIndex);</span>
+                    try {
+<span class="fc bfc" id="L672" title="All 2 branches covered.">                        if (NotificationLite.accept(o, child)) {</span>
+<span class="fc" id="L673">                            return;</span>
+                        }
+<span class="fc" id="L675">                    } catch (Throwable err) {</span>
+<span class="fc" id="L676">                        Exceptions.throwIfFatal(err);</span>
+<span class="fc" id="L677">                        output.dispose();</span>
+<span class="pc bpc" id="L678" title="2 of 4 branches missed.">                        if (!NotificationLite.isError(o) &amp;&amp; !NotificationLite.isComplete(o)) {</span>
+<span class="fc" id="L679">                            child.onError(err);</span>
+                        }
+<span class="fc" id="L681">                        return;</span>
+<span class="fc" id="L682">                    }</span>
+<span class="fc bfc" id="L683" title="All 2 branches covered.">                    if (output.isDisposed()) {</span>
+<span class="fc" id="L684">                        return;</span>
+                    }
+<span class="fc" id="L686">                    destinationIndex++;</span>
+<span class="fc" id="L687">                    r--;</span>
+<span class="fc" id="L688">                    e++;</span>
+<span class="fc" id="L689">                }</span>
+<span class="fc bfc" id="L690" title="All 2 branches covered.">                if (e != 0L) {</span>
+<span class="fc" id="L691">                    output.index = destinationIndex;</span>
+<span class="fc bfc" id="L692" title="All 2 branches covered.">                    if (r0 != Long.MAX_VALUE) {</span>
+<span class="fc" id="L693">                        output.produced(e);</span>
+                    }
+                }
+
+<span class="fc" id="L697">                synchronized (output) {</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">                    if (!output.missed) {</span>
+<span class="fc" id="L699">                        output.emitting = false;</span>
+<span class="fc" id="L700">                        return;</span>
+                    }
+<span class="fc" id="L702">                    output.missed = false;</span>
+<span class="fc" id="L703">                }</span>
+<span class="fc" id="L704">            }</span>
+        }
+    }
+
+    /**
+     * Represents a node in a bounded replay buffer's linked list.
+     */
+    static final class Node extends AtomicReference&lt;Node&gt; {
+
+        private static final long serialVersionUID = 245354315435971818L;
+        final Object value;
+        final long index;
+
+<span class="fc" id="L717">        Node(Object value, long index) {</span>
+<span class="fc" id="L718">            this.value = value;</span>
+<span class="fc" id="L719">            this.index = index;</span>
+<span class="fc" id="L720">        }</span>
+    }
+
+    /**
+     * Base class for bounded buffering with options to specify an
+     * enter and leave transforms and custom truncation behavior.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    static class BoundedReplayBuffer&lt;T&gt; extends AtomicReference&lt;Node&gt; implements ReplayBuffer&lt;T&gt; {
+
+        private static final long serialVersionUID = 2346567790059478686L;
+
+        Node tail;
+        int size;
+
+        long index;
+
+<span class="fc" id="L738">        BoundedReplayBuffer() {</span>
+<span class="fc" id="L739">            Node n = new Node(null, 0);</span>
+<span class="fc" id="L740">            tail = n;</span>
+<span class="fc" id="L741">            set(n);</span>
+<span class="fc" id="L742">        }</span>
+
+        /**
+         * Add a new node to the linked list.
+         * @param n the Node instance to add
+         */
+        final void addLast(Node n) {
+<span class="fc" id="L749">            tail.set(n);</span>
+<span class="fc" id="L750">            tail = n;</span>
+<span class="fc" id="L751">            size++;</span>
+<span class="fc" id="L752">        }</span>
+        /**
+         * Remove the first node from the linked list.
+         */
+        final void removeFirst() {
+<span class="fc" id="L757">            Node head = get();</span>
+<span class="fc" id="L758">            Node next = head.get();</span>
+<span class="pc bpc" id="L759" title="1 of 2 branches missed.">            if (next == null) {</span>
+<span class="nc" id="L760">                throw new IllegalStateException(&quot;Empty list!&quot;);</span>
+            }
+<span class="fc" id="L762">            size--;</span>
+            // can't just move the head because it would retain the very first value
+            // can't null out the head's value because of late replayers would see null
+<span class="fc" id="L765">            setFirst(next);</span>
+<span class="fc" id="L766">        }</span>
+        /* test */ final void removeSome(int n) {
+<span class="fc" id="L768">            Node head = get();</span>
+<span class="fc bfc" id="L769" title="All 2 branches covered.">            while (n &gt; 0) {</span>
+<span class="fc" id="L770">                head = head.get();</span>
+<span class="fc" id="L771">                n--;</span>
+<span class="fc" id="L772">                size--;</span>
+            }
+
+<span class="fc" id="L775">            setFirst(head);</span>
+<span class="fc" id="L776">        }</span>
+        /**
+         * Arranges the given node is the new head from now on.
+         * @param n the Node instance to set as first
+         */
+        final void setFirst(Node n) {
+<span class="fc" id="L782">            set(n);</span>
+<span class="fc" id="L783">        }</span>
+
+        @Override
+        public final void next(T value) {
+<span class="fc" id="L787">            Object o = enterTransform(NotificationLite.next(value));</span>
+<span class="fc" id="L788">            Node n = new Node(o, ++index);</span>
+<span class="fc" id="L789">            addLast(n);</span>
+<span class="fc" id="L790">            truncate();</span>
+<span class="fc" id="L791">        }</span>
+
+        @Override
+        public final void error(Throwable e) {
+<span class="fc" id="L795">            Object o = enterTransform(NotificationLite.error(e));</span>
+<span class="fc" id="L796">            Node n = new Node(o, ++index);</span>
+<span class="fc" id="L797">            addLast(n);</span>
+<span class="fc" id="L798">            truncateFinal();</span>
+<span class="fc" id="L799">        }</span>
+
+        @Override
+        public final void complete() {
+<span class="fc" id="L803">            Object o = enterTransform(NotificationLite.complete());</span>
+<span class="fc" id="L804">            Node n = new Node(o, ++index);</span>
+<span class="fc" id="L805">            addLast(n);</span>
+<span class="fc" id="L806">            truncateFinal();</span>
+<span class="fc" id="L807">        }</span>
+
+        final void trimHead() {
+<span class="fc" id="L810">            Node head = get();</span>
+<span class="fc bfc" id="L811" title="All 2 branches covered.">            if (head.value != null) {</span>
+<span class="fc" id="L812">                Node n = new Node(null, 0L);</span>
+<span class="fc" id="L813">                n.lazySet(head.get());</span>
+<span class="fc" id="L814">                set(n);</span>
+            }
+<span class="fc" id="L816">        }</span>
+
+        @Override
+        public final void replay(InnerSubscription&lt;T&gt; output) {
+<span class="fc" id="L820">            synchronized (output) {</span>
+<span class="fc bfc" id="L821" title="All 2 branches covered.">                if (output.emitting) {</span>
+<span class="fc" id="L822">                    output.missed = true;</span>
+<span class="fc" id="L823">                    return;</span>
+                }
+<span class="fc" id="L825">                output.emitting = true;</span>
+<span class="fc" id="L826">            }</span>
+            for (;;) {
+<span class="pc bpc" id="L828" title="1 of 2 branches missed.">                if (output.isDisposed()) {</span>
+<span class="nc" id="L829">                    output.index = null;</span>
+<span class="nc" id="L830">                    return;</span>
+                }
+
+<span class="fc" id="L833">                long r = output.get();</span>
+<span class="fc bfc" id="L834" title="All 2 branches covered.">                boolean unbounded = r == Long.MAX_VALUE; // NOPMD</span>
+<span class="fc" id="L835">                long e = 0L;</span>
+
+<span class="fc" id="L837">                Node node = output.index();</span>
+<span class="fc bfc" id="L838" title="All 2 branches covered.">                if (node == null) {</span>
+<span class="fc" id="L839">                    node = getHead();</span>
+<span class="fc" id="L840">                    output.index = node;</span>
+
+<span class="fc" id="L842">                    BackpressureHelper.add(output.totalRequested, node.index);</span>
+                }
+
+<span class="fc bfc" id="L845" title="All 2 branches covered.">                while (r != 0) {</span>
+<span class="fc" id="L846">                    Node v = node.get();</span>
+<span class="fc bfc" id="L847" title="All 2 branches covered.">                    if (v != null) {</span>
+<span class="fc" id="L848">                        Object o = leaveTransform(v.value);</span>
+                        try {
+<span class="fc bfc" id="L850" title="All 2 branches covered.">                            if (NotificationLite.accept(o, output.child)) {</span>
+<span class="fc" id="L851">                                output.index = null;</span>
+<span class="fc" id="L852">                                return;</span>
+                            }
+<span class="nc" id="L854">                        } catch (Throwable err) {</span>
+<span class="nc" id="L855">                            Exceptions.throwIfFatal(err);</span>
+<span class="nc" id="L856">                            output.index = null;</span>
+<span class="nc" id="L857">                            output.dispose();</span>
+<span class="nc bnc" id="L858" title="All 4 branches missed.">                            if (!NotificationLite.isError(o) &amp;&amp; !NotificationLite.isComplete(o)) {</span>
+<span class="nc" id="L859">                                output.child.onError(err);</span>
+                            }
+<span class="nc" id="L861">                            return;</span>
+<span class="fc" id="L862">                        }</span>
+<span class="fc" id="L863">                        e++;</span>
+<span class="fc" id="L864">                        r--;</span>
+<span class="fc" id="L865">                        node = v;</span>
+                    } else {
+                        break;
+                    }
+<span class="fc bfc" id="L869" title="All 2 branches covered.">                    if (output.isDisposed()) {</span>
+<span class="fc" id="L870">                        output.index = null;</span>
+<span class="fc" id="L871">                        return;</span>
+                    }
+<span class="fc" id="L873">                }</span>
+
+<span class="fc bfc" id="L875" title="All 2 branches covered.">                if (e != 0L) {</span>
+<span class="fc" id="L876">                    output.index = node;</span>
+<span class="fc bfc" id="L877" title="All 2 branches covered.">                    if (!unbounded) {</span>
+<span class="fc" id="L878">                        output.produced(e);</span>
+                    }
+                }
+
+<span class="fc" id="L882">                synchronized (output) {</span>
+<span class="fc bfc" id="L883" title="All 2 branches covered.">                    if (!output.missed) {</span>
+<span class="fc" id="L884">                        output.emitting = false;</span>
+<span class="fc" id="L885">                        return;</span>
+                    }
+<span class="fc" id="L887">                    output.missed = false;</span>
+<span class="fc" id="L888">                }</span>
+<span class="fc" id="L889">            }</span>
+
+        }
+
+        /**
+         * Override this to wrap the NotificationLite object into a
+         * container to be used later by truncate.
+         * @param value the value to transform into the internal representation
+         * @return the transformed value
+         */
+        Object enterTransform(Object value) {
+<span class="fc" id="L900">            return value;</span>
+        }
+        /**
+         * Override this to unwrap the transformed value into a
+         * NotificationLite object.
+         * @param value the input value to transform to the external representation
+         * @return the transformed value
+         */
+        Object leaveTransform(Object value) {
+<span class="fc" id="L909">            return value;</span>
+        }
+        /**
+         * Override this method to truncate a non-terminated buffer
+         * based on its current properties.
+         */
+        void truncate() {
+
+<span class="nc" id="L917">        }</span>
+        /**
+         * Override this method to truncate a terminated buffer
+         * based on its properties (i.e., truncate but the very last node).
+         */
+        void truncateFinal() {
+<span class="fc" id="L923">            trimHead();</span>
+<span class="fc" id="L924">        }</span>
+        /* test */ final  void collect(Collection&lt;? super T&gt; output) {
+<span class="fc" id="L926">            Node n = getHead();</span>
+            for (;;) {
+<span class="fc" id="L928">                Node next = n.get();</span>
+<span class="fc bfc" id="L929" title="All 2 branches covered.">                if (next != null) {</span>
+<span class="fc" id="L930">                    Object o = next.value;</span>
+<span class="fc" id="L931">                    Object v = leaveTransform(o);</span>
+<span class="fc bfc" id="L932" title="All 4 branches covered.">                    if (NotificationLite.isComplete(v) || NotificationLite.isError(v)) {</span>
+<span class="fc" id="L933">                        break;</span>
+                    }
+<span class="fc" id="L935">                    output.add(NotificationLite.&lt;T&gt;getValue(v));</span>
+<span class="fc" id="L936">                    n = next;</span>
+                } else {
+                    break;
+                }
+<span class="fc" id="L940">            }</span>
+<span class="fc" id="L941">        }</span>
+        /* test */ boolean hasError() {
+<span class="fc bfc" id="L943" title="All 4 branches covered.">            return tail.value != null &amp;&amp; NotificationLite.isError(leaveTransform(tail.value));</span>
+        }
+        /* test */ boolean hasCompleted() {
+<span class="fc bfc" id="L946" title="All 4 branches covered.">            return tail.value != null &amp;&amp; NotificationLite.isComplete(leaveTransform(tail.value));</span>
+        }
+
+        Node getHead() {
+<span class="fc" id="L950">            return get();</span>
+        }
+    }
+
+    /**
+     * A bounded replay buffer implementation with size limit only.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    static final class SizeBoundReplayBuffer&lt;T&gt; extends BoundedReplayBuffer&lt;T&gt; {
+
+        private static final long serialVersionUID = -5898283885385201806L;
+
+        final int limit;
+<span class="fc" id="L964">        SizeBoundReplayBuffer(int limit) {</span>
+<span class="fc" id="L965">            this.limit = limit;</span>
+<span class="fc" id="L966">        }</span>
+
+        @Override
+        void truncate() {
+            // overflow can be at most one element
+<span class="fc bfc" id="L971" title="All 2 branches covered.">            if (size &gt; limit) {</span>
+<span class="fc" id="L972">                removeFirst();</span>
+            }
+<span class="fc" id="L974">        }</span>
+
+        // no need for final truncation because values are truncated one by one
+    }
+
+    /**
+     * Size and time bound replay buffer.
+     *
+     * @param &lt;T&gt; the buffered value type
+     */
+    static final class SizeAndTimeBoundReplayBuffer&lt;T&gt; extends BoundedReplayBuffer&lt;T&gt; {
+
+        private static final long serialVersionUID = 3457957419649567404L;
+        final Scheduler scheduler;
+        final long maxAge;
+        final TimeUnit unit;
+        final int limit;
+<span class="fc" id="L991">        SizeAndTimeBoundReplayBuffer(int limit, long maxAge, TimeUnit unit, Scheduler scheduler) {</span>
+<span class="fc" id="L992">            this.scheduler = scheduler;</span>
+<span class="fc" id="L993">            this.limit = limit;</span>
+<span class="fc" id="L994">            this.maxAge = maxAge;</span>
+<span class="fc" id="L995">            this.unit = unit;</span>
+<span class="fc" id="L996">        }</span>
+
+        @Override
+        Object enterTransform(Object value) {
+<span class="fc" id="L1000">            return new Timed&lt;Object&gt;(value, scheduler.now(unit), unit);</span>
+        }
+
+        @Override
+        Object leaveTransform(Object value) {
+<span class="fc" id="L1005">            return ((Timed&lt;?&gt;)value).value();</span>
+        }
+
+        @Override
+        void truncate() {
+<span class="fc" id="L1010">            long timeLimit = scheduler.now(unit) - maxAge;</span>
+
+<span class="fc" id="L1012">            Node prev = get();</span>
+<span class="fc" id="L1013">            Node next = prev.get();</span>
+
+<span class="fc" id="L1015">            int e = 0;</span>
+            for (;;) {
+<span class="pc bpc" id="L1017" title="1 of 2 branches missed.">                if (next != null) {</span>
+<span class="fc bfc" id="L1018" title="All 2 branches covered.">                    if (size &gt; limit) {</span>
+<span class="fc" id="L1019">                        e++;</span>
+<span class="fc" id="L1020">                        size--;</span>
+<span class="fc" id="L1021">                        prev = next;</span>
+<span class="fc" id="L1022">                        next = next.get();</span>
+                    } else {
+<span class="fc" id="L1024">                        Timed&lt;?&gt; v = (Timed&lt;?&gt;)next.value;</span>
+<span class="fc bfc" id="L1025" title="All 2 branches covered.">                        if (v.time() &lt;= timeLimit) {</span>
+<span class="fc" id="L1026">                            e++;</span>
+<span class="fc" id="L1027">                            size--;</span>
+<span class="fc" id="L1028">                            prev = next;</span>
+<span class="fc" id="L1029">                            next = next.get();</span>
+                        } else {
+                            break;
+                        }
+<span class="fc" id="L1033">                    }</span>
+                } else {
+                    break;
+                }
+            }
+<span class="fc bfc" id="L1038" title="All 2 branches covered.">            if (e != 0) {</span>
+<span class="fc" id="L1039">                setFirst(prev);</span>
+            }
+<span class="fc" id="L1041">        }</span>
+
+        @Override
+        void truncateFinal() {
+<span class="fc" id="L1045">            long timeLimit = scheduler.now(unit) - maxAge;</span>
+
+<span class="fc" id="L1047">            Node prev = get();</span>
+<span class="fc" id="L1048">            Node next = prev.get();</span>
+
+<span class="fc" id="L1050">            int e = 0;</span>
+            for (;;) {
+<span class="pc bpc" id="L1052" title="1 of 4 branches missed.">                if (next != null &amp;&amp; size &gt; 1) {</span>
+<span class="fc" id="L1053">                    Timed&lt;?&gt; v = (Timed&lt;?&gt;)next.value;</span>
+<span class="fc bfc" id="L1054" title="All 2 branches covered.">                    if (v.time() &lt;= timeLimit) {</span>
+<span class="fc" id="L1055">                        e++;</span>
+<span class="fc" id="L1056">                        size--;</span>
+<span class="fc" id="L1057">                        prev = next;</span>
+<span class="fc" id="L1058">                        next = next.get();</span>
+                    } else {
+                        break;
+                    }
+<span class="fc" id="L1062">                } else {</span>
+                    break;
+                }
+            }
+<span class="fc bfc" id="L1066" title="All 2 branches covered.">            if (e != 0) {</span>
+<span class="fc" id="L1067">                setFirst(prev);</span>
+            }
+<span class="fc" id="L1069">        }</span>
+
+        @Override
+        Node getHead() {
+<span class="fc" id="L1073">            long timeLimit = scheduler.now(unit) - maxAge;</span>
+<span class="fc" id="L1074">            Node prev = get();</span>
+<span class="fc" id="L1075">            Node next = prev.get();</span>
+            for (;;) {
+<span class="fc bfc" id="L1077" title="All 2 branches covered.">                if (next == null) {</span>
+<span class="fc" id="L1078">                    break;</span>
+                }
+<span class="fc" id="L1080">                Timed&lt;?&gt; v = (Timed&lt;?&gt;)next.value;</span>
+<span class="fc bfc" id="L1081" title="All 4 branches covered.">                if (NotificationLite.isComplete(v.value()) || NotificationLite.isError(v.value())) {</span>
+<span class="fc" id="L1082">                    break;</span>
+                }
+<span class="fc bfc" id="L1084" title="All 2 branches covered.">                if (v.time() &lt;= timeLimit) {</span>
+<span class="fc" id="L1085">                    prev = next;</span>
+<span class="fc" id="L1086">                    next = next.get();</span>
+                } else {
+                    break;
+                }
+<span class="fc" id="L1090">            }</span>
+<span class="fc" id="L1091">            return prev;</span>
+        }
+    }
+
+    static final class MulticastFlowable&lt;R, U&gt; extends Flowable&lt;R&gt; {
+        private final Callable&lt;? extends ConnectableFlowable&lt;U&gt;&gt; connectableFactory;
+        private final Function&lt;? super Flowable&lt;U&gt;, ? extends Publisher&lt;R&gt;&gt; selector;
+
+<span class="fc" id="L1099">        MulticastFlowable(Callable&lt;? extends ConnectableFlowable&lt;U&gt;&gt; connectableFactory, Function&lt;? super Flowable&lt;U&gt;, ? extends Publisher&lt;R&gt;&gt; selector) {</span>
+<span class="fc" id="L1100">            this.connectableFactory = connectableFactory;</span>
+<span class="fc" id="L1101">            this.selector = selector;</span>
+<span class="fc" id="L1102">        }</span>
+
+        @Override
+        protected void subscribeActual(Subscriber&lt;? super R&gt; child) {
+            ConnectableFlowable&lt;U&gt; cf;
+            try {
+<span class="fc" id="L1108">                cf = ObjectHelper.requireNonNull(connectableFactory.call(), &quot;The connectableFactory returned null&quot;);</span>
+<span class="fc" id="L1109">            } catch (Throwable e) {</span>
+<span class="fc" id="L1110">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L1111">                EmptySubscription.error(e, child);</span>
+<span class="fc" id="L1112">                return;</span>
+<span class="fc" id="L1113">            }</span>
+
+            Publisher&lt;R&gt; observable;
+            try {
+<span class="fc" id="L1117">                observable = ObjectHelper.requireNonNull(selector.apply(cf), &quot;The selector returned a null Publisher&quot;);</span>
+<span class="fc" id="L1118">            } catch (Throwable e) {</span>
+<span class="fc" id="L1119">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L1120">                EmptySubscription.error(e, child);</span>
+<span class="fc" id="L1121">                return;</span>
+<span class="fc" id="L1122">            }</span>
+
+<span class="fc" id="L1124">            final SubscriberResourceWrapper&lt;R&gt; srw = new SubscriberResourceWrapper&lt;R&gt;(child);</span>
+
+<span class="fc" id="L1126">            observable.subscribe(srw);</span>
+
+<span class="fc" id="L1128">            cf.connect(new DisposableConsumer(srw));</span>
+<span class="fc" id="L1129">        }</span>
+
+        final class DisposableConsumer implements Consumer&lt;Disposable&gt; {
+            private final SubscriberResourceWrapper&lt;R&gt; srw;
+
+<span class="fc" id="L1134">            DisposableConsumer(SubscriberResourceWrapper&lt;R&gt; srw) {</span>
+<span class="fc" id="L1135">                this.srw = srw;</span>
+<span class="fc" id="L1136">            }</span>
+
+            @Override
+            public void accept(Disposable r) {
+<span class="fc" id="L1140">                srw.setResource(r);</span>
+<span class="fc" id="L1141">            }</span>
+        }
+    }
+
+    static final class ConnectableFlowableReplay&lt;T&gt; extends ConnectableFlowable&lt;T&gt; {
+        private final ConnectableFlowable&lt;T&gt; cf;
+        private final Flowable&lt;T&gt; flowable;
+
+<span class="fc" id="L1149">        ConnectableFlowableReplay(ConnectableFlowable&lt;T&gt; cf, Flowable&lt;T&gt; flowable) {</span>
+<span class="fc" id="L1150">            this.cf = cf;</span>
+<span class="fc" id="L1151">            this.flowable = flowable;</span>
+<span class="fc" id="L1152">        }</span>
+
+        @Override
+        public void connect(Consumer&lt;? super Disposable&gt; connection) {
+<span class="fc" id="L1156">            cf.connect(connection);</span>
+<span class="fc" id="L1157">        }</span>
+
+        @Override
+        protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L1161">            flowable.subscribe(s);</span>
+<span class="fc" id="L1162">        }</span>
+    }
+
+    static final class ReplayBufferTask&lt;T&gt; implements Callable&lt;ReplayBuffer&lt;T&gt;&gt; {
+        private final int bufferSize;
+
+<span class="fc" id="L1168">        ReplayBufferTask(int bufferSize) {</span>
+<span class="fc" id="L1169">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L1170">        }</span>
+
+        @Override
+        public ReplayBuffer&lt;T&gt; call() {
+<span class="fc" id="L1174">            return new SizeBoundReplayBuffer&lt;T&gt;(bufferSize);</span>
+        }
+    }
+
+    static final class ScheduledReplayBufferTask&lt;T&gt; implements Callable&lt;ReplayBuffer&lt;T&gt;&gt; {
+        private final int bufferSize;
+        private final long maxAge;
+        private final TimeUnit unit;
+        private final Scheduler scheduler;
+
+<span class="fc" id="L1184">        ScheduledReplayBufferTask(int bufferSize, long maxAge, TimeUnit unit, Scheduler scheduler) {</span>
+<span class="fc" id="L1185">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L1186">            this.maxAge = maxAge;</span>
+<span class="fc" id="L1187">            this.unit = unit;</span>
+<span class="fc" id="L1188">            this.scheduler = scheduler;</span>
+<span class="fc" id="L1189">        }</span>
+
+        @Override
+        public ReplayBuffer&lt;T&gt; call() {
+<span class="fc" id="L1193">            return new SizeAndTimeBoundReplayBuffer&lt;T&gt;(bufferSize, maxAge, unit, scheduler);</span>
+        }
+    }
+
+    static final class ReplayPublisher&lt;T&gt; implements Publisher&lt;T&gt; {
+        private final AtomicReference&lt;ReplaySubscriber&lt;T&gt;&gt; curr;
+        private final Callable&lt;? extends ReplayBuffer&lt;T&gt;&gt; bufferFactory;
+
+<span class="fc" id="L1201">        ReplayPublisher(AtomicReference&lt;ReplaySubscriber&lt;T&gt;&gt; curr, Callable&lt;? extends ReplayBuffer&lt;T&gt;&gt; bufferFactory) {</span>
+<span class="fc" id="L1202">            this.curr = curr;</span>
+<span class="fc" id="L1203">            this.bufferFactory = bufferFactory;</span>
+<span class="fc" id="L1204">        }</span>
+
+        @Override
+        public void subscribe(Subscriber&lt;? super T&gt; child) {
+            // concurrent connection/disconnection may change the state,
+            // we loop to be atomic while the child subscribes
+            for (;;) {
+                // get the current subscriber-to-source
+<span class="fc" id="L1212">                ReplaySubscriber&lt;T&gt; r = curr.get();</span>
+                // if there isn't one
+<span class="fc bfc" id="L1214" title="All 2 branches covered.">                if (r == null) {</span>
+                    ReplayBuffer&lt;T&gt; buf;
+
+                    try {
+<span class="fc" id="L1218">                        buf = bufferFactory.call();</span>
+<span class="fc" id="L1219">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L1220">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L1221">                        EmptySubscription.error(ex, child);</span>
+<span class="fc" id="L1222">                        return;</span>
+<span class="fc" id="L1223">                    }</span>
+                    // create a new subscriber to source
+<span class="fc" id="L1225">                    ReplaySubscriber&lt;T&gt; u = new ReplaySubscriber&lt;T&gt;(buf);</span>
+                    // let's try setting it as the current subscriber-to-source
+<span class="fc bfc" id="L1227" title="All 2 branches covered.">                    if (!curr.compareAndSet(null, u)) {</span>
+                        // didn't work, maybe someone else did it or the current subscriber
+                        // to source has just finished
+<span class="fc" id="L1230">                        continue;</span>
+                    }
+                    // we won, let's use it going onwards
+<span class="fc" id="L1233">                    r = u;</span>
+                }
+
+                // create the backpressure-managing producer for this child
+<span class="fc" id="L1237">                InnerSubscription&lt;T&gt; inner = new InnerSubscription&lt;T&gt;(r, child);</span>
+                // the producer has been registered with the current subscriber-to-source so
+                // at least it will receive the next terminal event
+                // setting the producer will trigger the first request to be considered by
+                // the subscriber-to-source.
+<span class="fc" id="L1242">                child.onSubscribe(inner);</span>
+                // we try to add it to the array of subscribers
+                // if it fails, no worries because we will still have its buffer
+                // so it is going to replay it for us
+<span class="fc" id="L1246">                r.add(inner);</span>
+
+<span class="fc bfc" id="L1248" title="All 2 branches covered.">                if (inner.isDisposed()) {</span>
+<span class="fc" id="L1249">                    r.remove(inner);</span>
+<span class="fc" id="L1250">                    return;</span>
+                }
+
+<span class="fc" id="L1253">                r.manageRequests();</span>
+
+                // trigger the capturing of the current node and total requested
+<span class="fc" id="L1256">                r.buffer.replay(inner);</span>
+
+<span class="fc" id="L1258">                break; // NOPMD</span>
+            }
+<span class="fc" id="L1260">        }</span>
+    }
+
+<span class="fc" id="L1263">    static final class DefaultUnboundedFactory implements Callable&lt;Object&gt; {</span>
+        @Override
+        public Object call() {
+<span class="fc" id="L1266">            return new UnboundedReplayBuffer&lt;Object&gt;(16);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

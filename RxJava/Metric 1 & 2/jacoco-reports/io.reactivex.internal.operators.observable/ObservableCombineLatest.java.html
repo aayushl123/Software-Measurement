@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableCombineLatest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableCombineLatest.java</span></div><h1>ObservableCombineLatest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.queue.SpscLinkedArrayQueue;
+import io.reactivex.internal.util.AtomicThrowable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class ObservableCombineLatest&lt;T, R&gt; extends Observable&lt;R&gt; {
+    final ObservableSource&lt;? extends T&gt;[] sources;
+    final Iterable&lt;? extends ObservableSource&lt;? extends T&gt;&gt; sourcesIterable;
+    final Function&lt;? super Object[], ? extends R&gt; combiner;
+    final int bufferSize;
+    final boolean delayError;
+
+    public ObservableCombineLatest(ObservableSource&lt;? extends T&gt;[] sources,
+            Iterable&lt;? extends ObservableSource&lt;? extends T&gt;&gt; sourcesIterable,
+            Function&lt;? super Object[], ? extends R&gt; combiner, int bufferSize,
+<span class="fc" id="L38">            boolean delayError) {</span>
+<span class="fc" id="L39">        this.sources = sources;</span>
+<span class="fc" id="L40">        this.sourcesIterable = sourcesIterable;</span>
+<span class="fc" id="L41">        this.combiner = combiner;</span>
+<span class="fc" id="L42">        this.bufferSize = bufferSize;</span>
+<span class="fc" id="L43">        this.delayError = delayError;</span>
+<span class="fc" id="L44">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void subscribeActual(Observer&lt;? super R&gt; observer) {
+<span class="fc" id="L49">        ObservableSource&lt;? extends T&gt;[] sources = this.sources;</span>
+<span class="fc" id="L50">        int count = 0;</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (sources == null) {</span>
+<span class="fc" id="L52">            sources = new Observable[8];</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            for (ObservableSource&lt;? extends T&gt; p : sourcesIterable) {</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                if (count == sources.length) {</span>
+<span class="fc" id="L55">                    ObservableSource&lt;? extends T&gt;[] b = new ObservableSource[count + (count &gt;&gt; 2)];</span>
+<span class="fc" id="L56">                    System.arraycopy(sources, 0, b, 0, count);</span>
+<span class="fc" id="L57">                    sources = b;</span>
+                }
+<span class="fc" id="L59">                sources[count++] = p;</span>
+<span class="fc" id="L60">            }</span>
+        } else {
+<span class="fc" id="L62">            count = sources.length;</span>
+        }
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (count == 0) {</span>
+<span class="fc" id="L66">            EmptyDisposable.complete(observer);</span>
+<span class="fc" id="L67">            return;</span>
+        }
+
+<span class="fc" id="L70">        LatestCoordinator&lt;T, R&gt; lc = new LatestCoordinator&lt;T, R&gt;(observer, combiner, count, bufferSize, delayError);</span>
+<span class="fc" id="L71">        lc.subscribe(sources);</span>
+<span class="fc" id="L72">    }</span>
+
+    static final class LatestCoordinator&lt;T, R&gt; extends AtomicInteger implements Disposable {
+
+        private static final long serialVersionUID = 8567835998786448817L;
+        final Observer&lt;? super R&gt; downstream;
+        final Function&lt;? super Object[], ? extends R&gt; combiner;
+        final CombinerObserver&lt;T, R&gt;[] observers;
+        Object[] latest;
+        final SpscLinkedArrayQueue&lt;Object[]&gt; queue;
+        final boolean delayError;
+
+        volatile boolean cancelled;
+
+        volatile boolean done;
+
+<span class="fc" id="L88">        final AtomicThrowable errors = new AtomicThrowable();</span>
+
+        int active;
+        int complete;
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        LatestCoordinator(Observer&lt;? super R&gt; actual,
+                Function&lt;? super Object[], ? extends R&gt; combiner,
+<span class="fc" id="L96">                int count, int bufferSize, boolean delayError) {</span>
+<span class="fc" id="L97">            this.downstream = actual;</span>
+<span class="fc" id="L98">            this.combiner = combiner;</span>
+<span class="fc" id="L99">            this.delayError = delayError;</span>
+<span class="fc" id="L100">            this.latest = new Object[count];</span>
+<span class="fc" id="L101">            CombinerObserver&lt;T, R&gt;[] as = new CombinerObserver[count];</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            for (int i = 0; i &lt; count; i++) {</span>
+<span class="fc" id="L103">                as[i] = new CombinerObserver&lt;T, R&gt;(this, i);</span>
+            }
+<span class="fc" id="L105">            this.observers = as;</span>
+<span class="fc" id="L106">            this.queue = new SpscLinkedArrayQueue&lt;Object[]&gt;(bufferSize);</span>
+<span class="fc" id="L107">        }</span>
+
+        public void subscribe(ObservableSource&lt;? extends T&gt;[] sources) {
+<span class="fc" id="L110">            Observer&lt;T&gt;[] as = observers;</span>
+<span class="fc" id="L111">            int len = as.length;</span>
+<span class="fc" id="L112">            downstream.onSubscribe(this);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L114" title="All 4 branches covered.">                if (done || cancelled) {</span>
+<span class="fc" id="L115">                    return;</span>
+                }
+<span class="fc" id="L117">                sources[i].subscribe(as[i]);</span>
+            }
+<span class="fc" id="L119">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L124">                cancelled = true;</span>
+<span class="fc" id="L125">                cancelSources();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L127">                    clear(queue);</span>
+                }
+            }
+<span class="fc" id="L130">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L134">            return cancelled;</span>
+        }
+
+        void cancelSources() {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            for (CombinerObserver&lt;T, R&gt; observer : observers) {</span>
+<span class="fc" id="L139">                observer.dispose();</span>
+            }
+<span class="fc" id="L141">        }</span>
+
+        void clear(SpscLinkedArrayQueue&lt;?&gt; q) {
+<span class="fc" id="L144">            synchronized (this) {</span>
+<span class="fc" id="L145">                latest = null;</span>
+<span class="fc" id="L146">            }</span>
+<span class="fc" id="L147">            q.clear();</span>
+<span class="fc" id="L148">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L152">                return;</span>
+            }
+
+<span class="fc" id="L155">            final SpscLinkedArrayQueue&lt;Object[]&gt; q = queue;</span>
+<span class="fc" id="L156">            final Observer&lt;? super R&gt; a = downstream;</span>
+<span class="fc" id="L157">            final boolean delayError = this.delayError;</span>
+
+<span class="fc" id="L159">            int missed = 1;</span>
+            for (;;) {
+
+                for (;;) {
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L164">                        clear(q);</span>
+<span class="fc" id="L165">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L168" title="All 4 branches covered.">                    if (!delayError &amp;&amp; errors.get() != null) {</span>
+<span class="fc" id="L169">                        cancelSources();</span>
+<span class="fc" id="L170">                        clear(q);</span>
+<span class="fc" id="L171">                        a.onError(errors.terminate());</span>
+<span class="fc" id="L172">                        return;</span>
+                    }
+
+<span class="fc" id="L175">                    boolean d = done;</span>
+<span class="fc" id="L176">                    Object[] s = q.poll();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                    boolean empty = s == null;</span>
+
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L180">                        clear(q);</span>
+<span class="fc" id="L181">                        Throwable ex = errors.terminate();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                        if (ex == null) {</span>
+<span class="fc" id="L183">                            a.onComplete();</span>
+                        } else {
+<span class="fc" id="L185">                            a.onError(ex);</span>
+                        }
+<span class="fc" id="L187">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L191">                        break;</span>
+                    }
+
+                    R v;
+
+                    try {
+<span class="fc" id="L197">                        v = ObjectHelper.requireNonNull(combiner.apply(s), &quot;The combiner returned a null value&quot;);</span>
+<span class="fc" id="L198">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L199">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L200">                        errors.addThrowable(ex);</span>
+<span class="fc" id="L201">                        cancelSources();</span>
+<span class="fc" id="L202">                        clear(q);</span>
+<span class="fc" id="L203">                        ex = errors.terminate();</span>
+<span class="fc" id="L204">                        a.onError(ex);</span>
+<span class="fc" id="L205">                        return;</span>
+<span class="fc" id="L206">                    }</span>
+
+<span class="fc" id="L208">                    a.onNext(v);</span>
+<span class="fc" id="L209">                }</span>
+
+<span class="fc" id="L211">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L213">                    break;</span>
+                }
+            }
+<span class="fc" id="L216">        }</span>
+
+        void innerNext(int index, T item) {
+<span class="fc" id="L219">            boolean shouldDrain = false;</span>
+<span class="fc" id="L220">            synchronized (this) {</span>
+<span class="fc" id="L221">                Object[] latest = this.latest;</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                if (latest == null) {</span>
+<span class="fc" id="L223">                    return;</span>
+                }
+<span class="fc" id="L225">                Object o = latest[index];</span>
+<span class="fc" id="L226">                int a = active;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                if (o == null) {</span>
+<span class="fc" id="L228">                    active = ++a;</span>
+                }
+<span class="fc" id="L230">                latest[index] = item;</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                if (a == latest.length) {</span>
+<span class="fc" id="L232">                    queue.offer(latest.clone());</span>
+<span class="fc" id="L233">                    shouldDrain = true;</span>
+                }
+<span class="fc" id="L235">            }</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">            if (shouldDrain) {</span>
+<span class="fc" id="L237">                drain();</span>
+            }
+<span class="fc" id="L239">        }</span>
+
+        void innerError(int index, Throwable ex) {
+<span class="fc bfc" id="L242" title="All 2 branches covered.">            if (errors.addThrowable(ex)) {</span>
+<span class="fc" id="L243">                boolean cancelOthers = true;</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">                if (delayError) {</span>
+<span class="fc" id="L245">                    synchronized (this) {</span>
+<span class="fc" id="L246">                        Object[] latest = this.latest;</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">                        if (latest == null) {</span>
+<span class="nc" id="L248">                            return;</span>
+                        }
+
+<span class="fc bfc" id="L251" title="All 2 branches covered.">                        cancelOthers = latest[index] == null;</span>
+<span class="fc bfc" id="L252" title="All 4 branches covered.">                        if (cancelOthers || ++complete == latest.length) {</span>
+<span class="fc" id="L253">                            done = true;</span>
+                        }
+<span class="fc" id="L255">                    }</span>
+                }
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                if (cancelOthers) {</span>
+<span class="fc" id="L258">                    cancelSources();</span>
+                }
+<span class="fc" id="L260">                drain();</span>
+<span class="fc" id="L261">            } else {</span>
+<span class="fc" id="L262">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L264">        }</span>
+
+        void innerComplete(int index) {
+<span class="fc" id="L267">            boolean cancelOthers = false;</span>
+<span class="fc" id="L268">            synchronized (this) {</span>
+<span class="fc" id="L269">                Object[] latest = this.latest;</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                if (latest == null) {</span>
+<span class="nc" id="L271">                    return;</span>
+                }
+
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                cancelOthers = latest[index] == null;</span>
+<span class="fc bfc" id="L275" title="All 4 branches covered.">                if (cancelOthers || ++complete == latest.length) {</span>
+<span class="fc" id="L276">                    done = true;</span>
+                }
+<span class="fc" id="L278">            }</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">            if (cancelOthers) {</span>
+<span class="fc" id="L280">                cancelSources();</span>
+            }
+<span class="fc" id="L282">            drain();</span>
+<span class="fc" id="L283">        }</span>
+
+    }
+
+    static final class CombinerObserver&lt;T, R&gt; extends AtomicReference&lt;Disposable&gt; implements Observer&lt;T&gt; {
+        private static final long serialVersionUID = -4823716997131257941L;
+
+        final LatestCoordinator&lt;T, R&gt; parent;
+
+        final int index;
+
+<span class="fc" id="L294">        CombinerObserver(LatestCoordinator&lt;T, R&gt; parent, int index) {</span>
+<span class="fc" id="L295">            this.parent = parent;</span>
+<span class="fc" id="L296">            this.index = index;</span>
+<span class="fc" id="L297">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L301">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L302">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L306">            parent.innerNext(index, t);</span>
+<span class="fc" id="L307">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L311">            parent.innerError(index, t);</span>
+<span class="fc" id="L312">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L316">            parent.innerComplete(index);</span>
+<span class="fc" id="L317">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L320">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L321">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

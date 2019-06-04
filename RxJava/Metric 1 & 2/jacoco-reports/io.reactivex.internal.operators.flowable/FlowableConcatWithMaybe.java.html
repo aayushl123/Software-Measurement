@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableConcatWithMaybe.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableConcatWithMaybe.java</span></div><h1>FlowableConcatWithMaybe.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.subscribers.SinglePostCompleteSubscriber;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+
+/**
+ * Subscribe to a main Flowable first, then when it completes normally, subscribe to a Maybe,
+ * signal its success value followed by a completion or signal its error or completion signal as is.
+ * &lt;p&gt;History: 2.1.10 - experimental
+ * @param &lt;T&gt; the element type of the main source and output type
+ * @since 2.2
+ */
+public final class FlowableConcatWithMaybe&lt;T&gt; extends AbstractFlowableWithUpstream&lt;T, T&gt; {
+
+    final MaybeSource&lt;? extends T&gt; other;
+
+    public FlowableConcatWithMaybe(Flowable&lt;T&gt; source, MaybeSource&lt;? extends T&gt; other) {
+<span class="fc" id="L38">        super(source);</span>
+<span class="fc" id="L39">        this.other = other;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L44">        source.subscribe(new ConcatWithSubscriber&lt;T&gt;(s, other));</span>
+<span class="fc" id="L45">    }</span>
+
+    static final class ConcatWithSubscriber&lt;T&gt;
+    extends SinglePostCompleteSubscriber&lt;T, T&gt;
+    implements MaybeObserver&lt;T&gt; {
+
+        private static final long serialVersionUID = -7346385463600070225L;
+
+        final AtomicReference&lt;Disposable&gt; otherDisposable;
+
+        MaybeSource&lt;? extends T&gt; other;
+
+        boolean inMaybe;
+
+        ConcatWithSubscriber(Subscriber&lt;? super T&gt; actual, MaybeSource&lt;? extends T&gt; other) {
+<span class="fc" id="L60">            super(actual);</span>
+<span class="fc" id="L61">            this.other = other;</span>
+<span class="fc" id="L62">            this.otherDisposable = new AtomicReference&lt;Disposable&gt;();</span>
+<span class="fc" id="L63">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L67">            DisposableHelper.setOnce(otherDisposable, d);</span>
+<span class="fc" id="L68">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L72">            produced++;</span>
+<span class="fc" id="L73">            downstream.onNext(t);</span>
+<span class="fc" id="L74">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L78">            downstream.onError(t);</span>
+<span class="fc" id="L79">        }</span>
+
+        @Override
+        public void onSuccess(T t) {
+<span class="fc" id="L83">            complete(t);</span>
+<span class="fc" id="L84">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (inMaybe) {</span>
+<span class="fc" id="L89">                downstream.onComplete();</span>
+            } else {
+<span class="fc" id="L91">                inMaybe = true;</span>
+<span class="fc" id="L92">                upstream = SubscriptionHelper.CANCELLED;</span>
+<span class="fc" id="L93">                MaybeSource&lt;? extends T&gt; ms = other;</span>
+<span class="fc" id="L94">                other = null;</span>
+<span class="fc" id="L95">                ms.subscribe(this);</span>
+            }
+<span class="fc" id="L97">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L101">            super.cancel();</span>
+<span class="fc" id="L102">            DisposableHelper.dispose(otherDisposable);</span>
+<span class="fc" id="L103">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

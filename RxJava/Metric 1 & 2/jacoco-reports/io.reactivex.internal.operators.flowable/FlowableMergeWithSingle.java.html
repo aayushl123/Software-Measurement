@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableMergeWithSingle.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableMergeWithSingle.java</span></div><h1>FlowableMergeWithSingle.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.fuseable.SimplePlainQueue;
+import io.reactivex.internal.queue.SpscArrayQueue;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Merges an Observable and a Maybe by emitting the items of the Observable and the success
+ * value of the Maybe and waiting until both the Observable and Maybe terminate normally.
+ * &lt;p&gt;History: 2.1.10 - experimental
+ * @param &lt;T&gt; the element type of the Observable
+ * @since 2.2
+ */
+public final class FlowableMergeWithSingle&lt;T&gt; extends AbstractFlowableWithUpstream&lt;T, T&gt; {
+
+    final SingleSource&lt;? extends T&gt; other;
+
+    public FlowableMergeWithSingle(Flowable&lt;T&gt; source, SingleSource&lt;? extends T&gt; other) {
+<span class="fc" id="L41">        super(source);</span>
+<span class="fc" id="L42">        this.other = other;</span>
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+<span class="fc" id="L47">        MergeWithObserver&lt;T&gt; parent = new MergeWithObserver&lt;T&gt;(subscriber);</span>
+<span class="fc" id="L48">        subscriber.onSubscribe(parent);</span>
+<span class="fc" id="L49">        source.subscribe(parent);</span>
+<span class="fc" id="L50">        other.subscribe(parent.otherObserver);</span>
+<span class="fc" id="L51">    }</span>
+
+    static final class MergeWithObserver&lt;T&gt; extends AtomicInteger
+    implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = -4592979584110982903L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        final AtomicReference&lt;Subscription&gt; mainSubscription;
+
+        final OtherObserver&lt;T&gt; otherObserver;
+
+        final AtomicThrowable error;
+
+        final AtomicLong requested;
+
+        final int prefetch;
+
+        final int limit;
+
+        volatile SimplePlainQueue&lt;T&gt; queue;
+
+        T singleItem;
+
+        volatile boolean cancelled;
+
+        volatile boolean mainDone;
+
+        volatile int otherState;
+
+        long emitted;
+
+        int consumed;
+
+        static final int OTHER_STATE_HAS_VALUE = 1;
+
+        static final int OTHER_STATE_CONSUMED_OR_EMPTY = 2;
+
+<span class="fc" id="L90">        MergeWithObserver(Subscriber&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L91">            this.downstream = downstream;</span>
+<span class="fc" id="L92">            this.mainSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+<span class="fc" id="L93">            this.otherObserver = new OtherObserver&lt;T&gt;(this);</span>
+<span class="fc" id="L94">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L95">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L96">            this.prefetch = bufferSize();</span>
+<span class="fc" id="L97">            this.limit = prefetch - (prefetch &gt;&gt; 2);</span>
+<span class="fc" id="L98">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L102">            SubscriptionHelper.setOnce(mainSubscription, s, prefetch);</span>
+<span class="fc" id="L103">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (compareAndSet(0, 1)) {</span>
+<span class="fc" id="L108">                long e = emitted;</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                if (requested.get() != e) {</span>
+<span class="fc" id="L110">                    SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc bfc" id="L111" title="All 4 branches covered.">                    if (q == null || q.isEmpty()) {</span>
+
+<span class="fc" id="L113">                        emitted = e + 1;</span>
+<span class="fc" id="L114">                        downstream.onNext(t);</span>
+
+<span class="fc" id="L116">                        int c = consumed + 1;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                        if (c == limit) {</span>
+<span class="fc" id="L118">                            consumed = 0;</span>
+<span class="fc" id="L119">                            mainSubscription.get().request(c);</span>
+                        } else {
+<span class="fc" id="L121">                            consumed = c;</span>
+                        }
+<span class="fc" id="L123">                    } else {</span>
+<span class="fc" id="L124">                        q.offer(t);</span>
+                    }
+<span class="fc" id="L126">                } else {</span>
+<span class="fc" id="L127">                    SimplePlainQueue&lt;T&gt; q = getOrCreateQueue();</span>
+<span class="fc" id="L128">                    q.offer(t);</span>
+                }
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                if (decrementAndGet() == 0) {</span>
+<span class="fc" id="L131">                    return;</span>
+                }
+<span class="fc" id="L133">            } else {</span>
+<span class="fc" id="L134">                SimplePlainQueue&lt;T&gt; q = getOrCreateQueue();</span>
+<span class="fc" id="L135">                q.offer(t);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L137">                    return;</span>
+                }
+            }
+<span class="fc" id="L140">            drainLoop();</span>
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public void onError(Throwable ex) {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (error.addThrowable(ex)) {</span>
+<span class="fc" id="L146">                SubscriptionHelper.cancel(mainSubscription);</span>
+<span class="fc" id="L147">                drain();</span>
+            } else {
+<span class="fc" id="L149">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L151">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L155">            mainDone = true;</span>
+<span class="fc" id="L156">            drain();</span>
+<span class="fc" id="L157">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L161">            BackpressureHelper.add(requested, n);</span>
+<span class="fc" id="L162">            drain();</span>
+<span class="fc" id="L163">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L167">            cancelled = true;</span>
+<span class="fc" id="L168">            SubscriptionHelper.cancel(mainSubscription);</span>
+<span class="fc" id="L169">            DisposableHelper.dispose(otherObserver);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L171">                queue = null;</span>
+<span class="fc" id="L172">                singleItem = null;</span>
+            }
+<span class="fc" id="L174">        }</span>
+
+        void otherSuccess(T value) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            if (compareAndSet(0, 1)) {</span>
+<span class="fc" id="L178">                long e = emitted;</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                if (requested.get() != e) {</span>
+
+<span class="fc" id="L181">                    emitted = e + 1;</span>
+<span class="fc" id="L182">                    downstream.onNext(value);</span>
+<span class="fc" id="L183">                    otherState = OTHER_STATE_CONSUMED_OR_EMPTY;</span>
+                } else {
+<span class="fc" id="L185">                    singleItem = value;</span>
+<span class="fc" id="L186">                    otherState = OTHER_STATE_HAS_VALUE;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                    if (decrementAndGet() == 0) {</span>
+<span class="fc" id="L188">                        return;</span>
+                    }
+                }
+<span class="fc" id="L191">            } else {</span>
+<span class="fc" id="L192">                singleItem = value;</span>
+<span class="fc" id="L193">                otherState = OTHER_STATE_HAS_VALUE;</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L195">                    return;</span>
+                }
+            }
+<span class="fc" id="L198">            drainLoop();</span>
+<span class="fc" id="L199">        }</span>
+
+        void otherError(Throwable ex) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            if (error.addThrowable(ex)) {</span>
+<span class="fc" id="L203">                SubscriptionHelper.cancel(mainSubscription);</span>
+<span class="fc" id="L204">                drain();</span>
+            } else {
+<span class="fc" id="L206">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L208">        }</span>
+
+        SimplePlainQueue&lt;T&gt; getOrCreateQueue() {
+<span class="fc" id="L211">            SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (q == null) {</span>
+<span class="fc" id="L213">                q = new SpscArrayQueue&lt;T&gt;(bufferSize());</span>
+<span class="fc" id="L214">                queue = q;</span>
+            }
+<span class="fc" id="L216">            return q;</span>
+        }
+
+        void drain() {
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L221">                drainLoop();</span>
+            }
+<span class="fc" id="L223">        }</span>
+
+        void drainLoop() {
+<span class="fc" id="L226">            Subscriber&lt;? super T&gt; actual = this.downstream;</span>
+<span class="fc" id="L227">            int missed = 1;</span>
+<span class="fc" id="L228">            long e = emitted;</span>
+<span class="fc" id="L229">            int c = consumed;</span>
+<span class="fc" id="L230">            int lim = limit;</span>
+            for (;;) {
+
+<span class="fc" id="L233">                long r = requested.get();</span>
+
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L237">                        singleItem = null;</span>
+<span class="fc" id="L238">                        queue = null;</span>
+<span class="fc" id="L239">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                    if (error.get() != null) {</span>
+<span class="fc" id="L243">                        singleItem = null;</span>
+<span class="fc" id="L244">                        queue = null;</span>
+<span class="fc" id="L245">                        actual.onError(error.terminate());</span>
+<span class="fc" id="L246">                        return;</span>
+                    }
+
+<span class="fc" id="L249">                    int os = otherState;</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">                    if (os == OTHER_STATE_HAS_VALUE) {</span>
+<span class="fc" id="L251">                        T v = singleItem;</span>
+<span class="fc" id="L252">                        singleItem = null;</span>
+<span class="fc" id="L253">                        otherState = OTHER_STATE_CONSUMED_OR_EMPTY;</span>
+<span class="fc" id="L254">                        os = OTHER_STATE_CONSUMED_OR_EMPTY;</span>
+<span class="fc" id="L255">                        actual.onNext(v);</span>
+
+<span class="fc" id="L257">                        e++;</span>
+<span class="fc" id="L258">                        continue;</span>
+                    }
+
+<span class="fc" id="L261">                    boolean d = mainDone;</span>
+<span class="fc" id="L262">                    SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">                    T v = q != null ? q.poll() : null;</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">                    boolean empty = v == null;</span>
+
+<span class="fc bfc" id="L266" title="All 6 branches covered.">                    if (d &amp;&amp; empty &amp;&amp; os == OTHER_STATE_CONSUMED_OR_EMPTY) {</span>
+<span class="fc" id="L267">                        queue = null;</span>
+<span class="fc" id="L268">                        actual.onComplete();</span>
+<span class="fc" id="L269">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L272" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L273">                        break;</span>
+                    }
+
+<span class="fc" id="L276">                    actual.onNext(v);</span>
+
+<span class="fc" id="L278">                    e++;</span>
+
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                    if (++c == lim) {</span>
+<span class="fc" id="L281">                        c = 0;</span>
+<span class="fc" id="L282">                        mainSubscription.get().request(lim);</span>
+                    }
+<span class="fc" id="L284">                }</span>
+
+<span class="fc bfc" id="L286" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L288">                        singleItem = null;</span>
+<span class="fc" id="L289">                        queue = null;</span>
+<span class="fc" id="L290">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                    if (error.get() != null) {</span>
+<span class="fc" id="L294">                        singleItem = null;</span>
+<span class="fc" id="L295">                        queue = null;</span>
+<span class="fc" id="L296">                        actual.onError(error.terminate());</span>
+<span class="fc" id="L297">                        return;</span>
+                    }
+
+<span class="fc" id="L300">                    boolean d = mainDone;</span>
+<span class="fc" id="L301">                    SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc bfc" id="L302" title="All 4 branches covered.">                    boolean empty = q == null || q.isEmpty();</span>
+
+<span class="fc bfc" id="L304" title="All 6 branches covered.">                    if (d &amp;&amp; empty &amp;&amp; otherState == 2) {</span>
+<span class="fc" id="L305">                        queue = null;</span>
+<span class="fc" id="L306">                        actual.onComplete();</span>
+<span class="fc" id="L307">                        return;</span>
+                    }
+                }
+
+<span class="fc" id="L311">                emitted = e;</span>
+<span class="fc" id="L312">                consumed = c;</span>
+<span class="fc" id="L313">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L315">                    break;</span>
+                }
+<span class="fc" id="L317">            }</span>
+<span class="fc" id="L318">        }</span>
+
+        static final class OtherObserver&lt;T&gt; extends AtomicReference&lt;Disposable&gt;
+        implements SingleObserver&lt;T&gt; {
+
+            private static final long serialVersionUID = -2935427570954647017L;
+
+            final MergeWithObserver&lt;T&gt; parent;
+
+<span class="fc" id="L327">            OtherObserver(MergeWithObserver&lt;T&gt; parent) {</span>
+<span class="fc" id="L328">                this.parent = parent;</span>
+<span class="fc" id="L329">            }</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L333">                DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L334">            }</span>
+
+            @Override
+            public void onSuccess(T t) {
+<span class="fc" id="L338">                parent.otherSuccess(t);</span>
+<span class="fc" id="L339">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L343">                parent.otherError(e);</span>
+<span class="fc" id="L344">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

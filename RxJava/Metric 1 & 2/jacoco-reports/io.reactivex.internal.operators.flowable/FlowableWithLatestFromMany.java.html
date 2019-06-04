@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableWithLatestFromMany.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableWithLatestFromMany.java</span></div><h1>FlowableWithLatestFromMany.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.internal.operators.flowable;
+
+import java.util.Arrays;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.annotations.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.ConditionalSubscriber;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Combines a main sequence of values with the latest from multiple other sequences via
+ * a selector function.
+ *
+ * @param &lt;T&gt; the main sequence's type
+ * @param &lt;R&gt; the output type
+ */
+public final class FlowableWithLatestFromMany&lt;T, R&gt; extends AbstractFlowableWithUpstream&lt;T, R&gt; {
+    @Nullable
+    final Publisher&lt;?&gt;[] otherArray;
+
+    @Nullable
+    final Iterable&lt;? extends Publisher&lt;?&gt;&gt; otherIterable;
+
+    final Function&lt;? super Object[], R&gt; combiner;
+
+    public FlowableWithLatestFromMany(@NonNull Flowable&lt;T&gt; source, @NonNull Publisher&lt;?&gt;[] otherArray, Function&lt;? super Object[], R&gt; combiner) {
+<span class="fc" id="L47">        super(source);</span>
+<span class="fc" id="L48">        this.otherArray = otherArray;</span>
+<span class="fc" id="L49">        this.otherIterable = null;</span>
+<span class="fc" id="L50">        this.combiner = combiner;</span>
+<span class="fc" id="L51">    }</span>
+
+    public FlowableWithLatestFromMany(@NonNull Flowable&lt;T&gt; source, @NonNull Iterable&lt;? extends Publisher&lt;?&gt;&gt; otherIterable, @NonNull Function&lt;? super Object[], R&gt; combiner) {
+<span class="fc" id="L54">        super(source);</span>
+<span class="fc" id="L55">        this.otherArray = null;</span>
+<span class="fc" id="L56">        this.otherIterable = otherIterable;</span>
+<span class="fc" id="L57">        this.combiner = combiner;</span>
+<span class="fc" id="L58">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super R&gt; s) {
+<span class="fc" id="L62">        Publisher&lt;?&gt;[] others = otherArray;</span>
+<span class="fc" id="L63">        int n = 0;</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (others == null) {</span>
+<span class="fc" id="L65">            others = new Publisher[8];</span>
+
+            try {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                for (Publisher&lt;?&gt; p : otherIterable) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                    if (n == others.length) {</span>
+<span class="fc" id="L70">                        others = Arrays.copyOf(others, n + (n &gt;&gt; 1));</span>
+                    }
+<span class="fc" id="L72">                    others[n++] = p;</span>
+<span class="fc" id="L73">                }</span>
+<span class="fc" id="L74">            } catch (Throwable ex) {</span>
+<span class="fc" id="L75">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L76">                EmptySubscription.error(ex, s);</span>
+<span class="fc" id="L77">                return;</span>
+<span class="fc" id="L78">            }</span>
+
+        } else {
+<span class="fc" id="L81">            n = others.length;</span>
+        }
+
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (n == 0) {</span>
+<span class="fc" id="L85">            new FlowableMap&lt;T, R&gt;(source, new SingletonArrayFunc()).subscribeActual(s);</span>
+<span class="fc" id="L86">            return;</span>
+        }
+
+<span class="fc" id="L89">        WithLatestFromSubscriber&lt;T, R&gt; parent = new WithLatestFromSubscriber&lt;T, R&gt;(s, combiner, n);</span>
+<span class="fc" id="L90">        s.onSubscribe(parent);</span>
+<span class="fc" id="L91">        parent.subscribe(others, n);</span>
+
+<span class="fc" id="L93">        source.subscribe(parent);</span>
+<span class="fc" id="L94">    }</span>
+
+    static final class WithLatestFromSubscriber&lt;T, R&gt;
+    extends AtomicInteger
+    implements ConditionalSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = 1577321883966341961L;
+
+        final Subscriber&lt;? super R&gt; downstream;
+
+        final Function&lt;? super Object[], R&gt; combiner;
+
+        final WithLatestInnerSubscriber[] subscribers;
+
+        final AtomicReferenceArray&lt;Object&gt; values;
+
+        final AtomicReference&lt;Subscription&gt; upstream;
+
+        final AtomicLong requested;
+
+        final AtomicThrowable error;
+
+        volatile boolean done;
+
+<span class="fc" id="L118">        WithLatestFromSubscriber(Subscriber&lt;? super R&gt; actual, Function&lt;? super Object[], R&gt; combiner, int n) {</span>
+<span class="fc" id="L119">            this.downstream = actual;</span>
+<span class="fc" id="L120">            this.combiner = combiner;</span>
+<span class="fc" id="L121">            WithLatestInnerSubscriber[] s = new WithLatestInnerSubscriber[n];</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L123">                s[i] = new WithLatestInnerSubscriber(this, i);</span>
+            }
+<span class="fc" id="L125">            this.subscribers = s;</span>
+<span class="fc" id="L126">            this.values = new AtomicReferenceArray&lt;Object&gt;(n);</span>
+<span class="fc" id="L127">            this.upstream = new AtomicReference&lt;Subscription&gt;();</span>
+<span class="fc" id="L128">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L129">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L130">        }</span>
+
+        void subscribe(Publisher&lt;?&gt;[] others, int n) {
+<span class="fc" id="L133">            WithLatestInnerSubscriber[] subscribers = this.subscribers;</span>
+<span class="fc" id="L134">            AtomicReference&lt;Subscription&gt; upstream = this.upstream;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                if (upstream.get() == SubscriptionHelper.CANCELLED) {</span>
+<span class="fc" id="L137">                    return;</span>
+                }
+<span class="fc" id="L139">                others[i].subscribe(subscribers[i]);</span>
+            }
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L145">            SubscriptionHelper.deferredSetOnce(this.upstream, requested, s);</span>
+<span class="fc" id="L146">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L150" title="All 4 branches covered.">            if (!tryOnNext(t) &amp;&amp; !done) {</span>
+<span class="fc" id="L151">                upstream.get().request(1);</span>
+            }
+<span class="fc" id="L153">        }</span>
+
+        @Override
+        public boolean tryOnNext(T t) {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L158">                return false;</span>
+            }
+<span class="fc" id="L160">            AtomicReferenceArray&lt;Object&gt; ara = values;</span>
+<span class="fc" id="L161">            int n = ara.length();</span>
+<span class="fc" id="L162">            Object[] objects = new Object[n + 1];</span>
+<span class="fc" id="L163">            objects[0] = t;</span>
+
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L166">                Object o = ara.get(i);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                if (o == null) {</span>
+                    // somebody hasn't signalled yet, skip this T
+<span class="fc" id="L169">                    return false;</span>
+                }
+<span class="fc" id="L171">                objects[i + 1] = o;</span>
+            }
+
+            R v;
+
+            try {
+<span class="fc" id="L177">                v = ObjectHelper.requireNonNull(combiner.apply(objects), &quot;The combiner returned a null value&quot;);</span>
+<span class="fc" id="L178">            } catch (Throwable ex) {</span>
+<span class="fc" id="L179">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L180">                cancel();</span>
+<span class="fc" id="L181">                onError(ex);</span>
+<span class="fc" id="L182">                return false;</span>
+<span class="fc" id="L183">            }</span>
+
+<span class="fc" id="L185">            HalfSerializer.onNext(downstream, v, this, error);</span>
+<span class="fc" id="L186">            return true;</span>
+        }
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L192">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L193">                return;</span>
+            }
+<span class="fc" id="L195">            done = true;</span>
+<span class="fc" id="L196">            cancelAllBut(-1);</span>
+<span class="fc" id="L197">            HalfSerializer.onError(downstream, t, this, error);</span>
+<span class="fc" id="L198">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L203">                done = true;</span>
+<span class="fc" id="L204">                cancelAllBut(-1);</span>
+<span class="fc" id="L205">                HalfSerializer.onComplete(downstream, this, error);</span>
+            }
+<span class="fc" id="L207">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L211">            SubscriptionHelper.deferredRequest(upstream, requested, n);</span>
+<span class="fc" id="L212">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L216">            SubscriptionHelper.cancel(upstream);</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">            for (WithLatestInnerSubscriber s : subscribers) {</span>
+<span class="fc" id="L218">                s.dispose();</span>
+            }
+<span class="fc" id="L220">        }</span>
+
+        void innerNext(int index, Object o) {
+<span class="fc" id="L223">            values.set(index, o);</span>
+<span class="fc" id="L224">        }</span>
+
+        void innerError(int index, Throwable t) {
+<span class="fc" id="L227">            done = true;</span>
+<span class="fc" id="L228">            SubscriptionHelper.cancel(upstream);</span>
+<span class="fc" id="L229">            cancelAllBut(index);</span>
+<span class="fc" id="L230">            HalfSerializer.onError(downstream, t, this, error);</span>
+<span class="fc" id="L231">        }</span>
+
+        void innerComplete(int index, boolean nonEmpty) {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            if (!nonEmpty) {</span>
+<span class="fc" id="L235">                done = true;</span>
+<span class="fc" id="L236">                SubscriptionHelper.cancel(upstream);</span>
+<span class="fc" id="L237">                cancelAllBut(index);</span>
+<span class="fc" id="L238">                HalfSerializer.onComplete(downstream, this, error);</span>
+            }
+<span class="fc" id="L240">        }</span>
+
+        void cancelAllBut(int index) {
+<span class="fc" id="L243">            WithLatestInnerSubscriber[] subscribers = this.subscribers;</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">            for (int i = 0; i &lt; subscribers.length; i++) {</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                if (i != index) {</span>
+<span class="fc" id="L246">                    subscribers[i].dispose();</span>
+                }
+            }
+<span class="fc" id="L249">        }</span>
+    }
+
+    static final class WithLatestInnerSubscriber
+    extends AtomicReference&lt;Subscription&gt;
+    implements FlowableSubscriber&lt;Object&gt; {
+
+        private static final long serialVersionUID = 3256684027868224024L;
+
+        final WithLatestFromSubscriber&lt;?, ?&gt; parent;
+
+        final int index;
+
+        boolean hasValue;
+
+<span class="fc" id="L264">        WithLatestInnerSubscriber(WithLatestFromSubscriber&lt;?, ?&gt; parent, int index) {</span>
+<span class="fc" id="L265">            this.parent = parent;</span>
+<span class="fc" id="L266">            this.index = index;</span>
+<span class="fc" id="L267">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L271">            SubscriptionHelper.setOnce(this, s, Long.MAX_VALUE);</span>
+<span class="fc" id="L272">        }</span>
+
+        @Override
+        public void onNext(Object t) {
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            if (!hasValue) {</span>
+<span class="fc" id="L277">                hasValue = true;</span>
+            }
+<span class="fc" id="L279">            parent.innerNext(index, t);</span>
+<span class="fc" id="L280">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L284">            parent.innerError(index, t);</span>
+<span class="fc" id="L285">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L289">            parent.innerComplete(index, hasValue);</span>
+<span class="fc" id="L290">        }</span>
+
+        void dispose() {
+<span class="fc" id="L293">            SubscriptionHelper.cancel(this);</span>
+<span class="fc" id="L294">        }</span>
+    }
+
+<span class="fc" id="L297">    final class SingletonArrayFunc implements Function&lt;T, R&gt; {</span>
+        @Override
+        public R apply(T t) throws Exception {
+<span class="fc" id="L300">            return ObjectHelper.requireNonNull(combiner.apply(new Object[] { t }), &quot;The combiner returned a null value&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

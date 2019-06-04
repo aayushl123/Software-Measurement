@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableSubscribeOnTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableSubscribeOnTest.java</span></div><h1>ObservableSubscribeOnTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.assertEquals;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import io.reactivex.annotations.NonNull;
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.schedulers.*;
+
+<span class="fc" id="L29">public class ObservableSubscribeOnTest {</span>
+
+    @Test(timeout = 2000)
+    public void testIssue813() throws InterruptedException {
+        // https://github.com/ReactiveX/RxJava/issues/813
+<span class="fc" id="L34">        final CountDownLatch scheduled = new CountDownLatch(1);</span>
+<span class="fc" id="L35">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L36">        final CountDownLatch doneLatch = new CountDownLatch(1);</span>
+
+<span class="fc" id="L38">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L40">        Observable</span>
+<span class="fc" id="L41">        .unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(
+                    final Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L45">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L46">                scheduled.countDown();</span>
+                try {
+                    try {
+<span class="nc" id="L49">                        latch.await();</span>
+<span class="fc" id="L50">                    } catch (InterruptedException e) {</span>
+                        // this means we were unsubscribed (Scheduler shut down and interrupts)
+                        // ... but we'll pretend we are like many Observables that ignore interrupts
+<span class="nc" id="L53">                    }</span>
+
+<span class="fc" id="L55">                    observer.onComplete();</span>
+<span class="nc" id="L56">                } catch (Throwable e) {</span>
+<span class="nc" id="L57">                    observer.onError(e);</span>
+                } finally {
+<span class="fc" id="L59">                    doneLatch.countDown();</span>
+                }
+<span class="fc" id="L61">            }</span>
+<span class="fc" id="L62">        }).subscribeOn(Schedulers.computation()).subscribe(to);</span>
+
+        // wait for scheduling
+<span class="fc" id="L65">        scheduled.await();</span>
+        // trigger unsubscribe
+<span class="fc" id="L67">        to.dispose();</span>
+<span class="fc" id="L68">        latch.countDown();</span>
+<span class="fc" id="L69">        doneLatch.await();</span>
+<span class="fc" id="L70">        to.assertNoErrors();</span>
+<span class="fc" id="L71">        to.assertComplete();</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    @Ignore(&quot;ObservableSource.subscribe can't throw&quot;)
+    public void testThrownErrorHandling() {
+<span class="nc" id="L77">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+<span class="nc" id="L78">        Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="nc" id="L82">                throw new RuntimeException(&quot;fail&quot;);</span>
+            }
+
+<span class="nc" id="L85">        }).subscribeOn(Schedulers.computation()).subscribe(to);</span>
+<span class="nc" id="L86">        to.awaitTerminalEvent(1000, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L87">        to.assertTerminated();</span>
+<span class="nc" id="L88">    }</span>
+
+    @Test
+    public void testOnError() {
+<span class="fc" id="L92">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+<span class="fc" id="L93">        Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L97">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L98">                observer.onError(new RuntimeException(&quot;fail&quot;));</span>
+<span class="fc" id="L99">            }</span>
+
+<span class="fc" id="L101">        }).subscribeOn(Schedulers.computation()).subscribe(to);</span>
+<span class="fc" id="L102">        to.awaitTerminalEvent(1000, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L103">        to.assertTerminated();</span>
+<span class="fc" id="L104">    }</span>
+
+    public static class SlowScheduler extends Scheduler {
+        final Scheduler actual;
+        final long delay;
+        final TimeUnit unit;
+
+        public SlowScheduler() {
+<span class="nc" id="L112">            this(Schedulers.computation(), 2, TimeUnit.SECONDS);</span>
+<span class="nc" id="L113">        }</span>
+
+<span class="nc" id="L115">        public SlowScheduler(Scheduler actual, long delay, TimeUnit unit) {</span>
+<span class="nc" id="L116">            this.actual = actual;</span>
+<span class="nc" id="L117">            this.delay = delay;</span>
+<span class="nc" id="L118">            this.unit = unit;</span>
+<span class="nc" id="L119">        }</span>
+
+        @NonNull
+        @Override
+        public Worker createWorker() {
+<span class="nc" id="L124">            return new SlowInner(actual.createWorker());</span>
+        }
+
+        private final class SlowInner extends Worker {
+
+            private final Scheduler.Worker actualInner;
+
+<span class="nc" id="L131">            private SlowInner(Worker actual) {</span>
+<span class="nc" id="L132">                this.actualInner = actual;</span>
+<span class="nc" id="L133">            }</span>
+
+            @Override
+            public void dispose() {
+<span class="nc" id="L137">                actualInner.dispose();</span>
+<span class="nc" id="L138">            }</span>
+
+            @Override
+            public boolean isDisposed() {
+<span class="nc" id="L142">                return actualInner.isDisposed();</span>
+            }
+
+            @NonNull
+            @Override
+            public Disposable schedule(@NonNull final Runnable action) {
+<span class="nc" id="L148">                return actualInner.schedule(action, delay, unit);</span>
+            }
+
+            @NonNull
+            @Override
+            public Disposable schedule(@NonNull final Runnable action, final long delayTime, @NonNull final TimeUnit delayUnit) {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                TimeUnit common = delayUnit.compareTo(unit) &lt; 0 ? delayUnit : unit;</span>
+<span class="nc" id="L155">                long t = common.convert(delayTime, delayUnit) + common.convert(delay, unit);</span>
+<span class="nc" id="L156">                return actualInner.schedule(action, t, common);</span>
+            }
+
+        }
+
+    }
+
+    @Test(timeout = 5000)
+    public void testUnsubscribeInfiniteStream() throws InterruptedException {
+<span class="fc" id="L165">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L166">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc" id="L167">        Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super Integer&gt; sub) {
+<span class="fc" id="L171">                Disposable d = Disposables.empty();</span>
+<span class="fc" id="L172">                sub.onSubscribe(d);</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                for (int i = 1; !d.isDisposed(); i++) {</span>
+<span class="fc" id="L174">                    count.incrementAndGet();</span>
+<span class="fc" id="L175">                    sub.onNext(i);</span>
+                }
+<span class="fc" id="L177">            }</span>
+
+<span class="fc" id="L179">        }).subscribeOn(Schedulers.newThread()).take(10).subscribe(to);</span>
+
+<span class="fc" id="L181">        to.awaitTerminalEvent(1000, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L182">        to.dispose();</span>
+<span class="fc" id="L183">        Thread.sleep(200); // give time for the loop to continue</span>
+<span class="fc" id="L184">        to.assertValues(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L185">        assertEquals(10, count.get());</span>
+<span class="fc" id="L186">    }</span>
+
+    @Test
+    public void cancelBeforeActualSubscribe() {
+<span class="fc" id="L190">        TestScheduler test = new TestScheduler();</span>
+
+<span class="fc" id="L192">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L194">        Observable.just(1).hide()</span>
+<span class="fc" id="L195">                .subscribeOn(test).subscribe(to);</span>
+
+<span class="fc" id="L197">        to.dispose();</span>
+
+<span class="fc" id="L199">        test.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L201">        to</span>
+<span class="fc" id="L202">        .assertSubscribed()</span>
+<span class="fc" id="L203">        .assertNoValues()</span>
+<span class="fc" id="L204">        .assertNotTerminated();</span>
+<span class="fc" id="L205">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L209">        TestHelper.checkDisposed(Observable.just(1).subscribeOn(Schedulers.single()));</span>
+<span class="fc" id="L210">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

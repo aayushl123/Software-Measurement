@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableMaterializeTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableMaterializeTest.java</span></div><h1>ObservableMaterializeTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.functions.*;
+import io.reactivex.observers.*;
+
+<span class="fc" id="L30">public class ObservableMaterializeTest {</span>
+
+    @Test
+    public void testMaterialize1() {
+        // null will cause onError to be triggered before &quot;three&quot; can be
+        // returned
+<span class="fc" id="L36">        final TestAsyncErrorObservable o1 = new TestAsyncErrorObservable(&quot;one&quot;, &quot;two&quot;, null,</span>
+                &quot;three&quot;);
+
+<span class="fc" id="L39">        TestLocalObserver observer = new TestLocalObserver();</span>
+<span class="fc" id="L40">        Observable&lt;Notification&lt;String&gt;&gt; m = Observable.unsafeCreate(o1).materialize();</span>
+<span class="fc" id="L41">        m.subscribe(observer);</span>
+
+        try {
+<span class="fc" id="L44">            o1.t.join();</span>
+<span class="nc" id="L45">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L46">            throw new RuntimeException(e);</span>
+<span class="fc" id="L47">        }</span>
+
+<span class="fc" id="L49">        assertFalse(observer.onError);</span>
+<span class="fc" id="L50">        assertTrue(observer.onComplete);</span>
+<span class="fc" id="L51">        assertEquals(3, observer.notifications.size());</span>
+
+<span class="fc" id="L53">        assertTrue(observer.notifications.get(0).isOnNext());</span>
+<span class="fc" id="L54">        assertEquals(&quot;one&quot;, observer.notifications.get(0).getValue());</span>
+
+<span class="fc" id="L56">        assertTrue(observer.notifications.get(1).isOnNext());</span>
+<span class="fc" id="L57">        assertEquals(&quot;two&quot;, observer.notifications.get(1).getValue());</span>
+
+<span class="fc" id="L59">        assertTrue(observer.notifications.get(2).isOnError());</span>
+<span class="fc" id="L60">        assertEquals(NullPointerException.class, observer.notifications.get(2).getError().getClass());</span>
+<span class="fc" id="L61">    }</span>
+
+    @Test
+    public void testMaterialize2() {
+<span class="fc" id="L65">        final TestAsyncErrorObservable o1 = new TestAsyncErrorObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+
+<span class="fc" id="L67">        TestLocalObserver observer = new TestLocalObserver();</span>
+<span class="fc" id="L68">        Observable&lt;Notification&lt;String&gt;&gt; m = Observable.unsafeCreate(o1).materialize();</span>
+<span class="fc" id="L69">        m.subscribe(observer);</span>
+
+        try {
+<span class="fc" id="L72">            o1.t.join();</span>
+<span class="nc" id="L73">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L74">            throw new RuntimeException(e);</span>
+<span class="fc" id="L75">        }</span>
+
+<span class="fc" id="L77">        assertFalse(observer.onError);</span>
+<span class="fc" id="L78">        assertTrue(observer.onComplete);</span>
+<span class="fc" id="L79">        assertEquals(4, observer.notifications.size());</span>
+<span class="fc" id="L80">        assertTrue(observer.notifications.get(0).isOnNext());</span>
+<span class="fc" id="L81">        assertEquals(&quot;one&quot;, observer.notifications.get(0).getValue());</span>
+
+<span class="fc" id="L83">        assertTrue(observer.notifications.get(1).isOnNext());</span>
+<span class="fc" id="L84">        assertEquals(&quot;two&quot;, observer.notifications.get(1).getValue());</span>
+
+<span class="fc" id="L86">        assertTrue(observer.notifications.get(2).isOnNext());</span>
+<span class="fc" id="L87">        assertEquals(&quot;three&quot;, observer.notifications.get(2).getValue());</span>
+
+<span class="fc" id="L89">        assertTrue(observer.notifications.get(3).isOnComplete());</span>
+<span class="fc" id="L90">    }</span>
+
+    @Test
+    public void testMultipleSubscribes() throws InterruptedException, ExecutionException {
+<span class="fc" id="L94">        final TestAsyncErrorObservable o = new TestAsyncErrorObservable(&quot;one&quot;, &quot;two&quot;, null, &quot;three&quot;);</span>
+
+<span class="fc" id="L96">        Observable&lt;Notification&lt;String&gt;&gt; m = Observable.unsafeCreate(o).materialize();</span>
+
+<span class="fc" id="L98">        assertEquals(3, m.toList().toFuture().get().size());</span>
+<span class="fc" id="L99">        assertEquals(3, m.toList().toFuture().get().size());</span>
+<span class="fc" id="L100">    }</span>
+
+    @Test
+    public void testWithCompletionCausingError() {
+<span class="fc" id="L104">        TestObserver&lt;Notification&lt;Integer&gt;&gt; to = new TestObserver&lt;Notification&lt;Integer&gt;&gt;();</span>
+<span class="fc" id="L105">        final RuntimeException ex = new RuntimeException(&quot;boo&quot;);</span>
+<span class="fc" id="L106">        Observable.&lt;Integer&gt;empty().materialize().doOnNext(new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object t) {
+<span class="fc" id="L109">                throw ex;</span>
+            }
+<span class="fc" id="L111">        }).subscribe(to);</span>
+<span class="fc" id="L112">        to.assertError(ex);</span>
+<span class="fc" id="L113">        to.assertNoValues();</span>
+<span class="fc" id="L114">        to.assertTerminated();</span>
+<span class="fc" id="L115">    }</span>
+
+<span class="fc" id="L117">    private static class TestLocalObserver extends DefaultObserver&lt;Notification&lt;String&gt;&gt; {</span>
+
+        boolean onComplete;
+        boolean onError;
+<span class="fc" id="L121">        List&lt;Notification&lt;String&gt;&gt; notifications = new Vector&lt;Notification&lt;String&gt;&gt;();</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L125">            this.onComplete = true;</span>
+<span class="fc" id="L126">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="nc" id="L130">            this.onError = true;</span>
+<span class="nc" id="L131">        }</span>
+
+        @Override
+        public void onNext(Notification&lt;String&gt; value) {
+<span class="fc" id="L135">            this.notifications.add(value);</span>
+<span class="fc" id="L136">        }</span>
+
+    }
+
+    private static class TestAsyncErrorObservable implements ObservableSource&lt;String&gt; {
+
+        String[] valuesToReturn;
+
+<span class="fc" id="L144">        TestAsyncErrorObservable(String... values) {</span>
+<span class="fc" id="L145">            valuesToReturn = values;</span>
+<span class="fc" id="L146">        }</span>
+
+        volatile Thread t;
+
+        @Override
+        public void subscribe(final Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L152">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L153">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                    for (String s : valuesToReturn) {</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                        if (s == null) {</span>
+<span class="fc" id="L159">                            System.out.println(&quot;throwing exception&quot;);</span>
+                            try {
+<span class="fc" id="L161">                                Thread.sleep(100);</span>
+<span class="nc" id="L162">                            } catch (Throwable e) {</span>
+
+<span class="fc" id="L164">                            }</span>
+<span class="fc" id="L165">                            observer.onError(new NullPointerException());</span>
+<span class="fc" id="L166">                            return;</span>
+                        } else {
+<span class="fc" id="L168">                            observer.onNext(s);</span>
+                        }
+                    }
+<span class="fc" id="L171">                    System.out.println(&quot;subscription complete&quot;);</span>
+<span class="fc" id="L172">                    observer.onComplete();</span>
+<span class="fc" id="L173">                }</span>
+
+            });
+<span class="fc" id="L176">            t.start();</span>
+<span class="fc" id="L177">        }</span>
+    }
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L182">        TestHelper.checkDisposed(Observable.just(1).materialize());</span>
+<span class="fc" id="L183">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L187">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, ObservableSource&lt;Notification&lt;Object&gt;&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Notification&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; o) throws Exception {
+<span class="fc" id="L190">                return o.materialize();</span>
+            }
+        });
+<span class="fc" id="L193">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

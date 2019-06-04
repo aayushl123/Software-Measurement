@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExceptionHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.util</a> &gt; <span class="el_source">ExceptionHelper.java</span></div><h1>ExceptionHelper.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.util;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.exceptions.CompositeException;
+
+/**
+ * Terminal atomics for Throwable containers.
+ */
+public final class ExceptionHelper {
+
+    /** Utility class. */
+<span class="fc" id="L28">    private ExceptionHelper() {</span>
+<span class="fc" id="L29">        throw new IllegalStateException(&quot;No instances!&quot;);</span>
+    }
+
+    /**
+     * If the provided Throwable is an Error this method
+     * throws it, otherwise returns a RuntimeException wrapping the error
+     * if that error is a checked exception.
+     * @param error the error to wrap or throw
+     * @return the (wrapped) error
+     */
+    public static RuntimeException wrapOrThrow(Throwable error) {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (error instanceof Error) {</span>
+<span class="fc" id="L41">            throw (Error)error;</span>
+        }
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (error instanceof RuntimeException) {</span>
+<span class="fc" id="L44">            return (RuntimeException)error;</span>
+        }
+<span class="fc" id="L46">        return new RuntimeException(error);</span>
+    }
+
+    /**
+     * A singleton instance of a Throwable indicating a terminal state for exceptions,
+     * don't leak this.
+     */
+<span class="fc" id="L53">    public static final Throwable TERMINATED = new Termination();</span>
+
+    public static &lt;T&gt; boolean addThrowable(AtomicReference&lt;Throwable&gt; field, Throwable exception) {
+        for (;;) {
+<span class="fc" id="L57">            Throwable current = field.get();</span>
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (current == TERMINATED) {</span>
+<span class="fc" id="L60">                return false;</span>
+            }
+
+            Throwable update;
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (current == null) {</span>
+<span class="fc" id="L65">                update = exception;</span>
+            } else {
+<span class="fc" id="L67">                update = new CompositeException(current, exception);</span>
+            }
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (field.compareAndSet(current, update)) {</span>
+<span class="fc" id="L71">                return true;</span>
+            }
+<span class="fc" id="L73">        }</span>
+    }
+
+    public static &lt;T&gt; Throwable terminate(AtomicReference&lt;Throwable&gt; field) {
+<span class="fc" id="L77">        Throwable current = field.get();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (current != TERMINATED) {</span>
+<span class="fc" id="L79">            current = field.getAndSet(TERMINATED);</span>
+        }
+<span class="fc" id="L81">        return current;</span>
+    }
+
+    /**
+     * Returns a flattened list of Throwables from tree-like CompositeException chain.
+     * @param t the starting throwable
+     * @return the list of Throwables flattened in a depth-first manner
+     */
+    public static List&lt;Throwable&gt; flatten(Throwable t) {
+<span class="fc" id="L90">        List&lt;Throwable&gt; list = new ArrayList&lt;Throwable&gt;();</span>
+<span class="fc" id="L91">        ArrayDeque&lt;Throwable&gt; deque = new ArrayDeque&lt;Throwable&gt;();</span>
+<span class="fc" id="L92">        deque.offer(t);</span>
+
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        while (!deque.isEmpty()) {</span>
+<span class="fc" id="L95">            Throwable e = deque.removeFirst();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (e instanceof CompositeException) {</span>
+<span class="fc" id="L97">                CompositeException ce = (CompositeException) e;</span>
+<span class="fc" id="L98">                List&lt;Throwable&gt; exceptions = ce.getExceptions();</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                for (int i = exceptions.size() - 1; i &gt;= 0; i--) {</span>
+<span class="fc" id="L100">                    deque.offerFirst(exceptions.get(i));</span>
+                }
+<span class="fc" id="L102">            } else {</span>
+<span class="fc" id="L103">                list.add(e);</span>
+            }
+<span class="fc" id="L105">        }</span>
+
+<span class="fc" id="L107">        return list;</span>
+    }
+
+    /**
+     * Workaround for Java 6 not supporting throwing a final Throwable from a catch block.
+     * @param &lt;E&gt; the generic exception type
+     * @param e the Throwable error to return or throw
+     * @return the Throwable e if it is a subclass of Exception
+     * @throws E the generic exception thrown
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;E extends Throwable&gt; Exception throwIfThrowable(Throwable e) throws E {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (e instanceof Exception) {</span>
+<span class="fc" id="L120">            return (Exception)e;</span>
+        }
+<span class="fc" id="L122">        throw (E)e;</span>
+    }
+
+    public static String timeoutMessage(long timeout, TimeUnit unit) {
+<span class="fc" id="L126">        return &quot;The source did not signal an event for &quot;</span>
+                + timeout
+                + &quot; &quot;
+<span class="fc" id="L129">                + unit.toString().toLowerCase()</span>
+                + &quot; and has been terminated.&quot;;
+    }
+
+    static final class Termination extends Throwable {
+
+        private static final long serialVersionUID = -4649703670690200604L;
+
+        Termination() {
+<span class="fc" id="L138">            super(&quot;No further exceptions&quot;);</span>
+<span class="fc" id="L139">        }</span>
+
+        @Override
+        public Throwable fillInStackTrace() {
+<span class="fc" id="L143">            return this;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

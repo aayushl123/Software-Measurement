@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableDebounce.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableDebounce.java</span></div><h1>FlowableDebounce.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.BackpressureHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subscribers.*;
+
+public final class FlowableDebounce&lt;T, U&gt; extends AbstractFlowableWithUpstream&lt;T, T&gt; {
+    final Function&lt;? super T, ? extends Publisher&lt;U&gt;&gt; debounceSelector;
+
+    public FlowableDebounce(Flowable&lt;T&gt; source, Function&lt;? super T, ? extends Publisher&lt;U&gt;&gt; debounceSelector) {
+<span class="fc" id="L35">        super(source);</span>
+<span class="fc" id="L36">        this.debounceSelector = debounceSelector;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L41">        source.subscribe(new DebounceSubscriber&lt;T, U&gt;(new SerializedSubscriber&lt;T&gt;(s), debounceSelector));</span>
+<span class="fc" id="L42">    }</span>
+
+    static final class DebounceSubscriber&lt;T, U&gt; extends AtomicLong
+    implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = 6725975399620862591L;
+        final Subscriber&lt;? super T&gt; downstream;
+        final Function&lt;? super T, ? extends Publisher&lt;U&gt;&gt; debounceSelector;
+
+        Subscription upstream;
+
+<span class="fc" id="L53">        final AtomicReference&lt;Disposable&gt; debouncer = new AtomicReference&lt;Disposable&gt;();</span>
+
+        volatile long index;
+
+        boolean done;
+
+        DebounceSubscriber(Subscriber&lt;? super T&gt; actual,
+<span class="fc" id="L60">                Function&lt;? super T, ? extends Publisher&lt;U&gt;&gt; debounceSelector) {</span>
+<span class="fc" id="L61">            this.downstream = actual;</span>
+<span class="fc" id="L62">            this.debounceSelector = debounceSelector;</span>
+<span class="fc" id="L63">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L68">                this.upstream = s;</span>
+<span class="fc" id="L69">                downstream.onSubscribe(this);</span>
+<span class="fc" id="L70">                s.request(Long.MAX_VALUE);</span>
+            }
+<span class="fc" id="L72">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L77">                return;</span>
+            }
+
+<span class="fc" id="L80">            long idx = index + 1;</span>
+<span class="fc" id="L81">            index = idx;</span>
+
+<span class="fc" id="L83">            Disposable d = debouncer.get();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (d != null) {</span>
+<span class="fc" id="L85">                d.dispose();</span>
+            }
+
+            Publisher&lt;U&gt; p;
+
+            try {
+<span class="fc" id="L91">                p = ObjectHelper.requireNonNull(debounceSelector.apply(t), &quot;The publisher supplied is null&quot;);</span>
+<span class="fc" id="L92">            } catch (Throwable e) {</span>
+<span class="fc" id="L93">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L94">                cancel();</span>
+<span class="fc" id="L95">                downstream.onError(e);</span>
+<span class="fc" id="L96">                return;</span>
+<span class="fc" id="L97">            }</span>
+
+<span class="fc" id="L99">            DebounceInnerSubscriber&lt;T, U&gt; dis = new DebounceInnerSubscriber&lt;T, U&gt;(this, idx, t);</span>
+
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (debouncer.compareAndSet(d, dis)) {</span>
+<span class="fc" id="L102">                p.subscribe(dis);</span>
+            }
+<span class="fc" id="L104">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L108">            DisposableHelper.dispose(debouncer);</span>
+<span class="fc" id="L109">            downstream.onError(t);</span>
+<span class="fc" id="L110">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L115">                return;</span>
+            }
+<span class="fc" id="L117">            done = true;</span>
+<span class="fc" id="L118">            Disposable d = debouncer.get();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (!DisposableHelper.isDisposed(d)) {</span>
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L121">                DebounceInnerSubscriber&lt;T, U&gt; dis = (DebounceInnerSubscriber&lt;T, U&gt;)d;</span>
+<span class="fc" id="L122">                dis.emit();</span>
+<span class="fc" id="L123">                DisposableHelper.dispose(debouncer);</span>
+<span class="fc" id="L124">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L126">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L131">                BackpressureHelper.add(this, n);</span>
+            }
+<span class="fc" id="L133">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L137">            upstream.cancel();</span>
+<span class="fc" id="L138">            DisposableHelper.dispose(debouncer);</span>
+<span class="fc" id="L139">        }</span>
+
+        void emit(long idx, T value) {
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (idx == index) {</span>
+<span class="fc" id="L143">                long r = get();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                if (r != 0L) {</span>
+<span class="fc" id="L145">                    downstream.onNext(value);</span>
+<span class="fc" id="L146">                    BackpressureHelper.produced(this, 1);</span>
+                } else {
+<span class="fc" id="L148">                    cancel();</span>
+<span class="fc" id="L149">                    downstream.onError(new MissingBackpressureException(&quot;Could not deliver value due to lack of requests&quot;));</span>
+                }
+            }
+<span class="fc" id="L152">        }</span>
+
+        static final class DebounceInnerSubscriber&lt;T, U&gt; extends DisposableSubscriber&lt;U&gt; {
+            final DebounceSubscriber&lt;T, U&gt; parent;
+            final long index;
+            final T value;
+
+            boolean done;
+
+<span class="fc" id="L161">            final AtomicBoolean once = new AtomicBoolean();</span>
+
+<span class="fc" id="L163">            DebounceInnerSubscriber(DebounceSubscriber&lt;T, U&gt; parent, long index, T value) {</span>
+<span class="fc" id="L164">                this.parent = parent;</span>
+<span class="fc" id="L165">                this.index = index;</span>
+<span class="fc" id="L166">                this.value = value;</span>
+<span class="fc" id="L167">            }</span>
+
+            @Override
+            public void onNext(U t) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                if (done) {</span>
+<span class="fc" id="L172">                    return;</span>
+                }
+<span class="fc" id="L174">                done = true;</span>
+<span class="fc" id="L175">                cancel();</span>
+<span class="fc" id="L176">                emit();</span>
+<span class="fc" id="L177">            }</span>
+
+            void emit() {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                if (once.compareAndSet(false, true)) {</span>
+<span class="fc" id="L181">                    parent.emit(index, value);</span>
+                }
+<span class="fc" id="L183">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                if (done) {</span>
+<span class="fc" id="L188">                    RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L189">                    return;</span>
+                }
+<span class="fc" id="L191">                done = true;</span>
+<span class="fc" id="L192">                parent.onError(t);</span>
+<span class="fc" id="L193">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                if (done) {</span>
+<span class="fc" id="L198">                    return;</span>
+                }
+<span class="fc" id="L200">                done = true;</span>
+<span class="fc" id="L201">                emit();</span>
+<span class="fc" id="L202">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

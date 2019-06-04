@@ -1,0 +1,442 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnicastProcessorTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.processors</a> &gt; <span class="el_source">UnicastProcessorTest.java</span></div><h1>UnicastProcessorTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.processors;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L31">public class UnicastProcessorTest extends FlowableProcessorTest&lt;Object&gt; {</span>
+
+    @Override
+    protected FlowableProcessor&lt;Object&gt; create() {
+<span class="fc" id="L35">        return UnicastProcessor.create();</span>
+    }
+
+    @Test
+    public void fusionLive() {
+<span class="fc" id="L40">        UnicastProcessor&lt;Integer&gt; ap = UnicastProcessor.create();</span>
+
+<span class="fc" id="L42">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L44">        ap.subscribe(ts);</span>
+
+<span class="fc" id="L46">        ts</span>
+<span class="fc" id="L47">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L48">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC));</span>
+
+<span class="fc" id="L50">        ts.assertNoValues().assertNoErrors().assertNotComplete();</span>
+
+<span class="fc" id="L52">        ap.onNext(1);</span>
+
+<span class="fc" id="L54">        ts.assertValue(1).assertNoErrors().assertNotComplete();</span>
+
+<span class="fc" id="L56">        ap.onComplete();</span>
+
+<span class="fc" id="L58">        ts.assertResult(1);</span>
+<span class="fc" id="L59">    }</span>
+
+    @Test
+    public void fusionOfflie() {
+<span class="fc" id="L63">        UnicastProcessor&lt;Integer&gt; ap = UnicastProcessor.create();</span>
+<span class="fc" id="L64">        ap.onNext(1);</span>
+<span class="fc" id="L65">        ap.onComplete();</span>
+
+<span class="fc" id="L67">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L69">        ap.subscribe(ts);</span>
+
+<span class="fc" id="L71">        ts</span>
+<span class="fc" id="L72">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L73">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L74">        .assertResult(1);</span>
+<span class="fc" id="L75">    }</span>
+
+    @Test
+    public void failFast() {
+<span class="fc" id="L79">        UnicastProcessor&lt;Integer&gt; ap = UnicastProcessor.create(false);</span>
+<span class="fc" id="L80">        ap.onNext(1);</span>
+<span class="fc" id="L81">        ap.onError(new RuntimeException());</span>
+
+<span class="fc" id="L83">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L85">        ap.subscribe(ts);</span>
+
+<span class="fc" id="L87">        ts</span>
+<span class="fc" id="L88">                .assertValueCount(0)</span>
+<span class="fc" id="L89">                .assertError(RuntimeException.class);</span>
+<span class="fc" id="L90">    }</span>
+
+    @Test
+    public void failFastFusionOffline() {
+<span class="fc" id="L94">        UnicastProcessor&lt;Integer&gt; ap = UnicastProcessor.create(false);</span>
+<span class="fc" id="L95">        ap.onNext(1);</span>
+<span class="fc" id="L96">        ap.onError(new RuntimeException());</span>
+
+<span class="fc" id="L98">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L100">        ap.subscribe(ts);</span>
+<span class="fc" id="L101">        ts</span>
+<span class="fc" id="L102">                .assertValueCount(0)</span>
+<span class="fc" id="L103">                .assertError(RuntimeException.class);</span>
+<span class="fc" id="L104">    }</span>
+
+    @Test
+    public void threeArgsFactory() {
+<span class="fc" id="L108">        Runnable noop = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L111">            }</span>
+        };
+<span class="fc" id="L113">        UnicastProcessor&lt;Integer&gt; ap = UnicastProcessor.create(16, noop, false);</span>
+<span class="fc" id="L114">        ap.onNext(1);</span>
+<span class="fc" id="L115">        ap.onError(new RuntimeException());</span>
+
+<span class="fc" id="L117">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L119">        ap.subscribe(ts);</span>
+<span class="fc" id="L120">        ts</span>
+<span class="fc" id="L121">                .assertValueCount(0)</span>
+<span class="fc" id="L122">                .assertError(RuntimeException.class);</span>
+<span class="fc" id="L123">    }</span>
+
+    @Test
+    public void onTerminateCalledWhenOnError() {
+<span class="fc" id="L127">        final AtomicBoolean didRunOnTerminate = new AtomicBoolean();</span>
+
+<span class="fc" id="L129">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(Observable.bufferSize(), new Runnable() {</span>
+            @Override public void run() {
+<span class="fc" id="L131">                didRunOnTerminate.set(true);</span>
+<span class="fc" id="L132">            }</span>
+        });
+
+<span class="fc" id="L135">        assertEquals(false, didRunOnTerminate.get());</span>
+<span class="fc" id="L136">        us.onError(new RuntimeException(&quot;some error&quot;));</span>
+<span class="fc" id="L137">        assertEquals(true, didRunOnTerminate.get());</span>
+<span class="fc" id="L138">    }</span>
+
+    @Test
+    public void onTerminateCalledWhenOnComplete() {
+<span class="fc" id="L142">        final AtomicBoolean didRunOnTerminate = new AtomicBoolean();</span>
+
+<span class="fc" id="L144">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(Observable.bufferSize(), new Runnable() {</span>
+            @Override public void run() {
+<span class="fc" id="L146">                didRunOnTerminate.set(true);</span>
+<span class="fc" id="L147">            }</span>
+        });
+
+<span class="fc" id="L150">        assertEquals(false, didRunOnTerminate.get());</span>
+<span class="fc" id="L151">        us.onComplete();</span>
+<span class="fc" id="L152">        assertEquals(true, didRunOnTerminate.get());</span>
+<span class="fc" id="L153">    }</span>
+
+    @Test
+    public void onTerminateCalledWhenCanceled() {
+<span class="fc" id="L157">        final AtomicBoolean didRunOnTerminate = new AtomicBoolean();</span>
+
+<span class="fc" id="L159">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(Observable.bufferSize(), new Runnable() {</span>
+            @Override public void run() {
+<span class="fc" id="L161">                didRunOnTerminate.set(true);</span>
+<span class="fc" id="L162">            }</span>
+        });
+
+<span class="fc" id="L165">        final Disposable subscribe = us.subscribe();</span>
+
+<span class="fc" id="L167">        assertEquals(false, didRunOnTerminate.get());</span>
+<span class="fc" id="L168">        subscribe.dispose();</span>
+<span class="fc" id="L169">        assertEquals(true, didRunOnTerminate.get());</span>
+<span class="fc" id="L170">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void nullOnTerminate() {
+<span class="nc" id="L174">        UnicastProcessor.create(5, null);</span>
+<span class="nc" id="L175">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void negativeCapacityHint() {
+<span class="nc" id="L179">        UnicastProcessor.create(-1);</span>
+<span class="nc" id="L180">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void zeroCapacityHint() {
+<span class="nc" id="L184">        UnicastProcessor.create(0);</span>
+<span class="nc" id="L185">    }</span>
+
+    @Test
+    public void completeCancelRace() {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L190">            final int[] calls = { 0 };</span>
+<span class="fc" id="L191">            final UnicastProcessor&lt;Object&gt; up = UnicastProcessor.create(100, new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L194">                    calls[0]++;</span>
+<span class="fc" id="L195">                }</span>
+            });
+
+<span class="fc" id="L198">            final TestSubscriber&lt;Object&gt; ts = up.test();</span>
+
+<span class="fc" id="L200">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L203">                    ts.cancel();</span>
+<span class="fc" id="L204">                }</span>
+            };
+
+<span class="fc" id="L207">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L210">                    up.onComplete();</span>
+<span class="fc" id="L211">                }</span>
+            };
+
+<span class="fc" id="L214">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L216">            assertEquals(1, calls[0]);</span>
+        }
+<span class="fc" id="L218">    }</span>
+
+    @Test
+    public void afterDone() {
+<span class="fc" id="L222">        UnicastProcessor&lt;Object&gt; p = UnicastProcessor.create();</span>
+<span class="fc" id="L223">        p.onComplete();</span>
+
+<span class="fc" id="L225">        BooleanSubscription bs = new BooleanSubscription();</span>
+<span class="fc" id="L226">        p.onSubscribe(bs);</span>
+
+<span class="fc" id="L228">        p.onNext(1);</span>
+<span class="fc" id="L229">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L231">            p.onError(new TestException());</span>
+
+<span class="fc" id="L233">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L235">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L237">        p.onComplete();</span>
+
+<span class="fc" id="L239">        p.test().assertResult();</span>
+
+<span class="fc" id="L241">        assertNull(p.getThrowable());</span>
+<span class="fc" id="L242">        assertTrue(p.hasComplete());</span>
+<span class="fc" id="L243">        assertFalse(p.hasThrowable());</span>
+<span class="fc" id="L244">    }</span>
+
+    @Test
+    public void onErrorStatePeeking() {
+<span class="fc" id="L248">        UnicastProcessor&lt;Object&gt; p = UnicastProcessor.create();</span>
+
+<span class="fc" id="L250">        assertFalse(p.hasComplete());</span>
+<span class="fc" id="L251">        assertFalse(p.hasThrowable());</span>
+<span class="fc" id="L252">        assertNull(p.getThrowable());</span>
+
+<span class="fc" id="L254">        TestException ex = new TestException();</span>
+<span class="fc" id="L255">        p.onError(ex);</span>
+
+<span class="fc" id="L257">        assertFalse(p.hasComplete());</span>
+<span class="fc" id="L258">        assertTrue(p.hasThrowable());</span>
+<span class="fc" id="L259">        assertSame(ex, p.getThrowable());</span>
+<span class="fc" id="L260">    }</span>
+
+    @Test
+    public void rejectSyncFusion() {
+<span class="fc" id="L264">        UnicastProcessor&lt;Object&gt; p = UnicastProcessor.create();</span>
+
+<span class="fc" id="L266">        TestSubscriber&lt;Object&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L268">        p.subscribe(ts);</span>
+
+<span class="fc" id="L270">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE);</span>
+<span class="fc" id="L271">    }</span>
+
+    @Test
+    public void cancelOnArrival() {
+<span class="fc" id="L275">        UnicastProcessor.create()</span>
+<span class="fc" id="L276">        .test(0L, true)</span>
+<span class="fc" id="L277">        .assertEmpty();</span>
+<span class="fc" id="L278">    }</span>
+
+    @Test
+    public void multiSubscriber() {
+<span class="fc" id="L282">        UnicastProcessor&lt;Object&gt; p = UnicastProcessor.create();</span>
+
+<span class="fc" id="L284">        TestSubscriber&lt;Object&gt; ts = p.test();</span>
+
+<span class="fc" id="L286">        p.test()</span>
+<span class="fc" id="L287">        .assertFailure(IllegalStateException.class);</span>
+
+<span class="fc" id="L289">        p.onNext(1);</span>
+<span class="fc" id="L290">        p.onComplete();</span>
+
+<span class="fc" id="L292">        ts.assertResult(1);</span>
+<span class="fc" id="L293">    }</span>
+
+    @Test
+    public void fusedDrainCancel() {
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L298">            final UnicastProcessor&lt;Object&gt; p = UnicastProcessor.create();</span>
+
+<span class="fc" id="L300">            final TestSubscriber&lt;Object&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L302">            p.subscribe(ts);</span>
+
+<span class="fc" id="L304">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L307">                    p.onNext(1);</span>
+<span class="fc" id="L308">                }</span>
+            };
+
+<span class="fc" id="L311">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L314">                    ts.cancel();</span>
+<span class="fc" id="L315">                }</span>
+            };
+
+<span class="fc" id="L318">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L320">    }</span>
+
+    @Test
+    public void subscribeRace() {
+<span class="fc bfc" id="L324" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L325">            final UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create();</span>
+
+<span class="fc" id="L327">            final TestSubscriber&lt;Integer&gt; ts1 = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L328">            final TestSubscriber&lt;Integer&gt; ts2 = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L330">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L333">                    us.subscribe(ts1);</span>
+<span class="fc" id="L334">                }</span>
+            };
+
+<span class="fc" id="L337">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L340">                    us.subscribe(ts2);</span>
+<span class="fc" id="L341">                }</span>
+            };
+
+<span class="fc" id="L344">            TestHelper.race(r1, r2);</span>
+
+<span class="fc bfc" id="L346" title="All 2 branches covered.">            if (ts1.errorCount() == 0) {</span>
+<span class="fc" id="L347">                ts2.assertFailure(IllegalStateException.class);</span>
+            } else
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">            if (ts2.errorCount() == 0) {</span>
+<span class="fc" id="L350">                ts1.assertFailure(IllegalStateException.class);</span>
+            } else {
+<span class="nc" id="L352">                fail(&quot;Neither TestObserver failed&quot;);</span>
+            }
+        }
+<span class="fc" id="L355">    }</span>
+
+    @Test
+    public void hasObservers() {
+<span class="fc" id="L359">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create();</span>
+
+<span class="fc" id="L361">        assertFalse(us.hasSubscribers());</span>
+
+<span class="fc" id="L363">        TestSubscriber&lt;Integer&gt; ts = us.test();</span>
+
+<span class="fc" id="L365">        assertTrue(us.hasSubscribers());</span>
+
+<span class="fc" id="L367">        ts.cancel();</span>
+
+<span class="fc" id="L369">        assertFalse(us.hasSubscribers());</span>
+<span class="fc" id="L370">    }</span>
+
+    @Test
+    public void drainFusedFailFast() {
+<span class="fc" id="L374">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(false);</span>
+
+<span class="fc" id="L376">        TestSubscriber&lt;Integer&gt; ts = us.to(SubscriberFusion.&lt;Integer&gt;test(1, QueueFuseable.ANY, false));</span>
+
+<span class="fc" id="L378">        us.done = true;</span>
+<span class="fc" id="L379">        us.drainFused(ts);</span>
+
+<span class="fc" id="L381">        ts.assertResult();</span>
+<span class="fc" id="L382">    }</span>
+
+    @Test
+    public void drainFusedFailFastEmpty() {
+<span class="fc" id="L386">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(false);</span>
+
+<span class="fc" id="L388">        TestSubscriber&lt;Integer&gt; ts = us.to(SubscriberFusion.&lt;Integer&gt;test(1, QueueFuseable.ANY, false));</span>
+
+<span class="fc" id="L390">        us.drainFused(ts);</span>
+
+<span class="fc" id="L392">        ts.assertEmpty();</span>
+<span class="fc" id="L393">    }</span>
+
+    @Test
+    public void checkTerminatedFailFastEmpty() {
+<span class="fc" id="L397">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(false);</span>
+
+<span class="fc" id="L399">        TestSubscriber&lt;Integer&gt; ts = us.to(SubscriberFusion.&lt;Integer&gt;test(1, QueueFuseable.ANY, false));</span>
+
+<span class="fc" id="L401">        us.checkTerminated(true, true, false, ts, us.queue);</span>
+
+<span class="fc" id="L403">        ts.assertEmpty();</span>
+<span class="fc" id="L404">    }</span>
+
+    @Test
+    public void alreadyCancelled() {
+<span class="fc" id="L408">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(false);</span>
+
+<span class="fc" id="L410">        us.test().cancel();</span>
+
+<span class="fc" id="L412">        BooleanSubscription bs = new BooleanSubscription();</span>
+<span class="fc" id="L413">        us.onSubscribe(bs);</span>
+
+<span class="fc" id="L415">        assertTrue(bs.isCancelled());</span>
+
+<span class="fc" id="L417">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L419">            us.onError(new TestException());</span>
+
+<span class="fc" id="L421">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L423">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L425">    }</span>
+
+    @Test
+    public void unicastSubscriptionBadRequest() {
+<span class="fc" id="L429">        UnicastProcessor&lt;Integer&gt; us = UnicastProcessor.create(false);</span>
+
+<span class="fc" id="L431">        UnicastProcessor&lt;Integer&gt;.UnicastQueueSubscription usc = (UnicastProcessor&lt;Integer&gt;.UnicastQueueSubscription)us.wip;</span>
+
+<span class="fc" id="L433">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L435">            usc.request(-1);</span>
+<span class="fc" id="L436">            TestHelper.assertError(errors, 0, IllegalArgumentException.class);</span>
+        } finally {
+<span class="fc" id="L438">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L440">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

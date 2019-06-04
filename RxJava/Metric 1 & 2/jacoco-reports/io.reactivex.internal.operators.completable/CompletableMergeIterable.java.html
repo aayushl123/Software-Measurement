@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompletableMergeIterable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.completable</a> &gt; <span class="el_source">CompletableMergeIterable.java</span></div><h1>CompletableMergeIterable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.completable;
+
+import java.util.Iterator;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class CompletableMergeIterable extends Completable {
+    final Iterable&lt;? extends CompletableSource&gt; sources;
+
+<span class="fc" id="L28">    public CompletableMergeIterable(Iterable&lt;? extends CompletableSource&gt; sources) {</span>
+<span class="fc" id="L29">        this.sources = sources;</span>
+<span class="fc" id="L30">    }</span>
+
+    @Override
+    public void subscribeActual(final CompletableObserver observer) {
+<span class="fc" id="L34">        final CompositeDisposable set = new CompositeDisposable();</span>
+
+<span class="fc" id="L36">        observer.onSubscribe(set);</span>
+
+        Iterator&lt;? extends CompletableSource&gt; iterator;
+
+        try {
+<span class="fc" id="L41">            iterator = ObjectHelper.requireNonNull(sources.iterator(), &quot;The source iterator returned is null&quot;);</span>
+<span class="fc" id="L42">        } catch (Throwable e) {</span>
+<span class="fc" id="L43">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L44">            observer.onError(e);</span>
+<span class="fc" id="L45">            return;</span>
+<span class="fc" id="L46">        }</span>
+
+<span class="fc" id="L48">        final AtomicInteger wip = new AtomicInteger(1);</span>
+
+<span class="fc" id="L50">        MergeCompletableObserver shared = new MergeCompletableObserver(observer, set, wip);</span>
+        for (;;) {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (set.isDisposed()) {</span>
+<span class="fc" id="L53">                return;</span>
+            }
+
+            boolean b;
+            try {
+<span class="fc" id="L58">                b = iterator.hasNext();</span>
+<span class="fc" id="L59">            } catch (Throwable e) {</span>
+<span class="fc" id="L60">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L61">                set.dispose();</span>
+<span class="fc" id="L62">                shared.onError(e);</span>
+<span class="fc" id="L63">                return;</span>
+<span class="fc" id="L64">            }</span>
+
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (!b) {</span>
+<span class="fc" id="L67">                break;</span>
+            }
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (set.isDisposed()) {</span>
+<span class="fc" id="L71">                return;</span>
+            }
+
+            CompletableSource c;
+
+            try {
+<span class="fc" id="L77">                c = ObjectHelper.requireNonNull(iterator.next(), &quot;The iterator returned a null CompletableSource&quot;);</span>
+<span class="fc" id="L78">            } catch (Throwable e) {</span>
+<span class="fc" id="L79">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L80">                set.dispose();</span>
+<span class="fc" id="L81">                shared.onError(e);</span>
+<span class="fc" id="L82">                return;</span>
+<span class="fc" id="L83">            }</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (set.isDisposed()) {</span>
+<span class="fc" id="L86">                return;</span>
+            }
+
+<span class="fc" id="L89">            wip.getAndIncrement();</span>
+
+<span class="fc" id="L91">            c.subscribe(shared);</span>
+<span class="fc" id="L92">        }</span>
+
+<span class="fc" id="L94">        shared.onComplete();</span>
+<span class="fc" id="L95">    }</span>
+
+    static final class MergeCompletableObserver extends AtomicBoolean implements CompletableObserver {
+
+        private static final long serialVersionUID = -7730517613164279224L;
+
+        final CompositeDisposable set;
+
+        final CompletableObserver downstream;
+
+        final AtomicInteger wip;
+
+<span class="fc" id="L107">        MergeCompletableObserver(CompletableObserver actual, CompositeDisposable set, AtomicInteger wip) {</span>
+<span class="fc" id="L108">            this.downstream = actual;</span>
+<span class="fc" id="L109">            this.set = set;</span>
+<span class="fc" id="L110">            this.wip = wip;</span>
+<span class="fc" id="L111">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L115">            set.add(d);</span>
+<span class="fc" id="L116">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L120">            set.dispose();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (compareAndSet(false, true)) {</span>
+<span class="fc" id="L122">                downstream.onError(e);</span>
+            } else {
+<span class="fc" id="L124">                RxJavaPlugins.onError(e);</span>
+            }
+<span class="fc" id="L126">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (wip.decrementAndGet() == 0) {</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                if (compareAndSet(false, true)) {</span>
+<span class="fc" id="L132">                    downstream.onComplete();</span>
+                }
+            }
+<span class="fc" id="L135">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

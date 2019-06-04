@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SafeSubscriberWithPluginTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subscribers</a> &gt; <span class="el_source">SafeSubscriberWithPluginTest.java</span></div><h1>SafeSubscriberWithPluginTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subscribers;
+
+import static org.junit.Assert.*;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.reactivestreams.Subscription;
+
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Consumer;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L27">public class SafeSubscriberWithPluginTest {</span>
+<span class="nc" id="L28">    private final class SubscriptionCancelThrows implements Subscription {</span>
+        @Override
+        public void cancel() {
+<span class="nc" id="L31">            throw new RuntimeException();</span>
+        }
+
+        @Override
+        public void request(long n) {
+
+<span class="nc" id="L37">        }</span>
+    }
+
+    @Before
+    @After
+    public void resetBefore() {
+<span class="fc" id="L43">        RxJavaPlugins.reset();</span>
+<span class="fc" id="L44">    }</span>
+
+    @Test
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testOnCompletedThrows() {
+<span class="nc" id="L49">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onComplete() {
+<span class="nc" id="L52">                throw new TestException();</span>
+            }
+        };
+<span class="nc" id="L55">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+        try {
+<span class="nc" id="L57">            safe.onComplete();</span>
+<span class="nc" id="L58">            fail();</span>
+<span class="nc" id="L59">        } catch (RuntimeException e) {</span>
+            // FIXME no longer assertable
+            // assertTrue(safe.isUnsubscribed());
+<span class="nc" id="L62">        }</span>
+<span class="nc" id="L63">    }</span>
+
+    @Test
+    public void testOnCompletedThrows2() {
+<span class="fc" id="L67">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onComplete() {
+<span class="nc" id="L70">                throw new RuntimeException(new TestException());</span>
+            }
+        };
+<span class="fc" id="L73">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+
+        try {
+<span class="fc" id="L76">            safe.onComplete();</span>
+<span class="nc" id="L77">        } catch (RuntimeException ex) {</span>
+            // expected
+<span class="fc" id="L79">        }</span>
+
+        // FIXME no longer assertable
+        // assertTrue(safe.isUnsubscribed());
+<span class="fc" id="L83">    }</span>
+
+    @Test(expected = RuntimeException.class)
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginException() {
+<span class="nc" id="L88">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) {
+<span class="nc" id="L91">                throw new RuntimeException();</span>
+            }
+        });
+
+<span class="nc" id="L95">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onComplete() {
+<span class="nc" id="L98">                throw new TestException();</span>
+            }
+        };
+<span class="nc" id="L101">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+
+<span class="nc" id="L103">        safe.onComplete();</span>
+<span class="nc" id="L104">    }</span>
+
+    @Test(expected = RuntimeException.class)
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginExceptionWhileOnErrorUnsubscribeThrows() {
+<span class="nc" id="L109">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            int calls;
+            @Override
+            public void accept(Throwable e) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">                if (++calls == 2) {</span>
+<span class="nc" id="L114">                    throw new RuntimeException();</span>
+                }
+<span class="nc" id="L116">            }</span>
+        });
+
+<span class="nc" id="L119">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="nc" id="L120">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+<span class="nc" id="L121">        safe.onSubscribe(new SubscriptionCancelThrows());</span>
+
+<span class="nc" id="L123">        safe.onError(new TestException());</span>
+<span class="nc" id="L124">    }</span>
+
+    @Test(expected = RuntimeException.class)
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginExceptionWhileOnErrorThrowsNotImplAndUnsubscribeThrows() {
+<span class="nc" id="L129">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            int calls;
+            @Override
+            public void accept(Throwable e) {
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                if (++calls == 2) {</span>
+<span class="nc" id="L134">                    throw new RuntimeException();</span>
+                }
+<span class="nc" id="L136">            }</span>
+        });
+
+<span class="nc" id="L139">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L142">                throw new RuntimeException(e);</span>
+            }
+        };
+<span class="nc" id="L145">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+<span class="nc" id="L146">        safe.onSubscribe(new SubscriptionCancelThrows());</span>
+
+<span class="nc" id="L148">        safe.onError(new TestException());</span>
+<span class="nc" id="L149">    }</span>
+
+    @Test(expected = RuntimeException.class)
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginExceptionWhileOnErrorThrows() {
+<span class="nc" id="L154">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            int calls;
+            @Override
+            public void accept(Throwable e) {
+<span class="nc bnc" id="L158" title="All 2 branches missed.">                if (++calls == 2) {</span>
+<span class="nc" id="L159">                    throw new RuntimeException();</span>
+                }
+<span class="nc" id="L161">            }</span>
+        });
+
+<span class="nc" id="L164">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L167">                throw new RuntimeException(e);</span>
+            }
+        };
+<span class="nc" id="L170">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+
+<span class="nc" id="L172">        safe.onError(new TestException());</span>
+<span class="nc" id="L173">    }</span>
+
+    @Test(expected = RuntimeException.class)
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginExceptionWhileOnErrorThrowsAndUnsubscribeThrows() {
+<span class="nc" id="L178">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            int calls;
+            @Override
+            public void accept(Throwable e) {
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                if (++calls == 2) {</span>
+<span class="nc" id="L183">                    throw new RuntimeException();</span>
+                }
+<span class="nc" id="L185">            }</span>
+        });
+
+<span class="nc" id="L188">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L191">                throw new RuntimeException(e);</span>
+            }
+        };
+<span class="nc" id="L194">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+<span class="nc" id="L195">        safe.onSubscribe(new SubscriptionCancelThrows());</span>
+
+<span class="nc" id="L197">        safe.onError(new TestException());</span>
+<span class="nc" id="L198">    }</span>
+
+    @Test(expected = RuntimeException.class)
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginExceptionWhenUnsubscribing2() {
+<span class="nc" id="L203">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            int calls;
+            @Override
+            public void accept(Throwable e) {
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                if (++calls == 3) {</span>
+<span class="nc" id="L208">                    throw new RuntimeException();</span>
+                }
+<span class="nc" id="L210">            }</span>
+        });
+
+<span class="nc" id="L213">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L216">                throw new RuntimeException(e);</span>
+            }
+        };
+<span class="nc" id="L219">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+<span class="nc" id="L220">        safe.onSubscribe(new SubscriptionCancelThrows());</span>
+
+<span class="nc" id="L222">        safe.onError(new TestException());</span>
+<span class="nc" id="L223">    }</span>
+
+    @Test
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginErrorHandlerReceivesExceptionWhenUnsubscribeAfterCompletionThrows() {
+<span class="nc" id="L228">        final AtomicInteger calls = new AtomicInteger();</span>
+<span class="nc" id="L229">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) {
+<span class="nc" id="L232">                calls.incrementAndGet();</span>
+<span class="nc" id="L233">            }</span>
+        });
+
+<span class="nc" id="L236">        final AtomicInteger errorCount = new AtomicInteger();</span>
+<span class="nc" id="L237">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L240">                errorCount.incrementAndGet();</span>
+<span class="nc" id="L241">            }</span>
+        };
+<span class="nc" id="L243">        final RuntimeException ex = new RuntimeException();</span>
+<span class="nc" id="L244">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+<span class="nc" id="L245">        safe.onSubscribe(new Subscription() {</span>
+            @Override
+            public void cancel() {
+<span class="nc" id="L248">                throw ex;</span>
+            }
+
+            @Override
+            public void request(long n) {
+
+<span class="nc" id="L254">            }</span>
+        });
+
+//        try {
+//            safe.onComplete();
+//            Assert.fail();
+//        } catch(UnsubscribeFailedException e) {
+//            assertEquals(1, calls.get());
+//            assertEquals(0, errors.get());
+//        }
+<span class="nc" id="L264">    }</span>
+
+    @Test
+    @Ignore(&quot;Subscribers can't throw&quot;)
+    public void testPluginErrorHandlerReceivesExceptionFromFailingUnsubscribeAfterCompletionThrows() {
+<span class="nc" id="L269">        final AtomicInteger calls = new AtomicInteger();</span>
+<span class="nc" id="L270">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) {
+<span class="nc" id="L273">                    calls.incrementAndGet();</span>
+<span class="nc" id="L274">            }</span>
+        });
+
+<span class="nc" id="L277">        final AtomicInteger errorCount = new AtomicInteger();</span>
+<span class="nc" id="L278">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L282">                throw new RuntimeException();</span>
+            }
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L287">                errorCount.incrementAndGet();</span>
+<span class="nc" id="L288">            }</span>
+        };
+<span class="nc" id="L290">        SafeSubscriber&lt;Integer&gt; safe = new SafeSubscriber&lt;Integer&gt;(ts);</span>
+<span class="nc" id="L291">        safe.onSubscribe(new SubscriptionCancelThrows());</span>
+
+//        try {
+//            safe.onComplete();
+//            Assert.fail();
+//        } catch(UnsubscribeFailedException e) {
+//            assertEquals(2, calls.get());
+//            assertEquals(0, errors.get());
+//        }
+<span class="nc" id="L300">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

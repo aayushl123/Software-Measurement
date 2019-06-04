@@ -1,0 +1,490 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableJoinTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableJoinTest.java</span></div><h1>FlowableJoinTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.reactivex.internal.operators.flowable;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.List;
+
+import org.junit.*;
+import org.mockito.MockitoAnnotations;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L36">public class FlowableJoinTest {</span>
+<span class="fc" id="L37">    Subscriber&lt;Object&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L39">    BiFunction&lt;Integer, Integer, Integer&gt; add = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+        @Override
+        public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L42">            return t1 + t2;</span>
+        }
+    };
+
+    &lt;T&gt; Function&lt;Integer, Flowable&lt;T&gt;&gt; just(final Flowable&lt;T&gt; flowable) {
+<span class="fc" id="L47">        return new Function&lt;Integer, Flowable&lt;T&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;T&gt; apply(Integer t1) {
+<span class="fc" id="L50">                return flowable;</span>
+            }
+        };
+    }
+
+    @Before
+    public void before() {
+<span class="fc" id="L57">        MockitoAnnotations.initMocks(this);</span>
+<span class="fc" id="L58">    }</span>
+
+    @Test
+    public void normal1() {
+<span class="fc" id="L62">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L63">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L65">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L66">                just(Flowable.never()),</span>
+<span class="fc" id="L67">                just(Flowable.never()), add);</span>
+
+<span class="fc" id="L69">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L71">        source1.onNext(1);</span>
+<span class="fc" id="L72">        source1.onNext(2);</span>
+<span class="fc" id="L73">        source1.onNext(4);</span>
+
+<span class="fc" id="L75">        source2.onNext(16);</span>
+<span class="fc" id="L76">        source2.onNext(32);</span>
+<span class="fc" id="L77">        source2.onNext(64);</span>
+
+<span class="fc" id="L79">        source1.onComplete();</span>
+<span class="fc" id="L80">        source2.onComplete();</span>
+
+<span class="fc" id="L82">        verify(subscriber, times(1)).onNext(17);</span>
+<span class="fc" id="L83">        verify(subscriber, times(1)).onNext(18);</span>
+<span class="fc" id="L84">        verify(subscriber, times(1)).onNext(20);</span>
+<span class="fc" id="L85">        verify(subscriber, times(1)).onNext(33);</span>
+<span class="fc" id="L86">        verify(subscriber, times(1)).onNext(34);</span>
+<span class="fc" id="L87">        verify(subscriber, times(1)).onNext(36);</span>
+<span class="fc" id="L88">        verify(subscriber, times(1)).onNext(65);</span>
+<span class="fc" id="L89">        verify(subscriber, times(1)).onNext(66);</span>
+<span class="fc" id="L90">        verify(subscriber, times(1)).onNext(68);</span>
+
+<span class="fc" id="L92">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L93">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L94">    }</span>
+
+    @Test
+    public void normal1WithDuration() {
+<span class="fc" id="L98">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L99">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L101">        PublishProcessor&lt;Integer&gt; duration1 = PublishProcessor.create();</span>
+
+<span class="fc" id="L103">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L104">                just(duration1),</span>
+<span class="fc" id="L105">                just(Flowable.never()), add);</span>
+<span class="fc" id="L106">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L108">        source1.onNext(1);</span>
+<span class="fc" id="L109">        source1.onNext(2);</span>
+<span class="fc" id="L110">        source2.onNext(16);</span>
+
+<span class="fc" id="L112">        duration1.onNext(1);</span>
+
+<span class="fc" id="L114">        source1.onNext(4);</span>
+<span class="fc" id="L115">        source1.onNext(8);</span>
+
+<span class="fc" id="L117">        source1.onComplete();</span>
+<span class="fc" id="L118">        source2.onComplete();</span>
+
+<span class="fc" id="L120">        verify(subscriber, times(1)).onNext(17);</span>
+<span class="fc" id="L121">        verify(subscriber, times(1)).onNext(18);</span>
+<span class="fc" id="L122">        verify(subscriber, times(1)).onNext(20);</span>
+<span class="fc" id="L123">        verify(subscriber, times(1)).onNext(24);</span>
+
+<span class="fc" id="L125">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L126">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L128">    }</span>
+
+    @Test
+    public void normal2() {
+<span class="fc" id="L132">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L133">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L135">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L136">                just(Flowable.never()),</span>
+<span class="fc" id="L137">                just(Flowable.never()), add);</span>
+
+<span class="fc" id="L139">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L141">        source1.onNext(1);</span>
+<span class="fc" id="L142">        source1.onNext(2);</span>
+<span class="fc" id="L143">        source1.onComplete();</span>
+
+<span class="fc" id="L145">        source2.onNext(16);</span>
+<span class="fc" id="L146">        source2.onNext(32);</span>
+<span class="fc" id="L147">        source2.onNext(64);</span>
+
+<span class="fc" id="L149">        source2.onComplete();</span>
+
+<span class="fc" id="L151">        verify(subscriber, times(1)).onNext(17);</span>
+<span class="fc" id="L152">        verify(subscriber, times(1)).onNext(18);</span>
+<span class="fc" id="L153">        verify(subscriber, times(1)).onNext(33);</span>
+<span class="fc" id="L154">        verify(subscriber, times(1)).onNext(34);</span>
+<span class="fc" id="L155">        verify(subscriber, times(1)).onNext(65);</span>
+<span class="fc" id="L156">        verify(subscriber, times(1)).onNext(66);</span>
+
+<span class="fc" id="L158">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L159">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L160">    }</span>
+
+    @Test
+    public void leftThrows() {
+<span class="fc" id="L164">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L165">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L167">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L168">                just(Flowable.never()),</span>
+<span class="fc" id="L169">                just(Flowable.never()), add);</span>
+
+<span class="fc" id="L171">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L173">        source2.onNext(1);</span>
+<span class="fc" id="L174">        source1.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L176">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L177">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L178">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L179">    }</span>
+
+    @Test
+    public void rightThrows() {
+<span class="fc" id="L183">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L184">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L186">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L187">                just(Flowable.never()),</span>
+<span class="fc" id="L188">                just(Flowable.never()), add);</span>
+
+<span class="fc" id="L190">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L192">        source1.onNext(1);</span>
+<span class="fc" id="L193">        source2.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L195">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L196">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L197">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L198">    }</span>
+
+    @Test
+    public void leftDurationThrows() {
+<span class="fc" id="L202">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L203">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L205">        Flowable&lt;Integer&gt; duration1 = Flowable.&lt;Integer&gt; error(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L207">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L208">                just(duration1),</span>
+<span class="fc" id="L209">                just(Flowable.never()), add);</span>
+<span class="fc" id="L210">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L212">        source1.onNext(1);</span>
+
+<span class="fc" id="L214">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L215">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L216">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L217">    }</span>
+
+    @Test
+    public void rightDurationThrows() {
+<span class="fc" id="L221">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L222">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L224">        Flowable&lt;Integer&gt; duration1 = Flowable.&lt;Integer&gt; error(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L226">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L227">                just(Flowable.never()),</span>
+<span class="fc" id="L228">                just(duration1), add);</span>
+<span class="fc" id="L229">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L231">        source2.onNext(1);</span>
+
+<span class="fc" id="L233">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L234">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L235">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L236">    }</span>
+
+    @Test
+    public void leftDurationSelectorThrows() {
+<span class="fc" id="L240">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L241">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L243">        Function&lt;Integer, Flowable&lt;Integer&gt;&gt; fail = new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L246">                throw new RuntimeException(&quot;Forced failure&quot;);</span>
+            }
+        };
+
+<span class="fc" id="L250">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+                fail,
+<span class="fc" id="L252">                just(Flowable.never()), add);</span>
+<span class="fc" id="L253">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L255">        source1.onNext(1);</span>
+
+<span class="fc" id="L257">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L258">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L259">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L260">    }</span>
+
+    @Test
+    public void rightDurationSelectorThrows() {
+<span class="fc" id="L264">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L265">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L267">        Function&lt;Integer, Flowable&lt;Integer&gt;&gt; fail = new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L270">                throw new RuntimeException(&quot;Forced failure&quot;);</span>
+            }
+        };
+
+<span class="fc" id="L274">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L275">                just(Flowable.never()),</span>
+                fail, add);
+<span class="fc" id="L277">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L279">        source2.onNext(1);</span>
+
+<span class="fc" id="L281">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L282">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L283">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L284">    }</span>
+
+    @Test
+    public void resultSelectorThrows() {
+<span class="fc" id="L288">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L289">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L291">        BiFunction&lt;Integer, Integer, Integer&gt; fail = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L294">                throw new RuntimeException(&quot;Forced failure&quot;);</span>
+            }
+        };
+
+<span class="fc" id="L298">        Flowable&lt;Integer&gt; m = source1.join(source2,</span>
+<span class="fc" id="L299">                just(Flowable.never()),</span>
+<span class="fc" id="L300">                just(Flowable.never()), fail);</span>
+<span class="fc" id="L301">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L303">        source1.onNext(1);</span>
+<span class="fc" id="L304">        source2.onNext(2);</span>
+
+<span class="fc" id="L306">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L307">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L308">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L309">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L313">        TestHelper.checkDisposed(PublishProcessor.&lt;Integer&gt;create().join(Flowable.just(1),</span>
+<span class="fc" id="L314">                Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L315">                Functions.justFunction(Flowable.never()), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L318">                        return a + b;</span>
+                    }
+                }));
+<span class="fc" id="L321">    }</span>
+
+    @Test
+    public void take() {
+<span class="fc" id="L325">        Flowable.just(1).join(</span>
+<span class="fc" id="L326">                Flowable.just(2),</span>
+<span class="fc" id="L327">                Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L328">                Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L329">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L332">                        return a + b;</span>
+                    }
+                })
+<span class="fc" id="L335">        .take(1)</span>
+<span class="fc" id="L336">        .test()</span>
+<span class="fc" id="L337">        .assertResult(3);</span>
+<span class="fc" id="L338">    }</span>
+
+    @Test
+    public void rightClose() {
+<span class="fc" id="L342">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L344">        TestSubscriber&lt;Integer&gt; ts = pp.join(Flowable.just(2),</span>
+<span class="fc" id="L345">                Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L346">                Functions.justFunction(Flowable.empty()),</span>
+<span class="fc" id="L347">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L350">                        return a + b;</span>
+                    }
+            })
+<span class="fc" id="L353">        .test()</span>
+<span class="fc" id="L354">        .assertEmpty();</span>
+
+<span class="fc" id="L356">        pp.onNext(1);</span>
+
+<span class="fc" id="L358">        ts.assertEmpty();</span>
+<span class="fc" id="L359">    }</span>
+
+    @Test
+    public void resultSelectorThrows2() {
+<span class="fc" id="L363">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L365">        TestSubscriber&lt;Integer&gt; ts = pp.join(</span>
+<span class="fc" id="L366">                Flowable.just(2),</span>
+<span class="fc" id="L367">                Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L368">                Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L369">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L372">                        throw new TestException();</span>
+                    }
+                })
+<span class="fc" id="L375">        .test();</span>
+
+<span class="fc" id="L377">        pp.onNext(1);</span>
+<span class="fc" id="L378">        pp.onComplete();</span>
+
+<span class="fc" id="L380">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L381">    }</span>
+
+    @Test
+    public void badOuterSource() {
+<span class="fc" id="L385">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L387">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L390">                    subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L391">                    subscriber.onError(new TestException(&quot;First&quot;));</span>
+<span class="fc" id="L392">                    subscriber.onError(new TestException(&quot;Second&quot;));</span>
+<span class="fc" id="L393">                }</span>
+            }
+<span class="fc" id="L395">            .join(Flowable.just(2),</span>
+<span class="fc" id="L396">                    Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L397">                    Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L398">                    new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                        @Override
+                        public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L401">                            return a + b;</span>
+                        }
+                })
+<span class="fc" id="L404">            .test()</span>
+<span class="fc" id="L405">            .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+
+<span class="fc" id="L407">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Second&quot;);</span>
+        } finally {
+<span class="fc" id="L409">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L411">    }</span>
+
+    @Test
+    public void badEndSource() {
+<span class="fc" id="L415">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+            @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L418">            final Subscriber[] o = { null };</span>
+
+<span class="fc" id="L420">            TestSubscriber&lt;Integer&gt; ts = Flowable.just(1)</span>
+<span class="fc" id="L421">            .join(Flowable.just(2),</span>
+<span class="fc" id="L422">                    Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L423">                    Functions.justFunction(new Flowable&lt;Integer&gt;() {</span>
+                        @Override
+                        protected void subscribeActual(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L426">                            o[0] = subscriber;</span>
+<span class="fc" id="L427">                            subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L428">                            subscriber.onError(new TestException(&quot;First&quot;));</span>
+<span class="fc" id="L429">                        }</span>
+                    }),
+<span class="fc" id="L431">                    new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                        @Override
+                        public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L434">                            return a + b;</span>
+                        }
+                })
+<span class="fc" id="L437">            .test();</span>
+
+<span class="fc" id="L439">            o[0].onError(new TestException(&quot;Second&quot;));</span>
+
+<span class="fc" id="L441">            ts</span>
+<span class="fc" id="L442">            .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+
+<span class="fc" id="L444">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Second&quot;);</span>
+        } finally {
+<span class="fc" id="L446">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L448">    }</span>
+
+    @Test
+    public void backpressureOverflowRight() {
+<span class="fc" id="L452">        PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L453">        PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L455">        TestSubscriber&lt;Object&gt; ts = pp1.join(pp2, Functions.justFunction(Flowable.never()), Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L456">                new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                    @Override
+                    public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L459">                        return a + b;</span>
+                    }
+                })
+<span class="fc" id="L462">        .test(0L);</span>
+
+<span class="fc" id="L464">        pp1.onNext(1);</span>
+<span class="fc" id="L465">        pp2.onNext(2);</span>
+
+<span class="fc" id="L467">        ts.assertFailure(MissingBackpressureException.class);</span>
+<span class="fc" id="L468">    }</span>
+
+    @Test
+    public void backpressureOverflowLeft() {
+<span class="fc" id="L472">        PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L473">        PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L475">        TestSubscriber&lt;Object&gt; ts = pp1.join(pp2, Functions.justFunction(Flowable.never()), Functions.justFunction(Flowable.never()),</span>
+<span class="fc" id="L476">                new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                    @Override
+                    public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L479">                        return a + b;</span>
+                    }
+                })
+<span class="fc" id="L482">        .test(0L);</span>
+
+<span class="fc" id="L484">        pp2.onNext(2);</span>
+<span class="fc" id="L485">        pp1.onNext(1);</span>
+
+<span class="fc" id="L487">        ts.assertFailure(MissingBackpressureException.class);</span>
+<span class="fc" id="L488">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

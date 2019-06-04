@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableWindowBoundarySelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableWindowBoundarySelector.java</span></div><h1>FlowableWindowBoundarySelector.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.*;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.Flowable;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.MissingBackpressureException;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.SimplePlainQueue;
+import io.reactivex.internal.queue.MpscLinkedQueue;
+import io.reactivex.internal.subscribers.QueueDrainSubscriber;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.NotificationLite;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.UnicastProcessor;
+import io.reactivex.subscribers.*;
+
+public final class FlowableWindowBoundarySelector&lt;T, B, V&gt; extends AbstractFlowableWithUpstream&lt;T, Flowable&lt;T&gt;&gt; {
+    final Publisher&lt;B&gt; open;
+    final Function&lt;? super B, ? extends Publisher&lt;V&gt;&gt; close;
+    final int bufferSize;
+
+    public FlowableWindowBoundarySelector(
+            Flowable&lt;T&gt; source,
+            Publisher&lt;B&gt; open, Function&lt;? super B, ? extends Publisher&lt;V&gt;&gt; close,
+            int bufferSize) {
+<span class="fc" id="L45">        super(source);</span>
+<span class="fc" id="L46">        this.open = open;</span>
+<span class="fc" id="L47">        this.close = close;</span>
+<span class="fc" id="L48">        this.bufferSize = bufferSize;</span>
+<span class="fc" id="L49">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super Flowable&lt;T&gt;&gt; s) {
+<span class="fc" id="L53">        source.subscribe(new WindowBoundaryMainSubscriber&lt;T, B, V&gt;(</span>
+                new SerializedSubscriber&lt;Flowable&lt;T&gt;&gt;(s),
+                open, close, bufferSize));
+<span class="fc" id="L56">    }</span>
+
+    static final class WindowBoundaryMainSubscriber&lt;T, B, V&gt;
+    extends QueueDrainSubscriber&lt;T, Object, Flowable&lt;T&gt;&gt;
+    implements Subscription {
+        final Publisher&lt;B&gt; open;
+        final Function&lt;? super B, ? extends Publisher&lt;V&gt;&gt; close;
+        final int bufferSize;
+        final CompositeDisposable resources;
+
+        Subscription upstream;
+
+<span class="fc" id="L68">        final AtomicReference&lt;Disposable&gt; boundary = new AtomicReference&lt;Disposable&gt;();</span>
+
+        final List&lt;UnicastProcessor&lt;T&gt;&gt; ws;
+
+<span class="fc" id="L72">        final AtomicLong windows = new AtomicLong();</span>
+
+<span class="fc" id="L74">        final AtomicBoolean stopWindows = new AtomicBoolean();</span>
+
+        WindowBoundaryMainSubscriber(Subscriber&lt;? super Flowable&lt;T&gt;&gt; actual,
+                Publisher&lt;B&gt; open, Function&lt;? super B, ? extends Publisher&lt;V&gt;&gt; close, int bufferSize) {
+<span class="fc" id="L78">            super(actual, new MpscLinkedQueue&lt;Object&gt;());</span>
+<span class="fc" id="L79">            this.open = open;</span>
+<span class="fc" id="L80">            this.close = close;</span>
+<span class="fc" id="L81">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L82">            this.resources = new CompositeDisposable();</span>
+<span class="fc" id="L83">            this.ws = new ArrayList&lt;UnicastProcessor&lt;T&gt;&gt;();</span>
+<span class="fc" id="L84">            windows.lazySet(1);</span>
+<span class="fc" id="L85">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L90">                this.upstream = s;</span>
+
+<span class="fc" id="L92">                downstream.onSubscribe(this);</span>
+
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                if (stopWindows.get()) {</span>
+<span class="fc" id="L95">                    return;</span>
+                }
+
+<span class="fc" id="L98">                OperatorWindowBoundaryOpenSubscriber&lt;T, B&gt; os = new OperatorWindowBoundaryOpenSubscriber&lt;T, B&gt;(this);</span>
+
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                if (boundary.compareAndSet(null, os)) {</span>
+<span class="fc" id="L101">                    s.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L102">                    open.subscribe(os);</span>
+                }
+            }
+<span class="fc" id="L105">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L110">                return;</span>
+            }
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (fastEnter()) {</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                for (UnicastProcessor&lt;T&gt; w : ws) {</span>
+<span class="fc" id="L114">                    w.onNext(t);</span>
+<span class="fc" id="L115">                }</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                if (leave(-1) == 0) {</span>
+<span class="fc" id="L117">                    return;</span>
+                }
+            } else {
+<span class="fc" id="L120">                queue.offer(NotificationLite.next(t));</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                if (!enter()) {</span>
+<span class="fc" id="L122">                    return;</span>
+                }
+            }
+<span class="fc" id="L125">            drainLoop();</span>
+<span class="fc" id="L126">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L131">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L132">                return;</span>
+            }
+<span class="fc" id="L134">            error = t;</span>
+<span class="fc" id="L135">            done = true;</span>
+
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L138">                drainLoop();</span>
+            }
+
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">            if (windows.decrementAndGet() == 0) {</span>
+<span class="fc" id="L142">                resources.dispose();</span>
+            }
+
+<span class="fc" id="L145">            downstream.onError(t);</span>
+<span class="fc" id="L146">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L151">                return;</span>
+            }
+<span class="fc" id="L153">            done = true;</span>
+
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (enter()) {</span>
+<span class="fc" id="L156">                drainLoop();</span>
+            }
+
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            if (windows.decrementAndGet() == 0) {</span>
+<span class="fc" id="L160">                resources.dispose();</span>
+            }
+
+<span class="fc" id="L163">            downstream.onComplete();</span>
+<span class="fc" id="L164">        }</span>
+
+        void error(Throwable t) {
+<span class="fc" id="L167">            upstream.cancel();</span>
+<span class="fc" id="L168">            resources.dispose();</span>
+<span class="fc" id="L169">            DisposableHelper.dispose(boundary);</span>
+
+<span class="fc" id="L171">            downstream.onError(t);</span>
+<span class="fc" id="L172">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L176">            requested(n);</span>
+<span class="fc" id="L177">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (stopWindows.compareAndSet(false, true)) {</span>
+<span class="fc" id="L182">                DisposableHelper.dispose(boundary);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                if (windows.decrementAndGet() == 0) {</span>
+<span class="fc" id="L184">                    upstream.cancel();</span>
+                }
+            }
+<span class="fc" id="L187">        }</span>
+
+        void dispose() {
+<span class="fc" id="L190">            resources.dispose();</span>
+<span class="fc" id="L191">            DisposableHelper.dispose(boundary);</span>
+<span class="fc" id="L192">        }</span>
+
+        void drainLoop() {
+<span class="fc" id="L195">            final SimplePlainQueue&lt;Object&gt; q = queue;</span>
+<span class="fc" id="L196">            final Subscriber&lt;? super Flowable&lt;T&gt;&gt; a = downstream;</span>
+<span class="fc" id="L197">            final List&lt;UnicastProcessor&lt;T&gt;&gt; ws = this.ws;</span>
+<span class="fc" id="L198">            int missed = 1;</span>
+
+            for (;;) {
+
+                for (;;) {
+<span class="fc" id="L203">                    boolean d = done;</span>
+<span class="fc" id="L204">                    Object o = q.poll();</span>
+
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                    boolean empty = o == null;</span>
+
+<span class="fc bfc" id="L208" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L209">                        dispose();</span>
+<span class="fc" id="L210">                        Throwable e = error;</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                        if (e != null) {</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                            for (UnicastProcessor&lt;T&gt; w : ws) {</span>
+<span class="nc" id="L213">                                w.onError(e);</span>
+<span class="pc" id="L214">                            }</span>
+                        } else {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                            for (UnicastProcessor&lt;T&gt; w : ws) {</span>
+<span class="fc" id="L217">                                w.onComplete();</span>
+<span class="fc" id="L218">                            }</span>
+                        }
+<span class="fc" id="L220">                        ws.clear();</span>
+<span class="fc" id="L221">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L225">                        break;</span>
+                    }
+
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                    if (o instanceof WindowOperation) {</span>
+                        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L230">                        WindowOperation&lt;T, B&gt; wo = (WindowOperation&lt;T, B&gt;) o;</span>
+
+<span class="fc" id="L232">                        UnicastProcessor&lt;T&gt; w = wo.w;</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">                        if (w != null) {</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">                            if (ws.remove(wo.w)) {</span>
+<span class="fc" id="L235">                                wo.w.onComplete();</span>
+
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                                if (windows.decrementAndGet() == 0) {</span>
+<span class="nc" id="L238">                                    dispose();</span>
+<span class="nc" id="L239">                                    return;</span>
+                                }
+                            }
+                            continue;
+                        }
+
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">                        if (stopWindows.get()) {</span>
+<span class="nc" id="L246">                            continue;</span>
+                        }
+
+<span class="fc" id="L249">                        w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+
+<span class="fc" id="L251">                        long r = requested();</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">                        if (r != 0L) {</span>
+<span class="fc" id="L253">                            ws.add(w);</span>
+<span class="fc" id="L254">                            a.onNext(w);</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">                            if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L256">                                produced(1);</span>
+                            }
+                        } else {
+<span class="fc" id="L259">                            cancel();</span>
+<span class="fc" id="L260">                            a.onError(new MissingBackpressureException(&quot;Could not deliver new window due to lack of requests&quot;));</span>
+<span class="fc" id="L261">                            continue;</span>
+                        }
+
+                        Publisher&lt;V&gt; p;
+
+                        try {
+<span class="fc" id="L267">                            p = ObjectHelper.requireNonNull(close.apply(wo.open), &quot;The publisher supplied is null&quot;);</span>
+<span class="fc" id="L268">                        } catch (Throwable e) {</span>
+<span class="fc" id="L269">                            cancel();</span>
+<span class="fc" id="L270">                            a.onError(e);</span>
+<span class="fc" id="L271">                            continue;</span>
+<span class="fc" id="L272">                        }</span>
+
+<span class="fc" id="L274">                        OperatorWindowBoundaryCloseSubscriber&lt;T, V&gt; cl = new OperatorWindowBoundaryCloseSubscriber&lt;T, V&gt;(this, w);</span>
+
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">                        if (resources.add(cl)) {</span>
+<span class="fc" id="L277">                            windows.getAndIncrement();</span>
+
+<span class="fc" id="L279">                            p.subscribe(cl);</span>
+                        }
+
+                        continue;
+                    }
+
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                    for (UnicastProcessor&lt;T&gt; w : ws) {</span>
+<span class="fc" id="L286">                        w.onNext(NotificationLite.&lt;T&gt;getValue(o));</span>
+<span class="fc" id="L287">                    }</span>
+<span class="fc" id="L288">                }</span>
+
+<span class="fc" id="L290">                missed = leave(-missed);</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L292">                    break;</span>
+                }
+            }
+<span class="fc" id="L295">        }</span>
+
+        @Override
+        public boolean accept(Subscriber&lt;? super Flowable&lt;T&gt;&gt; a, Object v) {
+            // not used by this operator
+<span class="nc" id="L300">            return false;</span>
+        }
+
+        void open(B b) {
+<span class="fc" id="L304">            queue.offer(new WindowOperation&lt;T, B&gt;(null, b));</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L306">                drainLoop();</span>
+            }
+<span class="fc" id="L308">        }</span>
+
+        void close(OperatorWindowBoundaryCloseSubscriber&lt;T, V&gt; w) {
+<span class="fc" id="L311">            resources.delete(w);</span>
+<span class="fc" id="L312">            queue.offer(new WindowOperation&lt;T, B&gt;(w.w, null));</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">            if (enter()) {</span>
+<span class="fc" id="L314">                drainLoop();</span>
+            }
+<span class="fc" id="L316">        }</span>
+    }
+
+    static final class WindowOperation&lt;T, B&gt; {
+        final UnicastProcessor&lt;T&gt; w;
+        final B open;
+<span class="fc" id="L322">        WindowOperation(UnicastProcessor&lt;T&gt; w, B open) {</span>
+<span class="fc" id="L323">            this.w = w;</span>
+<span class="fc" id="L324">            this.open = open;</span>
+<span class="fc" id="L325">        }</span>
+    }
+
+    static final class OperatorWindowBoundaryOpenSubscriber&lt;T, B&gt; extends DisposableSubscriber&lt;B&gt; {
+        final WindowBoundaryMainSubscriber&lt;T, B, ?&gt; parent;
+
+<span class="fc" id="L331">        OperatorWindowBoundaryOpenSubscriber(WindowBoundaryMainSubscriber&lt;T, B, ?&gt; parent) {</span>
+<span class="fc" id="L332">            this.parent = parent;</span>
+<span class="fc" id="L333">        }</span>
+
+        @Override
+        public void onNext(B t) {
+<span class="fc" id="L337">            parent.open(t);</span>
+<span class="fc" id="L338">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L342">            parent.error(t);</span>
+<span class="fc" id="L343">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L347">            parent.onComplete();</span>
+<span class="fc" id="L348">        }</span>
+    }
+
+    static final class OperatorWindowBoundaryCloseSubscriber&lt;T, V&gt; extends DisposableSubscriber&lt;V&gt; {
+        final WindowBoundaryMainSubscriber&lt;T, ?, V&gt; parent;
+        final UnicastProcessor&lt;T&gt; w;
+
+        boolean done;
+
+<span class="fc" id="L357">        OperatorWindowBoundaryCloseSubscriber(WindowBoundaryMainSubscriber&lt;T, ?, V&gt; parent, UnicastProcessor&lt;T&gt; w) {</span>
+<span class="fc" id="L358">            this.parent = parent;</span>
+<span class="fc" id="L359">            this.w = w;</span>
+<span class="fc" id="L360">        }</span>
+
+        @Override
+        public void onNext(V t) {
+<span class="fc" id="L364">            cancel();</span>
+<span class="fc" id="L365">            onComplete();</span>
+<span class="fc" id="L366">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L370" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L371">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L372">                return;</span>
+            }
+<span class="fc" id="L374">            done = true;</span>
+<span class="fc" id="L375">            parent.error(t);</span>
+<span class="fc" id="L376">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L380" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L381">                return;</span>
+            }
+<span class="fc" id="L383">            done = true;</span>
+<span class="fc" id="L384">            parent.close(this);</span>
+<span class="fc" id="L385">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

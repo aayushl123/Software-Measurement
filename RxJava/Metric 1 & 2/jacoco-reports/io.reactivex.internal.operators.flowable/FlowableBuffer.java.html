@@ -1,0 +1,444 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableBuffer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableBuffer.java</span></div><h1>FlowableBuffer.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.BooleanSupplier;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableBuffer&lt;T, C extends Collection&lt;? super T&gt;&gt; extends AbstractFlowableWithUpstream&lt;T, C&gt; {
+    final int size;
+
+    final int skip;
+
+    final Callable&lt;C&gt; bufferSupplier;
+
+    public FlowableBuffer(Flowable&lt;T&gt; source, int size, int skip, Callable&lt;C&gt; bufferSupplier) {
+<span class="fc" id="L38">        super(source);</span>
+<span class="fc" id="L39">        this.size = size;</span>
+<span class="fc" id="L40">        this.skip = skip;</span>
+<span class="fc" id="L41">        this.bufferSupplier = bufferSupplier;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Override
+    public void subscribeActual(Subscriber&lt;? super C&gt; s) {
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (size == skip) {</span>
+<span class="fc" id="L47">            source.subscribe(new PublisherBufferExactSubscriber&lt;T, C&gt;(s, size, bufferSupplier));</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        } else if (skip &gt; size) {</span>
+<span class="fc" id="L49">            source.subscribe(new PublisherBufferSkipSubscriber&lt;T, C&gt;(s, size, skip, bufferSupplier));</span>
+        } else {
+<span class="fc" id="L51">            source.subscribe(new PublisherBufferOverlappingSubscriber&lt;T, C&gt;(s, size, skip, bufferSupplier));</span>
+        }
+<span class="fc" id="L53">    }</span>
+
+    static final class PublisherBufferExactSubscriber&lt;T, C extends Collection&lt;? super T&gt;&gt;
+      implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        final Subscriber&lt;? super C&gt; downstream;
+
+        final Callable&lt;C&gt; bufferSupplier;
+
+        final int size;
+
+        C buffer;
+
+        Subscription upstream;
+
+        boolean done;
+
+        int index;
+
+<span class="fc" id="L72">        PublisherBufferExactSubscriber(Subscriber&lt;? super C&gt; actual, int size, Callable&lt;C&gt; bufferSupplier) {</span>
+<span class="fc" id="L73">            this.downstream = actual;</span>
+<span class="fc" id="L74">            this.size = size;</span>
+<span class="fc" id="L75">            this.bufferSupplier = bufferSupplier;</span>
+<span class="fc" id="L76">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L81">                upstream.request(BackpressureHelper.multiplyCap(n, size));</span>
+            }
+<span class="fc" id="L83">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L87">            upstream.cancel();</span>
+<span class="fc" id="L88">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L93">                this.upstream = s;</span>
+
+<span class="fc" id="L95">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L97">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L102">                return;</span>
+            }
+
+<span class="fc" id="L105">            C b = buffer;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            if (b == null) {</span>
+
+                try {
+<span class="fc" id="L109">                    b = ObjectHelper.requireNonNull(bufferSupplier.call(), &quot;The bufferSupplier returned a null buffer&quot;);</span>
+<span class="fc" id="L110">                } catch (Throwable e) {</span>
+<span class="fc" id="L111">                    Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L112">                    cancel();</span>
+<span class="fc" id="L113">                    onError(e);</span>
+<span class="fc" id="L114">                    return;</span>
+<span class="fc" id="L115">                }</span>
+
+<span class="fc" id="L117">                buffer = b;</span>
+            }
+
+<span class="fc" id="L120">            b.add(t);</span>
+
+<span class="fc" id="L122">            int i = index + 1;</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (i == size) {</span>
+<span class="fc" id="L124">                index = 0;</span>
+<span class="fc" id="L125">                buffer = null;</span>
+<span class="fc" id="L126">                downstream.onNext(b);</span>
+            } else {
+<span class="fc" id="L128">                index = i;</span>
+            }
+<span class="fc" id="L130">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L135">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L136">                return;</span>
+            }
+<span class="fc" id="L138">            done = true;</span>
+<span class="fc" id="L139">            downstream.onError(t);</span>
+<span class="fc" id="L140">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L145">                return;</span>
+            }
+<span class="fc" id="L147">            done = true;</span>
+
+<span class="fc" id="L149">            C b = buffer;</span>
+
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">            if (b != null &amp;&amp; !b.isEmpty()) {</span>
+<span class="fc" id="L152">                downstream.onNext(b);</span>
+            }
+<span class="fc" id="L154">            downstream.onComplete();</span>
+<span class="fc" id="L155">        }</span>
+    }
+
+    static final class PublisherBufferSkipSubscriber&lt;T, C extends Collection&lt;? super T&gt;&gt;
+    extends AtomicInteger
+    implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = -5616169793639412593L;
+
+        final Subscriber&lt;? super C&gt; downstream;
+
+        final Callable&lt;C&gt; bufferSupplier;
+
+        final int size;
+
+        final int skip;
+
+        C buffer;
+
+        Subscription upstream;
+
+        boolean done;
+
+        int index;
+
+        PublisherBufferSkipSubscriber(Subscriber&lt;? super C&gt; actual, int size, int skip,
+<span class="fc" id="L181">                Callable&lt;C&gt; bufferSupplier) {</span>
+<span class="fc" id="L182">            this.downstream = actual;</span>
+<span class="fc" id="L183">            this.size = size;</span>
+<span class="fc" id="L184">            this.skip = skip;</span>
+<span class="fc" id="L185">            this.bufferSupplier = bufferSupplier;</span>
+<span class="fc" id="L186">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="pc bpc" id="L191" title="1 of 4 branches missed.">                if (get() == 0 &amp;&amp; compareAndSet(0, 1)) {</span>
+                    // n full buffers
+<span class="fc" id="L193">                    long u = BackpressureHelper.multiplyCap(n, size);</span>
+                    // + (n - 1) gaps
+<span class="fc" id="L195">                    long v = BackpressureHelper.multiplyCap(skip - size, n - 1);</span>
+
+<span class="fc" id="L197">                    upstream.request(BackpressureHelper.addCap(u, v));</span>
+<span class="fc" id="L198">                } else {</span>
+                    // n full buffer + gap
+<span class="fc" id="L200">                    upstream.request(BackpressureHelper.multiplyCap(skip, n));</span>
+                }
+            }
+<span class="fc" id="L203">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L207">            upstream.cancel();</span>
+<span class="fc" id="L208">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L213">                this.upstream = s;</span>
+
+<span class="fc" id="L215">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L217">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L222">                return;</span>
+            }
+
+<span class="fc" id="L225">            C b = buffer;</span>
+
+<span class="fc" id="L227">            int i = index;</span>
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (i++ == 0) {</span>
+                try {
+<span class="fc" id="L231">                    b = ObjectHelper.requireNonNull(bufferSupplier.call(), &quot;The bufferSupplier returned a null buffer&quot;);</span>
+<span class="fc" id="L232">                } catch (Throwable e) {</span>
+<span class="fc" id="L233">                    Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L234">                    cancel();</span>
+
+<span class="fc" id="L236">                    onError(e);</span>
+<span class="fc" id="L237">                    return;</span>
+<span class="fc" id="L238">                }</span>
+
+<span class="fc" id="L240">                buffer = b;</span>
+            }
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            if (b != null) {</span>
+<span class="fc" id="L244">                b.add(t);</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                if (b.size() == size) {</span>
+<span class="fc" id="L246">                    buffer = null;</span>
+<span class="fc" id="L247">                    downstream.onNext(b);</span>
+                }
+            }
+
+<span class="fc bfc" id="L251" title="All 2 branches covered.">            if (i == skip) {</span>
+<span class="fc" id="L252">                i = 0;</span>
+            }
+<span class="fc" id="L254">            index = i;</span>
+<span class="fc" id="L255">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L260">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L261">                return;</span>
+            }
+
+<span class="fc" id="L264">            done = true;</span>
+<span class="fc" id="L265">            buffer = null;</span>
+
+<span class="fc" id="L267">            downstream.onError(t);</span>
+<span class="fc" id="L268">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L272" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L273">                return;</span>
+            }
+
+<span class="fc" id="L276">            done = true;</span>
+<span class="fc" id="L277">            C b = buffer;</span>
+<span class="fc" id="L278">            buffer = null;</span>
+
+<span class="fc bfc" id="L280" title="All 2 branches covered.">            if (b != null) {</span>
+<span class="fc" id="L281">                downstream.onNext(b);</span>
+            }
+
+<span class="fc" id="L284">            downstream.onComplete();</span>
+<span class="fc" id="L285">        }</span>
+    }
+
+    static final class PublisherBufferOverlappingSubscriber&lt;T, C extends Collection&lt;? super T&gt;&gt;
+    extends AtomicLong
+    implements FlowableSubscriber&lt;T&gt;, Subscription, BooleanSupplier {
+
+        private static final long serialVersionUID = -7370244972039324525L;
+
+        final Subscriber&lt;? super C&gt; downstream;
+
+        final Callable&lt;C&gt; bufferSupplier;
+
+        final int size;
+
+        final int skip;
+
+        final ArrayDeque&lt;C&gt; buffers;
+
+        final AtomicBoolean once;
+
+        Subscription upstream;
+
+        boolean done;
+
+        int index;
+
+        volatile boolean cancelled;
+
+        long produced;
+
+        PublisherBufferOverlappingSubscriber(Subscriber&lt;? super C&gt; actual, int size, int skip,
+<span class="fc" id="L317">                Callable&lt;C&gt; bufferSupplier) {</span>
+<span class="fc" id="L318">            this.downstream = actual;</span>
+<span class="fc" id="L319">            this.size = size;</span>
+<span class="fc" id="L320">            this.skip = skip;</span>
+<span class="fc" id="L321">            this.bufferSupplier = bufferSupplier;</span>
+<span class="fc" id="L322">            this.once = new AtomicBoolean();</span>
+<span class="fc" id="L323">            this.buffers = new ArrayDeque&lt;C&gt;();</span>
+<span class="fc" id="L324">        }</span>
+
+        @Override
+        public boolean getAsBoolean() {
+<span class="fc" id="L328">            return cancelled;</span>
+        }
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                if (QueueDrainHelper.postCompleteRequest(n, downstream, buffers, this, this)) {</span>
+<span class="fc" id="L335">                    return;</span>
+                }
+
+<span class="pc bpc" id="L338" title="1 of 4 branches missed.">                if (!once.get() &amp;&amp; once.compareAndSet(false, true)) {</span>
+                    // (n - 1) skips
+<span class="fc" id="L340">                    long u = BackpressureHelper.multiplyCap(skip, n - 1);</span>
+
+                    // + 1 full buffer
+<span class="fc" id="L343">                    long r = BackpressureHelper.addCap(size, u);</span>
+<span class="fc" id="L344">                    upstream.request(r);</span>
+<span class="fc" id="L345">                } else {</span>
+                    // n skips
+<span class="fc" id="L347">                    long r = BackpressureHelper.multiplyCap(skip, n);</span>
+<span class="fc" id="L348">                    upstream.request(r);</span>
+                }
+            }
+<span class="fc" id="L351">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L355">            cancelled = true;</span>
+<span class="fc" id="L356">            upstream.cancel();</span>
+<span class="fc" id="L357">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L361" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L362">                this.upstream = s;</span>
+
+<span class="fc" id="L364">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L366">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L370" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L371">                return;</span>
+            }
+
+<span class="fc" id="L374">            ArrayDeque&lt;C&gt; bs = buffers;</span>
+
+<span class="fc" id="L376">            int i = index;</span>
+
+<span class="fc bfc" id="L378" title="All 2 branches covered.">            if (i++ == 0) {</span>
+                C b;
+
+                try {
+<span class="fc" id="L382">                    b = ObjectHelper.requireNonNull(bufferSupplier.call(), &quot;The bufferSupplier returned a null buffer&quot;);</span>
+<span class="fc" id="L383">                } catch (Throwable e) {</span>
+<span class="fc" id="L384">                    Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L385">                    cancel();</span>
+<span class="fc" id="L386">                    onError(e);</span>
+<span class="fc" id="L387">                    return;</span>
+<span class="fc" id="L388">                }</span>
+
+<span class="fc" id="L390">                bs.offer(b);</span>
+            }
+
+<span class="fc" id="L393">            C b = bs.peek();</span>
+
+<span class="pc bpc" id="L395" title="1 of 4 branches missed.">            if (b != null &amp;&amp; b.size() + 1 == size) {</span>
+<span class="fc" id="L396">                bs.poll();</span>
+
+<span class="fc" id="L398">                b.add(t);</span>
+
+<span class="fc" id="L400">                produced++;</span>
+
+<span class="fc" id="L402">                downstream.onNext(b);</span>
+            }
+
+<span class="fc bfc" id="L405" title="All 2 branches covered.">            for (C b0 : bs) {</span>
+<span class="fc" id="L406">                b0.add(t);</span>
+<span class="fc" id="L407">            }</span>
+
+<span class="fc bfc" id="L409" title="All 2 branches covered.">            if (i == skip) {</span>
+<span class="fc" id="L410">                i = 0;</span>
+            }
+<span class="fc" id="L412">            index = i;</span>
+<span class="fc" id="L413">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L417" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L418">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L419">                return;</span>
+            }
+
+<span class="fc" id="L422">            done = true;</span>
+<span class="fc" id="L423">            buffers.clear();</span>
+
+<span class="fc" id="L425">            downstream.onError(t);</span>
+<span class="fc" id="L426">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L430" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L431">                return;</span>
+            }
+
+<span class="fc" id="L434">            done = true;</span>
+
+<span class="fc" id="L436">            long p = produced;</span>
+<span class="fc bfc" id="L437" title="All 2 branches covered.">            if (p != 0L) {</span>
+<span class="fc" id="L438">                BackpressureHelper.produced(this, p);</span>
+            }
+<span class="fc" id="L440">            QueueDrainHelper.postComplete(downstream, buffers, this, this);</span>
+<span class="fc" id="L441">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

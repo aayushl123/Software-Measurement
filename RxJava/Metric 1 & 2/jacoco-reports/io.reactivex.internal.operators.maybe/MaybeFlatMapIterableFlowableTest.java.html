@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeFlatMapIterableFlowableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeFlatMapIterableFlowableTest.java</span></div><h1>MaybeFlatMapIterableFlowableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+
+import org.junit.Test;
+import org.reactivestreams.Subscription;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.util.CrashingIterable;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L33">public class MaybeFlatMapIterableFlowableTest {</span>
+
+    @Test
+    public void normal() {
+
+<span class="fc" id="L38">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L41">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L44">        .test()</span>
+<span class="fc" id="L45">        .assertResult(1, 2);</span>
+<span class="fc" id="L46">    }</span>
+
+    @Test
+    public void emptyIterable() {
+
+<span class="fc" id="L51">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L54">                return Collections.&lt;Integer&gt;emptyList();</span>
+            }
+        })
+<span class="fc" id="L57">        .test()</span>
+<span class="fc" id="L58">        .assertResult();</span>
+<span class="fc" id="L59">    }</span>
+
+    @Test
+    public void error() {
+
+<span class="fc" id="L64">        Maybe.&lt;Integer&gt;error(new TestException()).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L67">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L70">        .test()</span>
+<span class="fc" id="L71">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void empty() {
+
+<span class="fc" id="L77">        Maybe.&lt;Integer&gt;empty().flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L80">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L83">        .test()</span>
+<span class="fc" id="L84">        .assertResult();</span>
+<span class="fc" id="L85">    }</span>
+
+    @Test
+    public void backpressure() {
+
+<span class="fc" id="L90">        TestSubscriber&lt;Integer&gt; ts = Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L93">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L96">        .test(0);</span>
+
+<span class="fc" id="L98">        ts.assertEmpty();</span>
+
+<span class="fc" id="L100">        ts.request(1);</span>
+
+<span class="fc" id="L102">        ts.assertValue(1);</span>
+
+<span class="fc" id="L104">        ts.request(1);</span>
+
+<span class="fc" id="L106">        ts.assertResult(1, 2);</span>
+<span class="fc" id="L107">    }</span>
+
+    @Test
+    public void take() {
+<span class="fc" id="L111">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L114">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L117">        .take(1)</span>
+<span class="fc" id="L118">        .test()</span>
+<span class="fc" id="L119">        .assertResult(1);</span>
+<span class="fc" id="L120">    }</span>
+
+    @Test
+    public void fused() {
+<span class="fc" id="L124">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L126">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L129">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L132">        .subscribe(ts);</span>
+
+<span class="fc" id="L134">        ts.assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L135">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L136">        .assertResult(1, 2);</span>
+        ;
+<span class="fc" id="L138">    }</span>
+
+    @Test
+    public void fusedNoSync() {
+<span class="fc" id="L142">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L144">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L147">                return Arrays.asList(v, v + 1);</span>
+            }
+        })
+<span class="fc" id="L150">        .subscribe(ts);</span>
+
+<span class="fc" id="L152">        ts.assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L153">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.NONE))</span>
+<span class="fc" id="L154">        .assertResult(1, 2);</span>
+        ;
+<span class="fc" id="L156">    }</span>
+
+    @Test
+    public void iteratorCrash() {
+
+<span class="fc" id="L161">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L164">                return new CrashingIterable(1, 100, 100);</span>
+            }
+        })
+<span class="fc" id="L167">        .test()</span>
+<span class="fc" id="L168">        .assertFailureAndMessage(TestException.class, &quot;iterator()&quot;);</span>
+<span class="fc" id="L169">    }</span>
+
+    @Test
+    public void hasNextCrash() {
+
+<span class="fc" id="L174">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L177">                return new CrashingIterable(100, 1, 100);</span>
+            }
+        })
+<span class="fc" id="L180">        .test()</span>
+<span class="fc" id="L181">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;);</span>
+<span class="fc" id="L182">    }</span>
+
+    @Test
+    public void nextCrash() {
+
+<span class="fc" id="L187">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L190">                return new CrashingIterable(100, 100, 1);</span>
+            }
+        })
+<span class="fc" id="L193">        .test()</span>
+<span class="fc" id="L194">        .assertFailureAndMessage(TestException.class, &quot;next()&quot;);</span>
+<span class="fc" id="L195">    }</span>
+
+    @Test
+    public void hasNextCrash2() {
+
+<span class="fc" id="L200">        Maybe.just(1).flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L203">                return new CrashingIterable(100, 2, 100);</span>
+            }
+        })
+<span class="fc" id="L206">        .test()</span>
+<span class="fc" id="L207">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;, 0);</span>
+<span class="fc" id="L208">    }</span>
+
+    @Test
+    public void async1() {
+<span class="fc" id="L212">        Maybe.just(1)</span>
+<span class="fc" id="L213">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L216">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L217">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L218">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L221">        .hide()</span>
+<span class="fc" id="L222">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L223">        .test()</span>
+<span class="fc" id="L224">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L225">        .assertSubscribed()</span>
+<span class="fc" id="L226">        .assertValueCount(1000 * 1000)</span>
+<span class="fc" id="L227">        .assertNoErrors()</span>
+<span class="fc" id="L228">        .assertComplete();</span>
+<span class="fc" id="L229">    }</span>
+
+    @Test
+    public void async2() {
+<span class="fc" id="L233">        Maybe.just(1)</span>
+<span class="fc" id="L234">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L237">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L238">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L239">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L242">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L243">        .test()</span>
+<span class="fc" id="L244">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L245">        .assertSubscribed()</span>
+<span class="fc" id="L246">        .assertValueCount(1000 * 1000)</span>
+<span class="fc" id="L247">        .assertNoErrors()</span>
+<span class="fc" id="L248">        .assertComplete();</span>
+<span class="fc" id="L249">    }</span>
+
+    @Test
+    public void async3() {
+<span class="fc" id="L253">        Maybe.just(1)</span>
+<span class="fc" id="L254">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L257">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L258">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L259">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L262">        .take(500 * 1000)</span>
+<span class="fc" id="L263">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L264">        .test()</span>
+<span class="fc" id="L265">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L266">        .assertSubscribed()</span>
+<span class="fc" id="L267">        .assertValueCount(500 * 1000)</span>
+<span class="fc" id="L268">        .assertNoErrors()</span>
+<span class="fc" id="L269">        .assertComplete();</span>
+<span class="fc" id="L270">    }</span>
+
+    @Test
+    public void async4() {
+<span class="fc" id="L274">        Maybe.just(1)</span>
+<span class="fc" id="L275">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L278">                        Integer[] array = new Integer[1000 * 1000];</span>
+<span class="fc" id="L279">                        Arrays.fill(array, 1);</span>
+<span class="fc" id="L280">                        return Arrays.asList(array);</span>
+                    }
+                })
+<span class="fc" id="L283">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L284">        .take(500 * 1000)</span>
+<span class="fc" id="L285">        .test()</span>
+<span class="fc" id="L286">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L287">        .assertSubscribed()</span>
+<span class="fc" id="L288">        .assertValueCount(500 * 1000)</span>
+<span class="fc" id="L289">        .assertNoErrors()</span>
+<span class="fc" id="L290">        .assertComplete();</span>
+<span class="fc" id="L291">    }</span>
+
+    @Test
+    public void fusedEmptyCheck() {
+<span class="fc" id="L295">        Maybe.just(1)</span>
+<span class="fc" id="L296">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L299">                        return Arrays.asList(1, 2, 3);</span>
+                    }
+<span class="fc" id="L301">        }).subscribe(new FlowableSubscriber&lt;Integer&gt;() {</span>
+            QueueSubscription&lt;Integer&gt; qs;
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="fc" id="L306">                qs = (QueueSubscription&lt;Integer&gt;)s;</span>
+
+<span class="fc" id="L308">                assertEquals(QueueFuseable.ASYNC, qs.requestFusion(QueueFuseable.ANY));</span>
+<span class="fc" id="L309">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="fc" id="L313">                assertFalse(qs.isEmpty());</span>
+
+<span class="fc" id="L315">                qs.clear();</span>
+
+<span class="fc" id="L317">                assertTrue(qs.isEmpty());</span>
+
+<span class="fc" id="L319">                qs.cancel();</span>
+<span class="fc" id="L320">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L324">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L328">            }</span>
+        });
+<span class="fc" id="L330">    }</span>
+
+    @Test
+    public void hasNextThrowsUnbounded() {
+<span class="fc" id="L334">        Maybe.just(1)</span>
+<span class="fc" id="L335">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L338">                        return new CrashingIterable(100, 2, 100);</span>
+                    }
+                })
+<span class="fc" id="L341">        .test()</span>
+<span class="fc" id="L342">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;, 0);</span>
+<span class="fc" id="L343">    }</span>
+
+    @Test
+    public void nextThrowsUnbounded() {
+<span class="fc" id="L347">        Maybe.just(1)</span>
+<span class="fc" id="L348">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L351">                        return new CrashingIterable(100, 100, 1);</span>
+                    }
+                })
+<span class="fc" id="L354">        .test()</span>
+<span class="fc" id="L355">        .assertFailureAndMessage(TestException.class, &quot;next()&quot;);</span>
+<span class="fc" id="L356">    }</span>
+
+    @Test
+    public void hasNextThrows() {
+<span class="fc" id="L360">        Maybe.just(1)</span>
+<span class="fc" id="L361">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L364">                        return new CrashingIterable(100, 2, 100);</span>
+                    }
+                })
+<span class="fc" id="L367">        .test(2L)</span>
+<span class="fc" id="L368">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;, 0);</span>
+<span class="fc" id="L369">    }</span>
+
+    @Test
+    public void nextThrows() {
+<span class="fc" id="L373">        Maybe.just(1)</span>
+<span class="fc" id="L374">        .flattenAsFlowable(new Function&lt;Object, Iterable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Iterable&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L377">                        return new CrashingIterable(100, 100, 1);</span>
+                    }
+                })
+<span class="fc" id="L380">        .test(2L)</span>
+<span class="fc" id="L381">        .assertFailureAndMessage(TestException.class, &quot;next()&quot;);</span>
+<span class="fc" id="L382">    }</span>
+
+    @Test
+    public void requestBefore() {
+<span class="fc bfc" id="L386" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L387">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L389">            ps.singleElement().flattenAsFlowable(</span>
+<span class="fc" id="L390">            new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L393">                    return Arrays.asList(1, 2, 3);</span>
+                }
+            })
+<span class="fc" id="L396">            .test(5L)</span>
+<span class="fc" id="L397">            .assertEmpty();</span>
+        }
+<span class="fc" id="L399">    }</span>
+
+    @Test
+    public void requestCreateInnerRace() {
+<span class="fc" id="L403">        final Integer[] a = new Integer[1000];</span>
+<span class="fc" id="L404">        Arrays.fill(a, 1);</span>
+
+<span class="fc bfc" id="L406" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L407">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L409">            ps.onNext(1);</span>
+
+<span class="fc" id="L411">            final TestSubscriber&lt;Integer&gt; ts = ps.singleElement().flattenAsFlowable(</span>
+<span class="fc" id="L412">            new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L415">                    return Arrays.asList(a);</span>
+                }
+            })
+<span class="fc" id="L418">            .test(0L);</span>
+
+<span class="fc" id="L420">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L423">                    ps.onComplete();</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">                    for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L425">                        ts.request(1);</span>
+                    }
+<span class="fc" id="L427">                }</span>
+            };
+
+<span class="fc" id="L430">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc bfc" id="L433" title="All 2 branches covered.">                    for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L434">                        ts.request(1);</span>
+                    }
+<span class="fc" id="L436">                }</span>
+            };
+
+<span class="fc" id="L439">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L441">    }</span>
+
+    @Test
+    public void cancelCreateInnerRace() {
+<span class="fc bfc" id="L445" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L446">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L448">            ps.onNext(1);</span>
+
+<span class="fc" id="L450">            final TestSubscriber&lt;Integer&gt; ts = ps.singleElement().flattenAsFlowable(</span>
+<span class="fc" id="L451">            new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L454">                    return Arrays.asList(1, 2, 3);</span>
+                }
+            })
+<span class="fc" id="L457">            .test(0L);</span>
+
+<span class="fc" id="L459">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L462">                    ps.onComplete();</span>
+<span class="fc" id="L463">                }</span>
+            };
+
+<span class="fc" id="L466">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L469">                    ts.cancel();</span>
+<span class="fc" id="L470">                }</span>
+            };
+
+<span class="fc" id="L473">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L475">    }</span>
+
+    @Test
+    public void slowPathCancelAfterHasNext() {
+<span class="fc" id="L479">        final Integer[] a = new Integer[1000];</span>
+<span class="fc" id="L480">        Arrays.fill(a, 1);</span>
+
+<span class="fc" id="L482">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+
+<span class="fc" id="L484">        Maybe.just(1)</span>
+<span class="fc" id="L485">        .flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L488">                return new Iterable&lt;Integer&gt;() {</span>
+                    @Override
+                    public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L491">                        return new Iterator&lt;Integer&gt;() {</span>
+                            int count;
+                            @Override
+                            public boolean hasNext() {
+<span class="fc bfc" id="L495" title="All 2 branches covered.">                                if (count++ == 2) {</span>
+<span class="fc" id="L496">                                    ts.cancel();</span>
+                                }
+<span class="fc" id="L498">                                return true;</span>
+                            }
+
+                            @Override
+                            public Integer next() {
+<span class="fc" id="L503">                                return 1;</span>
+                            }
+
+                            @Override
+                            public void remove() {
+<span class="nc" id="L508">                                throw new UnsupportedOperationException();</span>
+                            }
+                        };
+                    }
+                };
+            }
+        })
+<span class="fc" id="L515">        .subscribe(ts);</span>
+
+<span class="fc" id="L517">        ts.request(3);</span>
+<span class="fc" id="L518">        ts.assertValues(1, 1).assertNoErrors().assertNotComplete();</span>
+<span class="fc" id="L519">    }</span>
+
+    @Test
+    public void fastPathCancelAfterHasNext() {
+<span class="fc" id="L523">        final Integer[] a = new Integer[1000];</span>
+<span class="fc" id="L524">        Arrays.fill(a, 1);</span>
+
+<span class="fc" id="L526">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+
+<span class="fc" id="L528">        Maybe.just(1)</span>
+<span class="fc" id="L529">        .flattenAsFlowable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L532">                return new Iterable&lt;Integer&gt;() {</span>
+                    @Override
+                    public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L535">                        return new Iterator&lt;Integer&gt;() {</span>
+                            int count;
+                            @Override
+                            public boolean hasNext() {
+<span class="fc bfc" id="L539" title="All 2 branches covered.">                                if (count++ == 2) {</span>
+<span class="fc" id="L540">                                    ts.cancel();</span>
+                                }
+<span class="fc" id="L542">                                return true;</span>
+                            }
+
+                            @Override
+                            public Integer next() {
+<span class="fc" id="L547">                                return 1;</span>
+                            }
+
+                            @Override
+                            public void remove() {
+<span class="nc" id="L552">                                throw new UnsupportedOperationException();</span>
+                            }
+                        };
+                    }
+                };
+            }
+        })
+<span class="fc" id="L559">        .subscribe(ts);</span>
+
+<span class="fc" id="L561">        ts.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L562">        ts.assertValues(1, 1).assertNoErrors().assertNotComplete();</span>
+<span class="fc" id="L563">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,396 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AsyncSubject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subjects</a> &gt; <span class="el_source">AsyncSubject.java</span></div><h1>AsyncSubject.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subjects;
+
+import io.reactivex.annotations.Nullable;
+import io.reactivex.annotations.NonNull;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.Observer;
+import io.reactivex.annotations.CheckReturnValue;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.observers.DeferredScalarDisposable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * A Subject that emits the very last value followed by a completion event or the received error to Observers.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;239&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/AsyncSubject.png&quot; alt=&quot;&quot;&gt;
+ * &lt;p&gt;
+ * This subject does not have a public constructor by design; a new empty instance of this
+ * {@code AsyncSubject} can be created via the {@link #create()} method.
+ * &lt;p&gt;
+ * Since a {@code Subject} is conceptionally derived from the {@code Processor} type in the Reactive Streams specification,
+ * {@code null}s are not allowed (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.13&quot;&gt;Rule 2.13&lt;/a&gt;)
+ * as parameters to {@link #onNext(Object)} and {@link #onError(Throwable)}. Such calls will result in a
+ * {@link NullPointerException} being thrown and the subject's state is not changed.
+ * &lt;p&gt;
+ * Since an {@code AsyncSubject} is an {@link io.reactivex.Observable}, it does not support backpressure.
+ * &lt;p&gt;
+ * When this {@code AsyncSubject} is terminated via {@link #onError(Throwable)}, the
+ * last observed item (if any) is cleared and late {@link io.reactivex.Observer}s only receive
+ * the {@code onError} event.
+ * &lt;p&gt;
+ * The {@code AsyncSubject} caches the latest item internally and it emits this item only when {@code onComplete} is called.
+ * Therefore, it is not recommended to use this {@code Subject} with infinite or never-completing sources.
+ * &lt;p&gt;
+ * Even though {@code AsyncSubject} implements the {@code Observer} interface, calling
+ * {@code onSubscribe} is not required (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.12&quot;&gt;Rule 2.12&lt;/a&gt;)
+ * if the subject is used as a standalone source. However, calling {@code onSubscribe}
+ * after the {@code AsyncSubject} reached its terminal state will result in the
+ * given {@code Disposable} being disposed immediately.
+ * &lt;p&gt;
+ * Calling {@link #onNext(Object)}, {@link #onError(Throwable)} and {@link #onComplete()}
+ * is required to be serialized (called from the same thread or called non-overlappingly from different threads
+ * through external means of serialization). The {@link #toSerialized()} method available to all {@code Subject}s
+ * provides such serialization and also protects against reentrance (i.e., when a downstream {@code Observer}
+ * consuming this subject also wants to call {@link #onNext(Object)} on this subject recursively).
+ * The implementation of onXXX methods are technically thread-safe but non-serialized calls
+ * to them may lead to undefined state in the currently subscribed Observers.
+ * &lt;p&gt;
+ * This {@code AsyncSubject} supports the standard state-peeking methods {@link #hasComplete()}, {@link #hasThrowable()},
+ * {@link #getThrowable()} and {@link #hasObservers()} as well as means to read the very last observed value -
+ * after this {@code AsyncSubject} has been completed - in a non-blocking and thread-safe
+ * manner via {@link #hasValue()}, {@link #getValue()}, {@link #getValues()} or {@link #getValues(Object[])}.
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;{@code AsyncSubject} does not operate by default on a particular {@link io.reactivex.Scheduler} and
+ *  the {@code Observer}s get notified on the thread where the terminating {@code onError} or {@code onComplete}
+ *  methods were invoked.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Error handling:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;When the {@link #onError(Throwable)} is called, the {@code AsyncSubject} enters into a terminal state
+ *  and emits the same {@code Throwable} instance to the last set of {@code Observer}s. During this emission,
+ *  if one or more {@code Observer}s dispose their respective {@code Disposable}s, the
+ *  {@code Throwable} is delivered to the global error handler via
+ *  {@link io.reactivex.plugins.RxJavaPlugins#onError(Throwable)} (multiple times if multiple {@code Observer}s
+ *  cancel at once).
+ *  If there were no {@code Observer}s subscribed to this {@code AsyncSubject} when the {@code onError()}
+ *  was called, the global error handler is not invoked.
+ *  &lt;/dd&gt;
+ * &lt;/dl&gt;
+ * &lt;p&gt;
+ * Example usage:
+ * &lt;pre&gt;&lt;code&gt;
+ * AsyncSubject&amp;lt;Object&amp;gt; subject = AsyncSubject.create();
+ * 
+ * TestObserver&amp;lt;Object&amp;gt; to1 = subject.test();
+ *
+ * to1.assertEmpty();
+ *
+ * subject.onNext(1);
+ *
+ * // AsyncSubject only emits when onComplete was called.
+ * to1.assertEmpty();
+ *
+ * subject.onNext(2);
+ * subject.onComplete();
+ *
+ * // onComplete triggers the emission of the last cached item and the onComplete event.
+ * to1.assertResult(2);
+ *
+ * TestObserver&amp;lt;Object&amp;gt; to2 = subject.test();
+ *
+ * // late Observers receive the last cached item too
+ * to2.assertResult(2);
+ * &lt;/code&gt;&lt;/pre&gt;
+ * @param &lt;T&gt; the value type
+ */
+public final class AsyncSubject&lt;T&gt; extends Subject&lt;T&gt; {
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L114">    static final AsyncDisposable[] EMPTY = new AsyncDisposable[0];</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L117">    static final AsyncDisposable[] TERMINATED = new AsyncDisposable[0];</span>
+
+    final AtomicReference&lt;AsyncDisposable&lt;T&gt;[]&gt; subscribers;
+
+    /** Write before updating subscribers, read after reading subscribers as TERMINATED. */
+    Throwable error;
+
+    /** Write before updating subscribers, read after reading subscribers as TERMINATED. */
+    T value;
+
+    /**
+     * Creates a new AsyncProcessor.
+     * @param &lt;T&gt; the value type to be received and emitted
+     * @return the new AsyncProcessor instance
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; AsyncSubject&lt;T&gt; create() {
+<span class="fc" id="L135">        return new AsyncSubject&lt;T&gt;();</span>
+    }
+
+    /**
+     * Constructs an AsyncSubject.
+     * @since 2.0
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L143">    AsyncSubject() {</span>
+<span class="fc" id="L144">        this.subscribers = new AtomicReference&lt;AsyncDisposable&lt;T&gt;[]&gt;(EMPTY);</span>
+<span class="fc" id="L145">    }</span>
+
+    @Override
+    public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L150">            d.dispose();</span>
+        }
+<span class="fc" id="L152">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc" id="L156">        ObjectHelper.requireNonNull(t, &quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L158">            return;</span>
+        }
+<span class="fc" id="L160">        value = t;</span>
+<span class="fc" id="L161">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onError(Throwable t) {
+<span class="fc" id="L166">        ObjectHelper.requireNonNull(t, &quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L168">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L169">            return;</span>
+        }
+<span class="fc" id="L171">        value = null;</span>
+<span class="fc" id="L172">        error = t;</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (AsyncDisposable&lt;T&gt; as : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L174">            as.onError(t);</span>
+        }
+<span class="fc" id="L176">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L182">            return;</span>
+        }
+<span class="fc" id="L184">        T v = value;</span>
+<span class="fc" id="L185">        AsyncDisposable&lt;T&gt;[] array = subscribers.getAndSet(TERMINATED);</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (v == null) {</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            for (AsyncDisposable&lt;T&gt; as : array) {</span>
+<span class="fc" id="L188">                as.onComplete();</span>
+            }
+        } else {
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            for (AsyncDisposable&lt;T&gt; as : array) {</span>
+<span class="fc" id="L192">                as.complete(v);</span>
+            }
+        }
+<span class="fc" id="L195">    }</span>
+
+    @Override
+    public boolean hasObservers() {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        return subscribers.get().length != 0;</span>
+    }
+
+    @Override
+    public boolean hasThrowable() {
+<span class="fc bfc" id="L204" title="All 4 branches covered.">        return subscribers.get() == TERMINATED &amp;&amp; error != null;</span>
+    }
+
+    @Override
+    public boolean hasComplete() {
+<span class="fc bfc" id="L209" title="All 4 branches covered.">        return subscribers.get() == TERMINATED &amp;&amp; error == null;</span>
+    }
+
+    @Override
+    public Throwable getThrowable() {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        return subscribers.get() == TERMINATED ? error : null;</span>
+    }
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L219">        AsyncDisposable&lt;T&gt; as = new AsyncDisposable&lt;T&gt;(observer, this);</span>
+<span class="fc" id="L220">        observer.onSubscribe(as);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (add(as)) {</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (as.isDisposed()) {</span>
+<span class="fc" id="L223">                remove(as);</span>
+            }
+        } else {
+<span class="fc" id="L226">            Throwable ex = error;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">            if (ex != null) {</span>
+<span class="fc" id="L228">                observer.onError(ex);</span>
+            } else {
+<span class="fc" id="L230">                T v = value;</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                if (v != null) {</span>
+<span class="fc" id="L232">                    as.complete(v);</span>
+                } else {
+<span class="fc" id="L234">                    as.onComplete();</span>
+                }
+            }
+        }
+<span class="fc" id="L238">    }</span>
+
+    /**
+     * Tries to add the given subscriber to the subscribers array atomically
+     * or returns false if the subject has terminated.
+     * @param ps the subscriber to add
+     * @return true if successful, false if the subject has terminated
+     */
+    boolean add(AsyncDisposable&lt;T&gt; ps) {
+        for (;;) {
+<span class="fc" id="L248">            AsyncDisposable&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">            if (a == TERMINATED) {</span>
+<span class="fc" id="L250">                return false;</span>
+            }
+
+<span class="fc" id="L253">            int n = a.length;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L255">            AsyncDisposable&lt;T&gt;[] b = new AsyncDisposable[n + 1];</span>
+<span class="fc" id="L256">            System.arraycopy(a, 0, b, 0, n);</span>
+<span class="fc" id="L257">            b[n] = ps;</span>
+
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L260">                return true;</span>
+            }
+<span class="fc" id="L262">        }</span>
+    }
+
+    /**
+     * Atomically removes the given subscriber if it is subscribed to the subject.
+     * @param ps the subject to remove
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    void remove(AsyncDisposable&lt;T&gt; ps) {
+        for (;;) {
+<span class="fc" id="L272">            AsyncDisposable&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc" id="L273">            int n = a.length;</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">            if (n == 0) {</span>
+<span class="fc" id="L275">                return;</span>
+            }
+
+<span class="fc" id="L278">            int j = -1;</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                if (a[i] == ps) {</span>
+<span class="fc" id="L281">                    j = i;</span>
+<span class="fc" id="L282">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L286" title="All 2 branches covered.">            if (j &lt; 0) {</span>
+<span class="fc" id="L287">                return;</span>
+            }
+
+            AsyncDisposable&lt;T&gt;[] b;
+
+<span class="fc bfc" id="L292" title="All 2 branches covered.">            if (n == 1) {</span>
+<span class="fc" id="L293">                b = EMPTY;</span>
+            } else {
+<span class="fc" id="L295">                b = new AsyncDisposable[n - 1];</span>
+<span class="fc" id="L296">                System.arraycopy(a, 0, b, 0, j);</span>
+<span class="fc" id="L297">                System.arraycopy(a, j + 1, b, j, n - j - 1);</span>
+            }
+<span class="fc bfc" id="L299" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L300">                return;</span>
+            }
+<span class="fc" id="L302">        }</span>
+    }
+
+    /**
+     * Returns true if the subject has any value.
+     * &lt;p&gt;The method is thread-safe.
+     * @return true if the subject has any value
+     */
+    public boolean hasValue() {
+<span class="fc bfc" id="L311" title="All 4 branches covered.">        return subscribers.get() == TERMINATED &amp;&amp; value != null;</span>
+    }
+
+    /**
+     * Returns a single value the Subject currently has or null if no such value exists.
+     * &lt;p&gt;The method is thread-safe.
+     * @return a single value the Subject currently has or null if no such value exists
+     */
+    @Nullable
+    public T getValue() {
+<span class="fc bfc" id="L321" title="All 2 branches covered.">        return subscribers.get() == TERMINATED ? value : null;</span>
+    }
+
+    /**
+     * Returns an Object array containing snapshot all values of the Subject.
+     * &lt;p&gt;The method is thread-safe.
+     * @return the array containing the snapshot of all values of the Subject
+     * @deprecated in 2.1.14; put the result of {@link #getValue()} into an array manually, will be removed in 3.x
+     */
+    @Deprecated
+    public Object[] getValues() {
+<span class="fc" id="L332">        T v = getValue();</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        return v != null ? new Object[] { v } : new Object[0];</span>
+    }
+
+    /**
+     * Returns a typed array containing a snapshot of all values of the Subject.
+     * &lt;p&gt;The method follows the conventions of Collection.toArray by setting the array element
+     * after the last value to null (if the capacity permits).
+     * &lt;p&gt;The method is thread-safe.
+     * @param array the target array to copy values into if it fits
+     * @return the given array if the values fit into it or a new array containing all values
+     * @deprecated in 2.1.14; put the result of {@link #getValue()} into an array manually, will be removed in 3.x
+     */
+    @Deprecated
+    public T[] getValues(T[] array) {
+<span class="fc" id="L347">        T v = getValue();</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        if (v == null) {</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            if (array.length != 0) {</span>
+<span class="fc" id="L350">                array[0] = null;</span>
+            }
+<span class="fc" id="L352">            return array;</span>
+        }
+<span class="fc bfc" id="L354" title="All 2 branches covered.">        if (array.length == 0) {</span>
+<span class="fc" id="L355">            array = Arrays.copyOf(array, 1);</span>
+        }
+<span class="fc" id="L357">        array[0] = v;</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">        if (array.length != 1) {</span>
+<span class="fc" id="L359">            array[1] = null;</span>
+        }
+<span class="fc" id="L361">        return array;</span>
+    }
+
+    static final class AsyncDisposable&lt;T&gt; extends DeferredScalarDisposable&lt;T&gt; {
+        private static final long serialVersionUID = 5629876084736248016L;
+
+        final AsyncSubject&lt;T&gt; parent;
+
+        AsyncDisposable(Observer&lt;? super T&gt; actual, AsyncSubject&lt;T&gt; parent) {
+<span class="fc" id="L370">            super(actual);</span>
+<span class="fc" id="L371">            this.parent = parent;</span>
+<span class="fc" id="L372">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">            if (super.tryDispose()) {</span>
+<span class="fc" id="L377">                parent.remove(this);</span>
+            }
+<span class="fc" id="L379">        }</span>
+
+        void onComplete() {
+<span class="fc bfc" id="L382" title="All 2 branches covered.">            if (!isDisposed()) {</span>
+<span class="fc" id="L383">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L385">        }</span>
+
+        void onError(Throwable t) {
+<span class="fc bfc" id="L388" title="All 2 branches covered.">            if (isDisposed()) {</span>
+<span class="fc" id="L389">                RxJavaPlugins.onError(t);</span>
+            } else {
+<span class="fc" id="L391">                downstream.onError(t);</span>
+            }
+<span class="fc" id="L393">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

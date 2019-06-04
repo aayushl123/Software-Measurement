@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSampleTimed.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableSampleTimed.java</span></div><h1>FlowableSampleTimed.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.MissingBackpressureException;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.BackpressureHelper;
+import io.reactivex.subscribers.SerializedSubscriber;
+
+public final class FlowableSampleTimed&lt;T&gt; extends AbstractFlowableWithUpstream&lt;T, T&gt; {
+    final long period;
+    final TimeUnit unit;
+    final Scheduler scheduler;
+
+    final boolean emitLast;
+
+    public FlowableSampleTimed(Flowable&lt;T&gt; source, long period, TimeUnit unit, Scheduler scheduler, boolean emitLast) {
+<span class="fc" id="L36">        super(source);</span>
+<span class="fc" id="L37">        this.period = period;</span>
+<span class="fc" id="L38">        this.unit = unit;</span>
+<span class="fc" id="L39">        this.scheduler = scheduler;</span>
+<span class="fc" id="L40">        this.emitLast = emitLast;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L45">        SerializedSubscriber&lt;T&gt; serial = new SerializedSubscriber&lt;T&gt;(s);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (emitLast) {</span>
+<span class="fc" id="L47">            source.subscribe(new SampleTimedEmitLast&lt;T&gt;(serial, period, unit, scheduler));</span>
+        } else {
+<span class="fc" id="L49">            source.subscribe(new SampleTimedNoLast&lt;T&gt;(serial, period, unit, scheduler));</span>
+        }
+<span class="fc" id="L51">    }</span>
+
+    abstract static class SampleTimedSubscriber&lt;T&gt; extends AtomicReference&lt;T&gt; implements FlowableSubscriber&lt;T&gt;, Subscription, Runnable {
+
+        private static final long serialVersionUID = -3517602651313910099L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+        final long period;
+        final TimeUnit unit;
+        final Scheduler scheduler;
+
+<span class="fc" id="L62">        final AtomicLong requested = new AtomicLong();</span>
+
+<span class="fc" id="L64">        final SequentialDisposable timer = new SequentialDisposable();</span>
+
+        Subscription upstream;
+
+<span class="fc" id="L68">        SampleTimedSubscriber(Subscriber&lt;? super T&gt; actual, long period, TimeUnit unit, Scheduler scheduler) {</span>
+<span class="fc" id="L69">            this.downstream = actual;</span>
+<span class="fc" id="L70">            this.period = period;</span>
+<span class="fc" id="L71">            this.unit = unit;</span>
+<span class="fc" id="L72">            this.scheduler = scheduler;</span>
+<span class="fc" id="L73">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L78">                this.upstream = s;</span>
+<span class="fc" id="L79">                downstream.onSubscribe(this);</span>
+<span class="fc" id="L80">                timer.replace(scheduler.schedulePeriodicallyDirect(this, period, period, unit));</span>
+<span class="fc" id="L81">                s.request(Long.MAX_VALUE);</span>
+            }
+<span class="fc" id="L83">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L87">            lazySet(t);</span>
+<span class="fc" id="L88">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L92">            cancelTimer();</span>
+<span class="fc" id="L93">            downstream.onError(t);</span>
+<span class="fc" id="L94">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L98">            cancelTimer();</span>
+<span class="fc" id="L99">            complete();</span>
+<span class="fc" id="L100">        }</span>
+
+        void cancelTimer() {
+<span class="fc" id="L103">            DisposableHelper.dispose(timer);</span>
+<span class="fc" id="L104">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L109">                BackpressureHelper.add(requested, n);</span>
+            }
+<span class="fc" id="L111">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L115">            cancelTimer();</span>
+<span class="fc" id="L116">            upstream.cancel();</span>
+<span class="fc" id="L117">        }</span>
+
+        void emit() {
+<span class="fc" id="L120">            T value = getAndSet(null);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L122">                long r = requested.get();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                if (r != 0L) {</span>
+<span class="fc" id="L124">                    downstream.onNext(value);</span>
+<span class="fc" id="L125">                    BackpressureHelper.produced(requested, 1);</span>
+                } else {
+<span class="fc" id="L127">                    cancel();</span>
+<span class="fc" id="L128">                    downstream.onError(new MissingBackpressureException(&quot;Couldn't emit value due to lack of requests!&quot;));</span>
+                }
+            }
+<span class="fc" id="L131">        }</span>
+
+        abstract void complete();
+    }
+
+    static final class SampleTimedNoLast&lt;T&gt; extends SampleTimedSubscriber&lt;T&gt; {
+
+        private static final long serialVersionUID = -7139995637533111443L;
+
+        SampleTimedNoLast(Subscriber&lt;? super T&gt; actual, long period, TimeUnit unit, Scheduler scheduler) {
+<span class="fc" id="L141">            super(actual, period, unit, scheduler);</span>
+<span class="fc" id="L142">        }</span>
+
+        @Override
+        void complete() {
+<span class="fc" id="L146">            downstream.onComplete();</span>
+<span class="fc" id="L147">        }</span>
+
+        @Override
+        public void run() {
+<span class="fc" id="L151">            emit();</span>
+<span class="fc" id="L152">        }</span>
+    }
+
+    static final class SampleTimedEmitLast&lt;T&gt; extends SampleTimedSubscriber&lt;T&gt; {
+
+        private static final long serialVersionUID = -7139995637533111443L;
+
+        final AtomicInteger wip;
+
+        SampleTimedEmitLast(Subscriber&lt;? super T&gt; actual, long period, TimeUnit unit, Scheduler scheduler) {
+<span class="fc" id="L162">            super(actual, period, unit, scheduler);</span>
+<span class="fc" id="L163">            this.wip = new AtomicInteger(1);</span>
+<span class="fc" id="L164">        }</span>
+
+        @Override
+        void complete() {
+<span class="fc" id="L168">            emit();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            if (wip.decrementAndGet() == 0) {</span>
+<span class="fc" id="L170">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L172">        }</span>
+
+        @Override
+        public void run() {
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (wip.incrementAndGet() == 2) {</span>
+<span class="fc" id="L177">                emit();</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                if (wip.decrementAndGet() == 0) {</span>
+<span class="fc" id="L179">                    downstream.onComplete();</span>
+                }
+            }
+<span class="fc" id="L182">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

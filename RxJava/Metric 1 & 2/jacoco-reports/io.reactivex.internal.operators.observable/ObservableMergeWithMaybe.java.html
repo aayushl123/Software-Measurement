@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableMergeWithMaybe.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableMergeWithMaybe.java</span></div><h1>ObservableMergeWithMaybe.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.fuseable.SimplePlainQueue;
+import io.reactivex.internal.queue.SpscLinkedArrayQueue;
+import io.reactivex.internal.util.AtomicThrowable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Merges an Observable and a Maybe by emitting the items of the Observable and the success
+ * value of the Maybe and waiting until both the Observable and Maybe terminate normally.
+ * &lt;p&gt;History: 2.1.10 - experimental
+ * @param &lt;T&gt; the element type of the Observable
+ * @since 2.2
+ */
+public final class ObservableMergeWithMaybe&lt;T&gt; extends AbstractObservableWithUpstream&lt;T, T&gt; {
+
+    final MaybeSource&lt;? extends T&gt; other;
+
+    public ObservableMergeWithMaybe(Observable&lt;T&gt; source, MaybeSource&lt;? extends T&gt; other) {
+<span class="fc" id="L38">        super(source);</span>
+<span class="fc" id="L39">        this.other = other;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L44">        MergeWithObserver&lt;T&gt; parent = new MergeWithObserver&lt;T&gt;(observer);</span>
+<span class="fc" id="L45">        observer.onSubscribe(parent);</span>
+<span class="fc" id="L46">        source.subscribe(parent);</span>
+<span class="fc" id="L47">        other.subscribe(parent.otherObserver);</span>
+<span class="fc" id="L48">    }</span>
+
+    static final class MergeWithObserver&lt;T&gt; extends AtomicInteger
+    implements Observer&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = -4592979584110982903L;
+
+        final Observer&lt;? super T&gt; downstream;
+
+        final AtomicReference&lt;Disposable&gt; mainDisposable;
+
+        final OtherObserver&lt;T&gt; otherObserver;
+
+        final AtomicThrowable error;
+
+        volatile SimplePlainQueue&lt;T&gt; queue;
+
+        T singleItem;
+
+        volatile boolean disposed;
+
+        volatile boolean mainDone;
+
+        volatile int otherState;
+
+        static final int OTHER_STATE_HAS_VALUE = 1;
+
+        static final int OTHER_STATE_CONSUMED_OR_EMPTY = 2;
+
+<span class="fc" id="L77">        MergeWithObserver(Observer&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L78">            this.downstream = downstream;</span>
+<span class="fc" id="L79">            this.mainDisposable = new AtomicReference&lt;Disposable&gt;();</span>
+<span class="fc" id="L80">            this.otherObserver = new OtherObserver&lt;T&gt;(this);</span>
+<span class="fc" id="L81">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L82">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L86">            DisposableHelper.setOnce(mainDisposable, d);</span>
+<span class="fc" id="L87">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (compareAndSet(0, 1)) {</span>
+<span class="fc" id="L92">                downstream.onNext(t);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                if (decrementAndGet() == 0) {</span>
+<span class="fc" id="L94">                    return;</span>
+                }
+            } else {
+<span class="fc" id="L97">                SimplePlainQueue&lt;T&gt; q = getOrCreateQueue();</span>
+<span class="fc" id="L98">                q.offer(t);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L100">                    return;</span>
+                }
+            }
+<span class="fc" id="L103">            drainLoop();</span>
+<span class="fc" id="L104">        }</span>
+
+        @Override
+        public void onError(Throwable ex) {
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (error.addThrowable(ex)) {</span>
+<span class="fc" id="L109">                DisposableHelper.dispose(mainDisposable);</span>
+<span class="fc" id="L110">                drain();</span>
+            } else {
+<span class="fc" id="L112">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L114">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L118">            mainDone = true;</span>
+<span class="fc" id="L119">            drain();</span>
+<span class="fc" id="L120">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L124">            return DisposableHelper.isDisposed(mainDisposable.get());</span>
+        }
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L129">            disposed = true;</span>
+<span class="fc" id="L130">            DisposableHelper.dispose(mainDisposable);</span>
+<span class="fc" id="L131">            DisposableHelper.dispose(otherObserver);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L133">                queue = null;</span>
+<span class="fc" id="L134">                singleItem = null;</span>
+            }
+<span class="fc" id="L136">        }</span>
+
+        void otherSuccess(T value) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (compareAndSet(0, 1)) {</span>
+<span class="fc" id="L140">                downstream.onNext(value);</span>
+<span class="fc" id="L141">                otherState = OTHER_STATE_CONSUMED_OR_EMPTY;</span>
+            } else {
+<span class="fc" id="L143">                singleItem = value;</span>
+<span class="fc" id="L144">                otherState = OTHER_STATE_HAS_VALUE;</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L146">                    return;</span>
+                }
+            }
+<span class="fc" id="L149">            drainLoop();</span>
+<span class="fc" id="L150">        }</span>
+
+        void otherError(Throwable ex) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            if (error.addThrowable(ex)) {</span>
+<span class="fc" id="L154">                DisposableHelper.dispose(mainDisposable);</span>
+<span class="fc" id="L155">                drain();</span>
+            } else {
+<span class="fc" id="L157">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L159">        }</span>
+
+        void otherComplete() {
+<span class="fc" id="L162">            otherState = OTHER_STATE_CONSUMED_OR_EMPTY;</span>
+<span class="fc" id="L163">            drain();</span>
+<span class="fc" id="L164">        }</span>
+
+        SimplePlainQueue&lt;T&gt; getOrCreateQueue() {
+<span class="fc" id="L167">            SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (q == null) {</span>
+<span class="fc" id="L169">                q = new SpscLinkedArrayQueue&lt;T&gt;(bufferSize());</span>
+<span class="fc" id="L170">                queue = q;</span>
+            }
+<span class="fc" id="L172">            return q;</span>
+        }
+
+        void drain() {
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L177">                drainLoop();</span>
+            }
+<span class="fc" id="L179">        }</span>
+
+        void drainLoop() {
+<span class="fc" id="L182">            Observer&lt;? super T&gt; actual = this.downstream;</span>
+<span class="fc" id="L183">            int missed = 1;</span>
+            for (;;) {
+
+                for (;;) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                    if (disposed) {</span>
+<span class="fc" id="L188">                        singleItem = null;</span>
+<span class="fc" id="L189">                        queue = null;</span>
+<span class="fc" id="L190">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                    if (error.get() != null) {</span>
+<span class="fc" id="L194">                        singleItem = null;</span>
+<span class="fc" id="L195">                        queue = null;</span>
+<span class="fc" id="L196">                        actual.onError(error.terminate());</span>
+<span class="fc" id="L197">                        return;</span>
+                    }
+
+<span class="fc" id="L200">                    int os = otherState;</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                    if (os == OTHER_STATE_HAS_VALUE) {</span>
+<span class="fc" id="L202">                        T v = singleItem;</span>
+<span class="fc" id="L203">                        singleItem = null;</span>
+<span class="fc" id="L204">                        otherState = OTHER_STATE_CONSUMED_OR_EMPTY;</span>
+<span class="fc" id="L205">                        os = OTHER_STATE_CONSUMED_OR_EMPTY;</span>
+<span class="fc" id="L206">                        actual.onNext(v);</span>
+                    }
+
+<span class="fc" id="L209">                    boolean d = mainDone;</span>
+<span class="fc" id="L210">                    SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                    T v = q != null ? q.poll() : null;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                    boolean empty = v == null;</span>
+
+<span class="fc bfc" id="L214" title="All 6 branches covered.">                    if (d &amp;&amp; empty &amp;&amp; os == OTHER_STATE_CONSUMED_OR_EMPTY) {</span>
+<span class="fc" id="L215">                        queue = null;</span>
+<span class="fc" id="L216">                        actual.onComplete();</span>
+<span class="fc" id="L217">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L221">                        break;</span>
+                    }
+
+<span class="fc" id="L224">                    actual.onNext(v);</span>
+<span class="fc" id="L225">                }</span>
+
+<span class="fc" id="L227">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L229">                    break;</span>
+                }
+            }
+<span class="fc" id="L232">        }</span>
+
+        static final class OtherObserver&lt;T&gt; extends AtomicReference&lt;Disposable&gt;
+        implements MaybeObserver&lt;T&gt; {
+
+            private static final long serialVersionUID = -2935427570954647017L;
+
+            final MergeWithObserver&lt;T&gt; parent;
+
+<span class="fc" id="L241">            OtherObserver(MergeWithObserver&lt;T&gt; parent) {</span>
+<span class="fc" id="L242">                this.parent = parent;</span>
+<span class="fc" id="L243">            }</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L247">                DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L248">            }</span>
+
+            @Override
+            public void onSuccess(T t) {
+<span class="fc" id="L252">                parent.otherSuccess(t);</span>
+<span class="fc" id="L253">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L257">                parent.otherError(e);</span>
+<span class="fc" id="L258">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L262">                parent.otherComplete();</span>
+<span class="fc" id="L263">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SchedulerMultiWorkerSupportTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.schedulers</a> &gt; <span class="el_source">SchedulerMultiWorkerSupportTest.java</span></div><h1>SchedulerMultiWorkerSupportTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.schedulers;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+import org.junit.Test;
+
+import io.reactivex.Scheduler.Worker;
+import io.reactivex.TestHelper;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.internal.schedulers.SchedulerMultiWorkerSupport.WorkerCallback;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="fc" id="L29">public class SchedulerMultiWorkerSupportTest {</span>
+
+<span class="fc" id="L31">    final int max = ComputationScheduler.MAX_THREADS;</span>
+
+    @Test
+    public void moreThanMaxWorkers() {
+<span class="fc" id="L35">        final List&lt;Worker&gt; list = new ArrayList&lt;Worker&gt;();</span>
+
+<span class="fc" id="L37">        SchedulerMultiWorkerSupport mws = (SchedulerMultiWorkerSupport)Schedulers.computation();</span>
+
+<span class="fc" id="L39">        mws.createWorkers(max * 2, new WorkerCallback() {</span>
+            @Override
+            public void onWorker(int i, Worker w) {
+<span class="fc" id="L42">                list.add(w);</span>
+<span class="fc" id="L43">            }</span>
+        });
+
+<span class="fc" id="L46">        assertEquals(max * 2, list.size());</span>
+<span class="fc" id="L47">    }</span>
+
+    @Test
+    public void getShutdownWorkers() {
+<span class="fc" id="L51">        final List&lt;Worker&gt; list = new ArrayList&lt;Worker&gt;();</span>
+
+<span class="fc" id="L53">        ComputationScheduler.NONE.createWorkers(max * 2, new WorkerCallback() {</span>
+            @Override
+            public void onWorker(int i, Worker w) {
+<span class="fc" id="L56">                list.add(w);</span>
+<span class="fc" id="L57">            }</span>
+        });
+
+<span class="fc" id="L60">        assertEquals(max * 2, list.size());</span>
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (Worker w : list) {</span>
+<span class="fc" id="L63">            assertEquals(ComputationScheduler.SHUTDOWN_WORKER, w);</span>
+<span class="fc" id="L64">        }</span>
+<span class="fc" id="L65">    }</span>
+
+    @Test
+    public void distinctThreads() throws Exception {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L71">            final CompositeDisposable composite = new CompositeDisposable();</span>
+
+            try {
+<span class="fc" id="L74">                final CountDownLatch cdl = new CountDownLatch(max * 2);</span>
+
+<span class="fc" id="L76">                final Set&lt;String&gt; threads1 = Collections.synchronizedSet(new HashSet&lt;String&gt;());</span>
+
+<span class="fc" id="L78">                final Set&lt;String&gt; threads2 = Collections.synchronizedSet(new HashSet&lt;String&gt;());</span>
+
+<span class="fc" id="L80">                Runnable parallel1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L83">                        final List&lt;Worker&gt; list1 = new ArrayList&lt;Worker&gt;();</span>
+
+<span class="fc" id="L85">                        SchedulerMultiWorkerSupport mws = (SchedulerMultiWorkerSupport)Schedulers.computation();</span>
+
+<span class="fc" id="L87">                        mws.createWorkers(max, new WorkerCallback() {</span>
+                            @Override
+                            public void onWorker(int i, Worker w) {
+<span class="fc" id="L90">                                list1.add(w);</span>
+<span class="fc" id="L91">                                composite.add(w);</span>
+<span class="fc" id="L92">                            }</span>
+                        });
+
+<span class="fc" id="L95">                        Runnable run = new Runnable() {</span>
+                            @Override
+                            public void run() {
+<span class="fc" id="L98">                                threads1.add(Thread.currentThread().getName());</span>
+<span class="fc" id="L99">                                cdl.countDown();</span>
+<span class="fc" id="L100">                            }</span>
+                        };
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                        for (Worker w : list1) {</span>
+<span class="fc" id="L104">                            w.schedule(run);</span>
+<span class="fc" id="L105">                        }</span>
+<span class="fc" id="L106">                    }</span>
+                };
+
+<span class="fc" id="L109">                Runnable parallel2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L112">                        final List&lt;Worker&gt; list2 = new ArrayList&lt;Worker&gt;();</span>
+
+<span class="fc" id="L114">                        SchedulerMultiWorkerSupport mws = (SchedulerMultiWorkerSupport)Schedulers.computation();</span>
+
+<span class="fc" id="L116">                        mws.createWorkers(max, new WorkerCallback() {</span>
+                            @Override
+                            public void onWorker(int i, Worker w) {
+<span class="fc" id="L119">                                list2.add(w);</span>
+<span class="fc" id="L120">                                composite.add(w);</span>
+<span class="fc" id="L121">                            }</span>
+                        });
+
+<span class="fc" id="L124">                        Runnable run = new Runnable() {</span>
+                            @Override
+                            public void run() {
+<span class="fc" id="L127">                                threads2.add(Thread.currentThread().getName());</span>
+<span class="fc" id="L128">                                cdl.countDown();</span>
+<span class="fc" id="L129">                            }</span>
+                        };
+
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                        for (Worker w : list2) {</span>
+<span class="fc" id="L133">                            w.schedule(run);</span>
+<span class="fc" id="L134">                        }</span>
+<span class="fc" id="L135">                    }</span>
+                };
+
+<span class="fc" id="L138">                TestHelper.race(parallel1, parallel2);</span>
+
+<span class="fc" id="L140">                assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L142">                assertEquals(threads1.toString(), max, threads1.size());</span>
+<span class="fc" id="L143">                assertEquals(threads2.toString(), max, threads2.size());</span>
+            } finally {
+<span class="fc" id="L145">                composite.dispose();</span>
+            }
+        }
+<span class="fc" id="L148">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

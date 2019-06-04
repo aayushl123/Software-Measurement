@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableUnsubscribeOnTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableUnsubscribeOnTest.java</span></div><h1>FlowableUnsubscribeOnTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.annotations.NonNull;
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Action;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L34">public class FlowableUnsubscribeOnTest {</span>
+
+    @Test(timeout = 5000)
+    public void unsubscribeWhenSubscribeOnAndUnsubscribeOnAreOnSameThread() throws InterruptedException {
+<span class="fc" id="L38">        UIEventLoopScheduler uiEventLoop = new UIEventLoopScheduler();</span>
+        try {
+<span class="fc" id="L40">            final ThreadSubscription subscription = new ThreadSubscription();</span>
+<span class="fc" id="L41">            final AtomicReference&lt;Thread&gt; subscribeThread = new AtomicReference&lt;Thread&gt;();</span>
+<span class="fc" id="L42">            Flowable&lt;Integer&gt; w = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+                @Override
+                public void subscribe(Subscriber&lt;? super Integer&gt; t1) {
+<span class="fc" id="L46">                    subscribeThread.set(Thread.currentThread());</span>
+<span class="fc" id="L47">                    t1.onSubscribe(subscription);</span>
+<span class="fc" id="L48">                    t1.onNext(1);</span>
+<span class="fc" id="L49">                    t1.onNext(2);</span>
+                    // observeOn will prevent canceling the upstream upon its termination now
+                    // this call is racing for that state in this test
+                    // not doing it will make sure the unsubscribeOn always gets through
+                    // t1.onComplete();
+<span class="fc" id="L54">                }</span>
+            });
+
+<span class="fc" id="L57">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L58">            w.subscribeOn(uiEventLoop).observeOn(Schedulers.computation())</span>
+<span class="fc" id="L59">            .unsubscribeOn(uiEventLoop)</span>
+<span class="fc" id="L60">            .take(2)</span>
+<span class="fc" id="L61">            .subscribe(ts);</span>
+
+<span class="fc" id="L63">            ts.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L65">            Thread unsubscribeThread = subscription.getThread();</span>
+
+<span class="fc" id="L67">            assertNotNull(unsubscribeThread);</span>
+<span class="fc" id="L68">            assertNotSame(Thread.currentThread(), unsubscribeThread);</span>
+
+<span class="fc" id="L70">            assertNotNull(subscribeThread.get());</span>
+<span class="fc" id="L71">            assertNotSame(Thread.currentThread(), subscribeThread.get());</span>
+            // True for Schedulers.newThread()
+
+<span class="fc" id="L74">            System.out.println(&quot;unsubscribeThread: &quot; + unsubscribeThread);</span>
+<span class="fc" id="L75">            System.out.println(&quot;subscribeThread.get(): &quot; + subscribeThread.get());</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">            assertTrue(unsubscribeThread == uiEventLoop.getThread());</span>
+
+<span class="fc" id="L78">            ts.assertValues(1, 2);</span>
+<span class="fc" id="L79">            ts.assertTerminated();</span>
+        } finally {
+<span class="fc" id="L81">            uiEventLoop.shutdown();</span>
+        }
+<span class="fc" id="L83">    }</span>
+
+    @Test(timeout = 5000)
+    public void unsubscribeWhenSubscribeOnAndUnsubscribeOnAreOnDifferentThreads() throws InterruptedException {
+<span class="fc" id="L87">        UIEventLoopScheduler uiEventLoop = new UIEventLoopScheduler();</span>
+        try {
+<span class="fc" id="L89">            final ThreadSubscription subscription = new ThreadSubscription();</span>
+<span class="fc" id="L90">            final AtomicReference&lt;Thread&gt; subscribeThread = new AtomicReference&lt;Thread&gt;();</span>
+<span class="fc" id="L91">            Flowable&lt;Integer&gt; w = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+                @Override
+                public void subscribe(Subscriber&lt;? super Integer&gt; t1) {
+<span class="fc" id="L95">                    subscribeThread.set(Thread.currentThread());</span>
+<span class="fc" id="L96">                    t1.onSubscribe(subscription);</span>
+<span class="fc" id="L97">                    t1.onNext(1);</span>
+<span class="fc" id="L98">                    t1.onNext(2);</span>
+                    // observeOn will prevent canceling the upstream upon its termination now
+                    // this call is racing for that state in this test
+                    // not doing it will make sure the unsubscribeOn always gets through
+                    // t1.onComplete();
+<span class="fc" id="L103">                }</span>
+            });
+
+<span class="fc" id="L106">            TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L107">            w.subscribeOn(Schedulers.newThread()).observeOn(Schedulers.computation())</span>
+<span class="fc" id="L108">            .unsubscribeOn(uiEventLoop)</span>
+<span class="fc" id="L109">            .take(2)</span>
+<span class="fc" id="L110">            .subscribe(ts);</span>
+
+<span class="fc" id="L112">            ts.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L114">            Thread unsubscribeThread = subscription.getThread();</span>
+
+<span class="fc" id="L116">            assertNotNull(unsubscribeThread);</span>
+<span class="fc" id="L117">            assertNotSame(Thread.currentThread(), unsubscribeThread);</span>
+
+<span class="fc" id="L119">            assertNotNull(subscribeThread.get());</span>
+<span class="fc" id="L120">            assertNotSame(Thread.currentThread(), subscribeThread.get());</span>
+            // True for Schedulers.newThread()
+
+<span class="fc" id="L123">            System.out.println(&quot;UI Thread: &quot; + uiEventLoop.getThread());</span>
+<span class="fc" id="L124">            System.out.println(&quot;unsubscribeThread: &quot; + unsubscribeThread);</span>
+<span class="fc" id="L125">            System.out.println(&quot;subscribeThread.get(): &quot; + subscribeThread.get());</span>
+<span class="fc" id="L126">            assertSame(unsubscribeThread, uiEventLoop.getThread());</span>
+
+<span class="fc" id="L128">            ts.assertValues(1, 2);</span>
+<span class="fc" id="L129">            ts.assertTerminated();</span>
+        } finally {
+<span class="fc" id="L131">            uiEventLoop.shutdown();</span>
+        }
+<span class="fc" id="L133">    }</span>
+
+<span class="fc" id="L135">    private static class ThreadSubscription implements Subscription {</span>
+        private volatile Thread thread;
+
+<span class="fc" id="L138">        private final CountDownLatch latch = new CountDownLatch(1);</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L142">            System.out.println(&quot;unsubscribe invoked: &quot; + Thread.currentThread());</span>
+<span class="fc" id="L143">            thread = Thread.currentThread();</span>
+<span class="fc" id="L144">            latch.countDown();</span>
+<span class="fc" id="L145">        }</span>
+
+        public Thread getThread() throws InterruptedException {
+<span class="fc" id="L148">            latch.await();</span>
+<span class="fc" id="L149">            return thread;</span>
+        }
+
+        @Override
+        public void request(long n) {
+
+<span class="fc" id="L155">        }</span>
+    }
+
+    public static class UIEventLoopScheduler extends Scheduler {
+
+        private final Scheduler eventLoop;
+        private volatile Thread t;
+
+<span class="fc" id="L163">        public UIEventLoopScheduler() {</span>
+
+<span class="fc" id="L165">            eventLoop = Schedulers.single();</span>
+
+            /*
+             * DON'T DO THIS IN PRODUCTION CODE
+             */
+<span class="fc" id="L170">            final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L171">            eventLoop.scheduleDirect(new Runnable() {</span>
+
+                @Override
+                public void run() {
+<span class="fc" id="L175">                    t = Thread.currentThread();</span>
+<span class="fc" id="L176">                    latch.countDown();</span>
+<span class="fc" id="L177">                }</span>
+
+            });
+            try {
+<span class="fc" id="L181">                latch.await();</span>
+<span class="nc" id="L182">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L183">                throw new RuntimeException(&quot;failed to initialize and get inner thread&quot;);</span>
+<span class="fc" id="L184">            }</span>
+<span class="fc" id="L185">        }</span>
+
+        @NonNull
+        @Override
+        public Worker createWorker() {
+<span class="fc" id="L190">            return eventLoop.createWorker();</span>
+        }
+
+        public Thread getThread() {
+<span class="fc" id="L194">            return t;</span>
+        }
+
+    }
+
+    @Test
+    public void takeHalf() {
+<span class="fc" id="L201">        int elements = 1024;</span>
+<span class="fc" id="L202">        Flowable.range(0, elements * 2).unsubscribeOn(Schedulers.single())</span>
+<span class="fc" id="L203">        .take(elements)</span>
+<span class="fc" id="L204">        .test()</span>
+<span class="fc" id="L205">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L206">        .assertValueCount(elements)</span>
+<span class="fc" id="L207">        .assertComplete()</span>
+<span class="fc" id="L208">        .assertNoErrors()</span>
+<span class="fc" id="L209">        .assertSubscribed();</span>
+<span class="fc" id="L210">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L214">        TestHelper.checkDisposed(Flowable.just(1).unsubscribeOn(Schedulers.single()));</span>
+<span class="fc" id="L215">    }</span>
+
+    @Test
+    public void normal() {
+<span class="fc" id="L219">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L221">        Flowable.just(1)</span>
+<span class="fc" id="L222">        .doOnCancel(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L225">                calls[0]++;</span>
+<span class="nc" id="L226">            }</span>
+        })
+<span class="fc" id="L228">        .unsubscribeOn(Schedulers.single())</span>
+<span class="fc" id="L229">        .test()</span>
+<span class="fc" id="L230">        .assertResult(1);</span>
+
+<span class="fc" id="L232">        assertEquals(0, calls[0]);</span>
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void error() {
+<span class="fc" id="L237">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L239">        Flowable.error(new TestException())</span>
+<span class="fc" id="L240">        .doOnCancel(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L243">                calls[0]++;</span>
+<span class="nc" id="L244">            }</span>
+        })
+<span class="fc" id="L246">        .unsubscribeOn(Schedulers.single())</span>
+<span class="fc" id="L247">        .test()</span>
+<span class="fc" id="L248">        .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L250">        assertEquals(0, calls[0]);</span>
+<span class="fc" id="L251">    }</span>
+
+    @Test
+    public void signalAfterDispose() {
+<span class="fc" id="L255">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L257">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L260">                    subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L261">                    subscriber.onNext(1);</span>
+<span class="fc" id="L262">                    subscriber.onNext(2);</span>
+<span class="fc" id="L263">                    subscriber.onError(new TestException());</span>
+<span class="fc" id="L264">                    subscriber.onComplete();</span>
+<span class="fc" id="L265">                }</span>
+            }
+<span class="fc" id="L267">            .unsubscribeOn(Schedulers.single())</span>
+<span class="fc" id="L268">            .take(1)</span>
+<span class="fc" id="L269">            .test()</span>
+<span class="fc" id="L270">            .assertResult(1);</span>
+
+<span class="fc" id="L272">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L274">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L276">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

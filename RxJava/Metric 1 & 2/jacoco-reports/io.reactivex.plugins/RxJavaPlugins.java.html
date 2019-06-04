@@ -1,0 +1,1328 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RxJavaPlugins.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.plugins</a> &gt; <span class="el_source">RxJavaPlugins.java</span></div><h1>RxJavaPlugins.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.plugins;
+
+import java.lang.Thread.UncaughtExceptionHandler;
+import java.util.concurrent.*;
+
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.annotations.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.flowables.ConnectableFlowable;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.schedulers.*;
+import io.reactivex.internal.util.ExceptionHelper;
+import io.reactivex.observables.ConnectableObservable;
+import io.reactivex.parallel.ParallelFlowable;
+import io.reactivex.schedulers.Schedulers;
+/**
+ * Utility class to inject handlers to certain standard RxJava operations.
+ */
+public final class RxJavaPlugins {
+    @Nullable
+    static volatile Consumer&lt;? super Throwable&gt; errorHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Runnable, ? extends Runnable&gt; onScheduleHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; onInitComputationHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; onInitSingleHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; onInitIoHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; onInitNewThreadHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Scheduler, ? extends Scheduler&gt; onComputationHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Scheduler, ? extends Scheduler&gt; onSingleHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Scheduler, ? extends Scheduler&gt; onIoHandler;
+
+    @Nullable
+    static volatile Function&lt;? super Scheduler, ? extends Scheduler&gt; onNewThreadHandler;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile Function&lt;? super Flowable, ? extends Flowable&gt; onFlowableAssembly;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile Function&lt;? super ConnectableFlowable, ? extends ConnectableFlowable&gt; onConnectableFlowableAssembly;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile Function&lt;? super Observable, ? extends Observable&gt; onObservableAssembly;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile Function&lt;? super ConnectableObservable, ? extends ConnectableObservable&gt; onConnectableObservableAssembly;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile Function&lt;? super Maybe, ? extends Maybe&gt; onMaybeAssembly;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile Function&lt;? super Single, ? extends Single&gt; onSingleAssembly;
+
+    @Nullable
+    static volatile Function&lt;? super Completable, ? extends Completable&gt; onCompletableAssembly;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile Function&lt;? super ParallelFlowable, ? extends ParallelFlowable&gt; onParallelAssembly;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile BiFunction&lt;? super Flowable, ? super Subscriber, ? extends Subscriber&gt; onFlowableSubscribe;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile BiFunction&lt;? super Maybe, ? super MaybeObserver, ? extends MaybeObserver&gt; onMaybeSubscribe;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile BiFunction&lt;? super Observable, ? super Observer, ? extends Observer&gt; onObservableSubscribe;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    static volatile BiFunction&lt;? super Single, ? super SingleObserver, ? extends SingleObserver&gt; onSingleSubscribe;
+
+    @Nullable
+    static volatile BiFunction&lt;? super Completable, ? super CompletableObserver, ? extends CompletableObserver&gt; onCompletableSubscribe;
+
+    @Nullable
+    static volatile BooleanSupplier onBeforeBlocking;
+
+    /** Prevents changing the plugins. */
+    static volatile boolean lockdown;
+
+    /**
+     * If true, attempting to run a blockingX operation on a (by default)
+     * computation or single scheduler will throw an IllegalStateException.
+     */
+    static volatile boolean failNonBlockingScheduler;
+
+    /**
+     * Prevents changing the plugins from then on.
+     * &lt;p&gt;This allows container-like environments to prevent clients
+     * messing with plugins.
+     */
+    public static void lockdown() {
+<span class="fc" id="L133">        lockdown = true;</span>
+<span class="fc" id="L134">    }</span>
+
+    /**
+     * Returns true if the plugins were locked down.
+     * @return true if the plugins were locked down
+     */
+    public static boolean isLockdown() {
+<span class="fc" id="L141">        return lockdown;</span>
+    }
+
+    /**
+     * Enables or disables the blockingX operators to fail
+     * with an IllegalStateException on a non-blocking
+     * scheduler such as computation or single.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @param enable enable or disable the feature
+     * @since 2.1
+     */
+    public static void setFailOnNonBlockingScheduler(boolean enable) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L154">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L156">        failNonBlockingScheduler = enable;</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Returns true if the blockingX operators fail
+     * with an IllegalStateException on a non-blocking scheduler
+     * such as computation or single.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @return true if the blockingX operators fail on a non-blocking scheduler
+     * @since 2.1
+     */
+    public static boolean isFailOnNonBlockingScheduler() {
+<span class="fc" id="L168">        return failNonBlockingScheduler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Scheduler, ? extends Scheduler&gt; getComputationSchedulerHandler() {
+<span class="fc" id="L177">        return onComputationHandler;</span>
+    }
+
+    /**
+     * Returns the a hook consumer.
+     * @return the hook consumer, may be null
+     */
+    @Nullable
+    public static Consumer&lt;? super Throwable&gt; getErrorHandler() {
+<span class="fc" id="L186">        return errorHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; getInitComputationSchedulerHandler() {
+<span class="fc" id="L195">        return onInitComputationHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; getInitIoSchedulerHandler() {
+<span class="fc" id="L204">        return onInitIoHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; getInitNewThreadSchedulerHandler() {
+<span class="fc" id="L213">        return onInitNewThreadHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; getInitSingleSchedulerHandler() {
+<span class="fc" id="L222">        return onInitSingleHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Scheduler, ? extends Scheduler&gt; getIoSchedulerHandler() {
+<span class="fc" id="L231">        return onIoHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Scheduler, ? extends Scheduler&gt; getNewThreadSchedulerHandler() {
+<span class="fc" id="L240">        return onNewThreadHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Runnable, ? extends Runnable&gt; getScheduleHandler() {
+<span class="fc" id="L249">        return onScheduleHandler;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Scheduler, ? extends Scheduler&gt; getSingleSchedulerHandler() {
+<span class="fc" id="L258">        return onSingleHandler;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler a {@link Callable} which returns the hook's input value
+     * @return the value returned by the hook, not null
+     * @throws NullPointerException if the callable parameter or its result are null
+     */
+    @NonNull
+    public static Scheduler initComputationScheduler(@NonNull Callable&lt;Scheduler&gt; defaultScheduler) {
+<span class="fc" id="L269">        ObjectHelper.requireNonNull(defaultScheduler, &quot;Scheduler Callable can't be null&quot;);</span>
+<span class="fc" id="L270">        Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; f = onInitComputationHandler;</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L272">            return callRequireNonNull(defaultScheduler);</span>
+        }
+<span class="fc" id="L274">        return applyRequireNonNull(f, defaultScheduler); // JIT will skip this</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler a {@link Callable} which returns the hook's input value
+     * @return the value returned by the hook, not null
+     * @throws NullPointerException if the callable parameter or its result are null
+     */
+    @NonNull
+    public static Scheduler initIoScheduler(@NonNull Callable&lt;Scheduler&gt; defaultScheduler) {
+<span class="fc" id="L285">        ObjectHelper.requireNonNull(defaultScheduler, &quot;Scheduler Callable can't be null&quot;);</span>
+<span class="fc" id="L286">        Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; f = onInitIoHandler;</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L288">            return callRequireNonNull(defaultScheduler);</span>
+        }
+<span class="fc" id="L290">        return applyRequireNonNull(f, defaultScheduler);</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler a {@link Callable} which returns the hook's input value
+     * @return the value returned by the hook, not null
+     * @throws NullPointerException if the callable parameter or its result are null
+     */
+    @NonNull
+    public static Scheduler initNewThreadScheduler(@NonNull Callable&lt;Scheduler&gt; defaultScheduler) {
+<span class="fc" id="L301">        ObjectHelper.requireNonNull(defaultScheduler, &quot;Scheduler Callable can't be null&quot;);</span>
+<span class="fc" id="L302">        Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; f = onInitNewThreadHandler;</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L304">            return callRequireNonNull(defaultScheduler);</span>
+        }
+<span class="fc" id="L306">        return applyRequireNonNull(f, defaultScheduler);</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler a {@link Callable} which returns the hook's input value
+     * @return the value returned by the hook, not null
+     * @throws NullPointerException if the callable parameter or its result are null
+     */
+    @NonNull
+    public static Scheduler initSingleScheduler(@NonNull Callable&lt;Scheduler&gt; defaultScheduler) {
+<span class="fc" id="L317">        ObjectHelper.requireNonNull(defaultScheduler, &quot;Scheduler Callable can't be null&quot;);</span>
+<span class="fc" id="L318">        Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; f = onInitSingleHandler;</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L320">            return callRequireNonNull(defaultScheduler);</span>
+        }
+<span class="fc" id="L322">        return applyRequireNonNull(f, defaultScheduler);</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler the hook's input value
+     * @return the value returned by the hook
+     */
+    @NonNull
+    public static Scheduler onComputationScheduler(@NonNull Scheduler defaultScheduler) {
+<span class="fc" id="L332">        Function&lt;? super Scheduler, ? extends Scheduler&gt; f = onComputationHandler;</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L334">            return defaultScheduler;</span>
+        }
+<span class="fc" id="L336">        return apply(f, defaultScheduler);</span>
+    }
+
+    /**
+     * Called when an undeliverable error occurs.
+     * &lt;p&gt;
+     * Undeliverable errors are those {@code Observer.onError()} invocations that are not allowed to happen on
+     * the given consumer type ({@code Observer}, {@code Subscriber}, etc.) due to protocol restrictions
+     * because the consumer has either disposed/cancelled its {@code Disposable}/{@code Subscription} or
+     * has already terminated with an {@code onError()} or {@code onComplete()} signal.
+     * &lt;p&gt;
+     * By default, this global error handler prints the stacktrace via {@link Throwable#printStackTrace()}
+     * and calls {@link java.lang.Thread.UncaughtExceptionHandler#uncaughtException(Thread, Throwable)}
+     * on the current thread.
+     * &lt;p&gt;
+     * Note that on some platforms, the platform runtime terminates the current application with an error if such
+     * uncaught exceptions happen. In this case, it is recommended the application installs a global error
+     * handler via the {@link #setErrorHandler(Consumer)} plugin method.
+     *
+     * @param error the error to report
+     * @see #getErrorHandler()
+     * @see #setErrorHandler(Consumer)
+     * @see &lt;a href=&quot;https://github.com/ReactiveX/RxJava/wiki/What's-different-in-2.0#error-handling&quot;&gt;Error handling Wiki&lt;/a&gt;
+     */
+    public static void onError(@NonNull Throwable error) {
+<span class="fc" id="L361">        Consumer&lt;? super Throwable&gt; f = errorHandler;</span>
+
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        if (error == null) {</span>
+<span class="fc" id="L364">            error = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+        } else {
+<span class="fc bfc" id="L366" title="All 2 branches covered.">            if (!isBug(error)) {</span>
+<span class="fc" id="L367">                error = new UndeliverableException(error);</span>
+            }
+        }
+
+<span class="fc bfc" id="L371" title="All 2 branches covered.">        if (f != null) {</span>
+            try {
+<span class="fc" id="L373">                f.accept(error);</span>
+<span class="fc" id="L374">                return;</span>
+<span class="fc" id="L375">            } catch (Throwable e) {</span>
+                // Exceptions.throwIfFatal(e); TODO decide
+<span class="fc" id="L377">                e.printStackTrace(); // NOPMD</span>
+<span class="fc" id="L378">                uncaught(e);</span>
+            }
+        }
+
+<span class="fc" id="L382">        error.printStackTrace(); // NOPMD</span>
+<span class="fc" id="L383">        uncaught(error);</span>
+<span class="fc" id="L384">    }</span>
+
+    /**
+     * Checks if the given error is one of the already named
+     * bug cases that should pass through {@link #onError(Throwable)}
+     * as is.
+     * @param error the error to check
+     * @return true if the error should pass through, false if
+     * it may be wrapped into an UndeliverableException
+     */
+    static boolean isBug(Throwable error) {
+        // user forgot to add the onError handler in subscribe
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        if (error instanceof OnErrorNotImplementedException) {</span>
+<span class="fc" id="L397">            return true;</span>
+        }
+        // the sender didn't honor the request amount
+        // it's either due to an operator bug or concurrent onNext
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        if (error instanceof MissingBackpressureException) {</span>
+<span class="fc" id="L402">            return true;</span>
+        }
+        // general protocol violations
+        // it's either due to an operator bug or concurrent onNext
+<span class="fc bfc" id="L406" title="All 2 branches covered.">        if (error instanceof IllegalStateException) {</span>
+<span class="fc" id="L407">            return true;</span>
+        }
+        // nulls are generally not allowed
+        // likely an operator bug or missing null-check
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        if (error instanceof NullPointerException) {</span>
+<span class="fc" id="L412">            return true;</span>
+        }
+        // bad arguments, likely invalid user input
+<span class="fc bfc" id="L415" title="All 2 branches covered.">        if (error instanceof IllegalArgumentException) {</span>
+<span class="fc" id="L416">            return true;</span>
+        }
+        // Crash while handling an exception
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        if (error instanceof CompositeException) {</span>
+<span class="fc" id="L420">            return true;</span>
+        }
+        // everything else is probably due to lifecycle limits
+<span class="fc" id="L423">        return false;</span>
+    }
+
+    static void uncaught(@NonNull Throwable error) {
+<span class="fc" id="L427">        Thread currentThread = Thread.currentThread();</span>
+<span class="fc" id="L428">        UncaughtExceptionHandler handler = currentThread.getUncaughtExceptionHandler();</span>
+<span class="fc" id="L429">        handler.uncaughtException(currentThread, error);</span>
+<span class="fc" id="L430">    }</span>
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler the hook's input value
+     * @return the value returned by the hook
+     */
+    @NonNull
+    public static Scheduler onIoScheduler(@NonNull Scheduler defaultScheduler) {
+<span class="fc" id="L439">        Function&lt;? super Scheduler, ? extends Scheduler&gt; f = onIoHandler;</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L441">            return defaultScheduler;</span>
+        }
+<span class="fc" id="L443">        return apply(f, defaultScheduler);</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler the hook's input value
+     * @return the value returned by the hook
+     */
+    @NonNull
+    public static Scheduler onNewThreadScheduler(@NonNull Scheduler defaultScheduler) {
+<span class="fc" id="L453">        Function&lt;? super Scheduler, ? extends Scheduler&gt; f = onNewThreadHandler;</span>
+<span class="fc bfc" id="L454" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L455">            return defaultScheduler;</span>
+        }
+<span class="fc" id="L457">        return apply(f, defaultScheduler);</span>
+    }
+
+    /**
+     * Called when a task is scheduled.
+     * @param run the runnable instance
+     * @return the replacement runnable
+     */
+    @NonNull
+    public static Runnable onSchedule(@NonNull Runnable run) {
+<span class="fc" id="L467">        ObjectHelper.requireNonNull(run, &quot;run is null&quot;);</span>
+
+<span class="fc" id="L469">        Function&lt;? super Runnable, ? extends Runnable&gt; f = onScheduleHandler;</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L471">            return run;</span>
+        }
+<span class="fc" id="L473">        return apply(f, run);</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param defaultScheduler the hook's input value
+     * @return the value returned by the hook
+     */
+    @NonNull
+    public static Scheduler onSingleScheduler(@NonNull Scheduler defaultScheduler) {
+<span class="fc" id="L483">        Function&lt;? super Scheduler, ? extends Scheduler&gt; f = onSingleHandler;</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L485">            return defaultScheduler;</span>
+        }
+<span class="fc" id="L487">        return apply(f, defaultScheduler);</span>
+    }
+
+    /**
+     * Removes all handlers and resets to default behavior.
+     */
+    public static void reset() {
+<span class="fc" id="L494">        setErrorHandler(null);</span>
+<span class="fc" id="L495">        setScheduleHandler(null);</span>
+
+<span class="fc" id="L497">        setComputationSchedulerHandler(null);</span>
+<span class="fc" id="L498">        setInitComputationSchedulerHandler(null);</span>
+
+<span class="fc" id="L500">        setIoSchedulerHandler(null);</span>
+<span class="fc" id="L501">        setInitIoSchedulerHandler(null);</span>
+
+<span class="fc" id="L503">        setSingleSchedulerHandler(null);</span>
+<span class="fc" id="L504">        setInitSingleSchedulerHandler(null);</span>
+
+<span class="fc" id="L506">        setNewThreadSchedulerHandler(null);</span>
+<span class="fc" id="L507">        setInitNewThreadSchedulerHandler(null);</span>
+
+<span class="fc" id="L509">        setOnFlowableAssembly(null);</span>
+<span class="fc" id="L510">        setOnFlowableSubscribe(null);</span>
+
+<span class="fc" id="L512">        setOnObservableAssembly(null);</span>
+<span class="fc" id="L513">        setOnObservableSubscribe(null);</span>
+
+<span class="fc" id="L515">        setOnSingleAssembly(null);</span>
+<span class="fc" id="L516">        setOnSingleSubscribe(null);</span>
+
+<span class="fc" id="L518">        setOnCompletableAssembly(null);</span>
+<span class="fc" id="L519">        setOnCompletableSubscribe(null);</span>
+
+<span class="fc" id="L521">        setOnConnectableFlowableAssembly(null);</span>
+<span class="fc" id="L522">        setOnConnectableObservableAssembly(null);</span>
+
+<span class="fc" id="L524">        setOnMaybeAssembly(null);</span>
+<span class="fc" id="L525">        setOnMaybeSubscribe(null);</span>
+
+<span class="fc" id="L527">        setOnParallelAssembly(null);</span>
+
+<span class="fc" id="L529">        setFailOnNonBlockingScheduler(false);</span>
+<span class="fc" id="L530">        setOnBeforeBlocking(null);</span>
+<span class="fc" id="L531">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed
+     */
+    public static void setComputationSchedulerHandler(@Nullable Function&lt;? super Scheduler, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L538" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L539">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L541">        onComputationHandler = handler;</span>
+<span class="fc" id="L542">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed
+     */
+    public static void setErrorHandler(@Nullable Consumer&lt;? super Throwable&gt; handler) {
+<span class="fc bfc" id="L549" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L550">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L552">        errorHandler = handler;</span>
+<span class="fc" id="L553">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed, but the function may not return null
+     */
+    public static void setInitComputationSchedulerHandler(@Nullable Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L560" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L561">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L563">        onInitComputationHandler = handler;</span>
+<span class="fc" id="L564">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed, but the function may not return null
+     */
+    public static void setInitIoSchedulerHandler(@Nullable Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L571" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L572">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L574">        onInitIoHandler = handler;</span>
+<span class="fc" id="L575">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed, but the function may not return null
+     */
+    public static void setInitNewThreadSchedulerHandler(@Nullable Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L582" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L583">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L585">        onInitNewThreadHandler = handler;</span>
+<span class="fc" id="L586">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed, but the function may not return null
+     */
+    public static void setInitSingleSchedulerHandler(@Nullable Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L593" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L594">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L596">        onInitSingleHandler = handler;</span>
+<span class="fc" id="L597">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed
+     */
+    public static void setIoSchedulerHandler(@Nullable Function&lt;? super Scheduler, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L604" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L605">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L607">        onIoHandler = handler;</span>
+<span class="fc" id="L608">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed
+     */
+    public static void setNewThreadSchedulerHandler(@Nullable Function&lt;? super Scheduler, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L615" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L616">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L618">        onNewThreadHandler = handler;</span>
+<span class="fc" id="L619">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed
+     */
+    public static void setScheduleHandler(@Nullable Function&lt;? super Runnable, ? extends Runnable&gt; handler) {
+<span class="fc bfc" id="L626" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L627">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L629">        onScheduleHandler = handler;</span>
+<span class="fc" id="L630">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param handler the hook function to set, null allowed
+     */
+    public static void setSingleSchedulerHandler(@Nullable Function&lt;? super Scheduler, ? extends Scheduler&gt; handler) {
+<span class="fc bfc" id="L637" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L638">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L640">        onSingleHandler = handler;</span>
+<span class="fc" id="L641">    }</span>
+
+    /**
+     * Revokes the lockdown, only for testing purposes.
+     */
+    /* test. */static void unlock() {
+<span class="fc" id="L647">        lockdown = false;</span>
+<span class="fc" id="L648">    }</span>
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static Function&lt;? super Completable, ? extends Completable&gt; getOnCompletableAssembly() {
+<span class="fc" id="L656">        return onCompletableAssembly;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    public static BiFunction&lt;? super Completable, ? super CompletableObserver, ? extends CompletableObserver&gt; getOnCompletableSubscribe() {
+<span class="fc" id="L665">        return onCompletableSubscribe;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    public static Function&lt;? super Flowable, ? extends Flowable&gt; getOnFlowableAssembly() {
+<span class="fc" id="L675">        return onFlowableAssembly;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    public static Function&lt;? super ConnectableFlowable, ? extends ConnectableFlowable&gt; getOnConnectableFlowableAssembly() {
+<span class="fc" id="L685">        return onConnectableFlowableAssembly;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static BiFunction&lt;? super Flowable, ? super Subscriber, ? extends Subscriber&gt; getOnFlowableSubscribe() {
+<span class="fc" id="L695">        return onFlowableSubscribe;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static BiFunction&lt;? super Maybe, ? super MaybeObserver, ? extends MaybeObserver&gt; getOnMaybeSubscribe() {
+<span class="fc" id="L705">        return onMaybeSubscribe;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static Function&lt;? super Maybe, ? extends Maybe&gt; getOnMaybeAssembly() {
+<span class="fc" id="L715">        return onMaybeAssembly;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static Function&lt;? super Single, ? extends Single&gt; getOnSingleAssembly() {
+<span class="fc" id="L725">        return onSingleAssembly;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static BiFunction&lt;? super Single, ? super SingleObserver, ? extends SingleObserver&gt; getOnSingleSubscribe() {
+<span class="fc" id="L735">        return onSingleSubscribe;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static Function&lt;? super Observable, ? extends Observable&gt; getOnObservableAssembly() {
+<span class="fc" id="L745">        return onObservableAssembly;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static Function&lt;? super ConnectableObservable, ? extends ConnectableObservable&gt; getOnConnectableObservableAssembly() {
+<span class="fc" id="L755">        return onConnectableObservableAssembly;</span>
+    }
+
+    /**
+     * Returns the current hook function.
+     * @return the hook function, may be null
+     */
+    @Nullable
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static BiFunction&lt;? super Observable, ? super Observer, ? extends Observer&gt; getOnObservableSubscribe() {
+<span class="fc" id="L765">        return onObservableSubscribe;</span>
+    }
+
+    /**
+     * Sets the specific hook function.
+     * @param onCompletableAssembly the hook function to set, null allowed
+     */
+    public static void setOnCompletableAssembly(@Nullable Function&lt;? super Completable, ? extends Completable&gt; onCompletableAssembly) {
+<span class="fc bfc" id="L773" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L774">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L776">        RxJavaPlugins.onCompletableAssembly = onCompletableAssembly;</span>
+<span class="fc" id="L777">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onCompletableSubscribe the hook function to set, null allowed
+     */
+    public static void setOnCompletableSubscribe(
+            @Nullable BiFunction&lt;? super Completable, ? super CompletableObserver, ? extends CompletableObserver&gt; onCompletableSubscribe) {
+<span class="fc bfc" id="L785" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L786">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L788">        RxJavaPlugins.onCompletableSubscribe = onCompletableSubscribe;</span>
+<span class="fc" id="L789">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onFlowableAssembly the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnFlowableAssembly(@Nullable Function&lt;? super Flowable, ? extends Flowable&gt; onFlowableAssembly) {
+<span class="fc bfc" id="L797" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L798">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L800">        RxJavaPlugins.onFlowableAssembly = onFlowableAssembly;</span>
+<span class="fc" id="L801">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onMaybeAssembly the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnMaybeAssembly(@Nullable Function&lt;? super Maybe, ? extends Maybe&gt; onMaybeAssembly) {
+<span class="fc bfc" id="L809" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L810">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L812">        RxJavaPlugins.onMaybeAssembly = onMaybeAssembly;</span>
+<span class="fc" id="L813">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onConnectableFlowableAssembly the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnConnectableFlowableAssembly(@Nullable Function&lt;? super ConnectableFlowable, ? extends ConnectableFlowable&gt; onConnectableFlowableAssembly) {
+<span class="fc bfc" id="L821" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L822">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L824">        RxJavaPlugins.onConnectableFlowableAssembly = onConnectableFlowableAssembly;</span>
+<span class="fc" id="L825">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onFlowableSubscribe the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnFlowableSubscribe(@Nullable BiFunction&lt;? super Flowable, ? super Subscriber, ? extends Subscriber&gt; onFlowableSubscribe) {
+<span class="fc bfc" id="L833" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L834">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L836">        RxJavaPlugins.onFlowableSubscribe = onFlowableSubscribe;</span>
+<span class="fc" id="L837">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onMaybeSubscribe the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnMaybeSubscribe(@Nullable BiFunction&lt;? super Maybe, MaybeObserver, ? extends MaybeObserver&gt; onMaybeSubscribe) {
+<span class="fc bfc" id="L845" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L846">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L848">        RxJavaPlugins.onMaybeSubscribe = onMaybeSubscribe;</span>
+<span class="fc" id="L849">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onObservableAssembly the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnObservableAssembly(@Nullable Function&lt;? super Observable, ? extends Observable&gt; onObservableAssembly) {
+<span class="fc bfc" id="L857" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L858">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L860">        RxJavaPlugins.onObservableAssembly = onObservableAssembly;</span>
+<span class="fc" id="L861">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onConnectableObservableAssembly the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnConnectableObservableAssembly(@Nullable Function&lt;? super ConnectableObservable, ? extends ConnectableObservable&gt; onConnectableObservableAssembly) {
+<span class="fc bfc" id="L869" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L870">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L872">        RxJavaPlugins.onConnectableObservableAssembly = onConnectableObservableAssembly;</span>
+<span class="fc" id="L873">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onObservableSubscribe the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnObservableSubscribe(
+            @Nullable BiFunction&lt;? super Observable, ? super Observer, ? extends Observer&gt; onObservableSubscribe) {
+<span class="fc bfc" id="L882" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L883">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L885">        RxJavaPlugins.onObservableSubscribe = onObservableSubscribe;</span>
+<span class="fc" id="L886">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onSingleAssembly the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnSingleAssembly(@Nullable Function&lt;? super Single, ? extends Single&gt; onSingleAssembly) {
+<span class="fc bfc" id="L894" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L895">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L897">        RxJavaPlugins.onSingleAssembly = onSingleAssembly;</span>
+<span class="fc" id="L898">    }</span>
+
+    /**
+     * Sets the specific hook function.
+     * @param onSingleSubscribe the hook function to set, null allowed
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnSingleSubscribe(@Nullable BiFunction&lt;? super Single, ? super SingleObserver, ? extends SingleObserver&gt; onSingleSubscribe) {
+<span class="fc bfc" id="L906" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L907">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L909">        RxJavaPlugins.onSingleSubscribe = onSingleSubscribe;</span>
+<span class="fc" id="L910">    }</span>
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @param subscriber the subscriber
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; Subscriber&lt;? super T&gt; onSubscribe(@NonNull Flowable&lt;T&gt; source, @NonNull Subscriber&lt;? super T&gt; subscriber) {
+<span class="fc" id="L922">        BiFunction&lt;? super Flowable, ? super Subscriber, ? extends Subscriber&gt; f = onFlowableSubscribe;</span>
+<span class="fc bfc" id="L923" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L924">            return apply(f, source, subscriber);</span>
+        }
+<span class="fc" id="L926">        return subscriber;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @param observer the observer
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; Observer&lt;? super T&gt; onSubscribe(@NonNull Observable&lt;T&gt; source, @NonNull Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L939">        BiFunction&lt;? super Observable, ? super Observer, ? extends Observer&gt; f = onObservableSubscribe;</span>
+<span class="fc bfc" id="L940" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L941">            return apply(f, source, observer);</span>
+        }
+<span class="fc" id="L943">        return observer;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @param observer the observer
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; SingleObserver&lt;? super T&gt; onSubscribe(@NonNull Single&lt;T&gt; source, @NonNull SingleObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L956">        BiFunction&lt;? super Single, ? super SingleObserver, ? extends SingleObserver&gt; f = onSingleSubscribe;</span>
+<span class="fc bfc" id="L957" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L958">            return apply(f, source, observer);</span>
+        }
+<span class="fc" id="L960">        return observer;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param source the hook's input value
+     * @param observer the observer
+     * @return the value returned by the hook
+     */
+    @NonNull
+    public static CompletableObserver onSubscribe(@NonNull Completable source, @NonNull CompletableObserver observer) {
+<span class="fc" id="L971">        BiFunction&lt;? super Completable, ? super CompletableObserver, ? extends CompletableObserver&gt; f = onCompletableSubscribe;</span>
+<span class="fc bfc" id="L972" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L973">            return apply(f, source, observer);</span>
+        }
+<span class="fc" id="L975">        return observer;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @param observer the subscriber
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; MaybeObserver&lt;? super T&gt; onSubscribe(@NonNull Maybe&lt;T&gt; source, @NonNull MaybeObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L988">        BiFunction&lt;? super Maybe, ? super MaybeObserver, ? extends MaybeObserver&gt; f = onMaybeSubscribe;</span>
+<span class="fc bfc" id="L989" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L990">            return apply(f, source, observer);</span>
+        }
+<span class="fc" id="L992">        return observer;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; Maybe&lt;T&gt; onAssembly(@NonNull Maybe&lt;T&gt; source) {
+<span class="fc" id="L1004">        Function&lt;? super Maybe, ? extends Maybe&gt; f = onMaybeAssembly;</span>
+<span class="fc bfc" id="L1005" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1006">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1008">        return source;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; Flowable&lt;T&gt; onAssembly(@NonNull Flowable&lt;T&gt; source) {
+<span class="fc" id="L1020">        Function&lt;? super Flowable, ? extends Flowable&gt; f = onFlowableAssembly;</span>
+<span class="fc bfc" id="L1021" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1022">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1024">        return source;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; ConnectableFlowable&lt;T&gt; onAssembly(@NonNull ConnectableFlowable&lt;T&gt; source) {
+<span class="fc" id="L1036">        Function&lt;? super ConnectableFlowable, ? extends ConnectableFlowable&gt; f = onConnectableFlowableAssembly;</span>
+<span class="fc bfc" id="L1037" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1038">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1040">        return source;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; Observable&lt;T&gt; onAssembly(@NonNull Observable&lt;T&gt; source) {
+<span class="fc" id="L1052">        Function&lt;? super Observable, ? extends Observable&gt; f = onObservableAssembly;</span>
+<span class="fc bfc" id="L1053" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1054">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1056">        return source;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; ConnectableObservable&lt;T&gt; onAssembly(@NonNull ConnectableObservable&lt;T&gt; source) {
+<span class="fc" id="L1068">        Function&lt;? super ConnectableObservable, ? extends ConnectableObservable&gt; f = onConnectableObservableAssembly;</span>
+<span class="fc bfc" id="L1069" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1070">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1072">        return source;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param &lt;T&gt; the value type
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; Single&lt;T&gt; onAssembly(@NonNull Single&lt;T&gt; source) {
+<span class="fc" id="L1084">        Function&lt;? super Single, ? extends Single&gt; f = onSingleAssembly;</span>
+<span class="fc bfc" id="L1085" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1086">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1088">        return source;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     */
+    @NonNull
+    public static Completable onAssembly(@NonNull Completable source) {
+<span class="fc" id="L1098">        Function&lt;? super Completable, ? extends Completable&gt; f = onCompletableAssembly;</span>
+<span class="fc bfc" id="L1099" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1100">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1102">        return source;</span>
+    }
+
+    /**
+     * Sets the specific hook function.
+     * &lt;p&gt;History: 2.0.6 - experimental; 2.1 - beta
+     * @param handler the hook function to set, null allowed
+     * @since 2.2
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public static void setOnParallelAssembly(@Nullable Function&lt;? super ParallelFlowable, ? extends ParallelFlowable&gt; handler) {
+<span class="fc bfc" id="L1113" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L1114">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L1116">        onParallelAssembly = handler;</span>
+<span class="fc" id="L1117">    }</span>
+
+    /**
+     * Returns the current hook function.
+     * &lt;p&gt;History: 2.0.6 - experimental; 2.1 - beta
+     * @return the hook function, may be null
+     * @since 2.2
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Nullable
+    public static Function&lt;? super ParallelFlowable, ? extends ParallelFlowable&gt; getOnParallelAssembly() {
+<span class="fc" id="L1128">        return onParallelAssembly;</span>
+    }
+
+    /**
+     * Calls the associated hook function.
+     * &lt;p&gt;History: 2.0.6 - experimental; 2.1 - beta
+     * @param &lt;T&gt; the value type of the source
+     * @param source the hook's input value
+     * @return the value returned by the hook
+     * @since 2.2
+     */
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @NonNull
+    public static &lt;T&gt; ParallelFlowable&lt;T&gt; onAssembly(@NonNull ParallelFlowable&lt;T&gt; source) {
+<span class="fc" id="L1142">        Function&lt;? super ParallelFlowable, ? extends ParallelFlowable&gt; f = onParallelAssembly;</span>
+<span class="fc bfc" id="L1143" title="All 2 branches covered.">        if (f != null) {</span>
+<span class="fc" id="L1144">            return apply(f, source);</span>
+        }
+<span class="fc" id="L1146">        return source;</span>
+    }
+
+    /**
+     * Called before an operator attempts a blocking operation
+     * such as awaiting a condition or signal
+     * and should return true to indicate the operator
+     * should not block but throw an IllegalArgumentException.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @return true if the blocking should be prevented
+     * @see #setFailOnNonBlockingScheduler(boolean)
+     * @since 2.1
+     */
+    public static boolean onBeforeBlocking() {
+<span class="fc" id="L1160">        BooleanSupplier f = onBeforeBlocking;</span>
+<span class="fc bfc" id="L1161" title="All 2 branches covered.">        if (f != null) {</span>
+            try {
+<span class="fc" id="L1163">                return f.getAsBoolean();</span>
+<span class="fc" id="L1164">            } catch (Throwable ex) {</span>
+<span class="fc" id="L1165">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+            }
+        }
+<span class="fc" id="L1168">        return false;</span>
+    }
+
+    /**
+     * Set the handler that is called when an operator attempts a blocking
+     * await; the handler should return true to prevent the blocking
+     * and to signal an IllegalStateException instead.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @param handler the handler to set, null resets to the default handler
+     * that always returns false
+     * @see #onBeforeBlocking()
+     * @since 2.1
+     */
+    public static void setOnBeforeBlocking(@Nullable BooleanSupplier handler) {
+<span class="fc bfc" id="L1182" title="All 2 branches covered.">        if (lockdown) {</span>
+<span class="fc" id="L1183">            throw new IllegalStateException(&quot;Plugins can't be changed anymore&quot;);</span>
+        }
+<span class="fc" id="L1185">        onBeforeBlocking = handler;</span>
+<span class="fc" id="L1186">    }</span>
+
+    /**
+     * Returns the current blocking handler or null if no custom handler
+     * is set.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @return the current blocking handler or null if not specified
+     * @since 2.1
+     */
+    @Nullable
+    public static BooleanSupplier getOnBeforeBlocking() {
+<span class="fc" id="L1197">        return onBeforeBlocking;</span>
+    }
+
+    /**
+     * Create an instance of the default {@link Scheduler} used for {@link Schedulers#computation()}
+     * except using {@code threadFactory} for thread creation.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @param threadFactory thread factory to use for creating worker threads. Note that this takes precedence over any
+     *                      system properties for configuring new thread creation. Cannot be null.
+     * @return the created Scheduler instance
+     * @since 2.1
+     */
+    @NonNull
+    public static Scheduler createComputationScheduler(@NonNull ThreadFactory threadFactory) {
+<span class="fc" id="L1211">        return new ComputationScheduler(ObjectHelper.requireNonNull(threadFactory, &quot;threadFactory is null&quot;));</span>
+    }
+
+    /**
+     * Create an instance of the default {@link Scheduler} used for {@link Schedulers#io()}
+     * except using {@code threadFactory} for thread creation.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @param threadFactory thread factory to use for creating worker threads. Note that this takes precedence over any
+     *                      system properties for configuring new thread creation. Cannot be null.
+     * @return the created Scheduler instance
+     * @since 2.1
+     */
+    @NonNull
+    public static Scheduler createIoScheduler(@NonNull ThreadFactory threadFactory) {
+<span class="fc" id="L1225">        return new IoScheduler(ObjectHelper.requireNonNull(threadFactory, &quot;threadFactory is null&quot;));</span>
+    }
+
+    /**
+     * Create an instance of the default {@link Scheduler} used for {@link Schedulers#newThread()}
+     * except using {@code threadFactory} for thread creation.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @param threadFactory thread factory to use for creating worker threads. Note that this takes precedence over any
+     *                      system properties for configuring new thread creation. Cannot be null.
+     * @return the created Scheduler instance
+     * @since 2.1
+     */
+    @NonNull
+    public static Scheduler createNewThreadScheduler(@NonNull ThreadFactory threadFactory) {
+<span class="fc" id="L1239">        return new NewThreadScheduler(ObjectHelper.requireNonNull(threadFactory, &quot;threadFactory is null&quot;));</span>
+    }
+
+    /**
+     * Create an instance of the default {@link Scheduler} used for {@link Schedulers#single()}
+     * except using {@code threadFactory} for thread creation.
+     * &lt;p&gt;History: 2.0.5 - experimental
+     * @param threadFactory thread factory to use for creating worker threads. Note that this takes precedence over any
+     *                      system properties for configuring new thread creation. Cannot be null.
+     * @return the created Scheduler instance
+     * @since 2.1
+     */
+    @NonNull
+    public static Scheduler createSingleScheduler(@NonNull ThreadFactory threadFactory) {
+<span class="fc" id="L1253">        return new SingleScheduler(ObjectHelper.requireNonNull(threadFactory, &quot;threadFactory is null&quot;));</span>
+    }
+
+    /**
+     * Wraps the call to the function in try-catch and propagates thrown
+     * checked exceptions as RuntimeException.
+     * @param &lt;T&gt; the input type
+     * @param &lt;R&gt; the output type
+     * @param f the function to call, not null (not verified)
+     * @param t the parameter value to the function
+     * @return the result of the function call
+     */
+    @NonNull
+    static &lt;T, R&gt; R apply(@NonNull Function&lt;T, R&gt; f, @NonNull T t) {
+        try {
+<span class="fc" id="L1268">            return f.apply(t);</span>
+<span class="fc" id="L1269">        } catch (Throwable ex) {</span>
+<span class="fc" id="L1270">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        }
+    }
+
+    /**
+     * Wraps the call to the function in try-catch and propagates thrown
+     * checked exceptions as RuntimeException.
+     * @param &lt;T&gt; the first input type
+     * @param &lt;U&gt; the second input type
+     * @param &lt;R&gt; the output type
+     * @param f the function to call, not null (not verified)
+     * @param t the first parameter value to the function
+     * @param u the second parameter value to the function
+     * @return the result of the function call
+     */
+    @NonNull
+    static &lt;T, U, R&gt; R apply(@NonNull BiFunction&lt;T, U, R&gt; f, @NonNull T t, @NonNull U u) {
+        try {
+<span class="fc" id="L1288">            return f.apply(t, u);</span>
+<span class="fc" id="L1289">        } catch (Throwable ex) {</span>
+<span class="fc" id="L1290">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        }
+    }
+
+    /**
+     * Wraps the call to the Scheduler creation callable in try-catch and propagates thrown
+     * checked exceptions as RuntimeException and enforces that result is not null.
+     * @param s the {@link Callable} which returns a {@link Scheduler}, not null (not verified). Cannot return null
+     * @return the result of the callable call, not null
+     * @throws NullPointerException if the callable parameter returns null
+     */
+    @NonNull
+    static Scheduler callRequireNonNull(@NonNull Callable&lt;Scheduler&gt; s) {
+        try {
+<span class="fc" id="L1304">            return ObjectHelper.requireNonNull(s.call(), &quot;Scheduler Callable result can't be null&quot;);</span>
+<span class="fc" id="L1305">        } catch (Throwable ex) {</span>
+<span class="fc" id="L1306">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        }
+    }
+
+    /**
+     * Wraps the call to the Scheduler creation function in try-catch and propagates thrown
+     * checked exceptions as RuntimeException and enforces that result is not null.
+     * @param f the function to call, not null (not verified). Cannot return null
+     * @param s the parameter value to the function
+     * @return the result of the function call, not null
+     * @throws NullPointerException if the function parameter returns null
+     */
+    @NonNull
+    static Scheduler applyRequireNonNull(@NonNull Function&lt;? super Callable&lt;Scheduler&gt;, ? extends Scheduler&gt; f, Callable&lt;Scheduler&gt; s) {
+<span class="fc" id="L1320">        return ObjectHelper.requireNonNull(apply(f, s), &quot;Scheduler Callable result can't be null&quot;);</span>
+    }
+
+    /** Helper class, no instances. */
+<span class="fc" id="L1324">    private RxJavaPlugins() {</span>
+<span class="fc" id="L1325">        throw new IllegalStateException(&quot;No instances!&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

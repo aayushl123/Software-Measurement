@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableToList.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableToList.java</span></div><h1>FlowableToList.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.Collection;
+import java.util.concurrent.Callable;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.*;
+
+public final class FlowableToList&lt;T, U extends Collection&lt;? super T&gt;&gt; extends AbstractFlowableWithUpstream&lt;T, U&gt; {
+    final Callable&lt;U&gt; collectionSupplier;
+
+    public FlowableToList(Flowable&lt;T&gt; source, Callable&lt;U&gt; collectionSupplier) {
+<span class="fc" id="L30">        super(source);</span>
+<span class="fc" id="L31">        this.collectionSupplier = collectionSupplier;</span>
+<span class="fc" id="L32">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super U&gt; s) {
+        U coll;
+        try {
+<span class="fc" id="L38">            coll = ObjectHelper.requireNonNull(collectionSupplier.call(), &quot;The collectionSupplier returned a null collection. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc" id="L39">        } catch (Throwable e) {</span>
+<span class="fc" id="L40">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L41">            EmptySubscription.error(e, s);</span>
+<span class="fc" id="L42">            return;</span>
+<span class="fc" id="L43">        }</span>
+<span class="fc" id="L44">        source.subscribe(new ToListSubscriber&lt;T, U&gt;(s, coll));</span>
+<span class="fc" id="L45">    }</span>
+
+    static final class ToListSubscriber&lt;T, U extends Collection&lt;? super T&gt;&gt;
+    extends DeferredScalarSubscription&lt;U&gt;
+    implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = -8134157938864266736L;
+        Subscription upstream;
+
+        ToListSubscriber(Subscriber&lt;? super U&gt; actual, U collection) {
+<span class="fc" id="L55">            super(actual);</span>
+<span class="fc" id="L56">            this.value = collection;</span>
+<span class="fc" id="L57">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L62">                this.upstream = s;</span>
+<span class="fc" id="L63">                downstream.onSubscribe(this);</span>
+<span class="fc" id="L64">                s.request(Long.MAX_VALUE);</span>
+            }
+<span class="fc" id="L66">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L70">            U v = value;</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (v != null) {</span>
+<span class="fc" id="L72">                v.add(t);</span>
+            }
+<span class="fc" id="L74">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L78">            value = null;</span>
+<span class="fc" id="L79">            downstream.onError(t);</span>
+<span class="fc" id="L80">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L84">            complete(value);</span>
+<span class="fc" id="L85">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L89">            super.cancel();</span>
+<span class="fc" id="L90">            upstream.cancel();</span>
+<span class="fc" id="L91">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

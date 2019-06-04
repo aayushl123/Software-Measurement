@@ -1,0 +1,726 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableCreate.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableCreate.java</span></div><h1>FlowableCreate.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Cancellable;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.fuseable.SimplePlainQueue;
+import io.reactivex.internal.queue.SpscLinkedArrayQueue;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableCreate&lt;T&gt; extends Flowable&lt;T&gt; {
+
+    final FlowableOnSubscribe&lt;T&gt; source;
+
+    final BackpressureStrategy backpressure;
+
+<span class="fc" id="L37">    public FlowableCreate(FlowableOnSubscribe&lt;T&gt; source, BackpressureStrategy backpressure) {</span>
+<span class="fc" id="L38">        this.source = source;</span>
+<span class="fc" id="L39">        this.backpressure = backpressure;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    public void subscribeActual(Subscriber&lt;? super T&gt; t) {
+        BaseEmitter&lt;T&gt; emitter;
+
+<span class="fc bfc" id="L46" title="All 5 branches covered.">        switch (backpressure) {</span>
+        case MISSING: {
+<span class="fc" id="L48">            emitter = new MissingEmitter&lt;T&gt;(t);</span>
+<span class="fc" id="L49">            break;</span>
+        }
+        case ERROR: {
+<span class="fc" id="L52">            emitter = new ErrorAsyncEmitter&lt;T&gt;(t);</span>
+<span class="fc" id="L53">            break;</span>
+        }
+        case DROP: {
+<span class="fc" id="L56">            emitter = new DropAsyncEmitter&lt;T&gt;(t);</span>
+<span class="fc" id="L57">            break;</span>
+        }
+        case LATEST: {
+<span class="fc" id="L60">            emitter = new LatestAsyncEmitter&lt;T&gt;(t);</span>
+<span class="fc" id="L61">            break;</span>
+        }
+        default: {
+<span class="fc" id="L64">            emitter = new BufferAsyncEmitter&lt;T&gt;(t, bufferSize());</span>
+            break;
+        }
+        }
+
+<span class="fc" id="L69">        t.onSubscribe(emitter);</span>
+        try {
+<span class="fc" id="L71">            source.subscribe(emitter);</span>
+<span class="fc" id="L72">        } catch (Throwable ex) {</span>
+<span class="fc" id="L73">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L74">            emitter.onError(ex);</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Serializes calls to onNext, onError and onComplete.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    static final class SerializedEmitter&lt;T&gt;
+    extends AtomicInteger
+    implements FlowableEmitter&lt;T&gt; {
+
+        private static final long serialVersionUID = 4883307006032401862L;
+
+        final BaseEmitter&lt;T&gt; emitter;
+
+        final AtomicThrowable error;
+
+        final SimplePlainQueue&lt;T&gt; queue;
+
+        volatile boolean done;
+
+<span class="fc" id="L97">        SerializedEmitter(BaseEmitter&lt;T&gt; emitter) {</span>
+<span class="fc" id="L98">            this.emitter = emitter;</span>
+<span class="fc" id="L99">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L100">            this.queue = new SpscLinkedArrayQueue&lt;T&gt;(16);</span>
+<span class="fc" id="L101">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L105" title="All 4 branches covered.">            if (emitter.isCancelled() || done) {</span>
+<span class="fc" id="L106">                return;</span>
+            }
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (t == null) {</span>
+<span class="fc" id="L109">                onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+<span class="fc" id="L110">                return;</span>
+            }
+<span class="fc bfc" id="L112" title="All 4 branches covered.">            if (get() == 0 &amp;&amp; compareAndSet(0, 1)) {</span>
+<span class="fc" id="L113">                emitter.onNext(t);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                if (decrementAndGet() == 0) {</span>
+<span class="fc" id="L115">                    return;</span>
+                }
+            } else {
+<span class="fc" id="L118">                SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc" id="L119">                synchronized (q) {</span>
+<span class="fc" id="L120">                    q.offer(t);</span>
+<span class="fc" id="L121">                }</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L123">                    return;</span>
+                }
+            }
+<span class="fc" id="L126">            drainLoop();</span>
+<span class="fc" id="L127">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (!tryOnError(t)) {</span>
+<span class="fc" id="L132">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L134">        }</span>
+
+        @Override
+        public boolean tryOnError(Throwable t) {
+<span class="fc bfc" id="L138" title="All 4 branches covered.">           if (emitter.isCancelled() || done) {</span>
+<span class="fc" id="L139">               return false;</span>
+           }
+<span class="fc bfc" id="L141" title="All 2 branches covered.">           if (t == null) {</span>
+<span class="fc" id="L142">               t = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+           }
+<span class="fc bfc" id="L144" title="All 2 branches covered.">           if (error.addThrowable(t)) {</span>
+<span class="fc" id="L145">               done = true;</span>
+<span class="fc" id="L146">               drain();</span>
+<span class="fc" id="L147">               return true;</span>
+           }
+<span class="fc" id="L149">           return false;</span>
+        }
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L154" title="All 4 branches covered.">            if (emitter.isCancelled() || done) {</span>
+<span class="fc" id="L155">                return;</span>
+            }
+<span class="fc" id="L157">            done = true;</span>
+<span class="fc" id="L158">            drain();</span>
+<span class="fc" id="L159">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L163">                drainLoop();</span>
+            }
+<span class="fc" id="L165">        }</span>
+
+        void drainLoop() {
+<span class="fc" id="L168">            BaseEmitter&lt;T&gt; e = emitter;</span>
+<span class="fc" id="L169">            SimplePlainQueue&lt;T&gt; q = queue;</span>
+<span class="fc" id="L170">            AtomicThrowable error = this.error;</span>
+<span class="fc" id="L171">            int missed = 1;</span>
+            for (;;) {
+
+                for (;;) {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                    if (e.isCancelled()) {</span>
+<span class="fc" id="L176">                        q.clear();</span>
+<span class="fc" id="L177">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                    if (error.get() != null) {</span>
+<span class="fc" id="L181">                        q.clear();</span>
+<span class="fc" id="L182">                        e.onError(error.terminate());</span>
+<span class="fc" id="L183">                        return;</span>
+                    }
+
+<span class="fc" id="L186">                    boolean d = done;</span>
+
+<span class="fc" id="L188">                    T v = q.poll();</span>
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                    boolean empty = v == null;</span>
+
+<span class="pc bpc" id="L192" title="1 of 4 branches missed.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L193">                        e.onComplete();</span>
+<span class="fc" id="L194">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L198">                        break;</span>
+                    }
+
+<span class="fc" id="L201">                    e.onNext(v);</span>
+<span class="fc" id="L202">                }</span>
+
+<span class="fc" id="L204">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L206">                    break;</span>
+                }
+            }
+<span class="fc" id="L209">        }</span>
+
+        @Override
+        public void setDisposable(Disposable d) {
+<span class="fc" id="L213">            emitter.setDisposable(d);</span>
+<span class="fc" id="L214">        }</span>
+
+        @Override
+        public void setCancellable(Cancellable c) {
+<span class="fc" id="L218">            emitter.setCancellable(c);</span>
+<span class="fc" id="L219">        }</span>
+
+        @Override
+        public long requested() {
+<span class="nc" id="L223">            return emitter.requested();</span>
+        }
+
+        @Override
+        public boolean isCancelled() {
+<span class="fc" id="L228">            return emitter.isCancelled();</span>
+        }
+
+        @Override
+        public FlowableEmitter&lt;T&gt; serialize() {
+<span class="fc" id="L233">            return this;</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="fc" id="L238">            return emitter.toString();</span>
+        }
+    }
+
+    abstract static class BaseEmitter&lt;T&gt;
+    extends AtomicLong
+    implements FlowableEmitter&lt;T&gt;, Subscription {
+        private static final long serialVersionUID = 7326289992464377023L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        final SequentialDisposable serial;
+
+<span class="fc" id="L251">        BaseEmitter(Subscriber&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L252">            this.downstream = downstream;</span>
+<span class="fc" id="L253">            this.serial = new SequentialDisposable();</span>
+<span class="fc" id="L254">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L258">            complete();</span>
+<span class="fc" id="L259">        }</span>
+
+        protected void complete() {
+<span class="fc bfc" id="L262" title="All 2 branches covered.">            if (isCancelled()) {</span>
+<span class="fc" id="L263">                return;</span>
+            }
+            try {
+<span class="fc" id="L266">                downstream.onComplete();</span>
+            } finally {
+<span class="fc" id="L268">                serial.dispose();</span>
+            }
+<span class="fc" id="L270">        }</span>
+
+        @Override
+        public final void onError(Throwable e) {
+<span class="fc bfc" id="L274" title="All 2 branches covered.">            if (!tryOnError(e)) {</span>
+<span class="fc" id="L275">                RxJavaPlugins.onError(e);</span>
+            }
+<span class="fc" id="L277">        }</span>
+
+        @Override
+        public boolean tryOnError(Throwable e) {
+<span class="fc" id="L281">            return error(e);</span>
+        }
+
+        protected boolean error(Throwable e) {
+<span class="fc bfc" id="L285" title="All 2 branches covered.">            if (e == null) {</span>
+<span class="fc" id="L286">                e = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+            }
+<span class="fc bfc" id="L288" title="All 2 branches covered.">            if (isCancelled()) {</span>
+<span class="fc" id="L289">                return false;</span>
+            }
+            try {
+<span class="fc" id="L292">                downstream.onError(e);</span>
+            } finally {
+<span class="fc" id="L294">                serial.dispose();</span>
+            }
+<span class="fc" id="L296">            return true;</span>
+        }
+
+        @Override
+        public final void cancel() {
+<span class="fc" id="L301">            serial.dispose();</span>
+<span class="fc" id="L302">            onUnsubscribed();</span>
+<span class="fc" id="L303">        }</span>
+
+        void onUnsubscribed() {
+            // default is no-op
+<span class="fc" id="L307">        }</span>
+
+        @Override
+        public final boolean isCancelled() {
+<span class="fc" id="L311">            return serial.isDisposed();</span>
+        }
+
+        @Override
+        public final void request(long n) {
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L317">                BackpressureHelper.add(this, n);</span>
+<span class="fc" id="L318">                onRequested();</span>
+            }
+<span class="fc" id="L320">        }</span>
+
+        void onRequested() {
+            // default is no-op
+<span class="fc" id="L324">        }</span>
+
+        @Override
+        public final void setDisposable(Disposable d) {
+<span class="fc" id="L328">            serial.update(d);</span>
+<span class="fc" id="L329">        }</span>
+
+        @Override
+        public final void setCancellable(Cancellable c) {
+<span class="fc" id="L333">            setDisposable(new CancellableDisposable(c));</span>
+<span class="fc" id="L334">        }</span>
+
+        @Override
+        public final long requested() {
+<span class="fc" id="L338">            return get();</span>
+        }
+
+        @Override
+        public final FlowableEmitter&lt;T&gt; serialize() {
+<span class="fc" id="L343">            return new SerializedEmitter&lt;T&gt;(this);</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="fc" id="L348">            return String.format(&quot;%s{%s}&quot;, getClass().getSimpleName(), super.toString());</span>
+        }
+    }
+
+    static final class MissingEmitter&lt;T&gt; extends BaseEmitter&lt;T&gt; {
+
+        private static final long serialVersionUID = 3776720187248809713L;
+
+        MissingEmitter(Subscriber&lt;? super T&gt; downstream) {
+<span class="fc" id="L357">            super(downstream);</span>
+<span class="fc" id="L358">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L362" title="All 2 branches covered.">            if (isCancelled()) {</span>
+<span class="fc" id="L363">                return;</span>
+            }
+
+<span class="fc bfc" id="L366" title="All 2 branches covered.">            if (t != null) {</span>
+<span class="fc" id="L367">                downstream.onNext(t);</span>
+            } else {
+<span class="fc" id="L369">                onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+<span class="fc" id="L370">                return;</span>
+            }
+
+            for (;;) {
+<span class="fc" id="L374">                long r = get();</span>
+<span class="pc bpc" id="L375" title="1 of 4 branches missed.">                if (r == 0L || compareAndSet(r, r - 1)) {</span>
+<span class="fc" id="L376">                    return;</span>
+                }
+<span class="nc" id="L378">            }</span>
+        }
+
+    }
+
+    abstract static class NoOverflowBaseAsyncEmitter&lt;T&gt; extends BaseEmitter&lt;T&gt; {
+
+        private static final long serialVersionUID = 4127754106204442833L;
+
+        NoOverflowBaseAsyncEmitter(Subscriber&lt;? super T&gt; downstream) {
+<span class="fc" id="L388">            super(downstream);</span>
+<span class="fc" id="L389">        }</span>
+
+        @Override
+        public final void onNext(T t) {
+<span class="fc bfc" id="L393" title="All 2 branches covered.">            if (isCancelled()) {</span>
+<span class="fc" id="L394">                return;</span>
+            }
+
+<span class="fc bfc" id="L397" title="All 2 branches covered.">            if (t == null) {</span>
+<span class="fc" id="L398">                onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+<span class="fc" id="L399">                return;</span>
+            }
+
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            if (get() != 0) {</span>
+<span class="fc" id="L403">                downstream.onNext(t);</span>
+<span class="fc" id="L404">                BackpressureHelper.produced(this, 1);</span>
+            } else {
+<span class="fc" id="L406">                onOverflow();</span>
+            }
+<span class="fc" id="L408">        }</span>
+
+        abstract void onOverflow();
+    }
+
+    static final class DropAsyncEmitter&lt;T&gt; extends NoOverflowBaseAsyncEmitter&lt;T&gt; {
+
+        private static final long serialVersionUID = 8360058422307496563L;
+
+        DropAsyncEmitter(Subscriber&lt;? super T&gt; downstream) {
+<span class="fc" id="L418">            super(downstream);</span>
+<span class="fc" id="L419">        }</span>
+
+        @Override
+        void onOverflow() {
+            // nothing to do
+<span class="fc" id="L424">        }</span>
+
+    }
+
+    static final class ErrorAsyncEmitter&lt;T&gt; extends NoOverflowBaseAsyncEmitter&lt;T&gt; {
+
+        private static final long serialVersionUID = 338953216916120960L;
+
+        ErrorAsyncEmitter(Subscriber&lt;? super T&gt; downstream) {
+<span class="fc" id="L433">            super(downstream);</span>
+<span class="fc" id="L434">        }</span>
+
+        @Override
+        void onOverflow() {
+<span class="fc" id="L438">            onError(new MissingBackpressureException(&quot;create: could not emit value due to lack of requests&quot;));</span>
+<span class="fc" id="L439">        }</span>
+
+    }
+
+    static final class BufferAsyncEmitter&lt;T&gt; extends BaseEmitter&lt;T&gt; {
+
+        private static final long serialVersionUID = 2427151001689639875L;
+
+        final SpscLinkedArrayQueue&lt;T&gt; queue;
+
+        Throwable error;
+        volatile boolean done;
+
+        final AtomicInteger wip;
+
+        BufferAsyncEmitter(Subscriber&lt;? super T&gt; actual, int capacityHint) {
+<span class="fc" id="L455">            super(actual);</span>
+<span class="fc" id="L456">            this.queue = new SpscLinkedArrayQueue&lt;T&gt;(capacityHint);</span>
+<span class="fc" id="L457">            this.wip = new AtomicInteger();</span>
+<span class="fc" id="L458">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L462" title="All 4 branches covered.">            if (done || isCancelled()) {</span>
+<span class="fc" id="L463">                return;</span>
+            }
+
+<span class="fc bfc" id="L466" title="All 2 branches covered.">            if (t == null) {</span>
+<span class="fc" id="L467">                onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+<span class="fc" id="L468">                return;</span>
+            }
+<span class="fc" id="L470">            queue.offer(t);</span>
+<span class="fc" id="L471">            drain();</span>
+<span class="fc" id="L472">        }</span>
+
+        @Override
+        public boolean tryOnError(Throwable e) {
+<span class="fc bfc" id="L476" title="All 4 branches covered.">            if (done || isCancelled()) {</span>
+<span class="fc" id="L477">                return false;</span>
+            }
+
+<span class="fc bfc" id="L480" title="All 2 branches covered.">            if (e == null) {</span>
+<span class="fc" id="L481">                e = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+            }
+
+<span class="fc" id="L484">            error = e;</span>
+<span class="fc" id="L485">            done = true;</span>
+<span class="fc" id="L486">            drain();</span>
+<span class="fc" id="L487">            return true;</span>
+        }
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L492">            done = true;</span>
+<span class="fc" id="L493">            drain();</span>
+<span class="fc" id="L494">        }</span>
+
+        @Override
+        void onRequested() {
+<span class="fc" id="L498">            drain();</span>
+<span class="fc" id="L499">        }</span>
+
+        @Override
+        void onUnsubscribed() {
+<span class="fc bfc" id="L503" title="All 2 branches covered.">            if (wip.getAndIncrement() == 0) {</span>
+<span class="fc" id="L504">                queue.clear();</span>
+            }
+<span class="fc" id="L506">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L509" title="All 2 branches covered.">            if (wip.getAndIncrement() != 0) {</span>
+<span class="fc" id="L510">                return;</span>
+            }
+
+<span class="fc" id="L513">            int missed = 1;</span>
+<span class="fc" id="L514">            final Subscriber&lt;? super T&gt; a = downstream;</span>
+<span class="fc" id="L515">            final SpscLinkedArrayQueue&lt;T&gt; q = queue;</span>
+
+            for (;;) {
+<span class="fc" id="L518">                long r = get();</span>
+<span class="fc" id="L519">                long e = 0L;</span>
+
+<span class="fc bfc" id="L521" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L522" title="All 2 branches covered.">                    if (isCancelled()) {</span>
+<span class="fc" id="L523">                        q.clear();</span>
+<span class="fc" id="L524">                        return;</span>
+                    }
+
+<span class="fc" id="L527">                    boolean d = done;</span>
+
+<span class="fc" id="L529">                    T o = q.poll();</span>
+
+<span class="fc bfc" id="L531" title="All 2 branches covered.">                    boolean empty = o == null;</span>
+
+<span class="fc bfc" id="L533" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L534">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L535" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L536">                            error(ex);</span>
+                        } else {
+<span class="fc" id="L538">                            complete();</span>
+                        }
+<span class="fc" id="L540">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L543" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L544">                        break;</span>
+                    }
+
+<span class="fc" id="L547">                    a.onNext(o);</span>
+
+<span class="fc" id="L549">                    e++;</span>
+<span class="fc" id="L550">                }</span>
+
+<span class="fc bfc" id="L552" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="pc bpc" id="L553" title="1 of 2 branches missed.">                    if (isCancelled()) {</span>
+<span class="nc" id="L554">                        q.clear();</span>
+<span class="nc" id="L555">                        return;</span>
+                    }
+
+<span class="fc" id="L558">                    boolean d = done;</span>
+
+<span class="fc" id="L560">                    boolean empty = q.isEmpty();</span>
+
+<span class="fc bfc" id="L562" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L563">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L564" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L565">                            error(ex);</span>
+                        } else {
+<span class="fc" id="L567">                            complete();</span>
+                        }
+<span class="fc" id="L569">                        return;</span>
+                    }
+                }
+
+<span class="fc bfc" id="L573" title="All 2 branches covered.">                if (e != 0) {</span>
+<span class="fc" id="L574">                    BackpressureHelper.produced(this, e);</span>
+                }
+
+<span class="fc" id="L577">                missed = wip.addAndGet(-missed);</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L579">                    break;</span>
+                }
+<span class="fc" id="L581">            }</span>
+<span class="fc" id="L582">        }</span>
+    }
+
+    static final class LatestAsyncEmitter&lt;T&gt; extends BaseEmitter&lt;T&gt; {
+
+        private static final long serialVersionUID = 4023437720691792495L;
+
+        final AtomicReference&lt;T&gt; queue;
+
+        Throwable error;
+        volatile boolean done;
+
+        final AtomicInteger wip;
+
+        LatestAsyncEmitter(Subscriber&lt;? super T&gt; downstream) {
+<span class="fc" id="L597">            super(downstream);</span>
+<span class="fc" id="L598">            this.queue = new AtomicReference&lt;T&gt;();</span>
+<span class="fc" id="L599">            this.wip = new AtomicInteger();</span>
+<span class="fc" id="L600">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L604" title="All 4 branches covered.">            if (done || isCancelled()) {</span>
+<span class="fc" id="L605">                return;</span>
+            }
+
+<span class="fc bfc" id="L608" title="All 2 branches covered.">            if (t == null) {</span>
+<span class="fc" id="L609">                onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+<span class="fc" id="L610">                return;</span>
+            }
+<span class="fc" id="L612">            queue.set(t);</span>
+<span class="fc" id="L613">            drain();</span>
+<span class="fc" id="L614">        }</span>
+
+        @Override
+        public boolean tryOnError(Throwable e) {
+<span class="fc bfc" id="L618" title="All 4 branches covered.">            if (done || isCancelled()) {</span>
+<span class="fc" id="L619">                return false;</span>
+            }
+<span class="fc bfc" id="L621" title="All 2 branches covered.">            if (e == null) {</span>
+<span class="fc" id="L622">                onError(new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+            }
+<span class="fc" id="L624">            error = e;</span>
+<span class="fc" id="L625">            done = true;</span>
+<span class="fc" id="L626">            drain();</span>
+<span class="fc" id="L627">            return true;</span>
+        }
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L632">            done = true;</span>
+<span class="fc" id="L633">            drain();</span>
+<span class="fc" id="L634">        }</span>
+
+        @Override
+        void onRequested() {
+<span class="fc" id="L638">            drain();</span>
+<span class="fc" id="L639">        }</span>
+
+        @Override
+        void onUnsubscribed() {
+<span class="fc bfc" id="L643" title="All 2 branches covered.">            if (wip.getAndIncrement() == 0) {</span>
+<span class="fc" id="L644">                queue.lazySet(null);</span>
+            }
+<span class="fc" id="L646">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L649" title="All 2 branches covered.">            if (wip.getAndIncrement() != 0) {</span>
+<span class="fc" id="L650">                return;</span>
+            }
+
+<span class="fc" id="L653">            int missed = 1;</span>
+<span class="fc" id="L654">            final Subscriber&lt;? super T&gt; a = downstream;</span>
+<span class="fc" id="L655">            final AtomicReference&lt;T&gt; q = queue;</span>
+
+            for (;;) {
+<span class="fc" id="L658">                long r = get();</span>
+<span class="fc" id="L659">                long e = 0L;</span>
+
+<span class="fc bfc" id="L661" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L662" title="All 2 branches covered.">                    if (isCancelled()) {</span>
+<span class="fc" id="L663">                        q.lazySet(null);</span>
+<span class="fc" id="L664">                        return;</span>
+                    }
+
+<span class="fc" id="L667">                    boolean d = done;</span>
+
+<span class="fc" id="L669">                    T o = q.getAndSet(null);</span>
+
+<span class="fc bfc" id="L671" title="All 2 branches covered.">                    boolean empty = o == null;</span>
+
+<span class="fc bfc" id="L673" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L674">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L675" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L676">                            error(ex);</span>
+                        } else {
+<span class="fc" id="L678">                            complete();</span>
+                        }
+<span class="fc" id="L680">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L683" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L684">                        break;</span>
+                    }
+
+<span class="fc" id="L687">                    a.onNext(o);</span>
+
+<span class="fc" id="L689">                    e++;</span>
+<span class="fc" id="L690">                }</span>
+
+<span class="fc bfc" id="L692" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc bfc" id="L693" title="All 2 branches covered.">                    if (isCancelled()) {</span>
+<span class="fc" id="L694">                        q.lazySet(null);</span>
+<span class="fc" id="L695">                        return;</span>
+                    }
+
+<span class="fc" id="L698">                    boolean d = done;</span>
+
+<span class="fc bfc" id="L700" title="All 2 branches covered.">                    boolean empty = q.get() == null;</span>
+
+<span class="fc bfc" id="L702" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L703">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L704" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L705">                            error(ex);</span>
+                        } else {
+<span class="fc" id="L707">                            complete();</span>
+                        }
+<span class="fc" id="L709">                        return;</span>
+                    }
+                }
+
+<span class="fc bfc" id="L713" title="All 2 branches covered.">                if (e != 0) {</span>
+<span class="fc" id="L714">                    BackpressureHelper.produced(this, e);</span>
+                }
+
+<span class="fc" id="L717">                missed = wip.addAndGet(-missed);</span>
+<span class="fc bfc" id="L718" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L719">                    break;</span>
+                }
+<span class="fc" id="L721">            }</span>
+<span class="fc" id="L722">        }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

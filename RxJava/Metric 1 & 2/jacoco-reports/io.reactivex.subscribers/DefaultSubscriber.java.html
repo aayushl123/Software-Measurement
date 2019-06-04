@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultSubscriber.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subscribers</a> &gt; <span class="el_source">DefaultSubscriber.java</span></div><h1>DefaultSubscriber.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subscribers;
+
+import org.reactivestreams.Subscription;
+
+import io.reactivex.FlowableSubscriber;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.EndConsumerHelper;
+
+/**
+ * Abstract base implementation of a {@link org.reactivestreams.Subscriber Subscriber} with
+ * support for requesting via {@link #request(long)}, cancelling via
+ * via {@link #cancel()} (both synchronously) and calls {@link #onStart()}
+ * when the subscription happens.
+ *
+ * &lt;p&gt;All pre-implemented final methods are thread-safe.
+ *
+ * &lt;p&gt;The default {@link #onStart()} requests Long.MAX_VALUE by default. Override
+ * the method to request a custom &lt;em&gt;positive&lt;/em&gt; amount.
+ *
+ * &lt;p&gt;Note that calling {@link #request(long)} from {@link #onStart()} may trigger
+ * an immediate, asynchronous emission of data to {@link #onNext(Object)}. Make sure
+ * all initialization happens before the call to {@code request()} in {@code onStart()}.
+ * Calling {@link #request(long)} inside {@link #onNext(Object)} can happen at any time
+ * because by design, {@code onNext} calls from upstream are non-reentrant and non-overlapping.
+ *
+ * &lt;p&gt;Use the protected {@link #cancel()} to cancel the sequence from within an
+ * {@code onNext} implementation.
+ *
+ * &lt;p&gt;Like all other consumers, {@code DefaultSubscriber} can be subscribed only once.
+ * Any subsequent attempt to subscribe it to a new source will yield an
+ * {@link IllegalStateException} with message {@code &quot;It is not allowed to subscribe with a(n) &lt;class name&gt; multiple times.&quot;}.
+ *
+ * &lt;p&gt;Implementation of {@link #onStart()}, {@link #onNext(Object)}, {@link #onError(Throwable)}
+ * and {@link #onComplete()} are not allowed to throw any unchecked exceptions.
+ * If for some reason this can't be avoided, use {@link io.reactivex.Flowable#safeSubscribe(org.reactivestreams.Subscriber)}
+ * instead of the standard {@code subscribe()} method.
+ * @param &lt;T&gt; the value type
+ *
+ * &lt;p&gt;Example&lt;pre&gt;&lt;code&gt;
+ * Flowable.range(1, 5)
+ *     .subscribe(new DefaultSubscriber&amp;lt;Integer&amp;gt;() {
+ *         &amp;#64;Override public void onStart() {
+ *             System.out.println(&quot;Start!&quot;);
+ *             request(1);
+ *         }
+ *         &amp;#64;Override public void onNext(Integer t) {
+ *             if (t == 3) {
+ *                 cancel();
+ *             }
+ *             System.out.println(t);
+ *             request(1);
+ *         }
+ *         &amp;#64;Override public void onError(Throwable t) {
+ *             t.printStackTrace();
+ *         }
+ *         &amp;#64;Override public void onComplete() {
+ *             System.out.println(&quot;Done!&quot;);
+ *         }
+ *     });
+ * &lt;/code&gt;&lt;/pre&gt;
+ */
+<span class="fc" id="L75">public abstract class DefaultSubscriber&lt;T&gt; implements FlowableSubscriber&lt;T&gt; {</span>
+
+    Subscription upstream;
+
+    @Override
+    public final void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (EndConsumerHelper.validate(this.upstream, s, getClass())) {</span>
+<span class="fc" id="L82">            this.upstream = s;</span>
+<span class="fc" id="L83">            onStart();</span>
+        }
+<span class="fc" id="L85">    }</span>
+
+    /**
+     * Requests from the upstream Subscription.
+     * @param n the request amount, positive
+     */
+    protected final void request(long n) {
+<span class="fc" id="L92">        Subscription s = this.upstream;</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (s != null) {</span>
+<span class="fc" id="L94">            s.request(n);</span>
+        }
+<span class="fc" id="L96">    }</span>
+
+    /**
+     * Cancels the upstream's Subscription.
+     */
+    protected final void cancel() {
+<span class="fc" id="L102">        Subscription s = this.upstream;</span>
+<span class="fc" id="L103">        this.upstream = SubscriptionHelper.CANCELLED;</span>
+<span class="fc" id="L104">        s.cancel();</span>
+<span class="fc" id="L105">    }</span>
+    /**
+     * Called once the subscription has been set on this observer; override this
+     * to perform initialization or issue an initial request.
+     * &lt;p&gt;
+     * The default implementation requests {@link Long#MAX_VALUE}.
+     */
+    protected void onStart() {
+<span class="fc" id="L113">        request(Long.MAX_VALUE);</span>
+<span class="fc" id="L114">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

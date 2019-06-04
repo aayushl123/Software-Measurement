@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SerializedObserver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.observers</a> &gt; <span class="el_source">SerializedObserver.java</span></div><h1>SerializedObserver.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.observers;
+
+import io.reactivex.Observer;
+import io.reactivex.annotations.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Serializes access to the onNext, onError and onComplete methods of another Observer.
+ *
+ * &lt;p&gt;Note that {@link #onSubscribe(Disposable)} is not serialized in respect of the other methods so
+ * make sure the {@code onSubscribe()} is called with a non-null {@code Disposable}
+ * before any of the other methods are called.
+ *
+ * &lt;p&gt;The implementation assumes that the actual Observer's methods don't throw.
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class SerializedObserver&lt;T&gt; implements Observer&lt;T&gt;, Disposable {
+    final Observer&lt;? super T&gt; downstream;
+    final boolean delayError;
+
+    static final int QUEUE_LINK_SIZE = 4;
+
+    Disposable upstream;
+
+    boolean emitting;
+    AppendOnlyLinkedArrayList&lt;Object&gt; queue;
+
+    volatile boolean done;
+
+    /**
+     * Construct a SerializedObserver by wrapping the given actual Observer.
+     * @param downstream the actual Observer, not null (not verified)
+     */
+    public SerializedObserver(@NonNull Observer&lt;? super T&gt; downstream) {
+<span class="fc" id="L51">        this(downstream, false);</span>
+<span class="fc" id="L52">    }</span>
+
+    /**
+     * Construct a SerializedObserver by wrapping the given actual Observer and
+     * optionally delaying the errors till all regular values have been emitted
+     * from the internal buffer.
+     * @param actual the actual Observer, not null (not verified)
+     * @param delayError if true, errors are emitted after regular values have been emitted
+     */
+<span class="fc" id="L61">    public SerializedObserver(@NonNull Observer&lt;? super T&gt; actual, boolean delayError) {</span>
+<span class="fc" id="L62">        this.downstream = actual;</span>
+<span class="fc" id="L63">        this.delayError = delayError;</span>
+<span class="fc" id="L64">    }</span>
+
+    @Override
+    public void onSubscribe(@NonNull Disposable d) {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (DisposableHelper.validate(this.upstream, d)) {</span>
+<span class="fc" id="L69">            this.upstream = d;</span>
+
+<span class="fc" id="L71">            downstream.onSubscribe(this);</span>
+        }
+<span class="fc" id="L73">    }</span>
+
+    @Override
+    public void dispose() {
+<span class="fc" id="L77">        upstream.dispose();</span>
+<span class="fc" id="L78">    }</span>
+
+    @Override
+    public boolean isDisposed() {
+<span class="fc" id="L82">        return upstream.isDisposed();</span>
+    }
+
+    @Override
+    public void onNext(@NonNull T t) {
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L88">            return;</span>
+        }
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (t == null) {</span>
+<span class="fc" id="L91">            upstream.dispose();</span>
+<span class="fc" id="L92">            onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+<span class="fc" id="L93">            return;</span>
+        }
+<span class="fc" id="L95">        synchronized (this) {</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L97">                return;</span>
+            }
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (emitting) {</span>
+<span class="fc" id="L100">                AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                if (q == null) {</span>
+<span class="fc" id="L102">                    q = new AppendOnlyLinkedArrayList&lt;Object&gt;(QUEUE_LINK_SIZE);</span>
+<span class="fc" id="L103">                    queue = q;</span>
+                }
+<span class="fc" id="L105">                q.add(NotificationLite.next(t));</span>
+<span class="fc" id="L106">                return;</span>
+            }
+<span class="fc" id="L108">            emitting = true;</span>
+<span class="fc" id="L109">        }</span>
+
+<span class="fc" id="L111">        downstream.onNext(t);</span>
+
+<span class="fc" id="L113">        emitLoop();</span>
+<span class="fc" id="L114">    }</span>
+
+    @Override
+    public void onError(@NonNull Throwable t) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L119">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L120">            return;</span>
+        }
+        boolean reportError;
+<span class="fc" id="L123">        synchronized (this) {</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L125">                reportError = true;</span>
+            } else
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (emitting) {</span>
+<span class="fc" id="L128">                done = true;</span>
+<span class="fc" id="L129">                AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                if (q == null) {</span>
+<span class="fc" id="L131">                    q = new AppendOnlyLinkedArrayList&lt;Object&gt;(QUEUE_LINK_SIZE);</span>
+<span class="fc" id="L132">                    queue = q;</span>
+                }
+<span class="fc" id="L134">                Object err = NotificationLite.error(t);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                if (delayError) {</span>
+<span class="fc" id="L136">                    q.add(err);</span>
+                } else {
+<span class="fc" id="L138">                    q.setFirst(err);</span>
+                }
+<span class="fc" id="L140">                return;</span>
+            } else {
+<span class="fc" id="L142">                done = true;</span>
+<span class="fc" id="L143">                emitting = true;</span>
+<span class="fc" id="L144">                reportError = false;</span>
+            }
+<span class="fc" id="L146">        }</span>
+
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (reportError) {</span>
+<span class="fc" id="L149">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L150">            return;</span>
+        }
+
+<span class="fc" id="L153">        downstream.onError(t);</span>
+        // no need to loop because this onError is the last event
+<span class="fc" id="L155">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L160">            return;</span>
+        }
+<span class="fc" id="L162">        synchronized (this) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L164">                return;</span>
+            }
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (emitting) {</span>
+<span class="fc" id="L167">                AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                if (q == null) {</span>
+<span class="fc" id="L169">                    q = new AppendOnlyLinkedArrayList&lt;Object&gt;(QUEUE_LINK_SIZE);</span>
+<span class="fc" id="L170">                    queue = q;</span>
+                }
+<span class="fc" id="L172">                q.add(NotificationLite.complete());</span>
+<span class="fc" id="L173">                return;</span>
+            }
+<span class="fc" id="L175">            done = true;</span>
+<span class="fc" id="L176">            emitting = true;</span>
+<span class="fc" id="L177">        }</span>
+
+<span class="fc" id="L179">        downstream.onComplete();</span>
+        // no need to loop because this onComplete is the last event
+<span class="fc" id="L181">    }</span>
+
+    void emitLoop() {
+        for (;;) {
+            AppendOnlyLinkedArrayList&lt;Object&gt; q;
+<span class="fc" id="L186">            synchronized (this) {</span>
+<span class="fc" id="L187">                q = queue;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                if (q == null) {</span>
+<span class="fc" id="L189">                    emitting = false;</span>
+<span class="fc" id="L190">                    return;</span>
+                }
+<span class="fc" id="L192">                queue = null;</span>
+<span class="fc" id="L193">            }</span>
+
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            if (q.accept(downstream)) {</span>
+<span class="fc" id="L196">                return;</span>
+            }
+<span class="fc" id="L198">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

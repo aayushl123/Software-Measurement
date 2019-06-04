@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableCovarianceTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.flowable</a> &gt; <span class="el_source">FlowableCovarianceTest.java</span></div><h1>FlowableCovarianceTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.reactivex.flowable;
+
+import static org.junit.Assert.assertEquals;
+
+import java.util.*;
+
+import org.junit.Test;
+import org.reactivestreams.Publisher;
+
+import io.reactivex.Flowable;
+import io.reactivex.FlowableTransformer;
+import io.reactivex.flowables.GroupedFlowable;
+import io.reactivex.functions.*;
+import io.reactivex.subscribers.TestSubscriber;
+
+/**
+ * Test super/extends of generics.
+ *
+ * See https://github.com/Netflix/RxJava/pull/331
+ */
+<span class="fc" id="L37">public class FlowableCovarianceTest {</span>
+
+    /**
+     * This won't compile if super/extends isn't done correctly on generics.
+     */
+    @Test
+    public void testCovarianceOfFrom() {
+<span class="fc" id="L44">        Flowable.&lt;Movie&gt; just(new HorrorMovie());</span>
+<span class="fc" id="L45">        Flowable.&lt;Movie&gt; fromIterable(new ArrayList&lt;HorrorMovie&gt;());</span>
+        // Observable.&lt;HorrorMovie&gt;from(new Movie()); // may not compile
+<span class="fc" id="L47">    }</span>
+
+    @Test
+    public void testSortedList() {
+<span class="fc" id="L51">        Comparator&lt;Media&gt; sortFunction = new Comparator&lt;Media&gt;() {</span>
+            @Override
+            public int compare(Media t1, Media t2) {
+<span class="nc" id="L54">                return 1;</span>
+            }
+        };
+
+        // this one would work without the covariance generics
+<span class="fc" id="L59">        Flowable&lt;Media&gt; f = Flowable.just(new Movie(), new TVSeason(), new Album());</span>
+<span class="fc" id="L60">        f.toSortedList(sortFunction);</span>
+
+        // this one would NOT work without the covariance generics
+<span class="fc" id="L63">        Flowable&lt;Movie&gt; f2 = Flowable.just(new Movie(), new ActionMovie(), new HorrorMovie());</span>
+<span class="fc" id="L64">        f2.toSortedList(sortFunction);</span>
+<span class="fc" id="L65">    }</span>
+
+    @Test
+    public void testGroupByCompose() {
+<span class="fc" id="L69">        Flowable&lt;Movie&gt; movies = Flowable.just(new HorrorMovie(), new ActionMovie(), new Movie());</span>
+<span class="fc" id="L70">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;();</span>
+
+<span class="fc" id="L72">        movies</span>
+<span class="fc" id="L73">        .groupBy(new Function&lt;Movie, Object&gt;() {</span>
+            @Override
+            public Object apply(Movie v) {
+<span class="fc" id="L76">                return v.getClass();</span>
+            }
+        })
+<span class="fc" id="L79">        .doOnNext(new Consumer&lt;GroupedFlowable&lt;Object, Movie&gt;&gt;() {</span>
+            @Override
+            public void accept(GroupedFlowable&lt;Object, Movie&gt; g) {
+<span class="fc" id="L82">                System.out.println(g.getKey());</span>
+<span class="fc" id="L83">            }</span>
+        })
+<span class="fc" id="L85">        .flatMap(new Function&lt;GroupedFlowable&lt;Object, Movie&gt;, Publisher&lt;String&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;String&gt; apply(GroupedFlowable&lt;Object, Movie&gt; g) {
+<span class="fc" id="L88">                return g</span>
+<span class="fc" id="L89">                        .doOnNext(new Consumer&lt;Movie&gt;() {</span>
+                            @Override
+                            public void accept(Movie v) {
+<span class="fc" id="L92">                                System.out.println(v);</span>
+<span class="fc" id="L93">                            }</span>
+                        })
+<span class="fc" id="L95">                        .compose(new FlowableTransformer&lt;Movie, Movie&gt;() {</span>
+                            @Override
+                            public Publisher&lt;Movie&gt; apply(Flowable&lt;Movie&gt; m) {
+<span class="fc" id="L98">                                return m.concatWith(Flowable.just(new ActionMovie()));</span>
+                            }
+                        }
+                                )
+<span class="fc" id="L102">                        .map(new Function&lt;Object, String&gt;() {</span>
+                            @Override
+                            public String apply(Object v) {
+<span class="fc" id="L105">                                return v.toString();</span>
+                            }
+                        });
+            }
+        })
+<span class="fc" id="L110">        .subscribe(ts);</span>
+<span class="fc" id="L111">        ts.assertTerminated();</span>
+<span class="fc" id="L112">        ts.assertNoErrors();</span>
+        //        System.out.println(ts.getOnNextEvents());
+<span class="fc" id="L114">        assertEquals(6, ts.valueCount());</span>
+<span class="fc" id="L115">    }</span>
+
+    @SuppressWarnings(&quot;unused&quot;)
+    @Test
+    public void testCovarianceOfCompose() {
+<span class="fc" id="L120">        Flowable&lt;HorrorMovie&gt; movie = Flowable.just(new HorrorMovie());</span>
+<span class="fc" id="L121">        Flowable&lt;Movie&gt; movie2 = movie.compose(new FlowableTransformer&lt;HorrorMovie, Movie&gt;() {</span>
+            @Override
+            public Publisher&lt;Movie&gt; apply(Flowable&lt;HorrorMovie&gt; t) {
+<span class="fc" id="L124">                return Flowable.just(new Movie());</span>
+            }
+        });
+<span class="fc" id="L127">    }</span>
+
+    @SuppressWarnings(&quot;unused&quot;)
+    @Test
+    public void testCovarianceOfCompose2() {
+<span class="fc" id="L132">        Flowable&lt;Movie&gt; movie = Flowable.&lt;Movie&gt; just(new HorrorMovie());</span>
+<span class="fc" id="L133">        Flowable&lt;HorrorMovie&gt; movie2 = movie.compose(new FlowableTransformer&lt;Movie, HorrorMovie&gt;() {</span>
+            @Override
+            public Publisher&lt;HorrorMovie&gt; apply(Flowable&lt;Movie&gt; t) {
+<span class="fc" id="L136">                return Flowable.just(new HorrorMovie());</span>
+            }
+        });
+<span class="fc" id="L139">    }</span>
+
+    @SuppressWarnings(&quot;unused&quot;)
+    @Test
+    public void testCovarianceOfCompose3() {
+<span class="fc" id="L144">        Flowable&lt;Movie&gt; movie = Flowable.&lt;Movie&gt;just(new HorrorMovie());</span>
+<span class="fc" id="L145">        Flowable&lt;HorrorMovie&gt; movie2 = movie.compose(new FlowableTransformer&lt;Movie, HorrorMovie&gt;() {</span>
+            @Override
+            public Publisher&lt;HorrorMovie&gt; apply(Flowable&lt;Movie&gt; t) {
+<span class="fc" id="L148">                return Flowable.just(new HorrorMovie()).map(new Function&lt;HorrorMovie, HorrorMovie&gt;() {</span>
+                    @Override
+                    public HorrorMovie apply(HorrorMovie v) {
+<span class="nc" id="L151">                        return v;</span>
+                    }
+                });
+            }
+        }
+        );
+<span class="fc" id="L157">    }</span>
+
+    @SuppressWarnings(&quot;unused&quot;)
+    @Test
+    public void testCovarianceOfCompose4() {
+<span class="fc" id="L162">        Flowable&lt;HorrorMovie&gt; movie = Flowable.just(new HorrorMovie());</span>
+<span class="fc" id="L163">        Flowable&lt;HorrorMovie&gt; movie2 = movie.compose(new FlowableTransformer&lt;HorrorMovie, HorrorMovie&gt;() {</span>
+            @Override
+            public Publisher&lt;HorrorMovie&gt; apply(Flowable&lt;HorrorMovie&gt; t1) {
+<span class="fc" id="L166">                return t1.map(new Function&lt;HorrorMovie, HorrorMovie&gt;() {</span>
+                    @Override
+                    public HorrorMovie apply(HorrorMovie v) {
+<span class="nc" id="L169">                        return v;</span>
+                    }
+                });
+            }
+        });
+<span class="fc" id="L174">    }</span>
+
+    @Test
+    public void testComposeWithDeltaLogic() {
+<span class="fc" id="L178">        List&lt;Movie&gt; list1 = Arrays.asList(new Movie(), new HorrorMovie(), new ActionMovie());</span>
+<span class="fc" id="L179">        List&lt;Movie&gt; list2 = Arrays.asList(new ActionMovie(), new Movie(), new HorrorMovie(), new ActionMovie());</span>
+<span class="fc" id="L180">        Flowable&lt;List&lt;Movie&gt;&gt; movies = Flowable.just(list1, list2);</span>
+<span class="fc" id="L181">        movies.compose(deltaTransformer);</span>
+<span class="fc" id="L182">    }</span>
+
+<span class="fc" id="L184">    static Function&lt;List&lt;List&lt;Movie&gt;&gt;, Flowable&lt;Movie&gt;&gt; calculateDelta = new Function&lt;List&lt;List&lt;Movie&gt;&gt;, Flowable&lt;Movie&gt;&gt;() {</span>
+        @Override
+        public Flowable&lt;Movie&gt; apply(List&lt;List&lt;Movie&gt;&gt; listOfLists) {
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (listOfLists.size() == 1) {</span>
+<span class="nc" id="L188">                return Flowable.fromIterable(listOfLists.get(0));</span>
+            } else {
+                // diff the two
+<span class="nc" id="L191">                List&lt;Movie&gt; newList = listOfLists.get(1);</span>
+<span class="nc" id="L192">                List&lt;Movie&gt; oldList = new ArrayList&lt;Movie&gt;(listOfLists.get(0));</span>
+
+<span class="nc" id="L194">                Set&lt;Movie&gt; delta = new LinkedHashSet&lt;Movie&gt;();</span>
+<span class="nc" id="L195">                delta.addAll(newList);</span>
+                // remove all that match in old
+<span class="nc" id="L197">                delta.removeAll(oldList);</span>
+
+                // filter oldList to those that aren't in the newList
+<span class="nc" id="L200">                oldList.removeAll(newList);</span>
+
+                // for all left in the oldList we'll create DROP events
+<span class="nc bnc" id="L203" title="All 2 branches missed.">                for (@SuppressWarnings(&quot;unused&quot;) Movie old : oldList) {</span>
+<span class="nc" id="L204">                    delta.add(new Movie());</span>
+<span class="nc" id="L205">                }</span>
+
+<span class="nc" id="L207">                return Flowable.fromIterable(delta);</span>
+            }
+        }
+    };
+
+<span class="fc" id="L212">    static FlowableTransformer&lt;List&lt;Movie&gt;, Movie&gt; deltaTransformer = new FlowableTransformer&lt;List&lt;Movie&gt;, Movie&gt;() {</span>
+        @Override
+        public Publisher&lt;Movie&gt; apply(Flowable&lt;List&lt;Movie&gt;&gt; movieList) {
+<span class="fc" id="L215">            return movieList</span>
+<span class="fc" id="L216">                .startWith(new ArrayList&lt;Movie&gt;())</span>
+<span class="fc" id="L217">                .buffer(2, 1)</span>
+<span class="fc" id="L218">                .skip(1)</span>
+<span class="fc" id="L219">                .flatMap(calculateDelta);</span>
+        }
+    };
+
+    /*
+     * Most tests are moved into their applicable classes such as [Operator]Tests.java
+     */
+
+<span class="fc" id="L227">    static class Media {</span>
+    }
+
+<span class="fc" id="L230">    static class Movie extends Media {</span>
+    }
+
+<span class="fc" id="L233">    static class HorrorMovie extends Movie {</span>
+    }
+
+<span class="fc" id="L236">    static class ActionMovie extends Movie {</span>
+    }
+
+<span class="fc" id="L239">    static class Album extends Media {</span>
+    }
+
+<span class="fc" id="L242">    static class TVSeason extends Media {</span>
+    }
+
+<span class="fc" id="L245">    static class Rating {</span>
+    }
+
+<span class="fc" id="L248">    static class CoolRating extends Rating {</span>
+    }
+
+<span class="fc" id="L251">    static class Result {</span>
+    }
+
+<span class="fc" id="L254">    static class ExtendedResult extends Result {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleZipArray.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleZipArray.java</span></div><h1>SingleZipArray.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class SingleZipArray&lt;T, R&gt; extends Single&lt;R&gt; {
+
+    final SingleSource&lt;? extends T&gt;[] sources;
+
+    final Function&lt;? super Object[], ? extends R&gt; zipper;
+
+<span class="fc" id="L32">    public SingleZipArray(SingleSource&lt;? extends T&gt;[] sources, Function&lt;? super Object[], ? extends R&gt; zipper) {</span>
+<span class="fc" id="L33">        this.sources = sources;</span>
+<span class="fc" id="L34">        this.zipper = zipper;</span>
+<span class="fc" id="L35">    }</span>
+
+    @Override
+    protected void subscribeActual(SingleObserver&lt;? super R&gt; observer) {
+<span class="fc" id="L39">        SingleSource&lt;? extends T&gt;[] sources = this.sources;</span>
+<span class="fc" id="L40">        int n = sources.length;</span>
+
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (n == 1) {</span>
+<span class="fc" id="L43">            sources[0].subscribe(new SingleMap.MapSingleObserver&lt;T, R&gt;(observer, new SingletonArrayFunc()));</span>
+<span class="fc" id="L44">            return;</span>
+        }
+
+<span class="fc" id="L47">        ZipCoordinator&lt;T, R&gt; parent = new ZipCoordinator&lt;T, R&gt;(observer, n, zipper);</span>
+
+<span class="fc" id="L49">        observer.onSubscribe(parent);</span>
+
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (parent.isDisposed()) {</span>
+<span class="fc" id="L53">                return;</span>
+            }
+
+<span class="fc" id="L56">            SingleSource&lt;? extends T&gt; source = sources[i];</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            if (source == null) {</span>
+<span class="fc" id="L59">                parent.innerError(new NullPointerException(&quot;One of the sources is null&quot;), i);</span>
+<span class="fc" id="L60">                return;</span>
+            }
+
+<span class="fc" id="L63">            source.subscribe(parent.observers[i]);</span>
+        }
+<span class="fc" id="L65">    }</span>
+
+    static final class ZipCoordinator&lt;T, R&gt; extends AtomicInteger implements Disposable {
+
+        private static final long serialVersionUID = -5556924161382950569L;
+
+        final SingleObserver&lt;? super R&gt; downstream;
+
+        final Function&lt;? super Object[], ? extends R&gt; zipper;
+
+        final ZipSingleObserver&lt;T&gt;[] observers;
+
+        final Object[] values;
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        ZipCoordinator(SingleObserver&lt;? super R&gt; observer, int n, Function&lt;? super Object[], ? extends R&gt; zipper) {
+<span class="fc" id="L81">            super(n);</span>
+<span class="fc" id="L82">            this.downstream = observer;</span>
+<span class="fc" id="L83">            this.zipper = zipper;</span>
+<span class="fc" id="L84">            ZipSingleObserver&lt;T&gt;[] o = new ZipSingleObserver[n];</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L86">                o[i] = new ZipSingleObserver&lt;T&gt;(this, i);</span>
+            }
+<span class="fc" id="L88">            this.observers = o;</span>
+<span class="fc" id="L89">            this.values = new Object[n];</span>
+<span class="fc" id="L90">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            return get() &lt;= 0;</span>
+        }
+
+        @Override
+        public void dispose() {
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (getAndSet(0) &gt; 0) {</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                for (ZipSingleObserver&lt;?&gt; d : observers) {</span>
+<span class="fc" id="L101">                    d.dispose();</span>
+                }
+            }
+<span class="fc" id="L104">        }</span>
+
+        void innerSuccess(T value, int index) {
+<span class="fc" id="L107">            values[index] = value;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (decrementAndGet() == 0) {</span>
+                R v;
+
+                try {
+<span class="fc" id="L112">                    v = ObjectHelper.requireNonNull(zipper.apply(values), &quot;The zipper returned a null value&quot;);</span>
+<span class="fc" id="L113">                } catch (Throwable ex) {</span>
+<span class="fc" id="L114">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L115">                    downstream.onError(ex);</span>
+<span class="fc" id="L116">                    return;</span>
+<span class="fc" id="L117">                }</span>
+
+<span class="fc" id="L119">                downstream.onSuccess(v);</span>
+            }
+<span class="fc" id="L121">        }</span>
+
+        void disposeExcept(int index) {
+<span class="fc" id="L124">            ZipSingleObserver&lt;T&gt;[] observers = this.observers;</span>
+<span class="fc" id="L125">            int n = observers.length;</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            for (int i = 0; i &lt; index; i++) {</span>
+<span class="fc" id="L127">                observers[i].dispose();</span>
+            }
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            for (int i = index + 1; i &lt; n; i++) {</span>
+<span class="fc" id="L130">                observers[i].dispose();</span>
+            }
+<span class="fc" id="L132">        }</span>
+
+        void innerError(Throwable ex, int index) {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (getAndSet(0) &gt; 0) {</span>
+<span class="fc" id="L136">                disposeExcept(index);</span>
+<span class="fc" id="L137">                downstream.onError(ex);</span>
+            } else {
+<span class="fc" id="L139">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L141">        }</span>
+    }
+
+    static final class ZipSingleObserver&lt;T&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements SingleObserver&lt;T&gt; {
+
+        private static final long serialVersionUID = 3323743579927613702L;
+
+        final ZipCoordinator&lt;T, ?&gt; parent;
+
+        final int index;
+
+<span class="fc" id="L154">        ZipSingleObserver(ZipCoordinator&lt;T, ?&gt; parent, int index) {</span>
+<span class="fc" id="L155">            this.parent = parent;</span>
+<span class="fc" id="L156">            this.index = index;</span>
+<span class="fc" id="L157">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L160">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L161">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L165">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L166">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L170">            parent.innerSuccess(value, index);</span>
+<span class="fc" id="L171">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L175">            parent.innerError(e, index);</span>
+<span class="fc" id="L176">        }</span>
+    }
+
+<span class="fc" id="L179">    final class SingletonArrayFunc implements Function&lt;T, R&gt; {</span>
+        @Override
+        public R apply(T t) throws Exception {
+<span class="fc" id="L182">            return ObjectHelper.requireNonNull(zipper.apply(new Object[] { t }), &quot;The zipper returned a null value&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

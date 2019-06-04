@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ListCompositeDisposable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.disposables</a> &gt; <span class="el_source">ListCompositeDisposable.java</span></div><h1>ListCompositeDisposable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.internal.disposables;
+
+import java.util.*;
+
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.util.ExceptionHelper;
+
+/**
+ * A disposable container that can hold onto multiple other disposables.
+ */
+public final class ListCompositeDisposable implements Disposable, DisposableContainer {
+
+    List&lt;Disposable&gt; resources;
+
+    volatile boolean disposed;
+
+<span class="fc" id="L31">    public ListCompositeDisposable() {</span>
+<span class="fc" id="L32">    }</span>
+
+<span class="fc" id="L34">    public ListCompositeDisposable(Disposable... resources) {</span>
+<span class="fc" id="L35">        ObjectHelper.requireNonNull(resources, &quot;resources is null&quot;);</span>
+<span class="fc" id="L36">        this.resources = new LinkedList&lt;Disposable&gt;();</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (Disposable d : resources) {</span>
+<span class="fc" id="L38">            ObjectHelper.requireNonNull(d, &quot;Disposable item is null&quot;);</span>
+<span class="fc" id="L39">            this.resources.add(d);</span>
+        }
+<span class="fc" id="L41">    }</span>
+
+<span class="fc" id="L43">    public ListCompositeDisposable(Iterable&lt;? extends Disposable&gt; resources) {</span>
+<span class="fc" id="L44">        ObjectHelper.requireNonNull(resources, &quot;resources is null&quot;);</span>
+<span class="fc" id="L45">        this.resources = new LinkedList&lt;Disposable&gt;();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (Disposable d : resources) {</span>
+<span class="fc" id="L47">            ObjectHelper.requireNonNull(d, &quot;Disposable item is null&quot;);</span>
+<span class="fc" id="L48">            this.resources.add(d);</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">    }</span>
+
+    @Override
+    public void dispose() {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (disposed) {</span>
+<span class="fc" id="L55">            return;</span>
+        }
+        List&lt;Disposable&gt; set;
+<span class="fc" id="L58">        synchronized (this) {</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (disposed) {</span>
+<span class="fc" id="L60">                return;</span>
+            }
+<span class="fc" id="L62">            disposed = true;</span>
+<span class="fc" id="L63">            set = resources;</span>
+<span class="fc" id="L64">            resources = null;</span>
+<span class="fc" id="L65">        }</span>
+
+<span class="fc" id="L67">        dispose(set);</span>
+<span class="fc" id="L68">    }</span>
+
+    @Override
+    public boolean isDisposed() {
+<span class="fc" id="L72">        return disposed;</span>
+    }
+
+    @Override
+    public boolean add(Disposable d) {
+<span class="fc" id="L77">        ObjectHelper.requireNonNull(d, &quot;d is null&quot;);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (!disposed) {</span>
+<span class="fc" id="L79">            synchronized (this) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                if (!disposed) {</span>
+<span class="fc" id="L81">                    List&lt;Disposable&gt; set = resources;</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                    if (set == null) {</span>
+<span class="fc" id="L83">                        set = new LinkedList&lt;Disposable&gt;();</span>
+<span class="fc" id="L84">                        resources = set;</span>
+                    }
+<span class="fc" id="L86">                    set.add(d);</span>
+<span class="fc" id="L87">                    return true;</span>
+                }
+<span class="fc" id="L89">            }</span>
+        }
+<span class="fc" id="L91">        d.dispose();</span>
+<span class="fc" id="L92">        return false;</span>
+    }
+
+    public boolean addAll(Disposable... ds) {
+<span class="fc" id="L96">        ObjectHelper.requireNonNull(ds, &quot;ds is null&quot;);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!disposed) {</span>
+<span class="fc" id="L98">            synchronized (this) {</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                if (!disposed) {</span>
+<span class="fc" id="L100">                    List&lt;Disposable&gt; set = resources;</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                    if (set == null) {</span>
+<span class="fc" id="L102">                        set = new LinkedList&lt;Disposable&gt;();</span>
+<span class="fc" id="L103">                        resources = set;</span>
+                    }
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                    for (Disposable d : ds) {</span>
+<span class="fc" id="L106">                        ObjectHelper.requireNonNull(d, &quot;d is null&quot;);</span>
+<span class="fc" id="L107">                        set.add(d);</span>
+                    }
+<span class="fc" id="L109">                    return true;</span>
+                }
+<span class="fc" id="L111">            }</span>
+        }
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        for (Disposable d : ds) {</span>
+<span class="fc" id="L114">            d.dispose();</span>
+        }
+<span class="fc" id="L116">        return false;</span>
+    }
+
+    @Override
+    public boolean remove(Disposable d) {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (delete(d)) {</span>
+<span class="fc" id="L122">            d.dispose();</span>
+<span class="fc" id="L123">            return true;</span>
+        }
+<span class="fc" id="L125">        return false;</span>
+    }
+
+    @Override
+    public boolean delete(Disposable d) {
+<span class="fc" id="L130">        ObjectHelper.requireNonNull(d, &quot;Disposable item is null&quot;);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (disposed) {</span>
+<span class="fc" id="L132">            return false;</span>
+        }
+<span class="fc" id="L134">        synchronized (this) {</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (disposed) {</span>
+<span class="fc" id="L136">                return false;</span>
+            }
+
+<span class="fc" id="L139">            List&lt;Disposable&gt; set = resources;</span>
+<span class="fc bfc" id="L140" title="All 4 branches covered.">            if (set == null || !set.remove(d)) {</span>
+<span class="fc" id="L141">                return false;</span>
+            }
+<span class="fc" id="L143">        }</span>
+<span class="fc" id="L144">        return true;</span>
+    }
+
+    public void clear() {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (disposed) {</span>
+<span class="fc" id="L149">            return;</span>
+        }
+        List&lt;Disposable&gt; set;
+<span class="fc" id="L152">        synchronized (this) {</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            if (disposed) {</span>
+<span class="fc" id="L154">                return;</span>
+            }
+
+<span class="fc" id="L157">            set = resources;</span>
+<span class="fc" id="L158">            resources = null;</span>
+<span class="fc" id="L159">        }</span>
+
+<span class="fc" id="L161">        dispose(set);</span>
+<span class="fc" id="L162">    }</span>
+
+    void dispose(List&lt;Disposable&gt; set) {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (set == null) {</span>
+<span class="fc" id="L166">            return;</span>
+        }
+<span class="fc" id="L168">        List&lt;Throwable&gt; errors = null;</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        for (Disposable o : set) {</span>
+            try {
+<span class="fc" id="L171">                o.dispose();</span>
+<span class="fc" id="L172">            } catch (Throwable ex) {</span>
+<span class="fc" id="L173">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                if (errors == null) {</span>
+<span class="fc" id="L175">                    errors = new ArrayList&lt;Throwable&gt;();</span>
+                }
+<span class="fc" id="L177">                errors.add(ex);</span>
+<span class="fc" id="L178">            }</span>
+<span class="fc" id="L179">        }</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (errors != null) {</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (errors.size() == 1) {</span>
+<span class="fc" id="L182">                throw ExceptionHelper.wrapOrThrow(errors.get(0));</span>
+            }
+<span class="fc" id="L184">            throw new CompositeException(errors);</span>
+        }
+<span class="fc" id="L186">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

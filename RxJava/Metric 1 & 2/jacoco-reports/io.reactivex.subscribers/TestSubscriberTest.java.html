@@ -1,0 +1,2220 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestSubscriberTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subscribers</a> &gt; <span class="el_source">TestSubscriberTest.java</span></div><h1>TestSubscriberTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subscribers;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.*;
+import org.junit.rules.ExpectedException;
+import org.mockito.InOrder;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.Scheduler.Worker;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.QueueFuseable;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.observers.BaseTestConsumer;
+import io.reactivex.observers.BaseTestConsumer.TestWaitStrategy;
+import io.reactivex.processors.*;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="fc" id="L41">public class TestSubscriberTest {</span>
+
+<span class="fc" id="L43">    @Rule</span>
+<span class="fc" id="L44">    public ExpectedException thrown = ExpectedException.none();</span>
+
+    @Test
+    public void testAssert() {
+<span class="fc" id="L48">        Flowable&lt;Integer&gt; oi = Flowable.fromIterable(Arrays.asList(1, 2));</span>
+<span class="fc" id="L49">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L50">        oi.subscribe(ts);</span>
+
+<span class="fc" id="L52">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L53">        ts.assertValueCount(2);</span>
+<span class="fc" id="L54">        ts.assertTerminated();</span>
+<span class="fc" id="L55">    }</span>
+
+    @Test
+    public void testAssertNotMatchCount() {
+<span class="fc" id="L59">        Flowable&lt;Integer&gt; oi = Flowable.fromIterable(Arrays.asList(1, 2));</span>
+<span class="fc" id="L60">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L61">        oi.subscribe(ts);</span>
+
+<span class="fc" id="L63">        thrown.expect(AssertionError.class);</span>
+        // FIXME different message pattern
+        // thrown.expectMessage(&quot;Number of items does not match. Provided: 1  Actual: 2&quot;);
+
+<span class="nc" id="L67">        ts.assertValues(1);</span>
+<span class="nc" id="L68">        ts.assertValueCount(2);</span>
+<span class="nc" id="L69">        ts.assertTerminated();</span>
+<span class="nc" id="L70">    }</span>
+
+    @Test
+    public void testAssertNotMatchValue() {
+<span class="fc" id="L74">        Flowable&lt;Integer&gt; oi = Flowable.fromIterable(Arrays.asList(1, 2));</span>
+<span class="fc" id="L75">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L76">        oi.subscribe(ts);</span>
+
+<span class="fc" id="L78">        thrown.expect(AssertionError.class);</span>
+        // FIXME different message pattern
+        // thrown.expectMessage(&quot;Value at index: 1 expected to be [3] (Integer) but was: [2] (Integer)&quot;);
+
+<span class="nc" id="L82">        ts.assertValues(1, 3);</span>
+<span class="nc" id="L83">        ts.assertValueCount(2);</span>
+<span class="nc" id="L84">        ts.assertTerminated();</span>
+<span class="nc" id="L85">    }</span>
+
+    @Test
+    public void assertNeverAtNotMatchingValue() {
+<span class="fc" id="L89">        Flowable&lt;Integer&gt; oi = Flowable.fromIterable(Arrays.asList(1, 2));</span>
+<span class="fc" id="L90">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L91">        oi.subscribe(ts);</span>
+
+<span class="fc" id="L93">        ts.assertNever(3);</span>
+<span class="fc" id="L94">        ts.assertValueCount(2);</span>
+<span class="fc" id="L95">        ts.assertTerminated();</span>
+<span class="fc" id="L96">    }</span>
+
+    @Test
+    public void assertNeverAtMatchingValue() {
+<span class="fc" id="L100">        Flowable&lt;Integer&gt; oi = Flowable.fromIterable(Arrays.asList(1, 2));</span>
+<span class="fc" id="L101">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L102">        oi.subscribe(ts);</span>
+
+<span class="fc" id="L104">        ts.assertValues(1, 2);</span>
+
+<span class="fc" id="L106">        thrown.expect(AssertionError.class);</span>
+
+<span class="nc" id="L108">        ts.assertNever(2);</span>
+<span class="nc" id="L109">        ts.assertValueCount(2);</span>
+<span class="nc" id="L110">        ts.assertTerminated();</span>
+<span class="nc" id="L111">    }</span>
+
+    @Test
+    public void assertNeverAtMatchingPredicate() {
+<span class="fc" id="L115">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L117">        Flowable.just(1, 2).subscribe(ts);</span>
+
+<span class="fc" id="L119">        ts.assertValues(1, 2);</span>
+
+<span class="fc" id="L121">        thrown.expect(AssertionError.class);</span>
+
+<span class="pc" id="L123">        ts.assertNever(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(final Integer o) throws Exception {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                return o == 1;</span>
+            }
+        });
+<span class="nc" id="L129">    }</span>
+
+    @Test
+    public void assertNeverAtNotMatchingPredicate() {
+<span class="fc" id="L133">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L135">        Flowable.just(2, 3).subscribe(ts);</span>
+
+<span class="fc" id="L137">        ts.assertNever(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(final Integer o) throws Exception {
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                return o == 1;</span>
+            }
+        });
+<span class="fc" id="L143">    }</span>
+
+    @Test
+    public void testAssertTerminalEventNotReceived() {
+<span class="fc" id="L147">        PublishProcessor&lt;Integer&gt; p = PublishProcessor.create();</span>
+<span class="fc" id="L148">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L149">        p.subscribe(ts);</span>
+
+<span class="fc" id="L151">        p.onNext(1);</span>
+<span class="fc" id="L152">        p.onNext(2);</span>
+
+<span class="fc" id="L154">        thrown.expect(AssertionError.class);</span>
+        // FIXME different message pattern
+        // thrown.expectMessage(&quot;No terminal events received.&quot;);
+
+<span class="fc" id="L158">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L159">        ts.assertValueCount(2);</span>
+<span class="nc" id="L160">        ts.assertTerminated();</span>
+<span class="nc" id="L161">    }</span>
+
+    @Test
+    public void testWrappingMock() {
+<span class="fc" id="L165">        Flowable&lt;Integer&gt; oi = Flowable.fromIterable(Arrays.asList(1, 2));</span>
+<span class="fc" id="L166">        Subscriber&lt;Integer&gt; mockSubscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L168">        oi.subscribe(new TestSubscriber&lt;Integer&gt;(mockSubscriber));</span>
+
+<span class="fc" id="L170">        InOrder inOrder = inOrder(mockSubscriber);</span>
+<span class="fc" id="L171">        inOrder.verify(mockSubscriber, times(1)).onNext(1);</span>
+<span class="fc" id="L172">        inOrder.verify(mockSubscriber, times(1)).onNext(2);</span>
+<span class="fc" id="L173">        inOrder.verify(mockSubscriber, times(1)).onComplete();</span>
+<span class="fc" id="L174">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L175">    }</span>
+
+    @Test
+    public void testWrappingMockWhenUnsubscribeInvolved() {
+<span class="fc" id="L179">        Flowable&lt;Integer&gt; oi = Flowable.fromIterable(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9)).take(2);</span>
+<span class="fc" id="L180">        Subscriber&lt;Integer&gt; mockSubscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L181">        oi.subscribe(new TestSubscriber&lt;Integer&gt;(mockSubscriber));</span>
+
+<span class="fc" id="L183">        InOrder inOrder = inOrder(mockSubscriber);</span>
+<span class="fc" id="L184">        inOrder.verify(mockSubscriber, times(1)).onNext(1);</span>
+<span class="fc" id="L185">        inOrder.verify(mockSubscriber, times(1)).onNext(2);</span>
+<span class="fc" id="L186">        inOrder.verify(mockSubscriber, times(1)).onComplete();</span>
+<span class="fc" id="L187">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L188">    }</span>
+
+    @Test
+    public void testAssertError() {
+<span class="fc" id="L192">        RuntimeException e = new RuntimeException(&quot;Oops&quot;);</span>
+<span class="fc" id="L193">        TestSubscriber&lt;Object&gt; subscriber = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L194">        Flowable.error(e).subscribe(subscriber);</span>
+<span class="fc" id="L195">        subscriber.assertError(e);</span>
+<span class="fc" id="L196">    }</span>
+
+    @Test
+    public void testAwaitTerminalEventWithDuration() {
+<span class="fc" id="L200">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L201">        Flowable.just(1).subscribe(ts);</span>
+<span class="fc" id="L202">        ts.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L203">        ts.assertTerminated();</span>
+<span class="fc" id="L204">    }</span>
+
+    @Test
+    public void testAwaitTerminalEventWithDurationAndUnsubscribeOnTimeout() {
+<span class="fc" id="L208">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L209">        final AtomicBoolean unsub = new AtomicBoolean(false);</span>
+<span class="fc" id="L210">        Flowable.just(1)</span>
+        //
+<span class="fc" id="L212">                .doOnCancel(new Action() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L215">                        unsub.set(true);</span>
+<span class="fc" id="L216">                    }</span>
+                })
+                //
+<span class="fc" id="L219">                .delay(1000, TimeUnit.MILLISECONDS).subscribe(ts);</span>
+<span class="fc" id="L220">        ts.awaitTerminalEvent(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L221">        ts.dispose();</span>
+<span class="fc" id="L222">        assertTrue(unsub.get());</span>
+<span class="fc" id="L223">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void testNullDelegate1() {
+<span class="fc" id="L227">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(null);</span>
+<span class="nc" id="L228">        ts.onComplete();</span>
+<span class="nc" id="L229">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void testNullDelegate2() {
+<span class="fc" id="L233">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(null);</span>
+<span class="nc" id="L234">        ts.onComplete();</span>
+<span class="nc" id="L235">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void testNullDelegate3() {
+<span class="fc" id="L239">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(null, 0L);</span>
+<span class="nc" id="L240">        ts.onComplete();</span>
+<span class="nc" id="L241">    }</span>
+
+    @Test
+    public void testDelegate1() {
+<span class="fc" id="L245">        TestSubscriber&lt;Integer&gt; ts0 = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L246">        ts0.onSubscribe(EmptySubscription.INSTANCE);</span>
+
+<span class="fc" id="L248">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(ts0);</span>
+<span class="fc" id="L249">        ts.onComplete();</span>
+
+<span class="fc" id="L251">        ts0.assertTerminated();</span>
+<span class="fc" id="L252">    }</span>
+
+    @Test
+    public void testDelegate2() {
+<span class="fc" id="L256">        TestSubscriber&lt;Integer&gt; ts1 = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L257">        TestSubscriber&lt;Integer&gt; ts2 = new TestSubscriber&lt;Integer&gt;(ts1);</span>
+<span class="fc" id="L258">        ts2.onComplete();</span>
+
+<span class="fc" id="L260">        ts1.assertComplete();</span>
+<span class="fc" id="L261">    }</span>
+
+    @Test
+    public void testDelegate3() {
+<span class="fc" id="L265">        TestSubscriber&lt;Integer&gt; ts1 = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L266">        TestSubscriber&lt;Integer&gt; ts2 = new TestSubscriber&lt;Integer&gt;(ts1, 0L);</span>
+<span class="fc" id="L267">        ts2.onComplete();</span>
+<span class="fc" id="L268">        ts1.assertComplete();</span>
+<span class="fc" id="L269">    }</span>
+
+    @Test
+    public void testUnsubscribed() {
+<span class="fc" id="L273">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L274">        assertFalse(ts.isCancelled());</span>
+<span class="fc" id="L275">    }</span>
+
+    @Test
+    public void testNoErrors() {
+<span class="fc" id="L279">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L280">        ts.onError(new TestException());</span>
+        try {
+<span class="nc" id="L282">            ts.assertNoErrors();</span>
+<span class="fc" id="L283">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L285">            return;</span>
+<span class="nc" id="L286">        }</span>
+<span class="nc" id="L287">        fail(&quot;Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L288">    }</span>
+
+    @Test
+    public void testNotCompleted() {
+<span class="fc" id="L292">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+        try {
+<span class="nc" id="L294">            ts.assertComplete();</span>
+<span class="fc" id="L295">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L297">            return;</span>
+<span class="nc" id="L298">        }</span>
+<span class="nc" id="L299">        fail(&quot;Not completed and no assertion error!&quot;);</span>
+<span class="nc" id="L300">    }</span>
+
+    @Test
+    public void testMultipleCompletions() {
+<span class="fc" id="L304">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L305">        ts.onComplete();</span>
+<span class="fc" id="L306">        ts.onComplete();</span>
+        try {
+<span class="nc" id="L308">            ts.assertComplete();</span>
+<span class="fc" id="L309">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L311">            return;</span>
+<span class="nc" id="L312">        }</span>
+<span class="nc" id="L313">        fail(&quot;Multiple completions and no assertion error!&quot;);</span>
+<span class="nc" id="L314">    }</span>
+
+    @Test
+    public void testCompleted() {
+<span class="fc" id="L318">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L319">        ts.onComplete();</span>
+        try {
+<span class="nc" id="L321">            ts.assertNotComplete();</span>
+<span class="fc" id="L322">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L324">            return;</span>
+<span class="nc" id="L325">        }</span>
+<span class="nc" id="L326">        fail(&quot;Completed and no assertion error!&quot;);</span>
+<span class="nc" id="L327">    }</span>
+
+    @Test
+    public void testMultipleCompletions2() {
+<span class="fc" id="L331">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L332">        ts.onComplete();</span>
+<span class="fc" id="L333">        ts.onComplete();</span>
+        try {
+<span class="nc" id="L335">            ts.assertNotComplete();</span>
+<span class="fc" id="L336">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L338">            return;</span>
+<span class="nc" id="L339">        }</span>
+<span class="nc" id="L340">        fail(&quot;Multiple completions and no assertion error!&quot;);</span>
+<span class="nc" id="L341">    }</span>
+
+    @Test
+    public void testMultipleErrors() {
+<span class="fc" id="L345">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L346">        ts.onSubscribe(EmptySubscription.INSTANCE);</span>
+<span class="fc" id="L347">        ts.onError(new TestException());</span>
+<span class="fc" id="L348">        ts.onError(new TestException());</span>
+        try {
+<span class="nc" id="L350">            ts.assertNoErrors();</span>
+<span class="fc" id="L351">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L352">            Throwable e = ex.getCause();</span>
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">            if (!(e instanceof CompositeException)) {</span>
+<span class="nc" id="L354">                fail(&quot;Multiple Error present but the reported error doesn't have a composite cause!&quot;);</span>
+            }
+<span class="fc" id="L356">            CompositeException ce = (CompositeException)e;</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">            if (ce.size() != 2) {</span>
+<span class="nc" id="L358">                ce.printStackTrace();</span>
+            }
+<span class="fc" id="L360">            assertEquals(2, ce.size());</span>
+            // expected
+<span class="fc" id="L362">            return;</span>
+<span class="nc" id="L363">        }</span>
+<span class="nc" id="L364">        fail(&quot;Multiple Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L365">    }</span>
+
+    @Test
+    public void testMultipleErrors2() {
+<span class="fc" id="L369">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L370">        ts.onSubscribe(EmptySubscription.INSTANCE);</span>
+<span class="fc" id="L371">        ts.onError(new TestException());</span>
+<span class="fc" id="L372">        ts.onError(new TestException());</span>
+        try {
+<span class="nc" id="L374">            ts.assertError(TestException.class);</span>
+<span class="fc" id="L375">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L376">            Throwable e = ex.getCause();</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">            if (!(e instanceof CompositeException)) {</span>
+<span class="nc" id="L378">                fail(&quot;Multiple Error present but the reported error doesn't have a composite cause!&quot;);</span>
+            }
+<span class="fc" id="L380">            CompositeException ce = (CompositeException)e;</span>
+<span class="fc" id="L381">            assertEquals(2, ce.size());</span>
+            // expected
+<span class="fc" id="L383">            return;</span>
+<span class="nc" id="L384">        }</span>
+<span class="nc" id="L385">        fail(&quot;Multiple Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L386">    }</span>
+
+    @Test
+    public void testMultipleErrors3() {
+<span class="fc" id="L390">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L391">        ts.onSubscribe(EmptySubscription.INSTANCE);</span>
+<span class="fc" id="L392">        ts.onError(new TestException());</span>
+<span class="fc" id="L393">        ts.onError(new TestException());</span>
+        try {
+<span class="nc" id="L395">            ts.assertError(new TestException());</span>
+<span class="fc" id="L396">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L397">            Throwable e = ex.getCause();</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">            if (!(e instanceof CompositeException)) {</span>
+<span class="nc" id="L399">                fail(&quot;Multiple Error present but the reported error doesn't have a composite cause!&quot;);</span>
+            }
+<span class="fc" id="L401">            CompositeException ce = (CompositeException)e;</span>
+<span class="fc" id="L402">            assertEquals(2, ce.size());</span>
+            // expected
+<span class="fc" id="L404">            return;</span>
+<span class="nc" id="L405">        }</span>
+<span class="nc" id="L406">        fail(&quot;Multiple Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L407">    }</span>
+
+    @Test
+    public void testMultipleErrors4() {
+<span class="fc" id="L411">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L412">        ts.onSubscribe(EmptySubscription.INSTANCE);</span>
+<span class="fc" id="L413">        ts.onError(new TestException());</span>
+<span class="fc" id="L414">        ts.onError(new TestException());</span>
+        try {
+<span class="nc" id="L416">            ts.assertError(Functions.&lt;Throwable&gt;alwaysTrue());</span>
+<span class="fc" id="L417">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L418">            Throwable e = ex.getCause();</span>
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">            if (!(e instanceof CompositeException)) {</span>
+<span class="nc" id="L420">                fail(&quot;Multiple Error present but the reported error doesn't have a composite cause!&quot;);</span>
+            }
+<span class="fc" id="L422">            CompositeException ce = (CompositeException)e;</span>
+<span class="fc" id="L423">            assertEquals(2, ce.size());</span>
+            // expected
+<span class="fc" id="L425">            return;</span>
+<span class="nc" id="L426">        }</span>
+<span class="nc" id="L427">        fail(&quot;Multiple Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L428">    }</span>
+
+    @Test
+    public void testDifferentError() {
+<span class="fc" id="L432">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L433">        ts.onError(new TestException());</span>
+        try {
+<span class="nc" id="L435">            ts.assertError(new TestException());</span>
+<span class="fc" id="L436">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L438">            return;</span>
+<span class="nc" id="L439">        }</span>
+<span class="nc" id="L440">        fail(&quot;Different Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L441">    }</span>
+
+    @Test
+    public void testDifferentError2() {
+<span class="fc" id="L445">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L446">        ts.onError(new RuntimeException());</span>
+        try {
+<span class="nc" id="L448">            ts.assertError(new TestException());</span>
+<span class="fc" id="L449">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L451">            return;</span>
+<span class="nc" id="L452">        }</span>
+<span class="nc" id="L453">        fail(&quot;Different Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L454">    }</span>
+
+    @Test
+    public void testDifferentError3() {
+<span class="fc" id="L458">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L459">        ts.onError(new RuntimeException());</span>
+        try {
+<span class="nc" id="L461">            ts.assertError(TestException.class);</span>
+        }
+<span class="fc" id="L463">        catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L465">            return;</span>
+<span class="nc" id="L466">        }</span>
+<span class="nc" id="L467">        fail(&quot;Different Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L468">    }</span>
+
+    @Test
+    public void testDifferentError4() {
+<span class="fc" id="L472">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L473">        ts.onError(new RuntimeException());</span>
+        try {
+<span class="nc" id="L475">            ts.assertError(Functions.&lt;Throwable&gt;alwaysFalse());</span>
+<span class="fc" id="L476">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L478">            return;</span>
+<span class="nc" id="L479">        }</span>
+<span class="nc" id="L480">        fail(&quot;Different Error present but no assertion error!&quot;);</span>
+<span class="nc" id="L481">    }</span>
+
+    @Test
+    public void testErrorInPredicate() {
+<span class="fc" id="L485">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L486">        ts.onError(new RuntimeException());</span>
+        try {
+<span class="pc" id="L488">            ts.assertError(new Predicate&lt;Throwable&gt;() {</span>
+                @Override
+                public boolean test(Throwable throwable) throws Exception {
+<span class="fc" id="L491">                    throw new TestException();</span>
+                }
+            });
+<span class="fc" id="L494">        } catch (TestException ex) {</span>
+            // expected
+<span class="fc" id="L496">            return;</span>
+<span class="nc" id="L497">        }</span>
+<span class="nc" id="L498">        fail(&quot;Error in predicate but not thrown!&quot;);</span>
+<span class="nc" id="L499">    }</span>
+
+    @Test
+    public void testNoError() {
+<span class="fc" id="L503">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+        try {
+<span class="nc" id="L505">            ts.assertError(TestException.class);</span>
+<span class="fc" id="L506">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L508">            return;</span>
+<span class="nc" id="L509">        }</span>
+<span class="nc" id="L510">        fail(&quot;No present but no assertion error!&quot;);</span>
+<span class="nc" id="L511">    }</span>
+
+    @Test
+    public void testNoError2() {
+<span class="fc" id="L515">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+        try {
+<span class="nc" id="L517">            ts.assertError(new TestException());</span>
+<span class="fc" id="L518">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L520">            return;</span>
+<span class="nc" id="L521">        }</span>
+<span class="nc" id="L522">        fail(&quot;No present but no assertion error!&quot;);</span>
+<span class="nc" id="L523">    }</span>
+
+    @Test
+    public void testNoError3() {
+<span class="fc" id="L527">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+        try {
+<span class="nc" id="L529">            ts.assertError(Functions.&lt;Throwable&gt;alwaysTrue());</span>
+<span class="fc" id="L530">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L532">            return;</span>
+<span class="nc" id="L533">        }</span>
+<span class="nc" id="L534">        fail(&quot;No present but no assertion error!&quot;);</span>
+<span class="nc" id="L535">    }</span>
+
+    @Test
+    public void testInterruptTerminalEventAwait() {
+<span class="fc" id="L539">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L541">        final Thread t0 = Thread.currentThread();</span>
+<span class="fc" id="L542">        Worker w = Schedulers.computation().createWorker();</span>
+        try {
+<span class="fc" id="L544">            w.schedule(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="nc" id="L547">                    t0.interrupt();</span>
+<span class="nc" id="L548">                }</span>
+            }, 200, TimeUnit.MILLISECONDS);
+
+            try {
+<span class="pc bpc" id="L552" title="1 of 2 branches missed.">                if (ts.awaitTerminalEvent()) {</span>
+<span class="nc" id="L553">                    fail(&quot;Did not interrupt wait!&quot;);</span>
+                }
+<span class="nc" id="L555">            } catch (RuntimeException ex) {</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">                if (!(ex.getCause() instanceof InterruptedException)) {</span>
+<span class="nc" id="L557">                    fail(&quot;The cause is not InterruptedException! &quot; + ex.getCause());</span>
+                }
+<span class="fc" id="L559">            }</span>
+        } finally {
+<span class="fc" id="L561">            w.dispose();</span>
+        }
+<span class="fc" id="L563">    }</span>
+
+    @Test
+    public void testInterruptTerminalEventAwaitTimed() {
+<span class="fc" id="L567">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L569">        final Thread t0 = Thread.currentThread();</span>
+<span class="fc" id="L570">        Worker w = Schedulers.computation().createWorker();</span>
+        try {
+<span class="fc" id="L572">            w.schedule(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L575">                    t0.interrupt();</span>
+<span class="fc" id="L576">                }</span>
+            }, 200, TimeUnit.MILLISECONDS);
+
+            try {
+<span class="pc bpc" id="L580" title="1 of 2 branches missed.">                if (ts.awaitTerminalEvent(5, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L581">                    fail(&quot;Did not interrupt wait!&quot;);</span>
+                }
+<span class="nc" id="L583">            } catch (RuntimeException ex) {</span>
+<span class="nc bnc" id="L584" title="All 2 branches missed.">                if (!(ex.getCause() instanceof InterruptedException)) {</span>
+<span class="nc" id="L585">                    fail(&quot;The cause is not InterruptedException! &quot; + ex.getCause());</span>
+                }
+<span class="fc" id="L587">            }</span>
+        } finally {
+<span class="fc" id="L589">            Thread.interrupted(); // clear interrupted flag</span>
+<span class="fc" id="L590">            w.dispose();</span>
+        }
+<span class="fc" id="L592">    }</span>
+
+    @Test
+    public void testInterruptTerminalEventAwaitAndUnsubscribe() {
+<span class="fc" id="L596">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L598">        final Thread t0 = Thread.currentThread();</span>
+<span class="fc" id="L599">        Worker w = Schedulers.computation().createWorker();</span>
+        try {
+<span class="fc" id="L601">            w.schedule(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L604">                    t0.interrupt();</span>
+<span class="fc" id="L605">                }</span>
+            }, 200, TimeUnit.MILLISECONDS);
+
+<span class="fc" id="L608">            ts.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L609">            ts.dispose();</span>
+<span class="pc bpc" id="L610" title="1 of 2 branches missed.">            if (!ts.isCancelled()) {</span>
+<span class="nc" id="L611">                fail(&quot;Did not unsubscribe!&quot;);</span>
+            }
+        } finally {
+<span class="fc" id="L614">            w.dispose();</span>
+        }
+<span class="fc" id="L616">    }</span>
+
+    @Test
+    public void testNoTerminalEventBut1Completed() {
+<span class="fc" id="L620">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L622">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L625">            ts.assertNotTerminated();</span>
+<span class="nc" id="L626">            throw new RuntimeException(&quot;Failed to report there were terminal event(s)!&quot;);</span>
+<span class="fc" id="L627">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L630">    }</span>
+
+    @Test
+    public void testNoTerminalEventBut1Error() {
+<span class="fc" id="L634">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L636">        ts.onError(new TestException());</span>
+
+        try {
+<span class="nc" id="L639">            ts.assertNotTerminated();</span>
+<span class="nc" id="L640">            throw new RuntimeException(&quot;Failed to report there were terminal event(s)!&quot;);</span>
+<span class="fc" id="L641">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L644">    }</span>
+
+    @Test
+    public void testNoTerminalEventBut1Error1Completed() {
+<span class="fc" id="L648">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L650">        ts.onComplete();</span>
+<span class="fc" id="L651">        ts.onError(new TestException());</span>
+
+        try {
+<span class="nc" id="L654">            ts.assertNotTerminated();</span>
+<span class="nc" id="L655">            throw new RuntimeException(&quot;Failed to report there were terminal event(s)!&quot;);</span>
+<span class="fc" id="L656">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L659">    }</span>
+
+    @Test
+    public void testNoTerminalEventBut2Errors() {
+<span class="fc" id="L663">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L664">        ts.onSubscribe(EmptySubscription.INSTANCE);</span>
+
+<span class="fc" id="L666">        ts.onError(new TestException());</span>
+<span class="fc" id="L667">        ts.onError(new TestException());</span>
+
+        try {
+<span class="nc" id="L670">            ts.assertNotTerminated();</span>
+<span class="nc" id="L671">            throw new RuntimeException(&quot;Failed to report there were terminal event(s)!&quot;);</span>
+<span class="fc" id="L672">        } catch (AssertionError ex) {</span>
+            // expected
+<span class="fc" id="L674">            Throwable e = ex.getCause();</span>
+<span class="pc bpc" id="L675" title="1 of 2 branches missed.">            if (!(e instanceof CompositeException)) {</span>
+<span class="nc" id="L676">                fail(&quot;Multiple Error present but the reported error doesn't have a composite cause!&quot;);</span>
+            }
+<span class="fc" id="L678">            CompositeException ce = (CompositeException)e;</span>
+<span class="fc" id="L679">            assertEquals(2, ce.size());</span>
+        }
+<span class="fc" id="L681">    }</span>
+
+    @Test
+    public void testNoValues() {
+<span class="fc" id="L685">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L686">        ts.onNext(1);</span>
+
+        try {
+<span class="nc" id="L689">            ts.assertNoValues();</span>
+<span class="nc" id="L690">            throw new RuntimeException(&quot;Failed to report there were values!&quot;);</span>
+<span class="fc" id="L691">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L694">    }</span>
+
+    @Test
+    public void testValueCount() {
+<span class="fc" id="L698">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L699">        ts.onNext(1);</span>
+<span class="fc" id="L700">        ts.onNext(2);</span>
+
+        try {
+<span class="nc" id="L703">            ts.assertValueCount(3);</span>
+<span class="nc" id="L704">            throw new RuntimeException(&quot;Failed to report there were values!&quot;);</span>
+<span class="fc" id="L705">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L708">    }</span>
+
+    @Test(timeout = 1000)
+    public void testOnCompletedCrashCountsDownLatch() {
+<span class="fc" id="L712">        TestSubscriber&lt;Integer&gt; ts0 = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onComplete() {
+<span class="fc" id="L715">                throw new TestException();</span>
+            }
+        };
+<span class="fc" id="L718">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(ts0);</span>
+
+        try {
+<span class="nc" id="L721">            ts.onComplete();</span>
+<span class="fc" id="L722">        } catch (TestException ex) {</span>
+            // expected
+<span class="nc" id="L724">        }</span>
+
+<span class="fc" id="L726">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L727">    }</span>
+
+    @Test(timeout = 1000)
+    public void testOnErrorCrashCountsDownLatch() {
+<span class="fc" id="L731">        TestSubscriber&lt;Integer&gt; ts0 = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L734">                throw new TestException();</span>
+            }
+        };
+<span class="fc" id="L737">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(ts0);</span>
+
+        try {
+<span class="nc" id="L740">            ts.onError(new RuntimeException());</span>
+<span class="fc" id="L741">        } catch (TestException ex) {</span>
+            // expected
+<span class="nc" id="L743">        }</span>
+
+<span class="fc" id="L745">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L746">    }</span>
+
+    @Test
+    public void createDelegate() {
+<span class="fc" id="L750">        TestSubscriber&lt;Integer&gt; ts1 = TestSubscriber.create();</span>
+
+<span class="fc" id="L752">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create(ts1);</span>
+
+<span class="fc" id="L754">        ts.assertNotSubscribed();</span>
+
+<span class="fc" id="L756">        assertFalse(ts.hasSubscription());</span>
+
+<span class="fc" id="L758">        ts.onSubscribe(new BooleanSubscription());</span>
+
+        try {
+<span class="nc" id="L761">            ts.assertNotSubscribed();</span>
+<span class="nc" id="L762">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L763">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L767">        assertTrue(ts.hasSubscription());</span>
+
+<span class="fc" id="L769">        assertFalse(ts.isDisposed());</span>
+
+<span class="fc" id="L771">        ts.onNext(1);</span>
+<span class="fc" id="L772">        ts.onError(new TestException());</span>
+<span class="fc" id="L773">        ts.onComplete();</span>
+
+<span class="fc" id="L775">        ts1.assertValue(1).assertError(TestException.class).assertComplete();</span>
+
+<span class="fc" id="L777">        ts.dispose();</span>
+
+<span class="fc" id="L779">        assertTrue(ts.isDisposed());</span>
+
+<span class="fc" id="L781">        assertTrue(ts.isTerminated());</span>
+
+<span class="fc" id="L783">        assertSame(Thread.currentThread(), ts.lastThread());</span>
+
+        try {
+<span class="nc" id="L786">            ts.assertNoValues();</span>
+<span class="nc" id="L787">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L788">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L793">            ts.assertValueCount(0);</span>
+<span class="nc" id="L794">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L795">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+<span class="fc" id="L799">        ts.assertValueSequence(Collections.singletonList(1));</span>
+
+        try {
+<span class="nc" id="L802">            ts.assertValueSequence(Collections.singletonList(2));</span>
+<span class="nc" id="L803">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L804">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+<span class="fc" id="L808">        ts.assertValueSet(Collections.singleton(1));</span>
+
+        try {
+<span class="nc" id="L811">            ts.assertValueSet(Collections.singleton(2));</span>
+<span class="nc" id="L812">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L813">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+<span class="fc" id="L817">    }</span>
+
+    @Test
+    public void assertError() {
+<span class="fc" id="L821">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+        try {
+<span class="nc" id="L824">            ts.assertError(TestException.class);</span>
+<span class="nc" id="L825">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L826">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L831">            ts.assertError(new TestException());</span>
+<span class="nc" id="L832">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L833">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L838">            ts.assertErrorMessage(&quot;&quot;);</span>
+<span class="nc" id="L839">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L840">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L845">            ts.assertError(Functions.&lt;Throwable&gt;alwaysTrue());</span>
+<span class="nc" id="L846">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L847">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L852">            ts.assertSubscribed();</span>
+<span class="nc" id="L853">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L854">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L859">            ts.assertTerminated();</span>
+<span class="nc" id="L860">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L861">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+<span class="fc" id="L865">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L867">        ts.assertSubscribed();</span>
+
+<span class="fc" id="L869">        ts.assertNoErrors();</span>
+
+<span class="fc" id="L871">        TestException ex = new TestException(&quot;Forced failure&quot;);</span>
+
+<span class="fc" id="L873">        ts.onError(ex);</span>
+
+<span class="fc" id="L875">        ts.assertError(ex);</span>
+
+<span class="fc" id="L877">        ts.assertError(TestException.class);</span>
+
+<span class="fc" id="L879">        ts.assertErrorMessage(&quot;Forced failure&quot;);</span>
+
+<span class="fc" id="L881">        ts.assertError(Functions.&lt;Throwable&gt;alwaysTrue());</span>
+
+<span class="fc" id="L883">        ts.assertError(new Predicate&lt;Throwable&gt;() {</span>
+            @Override
+            public boolean test(Throwable t) {
+<span class="pc bpc" id="L886" title="2 of 4 branches missed.">                return t.getMessage() != null &amp;&amp; t.getMessage().contains(&quot;Forced&quot;);</span>
+            }
+        });
+
+        try {
+<span class="nc" id="L891">            ts.assertErrorMessage(&quot;&quot;);</span>
+<span class="nc" id="L892">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L893">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L898">            ts.assertError(new RuntimeException());</span>
+<span class="nc" id="L899">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L900">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L905">            ts.assertError(IOException.class);</span>
+<span class="nc" id="L906">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L907">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L912">            ts.assertNoErrors();</span>
+<span class="nc" id="L913">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L914">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L919">            ts.assertError(Functions.&lt;Throwable&gt;alwaysFalse());</span>
+<span class="nc" id="L920">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L921">        } catch (AssertionError exc) {</span>
+            // expected
+        }
+
+<span class="fc" id="L925">        ts.assertTerminated();</span>
+
+<span class="fc" id="L927">        ts.assertValueCount(0);</span>
+
+<span class="fc" id="L929">        ts.assertNoValues();</span>
+<span class="fc" id="L930">    }</span>
+
+    @Test
+    public void emptyObserverEnum() {
+<span class="fc" id="L934">        assertEquals(1, TestSubscriber.EmptySubscriber.values().length);</span>
+<span class="fc" id="L935">        assertNotNull(TestSubscriber.EmptySubscriber.valueOf(&quot;INSTANCE&quot;));</span>
+<span class="fc" id="L936">    }</span>
+
+    @Test
+    public void valueAndClass() {
+<span class="fc" id="L940">        assertEquals(&quot;null&quot;, TestSubscriber.valueAndClass(null));</span>
+<span class="fc" id="L941">        assertEquals(&quot;1 (class: Integer)&quot;, TestSubscriber.valueAndClass(1));</span>
+<span class="fc" id="L942">    }</span>
+
+    @Test
+    public void assertFailure() {
+<span class="fc" id="L946">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L948">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L950">        ts.onError(new TestException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L952">        ts.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L954">        ts.assertFailure(Functions.&lt;Throwable&gt;alwaysTrue());</span>
+
+<span class="fc" id="L956">        ts.assertFailureAndMessage(TestException.class, &quot;Forced failure&quot;);</span>
+
+<span class="fc" id="L958">        ts.onNext(1);</span>
+
+<span class="fc" id="L960">        ts.assertFailure(TestException.class, 1);</span>
+
+<span class="fc" id="L962">        ts.assertFailure(Functions.&lt;Throwable&gt;alwaysTrue(), 1);</span>
+
+<span class="fc" id="L964">        ts.assertFailureAndMessage(TestException.class, &quot;Forced failure&quot;, 1);</span>
+<span class="fc" id="L965">    }</span>
+
+    @Test
+    public void assertFuseable() {
+<span class="fc" id="L969">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L971">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L973">        ts.assertNotFuseable();</span>
+
+        try {
+<span class="nc" id="L976">            ts.assertFuseable();</span>
+<span class="nc" id="L977">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L978">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L983">            ts.assertFusionMode(QueueFuseable.SYNC);</span>
+<span class="nc" id="L984">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L985">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L988">        ts = TestSubscriber.create();</span>
+<span class="fc" id="L989">        ts.setInitialFusionMode(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L991">        ts.onSubscribe(new ScalarSubscription&lt;Integer&gt;(ts, 1));</span>
+
+<span class="fc" id="L993">        ts.assertFuseable();</span>
+
+<span class="fc" id="L995">        ts.assertFusionMode(QueueFuseable.SYNC);</span>
+
+        try {
+<span class="nc" id="L998">            ts.assertFusionMode(QueueFuseable.NONE);</span>
+<span class="nc" id="L999">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1000">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L1005">            ts.assertNotFuseable();</span>
+<span class="nc" id="L1006">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1007">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1011">    }</span>
+
+    @Test
+    public void assertTerminated() {
+<span class="fc" id="L1015">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1017">        ts.assertNotTerminated();</span>
+
+<span class="fc" id="L1019">        ts.onError(null);</span>
+
+        try {
+<span class="nc" id="L1022">            ts.assertNotTerminated();</span>
+<span class="nc" id="L1023">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1024">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1027">    }</span>
+
+    @Test
+    public void assertOf() {
+<span class="fc" id="L1031">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1033">        ts.assertOf(new Consumer&lt;TestSubscriber&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public void accept(TestSubscriber&lt;Integer&gt; f) throws Exception {
+<span class="fc" id="L1036">                f.assertNotSubscribed();</span>
+<span class="fc" id="L1037">            }</span>
+        });
+
+        try {
+<span class="pc" id="L1041">            ts.assertOf(new Consumer&lt;TestSubscriber&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public void accept(TestSubscriber&lt;Integer&gt; f) throws Exception {
+<span class="nc" id="L1044">                    f.assertSubscribed();</span>
+<span class="nc" id="L1045">                }</span>
+            });
+<span class="nc" id="L1047">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1048">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="pc" id="L1053">            ts.assertOf(new Consumer&lt;TestSubscriber&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public void accept(TestSubscriber&lt;Integer&gt; f) throws Exception {
+<span class="fc" id="L1056">                    throw new IllegalArgumentException();</span>
+                }
+            });
+<span class="nc" id="L1059">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1060">        } catch (IllegalArgumentException ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1063">    }</span>
+
+    @Test
+    public void assertResult() {
+<span class="fc" id="L1067">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1069">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1071">        ts.onComplete();</span>
+
+<span class="fc" id="L1073">        ts.assertResult();</span>
+
+        try {
+<span class="nc" id="L1076">            ts.assertResult(1);</span>
+<span class="nc" id="L1077">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1078">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1082">        ts.onNext(1);</span>
+
+<span class="fc" id="L1084">        ts.assertResult(1);</span>
+
+        try {
+<span class="nc" id="L1087">            ts.assertResult(2);</span>
+<span class="nc" id="L1088">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1089">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L1094">            ts.assertResult();</span>
+<span class="nc" id="L1095">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1096">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1100">    }</span>
+
+    @Test(timeout = 5000)
+    public void await() throws Exception {
+<span class="fc" id="L1104">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1106">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1108">        assertFalse(ts.await(100, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L1110">        ts.awaitDone(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L1112">        assertTrue(ts.isDisposed());</span>
+
+<span class="fc" id="L1114">        assertFalse(ts.awaitTerminalEvent(100, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L1116">        assertEquals(0, ts.completions());</span>
+<span class="fc" id="L1117">        assertEquals(0, ts.errorCount());</span>
+
+<span class="fc" id="L1119">        ts.onComplete();</span>
+
+<span class="fc" id="L1121">        assertTrue(ts.await(100, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L1123">        ts.await();</span>
+
+<span class="fc" id="L1125">        ts.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L1127">        assertEquals(1, ts.completions());</span>
+<span class="fc" id="L1128">        assertEquals(0, ts.errorCount());</span>
+
+<span class="fc" id="L1130">        assertTrue(ts.awaitTerminalEvent());</span>
+
+<span class="fc" id="L1132">        final TestSubscriber&lt;Integer&gt; ts1 = TestSubscriber.create();</span>
+
+<span class="fc" id="L1134">        ts1.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1136">        Schedulers.single().scheduleDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L1139">                ts1.onComplete();</span>
+<span class="fc" id="L1140">            }</span>
+        }, 200, TimeUnit.MILLISECONDS);
+
+<span class="fc" id="L1143">        ts1.await();</span>
+
+<span class="fc" id="L1145">        ts1.assertValueSet(Collections.&lt;Integer&gt;emptySet());</span>
+<span class="fc" id="L1146">    }</span>
+
+    @Test
+    public void errors() {
+<span class="fc" id="L1150">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1152">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1154">        assertEquals(0, ts.errors().size());</span>
+
+<span class="fc" id="L1156">        ts.onError(new TestException());</span>
+
+<span class="fc" id="L1158">        assertEquals(1, ts.errors().size());</span>
+
+<span class="fc" id="L1160">        TestHelper.assertError(ts.errors(), 0, TestException.class);</span>
+<span class="fc" id="L1161">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void onNext() {
+<span class="fc" id="L1166">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1168">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1170">        assertEquals(0, ts.valueCount());</span>
+
+<span class="fc" id="L1172">        assertEquals(Collections.emptyList(), ts.values());</span>
+
+<span class="fc" id="L1174">        ts.onNext(1);</span>
+
+<span class="fc" id="L1176">        assertEquals(Collections.singletonList(1), ts.values());</span>
+
+<span class="fc" id="L1178">        ts.cancel();</span>
+
+<span class="fc" id="L1180">        assertTrue(ts.isCancelled());</span>
+<span class="fc" id="L1181">        assertTrue(ts.isDisposed());</span>
+
+<span class="fc" id="L1183">        ts.assertValue(1);</span>
+
+<span class="fc" id="L1185">        assertEquals(Arrays.asList(Collections.singletonList(1), Collections.emptyList(), Collections.emptyList()), ts.getEvents());</span>
+
+<span class="fc" id="L1187">        ts.onComplete();</span>
+
+<span class="fc" id="L1189">        assertEquals(Arrays.asList(Collections.singletonList(1), Collections.emptyList(), Collections.singletonList(Notification.createOnComplete())), ts.getEvents());</span>
+<span class="fc" id="L1190">    }</span>
+
+    @Test
+    public void fusionModeToString() {
+<span class="fc" id="L1194">        assertEquals(&quot;NONE&quot;, TestSubscriber.fusionModeToString(QueueFuseable.NONE));</span>
+<span class="fc" id="L1195">        assertEquals(&quot;SYNC&quot;, TestSubscriber.fusionModeToString(QueueFuseable.SYNC));</span>
+<span class="fc" id="L1196">        assertEquals(&quot;ASYNC&quot;, TestSubscriber.fusionModeToString(QueueFuseable.ASYNC));</span>
+<span class="fc" id="L1197">        assertEquals(&quot;Unknown(100)&quot;, TestSubscriber.fusionModeToString(100));</span>
+<span class="fc" id="L1198">    }</span>
+
+    @Test
+    public void multipleTerminals() {
+<span class="fc" id="L1202">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1204">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1206">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L1208">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L1211">            ts.assertNotComplete();</span>
+<span class="nc" id="L1212">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1213">        } catch (Throwable ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1217">        ts.assertTerminated();</span>
+
+<span class="fc" id="L1219">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L1222">            ts.assertComplete();</span>
+<span class="nc" id="L1223">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1224">        } catch (Throwable ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L1229">            ts.assertTerminated();</span>
+<span class="nc" id="L1230">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1231">        } catch (Throwable ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L1236">            ts.assertNotComplete();</span>
+<span class="nc" id="L1237">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1238">        } catch (Throwable ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1241">    }</span>
+
+    @Test
+    public void assertValue() {
+<span class="fc" id="L1245">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1247">        ts.onSubscribe(new BooleanSubscription());</span>
+
+        try {
+<span class="nc" id="L1250">            ts.assertValue(1);</span>
+<span class="nc" id="L1251">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1252">        } catch (Throwable ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1256">        ts.onNext(1);</span>
+
+<span class="fc" id="L1258">        ts.assertValue(1);</span>
+
+        try {
+<span class="nc" id="L1261">            ts.assertValue(2);</span>
+<span class="nc" id="L1262">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1263">        } catch (Throwable ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1267">        ts.onNext(2);</span>
+
+        try {
+<span class="nc" id="L1270">            ts.assertValue(1);</span>
+<span class="nc" id="L1271">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1272">        } catch (Throwable ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1275">    }</span>
+
+    @Test
+    public void onNextMisbehave() {
+<span class="fc" id="L1279">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1281">        ts.onNext(1);</span>
+
+<span class="fc" id="L1283">        ts.assertError(IllegalStateException.class);</span>
+
+<span class="fc" id="L1285">        ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1287">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1289">        ts.onNext(null);</span>
+
+<span class="fc" id="L1291">        ts.assertFailure(NullPointerException.class, (Integer)null);</span>
+<span class="fc" id="L1292">    }</span>
+
+    @Test
+    public void awaitTerminalEventInterrupt() {
+<span class="fc" id="L1296">        final TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1298">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1300">        Thread.currentThread().interrupt();</span>
+
+<span class="fc" id="L1302">        ts.awaitTerminalEvent();</span>
+
+<span class="fc" id="L1304">        assertTrue(Thread.interrupted());</span>
+
+<span class="fc" id="L1306">        Thread.currentThread().interrupt();</span>
+
+<span class="fc" id="L1308">        ts.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L1310">        assertTrue(Thread.interrupted());</span>
+<span class="fc" id="L1311">    }</span>
+
+    @Test
+    public void assertTerminated2() {
+<span class="fc" id="L1315">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1317">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1319">        assertFalse(ts.isTerminated());</span>
+
+<span class="fc" id="L1321">        ts.onError(new TestException());</span>
+<span class="fc" id="L1322">        ts.onError(new IOException());</span>
+
+<span class="fc" id="L1324">        assertTrue(ts.isTerminated());</span>
+
+        try {
+<span class="nc" id="L1327">            ts.assertTerminated();</span>
+<span class="nc" id="L1328">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1329">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L1334">            ts.assertError(TestException.class);</span>
+<span class="nc" id="L1335">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1336">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1340">        ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1342">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1344">        ts.onError(new TestException());</span>
+<span class="fc" id="L1345">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L1348">            ts.assertTerminated();</span>
+<span class="nc" id="L1349">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1350">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1353">    }</span>
+
+    @Test
+    public void onSubscribe() {
+<span class="fc" id="L1357">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1359">        ts.onSubscribe(null);</span>
+
+<span class="fc" id="L1361">        ts.assertError(NullPointerException.class);</span>
+
+<span class="fc" id="L1363">        ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1365">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1367">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1369">        ts.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1371">        assertTrue(bs1.isCancelled());</span>
+
+<span class="fc" id="L1373">        ts.assertError(IllegalStateException.class);</span>
+
+<span class="fc" id="L1375">        ts = TestSubscriber.create();</span>
+<span class="fc" id="L1376">        ts.dispose();</span>
+
+<span class="fc" id="L1378">        bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1380">        ts.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1382">        assertTrue(bs1.isCancelled());</span>
+
+<span class="fc" id="L1384">    }</span>
+
+    @Test
+    public void assertValueSequence() {
+<span class="fc" id="L1388">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L1390">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1392">        ts.onNext(1);</span>
+<span class="fc" id="L1393">        ts.onNext(2);</span>
+
+        try {
+<span class="nc" id="L1396">            ts.assertValueSequence(Collections.&lt;Integer&gt;emptyList());</span>
+<span class="nc" id="L1397">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1398">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="nc" id="L1403">            ts.assertValueSequence(Collections.singletonList(1));</span>
+<span class="nc" id="L1404">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1405">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1409">        ts.assertValueSequence(Arrays.asList(1, 2));</span>
+
+        try {
+<span class="nc" id="L1412">            ts.assertValueSequence(Arrays.asList(1, 2, 3));</span>
+<span class="nc" id="L1413">            throw new RuntimeException(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L1414">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1417">    }</span>
+
+    @Test
+    public void assertEmpty() {
+<span class="fc" id="L1421">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+        try {
+<span class="nc" id="L1424">            ts.assertEmpty();</span>
+<span class="nc" id="L1425">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1426">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1430">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L1432">        ts.assertEmpty();</span>
+
+<span class="fc" id="L1434">        ts.onNext(1);</span>
+
+        try {
+<span class="nc" id="L1437">            ts.assertEmpty();</span>
+<span class="nc" id="L1438">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1439">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1442">    }</span>
+
+    @Test
+    public void awaitDoneTimed() {
+<span class="fc" id="L1446">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1448">        Thread.currentThread().interrupt();</span>
+
+        try {
+<span class="nc" id="L1451">            ts.awaitDone(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L1452">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L1453">            assertTrue(ex.toString(), ex.getCause() instanceof InterruptedException);</span>
+<span class="nc" id="L1454">        }</span>
+<span class="fc" id="L1455">    }</span>
+
+    @Test
+    public void assertNotSubscribed() {
+<span class="fc" id="L1459">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1461">        ts.assertNotSubscribed();</span>
+
+<span class="fc" id="L1463">        ts.errors().add(new TestException());</span>
+
+        try {
+<span class="nc" id="L1466">            ts.assertNotSubscribed();</span>
+<span class="nc" id="L1467">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1468">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1471">    }</span>
+
+    @Test
+    public void assertErrorMultiple() {
+<span class="fc" id="L1475">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1477">        TestException e = new TestException();</span>
+<span class="fc" id="L1478">        ts.errors().add(e);</span>
+<span class="fc" id="L1479">        ts.errors().add(new TestException());</span>
+
+        try {
+<span class="nc" id="L1482">            ts.assertError(TestException.class);</span>
+<span class="nc" id="L1483">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1484">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+        try {
+<span class="nc" id="L1488">            ts.assertError(e);</span>
+<span class="nc" id="L1489">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1490">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+        try {
+<span class="nc" id="L1494">            ts.assertErrorMessage(&quot;&quot;);</span>
+<span class="nc" id="L1495">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1496">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1499">    }</span>
+
+    @Test
+    public void assertComplete() {
+<span class="fc" id="L1503">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1505">        ts.onSubscribe(new BooleanSubscription());</span>
+
+        try {
+<span class="nc" id="L1508">            ts.assertComplete();</span>
+<span class="nc" id="L1509">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1510">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+
+<span class="fc" id="L1514">        ts.onComplete();</span>
+
+<span class="fc" id="L1516">        ts.assertComplete();</span>
+
+<span class="fc" id="L1518">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L1521">            ts.assertComplete();</span>
+<span class="nc" id="L1522">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1523">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1526">    }</span>
+
+    @Test
+    public void completeWithoutOnSubscribe() {
+<span class="fc" id="L1530">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1532">        ts.onComplete();</span>
+
+<span class="fc" id="L1534">        ts.assertError(IllegalStateException.class);</span>
+<span class="fc" id="L1535">    }</span>
+
+    @Test
+    public void completeDelegateThrows() {
+<span class="fc" id="L1539">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(new FlowableSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Subscription s) {
+
+<span class="fc" id="L1544">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+
+<span class="nc" id="L1549">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L1553">                throw new TestException();</span>
+            }
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L1558">                throw new TestException();</span>
+            }
+
+        });
+
+<span class="fc" id="L1563">        ts.onSubscribe(new BooleanSubscription());</span>
+
+        try {
+<span class="nc" id="L1566">            ts.onComplete();</span>
+<span class="nc" id="L1567">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1568">        } catch (TestException ex) {</span>
+<span class="fc" id="L1569">            assertTrue(ts.isTerminated());</span>
+        }
+<span class="fc" id="L1571">    }</span>
+
+    @Test
+    public void errorDelegateThrows() {
+<span class="fc" id="L1575">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(new FlowableSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Subscription s) {
+
+<span class="fc" id="L1580">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+
+<span class="nc" id="L1585">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L1589">                throw new TestException();</span>
+            }
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L1594">                throw new TestException();</span>
+            }
+
+        });
+
+<span class="fc" id="L1599">        ts.onSubscribe(new BooleanSubscription());</span>
+
+        try {
+<span class="nc" id="L1602">            ts.onError(new IOException());</span>
+<span class="nc" id="L1603">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1604">        } catch (TestException ex) {</span>
+<span class="fc" id="L1605">            assertTrue(ts.isTerminated());</span>
+        }
+<span class="fc" id="L1607">    }</span>
+
+    @Test
+    public void syncQueueThrows() {
+<span class="fc" id="L1611">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L1612">        ts.setInitialFusionMode(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L1614">        Flowable.range(1, 5)</span>
+<span class="fc" id="L1615">        .map(new Function&lt;Integer, Object&gt;() {</span>
+            @Override
+<span class="fc" id="L1617">            public Object apply(Integer v) throws Exception { throw new TestException(); }</span>
+        })
+<span class="fc" id="L1619">        .subscribe(ts);</span>
+
+<span class="fc" id="L1621">        ts.assertSubscribed()</span>
+<span class="fc" id="L1622">        .assertFuseable()</span>
+<span class="fc" id="L1623">        .assertFusionMode(QueueFuseable.SYNC)</span>
+<span class="fc" id="L1624">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1625">    }</span>
+
+    @Test
+    public void asyncQueueThrows() {
+<span class="fc" id="L1629">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L1630">        ts.setInitialFusionMode(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L1632">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+
+<span class="fc" id="L1634">        up</span>
+<span class="fc" id="L1635">        .map(new Function&lt;Integer, Object&gt;() {</span>
+            @Override
+<span class="fc" id="L1637">            public Object apply(Integer v) throws Exception { throw new TestException(); }</span>
+        })
+<span class="fc" id="L1639">        .subscribe(ts);</span>
+
+<span class="fc" id="L1641">        up.onNext(1);</span>
+
+<span class="fc" id="L1643">        ts.assertSubscribed()</span>
+<span class="fc" id="L1644">        .assertFuseable()</span>
+<span class="fc" id="L1645">        .assertFusionMode(QueueFuseable.ASYNC)</span>
+<span class="fc" id="L1646">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1647">    }</span>
+
+    @Test
+    public void assertValuePredicateEmpty() {
+<span class="fc" id="L1651">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+
+<span class="fc" id="L1653">        Flowable.empty().subscribe(ts);</span>
+
+<span class="fc" id="L1655">        thrown.expect(AssertionError.class);</span>
+<span class="fc" id="L1656">        thrown.expectMessage(&quot;No values&quot;);</span>
+<span class="pc" id="L1657">        ts.assertValue(new Predicate&lt;Object&gt;() {</span>
+            @Override public boolean test(final Object o) throws Exception {
+<span class="nc" id="L1659">                return false;</span>
+            }
+        });
+<span class="nc" id="L1662">    }</span>
+
+    @Test
+    public void assertValuePredicateMatch() {
+<span class="fc" id="L1666">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1668">        Flowable.just(1).subscribe(ts);</span>
+
+<span class="fc" id="L1670">        ts.assertValue(new Predicate&lt;Integer&gt;() {</span>
+            @Override public boolean test(final Integer o) throws Exception {
+<span class="pc bpc" id="L1672" title="1 of 2 branches missed.">                return o == 1;</span>
+            }
+        });
+<span class="fc" id="L1675">    }</span>
+
+    @Test
+    public void assertValuePredicateNoMatch() {
+<span class="fc" id="L1679">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1681">        Flowable.just(1).subscribe(ts);</span>
+
+<span class="fc" id="L1683">        thrown.expect(AssertionError.class);</span>
+<span class="fc" id="L1684">        thrown.expectMessage(&quot;Value not present&quot;);</span>
+<span class="pc" id="L1685">        ts.assertValue(new Predicate&lt;Integer&gt;() {</span>
+            @Override public boolean test(final Integer o) throws Exception {
+<span class="pc bpc" id="L1687" title="1 of 2 branches missed.">                return o != 1;</span>
+            }
+        });
+<span class="nc" id="L1690">    }</span>
+
+    @Test
+    public void assertValuePredicateMatchButMore() {
+<span class="fc" id="L1694">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1696">        Flowable.just(1, 2).subscribe(ts);</span>
+
+<span class="fc" id="L1698">        thrown.expect(AssertionError.class);</span>
+<span class="fc" id="L1699">        thrown.expectMessage(&quot;Value present but other values as well&quot;);</span>
+<span class="pc" id="L1700">        ts.assertValue(new Predicate&lt;Integer&gt;() {</span>
+            @Override public boolean test(final Integer o) throws Exception {
+<span class="pc bpc" id="L1702" title="1 of 2 branches missed.">                return o == 1;</span>
+            }
+        });
+<span class="nc" id="L1705">    }</span>
+
+    @Test
+    public void assertValueAtPredicateEmpty() {
+<span class="fc" id="L1709">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+
+<span class="fc" id="L1711">        Flowable.empty().subscribe(ts);</span>
+
+<span class="fc" id="L1713">        thrown.expect(AssertionError.class);</span>
+<span class="fc" id="L1714">        thrown.expectMessage(&quot;No values&quot;);</span>
+<span class="pc" id="L1715">        ts.assertValueAt(0, new Predicate&lt;Object&gt;() {</span>
+            @Override public boolean test(final Object o) throws Exception {
+<span class="nc" id="L1717">                return false;</span>
+            }
+        });
+<span class="nc" id="L1720">    }</span>
+
+    @Test
+    public void assertValueAtPredicateMatch() {
+<span class="fc" id="L1724">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1726">        Flowable.just(1, 2).subscribe(ts);</span>
+
+<span class="fc" id="L1728">        ts.assertValueAt(1, new Predicate&lt;Integer&gt;() {</span>
+            @Override public boolean test(final Integer o) throws Exception {
+<span class="pc bpc" id="L1730" title="1 of 2 branches missed.">                return o == 2;</span>
+            }
+        });
+<span class="fc" id="L1733">    }</span>
+
+    @Test
+    public void assertValueAtPredicateNoMatch() {
+<span class="fc" id="L1737">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1739">        Flowable.just(1, 2, 3).subscribe(ts);</span>
+
+<span class="fc" id="L1741">        thrown.expect(AssertionError.class);</span>
+<span class="fc" id="L1742">        thrown.expectMessage(&quot;Value not present&quot;);</span>
+<span class="pc" id="L1743">        ts.assertValueAt(2, new Predicate&lt;Integer&gt;() {</span>
+            @Override public boolean test(final Integer o) throws Exception {
+<span class="pc bpc" id="L1745" title="1 of 2 branches missed.">                return o != 3;</span>
+            }
+        });
+<span class="nc" id="L1748">    }</span>
+
+    @Test
+    public void assertValueAtInvalidIndex() {
+<span class="fc" id="L1752">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1754">        Flowable.just(1, 2).subscribe(ts);</span>
+
+<span class="fc" id="L1756">        thrown.expect(AssertionError.class);</span>
+<span class="fc" id="L1757">        thrown.expectMessage(&quot;Invalid index: 2 (latch = 0, values = 2, errors = 0, completions = 1)&quot;);</span>
+<span class="pc" id="L1758">        ts.assertValueAt(2, new Predicate&lt;Integer&gt;() {</span>
+            @Override public boolean test(final Integer o) throws Exception {
+<span class="nc bnc" id="L1760" title="All 2 branches missed.">                return o == 1;</span>
+            }
+        });
+<span class="nc" id="L1763">    }</span>
+
+    @Test
+    public void requestMore() {
+<span class="fc" id="L1767">        Flowable.range(1, 5)</span>
+<span class="fc" id="L1768">        .test(0)</span>
+<span class="fc" id="L1769">        .requestMore(1)</span>
+<span class="fc" id="L1770">        .assertValue(1)</span>
+<span class="fc" id="L1771">        .requestMore(2)</span>
+<span class="fc" id="L1772">        .assertValues(1, 2, 3)</span>
+<span class="fc" id="L1773">        .requestMore(3)</span>
+<span class="fc" id="L1774">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L1775">    }</span>
+
+    @Test
+    public void withTag() {
+        try {
+<span class="pc bpc" id="L1780" title="1 of 2 branches missed.">            for (int i = 1; i &lt; 3; i++) {</span>
+<span class="fc" id="L1781">                Flowable.just(i)</span>
+<span class="fc" id="L1782">                .test()</span>
+<span class="fc" id="L1783">                .withTag(&quot;testing with item=&quot; + i)</span>
+<span class="fc" id="L1784">                .assertResult(1)</span>
+                ;
+            }
+<span class="nc" id="L1787">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1788">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L1789">            assertTrue(ex.toString(), ex.toString().contains(&quot;testing with item=2&quot;));</span>
+        }
+<span class="fc" id="L1791">    }</span>
+
+    @Test
+    public void timeoutIndicated() throws InterruptedException {
+<span class="fc" id="L1795">        Thread.interrupted(); // clear flag</span>
+
+<span class="fc" id="L1797">        TestSubscriber&lt;Object&gt; ts = Flowable.never()</span>
+<span class="fc" id="L1798">        .test();</span>
+<span class="fc" id="L1799">        assertFalse(ts.await(1, TimeUnit.MILLISECONDS));</span>
+
+        try {
+<span class="nc" id="L1802">            ts.assertResult(1);</span>
+<span class="nc" id="L1803">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1804">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L1805">            assertTrue(ex.toString(), ex.toString().contains(&quot;timeout!&quot;));</span>
+        }
+<span class="fc" id="L1807">    }</span>
+
+    @Test
+    public void timeoutIndicated2() throws InterruptedException {
+        try {
+<span class="fc" id="L1812">            Flowable.never()</span>
+<span class="fc" id="L1813">            .test()</span>
+<span class="fc" id="L1814">            .awaitDone(1, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L1815">            .assertResult(1);</span>
+
+<span class="nc" id="L1817">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1818">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L1819">            assertTrue(ex.toString(), ex.toString().contains(&quot;timeout!&quot;));</span>
+        }
+<span class="fc" id="L1821">    }</span>
+
+    @Test
+    public void timeoutIndicated3() throws InterruptedException {
+<span class="fc" id="L1825">        TestSubscriber&lt;Object&gt; ts = Flowable.never()</span>
+<span class="fc" id="L1826">        .test();</span>
+<span class="fc" id="L1827">        assertFalse(ts.awaitTerminalEvent(1, TimeUnit.MILLISECONDS));</span>
+
+        try {
+<span class="nc" id="L1830">            ts.assertResult(1);</span>
+<span class="nc" id="L1831">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1832">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L1833">            assertTrue(ex.toString(), ex.toString().contains(&quot;timeout!&quot;));</span>
+        }
+<span class="fc" id="L1835">    }</span>
+
+    @Test
+    public void disposeIndicated() {
+<span class="fc" id="L1839">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L1840">        ts.cancel();</span>
+
+        try {
+<span class="nc" id="L1843">            ts.assertResult(1);</span>
+<span class="nc" id="L1844">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1845">        } catch (Throwable ex) {</span>
+<span class="fc" id="L1846">            assertTrue(ex.toString(), ex.toString().contains(&quot;disposed!&quot;));</span>
+        }
+<span class="fc" id="L1848">    }</span>
+
+    @Test
+    public void checkTestWaitStrategyEnum() {
+<span class="fc" id="L1852">        TestHelper.checkEnum(BaseTestConsumer.TestWaitStrategy.class);</span>
+<span class="fc" id="L1853">    }</span>
+
+    @Test
+    public void awaitCount() {
+<span class="fc" id="L1857">        Flowable.range(1, 10).delay(100, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L1858">        .test(5)</span>
+<span class="fc" id="L1859">        .awaitCount(5)</span>
+<span class="fc" id="L1860">        .assertValues(1, 2, 3, 4, 5)</span>
+<span class="fc" id="L1861">        .requestMore(5)</span>
+<span class="fc" id="L1862">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1863">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L1864">    }</span>
+
+    @Test
+    public void awaitCountLess() {
+<span class="fc" id="L1868">        Flowable.range(1, 4)</span>
+<span class="fc" id="L1869">        .test()</span>
+<span class="fc" id="L1870">        .awaitCount(5)</span>
+<span class="fc" id="L1871">        .assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L1872">    }</span>
+
+    @Test
+    public void awaitCountLess2() {
+<span class="fc" id="L1876">        Flowable.range(1, 4)</span>
+<span class="fc" id="L1877">        .test()</span>
+<span class="fc" id="L1878">        .awaitCount(5, TestWaitStrategy.YIELD)</span>
+<span class="fc" id="L1879">        .assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L1880">    }</span>
+
+    @Test
+    public void awaitCountLess3() {
+<span class="fc" id="L1884">        Flowable.range(1, 4).delay(50, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L1885">        .test()</span>
+<span class="fc" id="L1886">        .awaitCount(5, TestWaitStrategy.SLEEP_1MS)</span>
+<span class="fc" id="L1887">        .assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L1888">    }</span>
+
+    @Test
+    public void interruptTestWaitStrategy() {
+        try {
+<span class="fc" id="L1893">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L1894">            TestWaitStrategy.SLEEP_1000MS.run();</span>
+<span class="fc" id="L1895">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L1896">            assertTrue(ex.toString(), ex.getCause() instanceof InterruptedException);</span>
+<span class="nc" id="L1897">        }</span>
+<span class="fc" id="L1898">    }</span>
+
+    @Test
+    public void awaitCountTimeout() {
+<span class="fc" id="L1902">        TestSubscriber&lt;Object&gt; ts = Flowable.never()</span>
+<span class="fc" id="L1903">        .test()</span>
+<span class="fc" id="L1904">        .awaitCount(1, TestWaitStrategy.SLEEP_1MS, 50);</span>
+
+<span class="fc" id="L1906">        assertTrue(ts.isTimeout());</span>
+<span class="fc" id="L1907">        ts.clearTimeout();</span>
+<span class="fc" id="L1908">        assertFalse(ts.isTimeout());</span>
+<span class="fc" id="L1909">    }</span>
+
+    @Test
+    public void assertTimeout() {
+<span class="fc" id="L1913">        Flowable.never()</span>
+<span class="fc" id="L1914">        .test()</span>
+<span class="fc" id="L1915">        .awaitCount(1, TestWaitStrategy.SLEEP_1MS, 50)</span>
+<span class="fc" id="L1916">        .assertTimeout();</span>
+<span class="fc" id="L1917">    }</span>
+
+    @Test
+    public void assertTimeout2() {
+        try {
+<span class="fc" id="L1922">            Flowable.empty()</span>
+<span class="fc" id="L1923">            .test()</span>
+<span class="fc" id="L1924">            .awaitCount(1, TestWaitStrategy.SLEEP_1MS, 50)</span>
+<span class="nc" id="L1925">            .assertTimeout();</span>
+<span class="nc" id="L1926">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1927">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L1928">            assertTrue(ex.toString(), ex.getMessage().contains(&quot;No timeout?!&quot;));</span>
+        }
+<span class="fc" id="L1930">    }</span>
+
+    @Test
+    public void assertNoTimeout() {
+<span class="fc" id="L1934">        Flowable.just(1)</span>
+<span class="fc" id="L1935">        .test()</span>
+<span class="fc" id="L1936">        .awaitCount(1, TestWaitStrategy.SLEEP_1MS, 50)</span>
+<span class="fc" id="L1937">        .assertNoTimeout();</span>
+<span class="fc" id="L1938">    }</span>
+
+    @Test
+    public void assertNoTimeout2() {
+        try {
+<span class="fc" id="L1943">            Flowable.never()</span>
+<span class="fc" id="L1944">            .test()</span>
+<span class="fc" id="L1945">            .awaitCount(1, TestWaitStrategy.SLEEP_1MS, 50)</span>
+<span class="nc" id="L1946">            .assertNoTimeout();</span>
+<span class="nc" id="L1947">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1948">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L1949">            assertTrue(ex.toString(), ex.getMessage().contains(&quot;Timeout?!&quot;));</span>
+        }
+<span class="fc" id="L1951">    }</span>
+
+    @Test
+    public void assertNeverPredicateThrows() {
+        try {
+<span class="fc" id="L1956">            Flowable.just(1)</span>
+<span class="fc" id="L1957">            .test()</span>
+<span class="pc" id="L1958">            .assertNever(new Predicate&lt;Integer&gt;() {</span>
+                @Override
+                public boolean test(Integer t) throws Exception {
+<span class="fc" id="L1961">                    throw new IllegalArgumentException();</span>
+                }
+            });
+<span class="nc" id="L1964">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1965">        } catch (IllegalArgumentException ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1968">    }</span>
+
+    @Test
+    public void assertValueAtPredicateThrows() {
+        try {
+<span class="fc" id="L1973">            Flowable.just(1)</span>
+<span class="fc" id="L1974">            .test()</span>
+<span class="pc" id="L1975">            .assertValueAt(0, new Predicate&lt;Integer&gt;() {</span>
+                @Override
+                public boolean test(Integer t) throws Exception {
+<span class="fc" id="L1978">                    throw new IllegalArgumentException();</span>
+                }
+            });
+<span class="nc" id="L1981">            throw new RuntimeException(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L1982">        } catch (IllegalArgumentException ex) {</span>
+            // expected
+        }
+<span class="fc" id="L1985">    }</span>
+
+    @Test
+    public void waitStrategyRuns() {
+<span class="fc bfc" id="L1989" title="All 2 branches covered.">        for (TestWaitStrategy ws : TestWaitStrategy.values()) {</span>
+<span class="fc" id="L1990">            ws.run();</span>
+        }
+<span class="fc" id="L1992">    }</span>
+
+    @Test
+    public void assertValuesOnly() {
+<span class="fc" id="L1996">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L1997">        ts.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L1998">        ts.assertValuesOnly();</span>
+
+<span class="fc" id="L2000">        ts.onNext(5);</span>
+<span class="fc" id="L2001">        ts.assertValuesOnly(5);</span>
+
+<span class="fc" id="L2003">        ts.onNext(-1);</span>
+<span class="fc" id="L2004">        ts.assertValuesOnly(5, -1);</span>
+<span class="fc" id="L2005">    }</span>
+
+    @Test
+    public void assertValuesOnlyThrowsOnUnexpectedValue() {
+<span class="fc" id="L2009">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2010">        ts.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L2011">        ts.assertValuesOnly();</span>
+
+<span class="fc" id="L2013">        ts.onNext(5);</span>
+<span class="fc" id="L2014">        ts.assertValuesOnly(5);</span>
+
+<span class="fc" id="L2016">        ts.onNext(-1);</span>
+
+        try {
+<span class="nc" id="L2019">            ts.assertValuesOnly(5);</span>
+<span class="nc" id="L2020">            throw new RuntimeException();</span>
+<span class="fc" id="L2021">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2024">    }</span>
+
+    @Test
+    public void assertValuesOnlyThrowsWhenCompleted() {
+<span class="fc" id="L2028">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2029">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L2031">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L2034">            ts.assertValuesOnly();</span>
+<span class="nc" id="L2035">            throw new RuntimeException();</span>
+<span class="fc" id="L2036">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2039">    }</span>
+
+    @Test
+    public void assertValuesOnlyThrowsWhenErrored() {
+<span class="fc" id="L2043">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2044">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L2046">        ts.onError(new TestException());</span>
+
+        try {
+<span class="nc" id="L2049">            ts.assertValuesOnly();</span>
+<span class="nc" id="L2050">            throw new RuntimeException();</span>
+<span class="fc" id="L2051">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2054">    }</span>
+
+    @Test
+    public void assertValueSetOnly() {
+<span class="fc" id="L2058">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2059">        ts.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L2060">        ts.assertValueSetOnly(Collections.&lt;Integer&gt;emptySet());</span>
+
+<span class="fc" id="L2062">        ts.onNext(5);</span>
+<span class="fc" id="L2063">        ts.assertValueSetOnly(Collections.singleton(5));</span>
+
+<span class="fc" id="L2065">        ts.onNext(-1);</span>
+<span class="fc" id="L2066">        ts.assertValueSetOnly(new HashSet&lt;Integer&gt;(Arrays.asList(5, -1)));</span>
+<span class="fc" id="L2067">    }</span>
+
+    @Test
+    public void assertValueSetOnlyThrowsOnUnexpectedValue() {
+<span class="fc" id="L2071">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2072">        ts.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L2073">        ts.assertValueSetOnly(Collections.&lt;Integer&gt;emptySet());</span>
+
+<span class="fc" id="L2075">        ts.onNext(5);</span>
+<span class="fc" id="L2076">        ts.assertValueSetOnly(Collections.singleton(5));</span>
+
+<span class="fc" id="L2078">        ts.onNext(-1);</span>
+
+        try {
+<span class="nc" id="L2081">            ts.assertValueSetOnly(Collections.singleton(5));</span>
+<span class="nc" id="L2082">            throw new RuntimeException();</span>
+<span class="fc" id="L2083">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2086">    }</span>
+
+    @Test
+    public void assertValueSetOnlyThrowsWhenCompleted() {
+<span class="fc" id="L2090">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2091">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L2093">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L2096">            ts.assertValueSetOnly(Collections.&lt;Integer&gt;emptySet());</span>
+<span class="nc" id="L2097">            throw new RuntimeException();</span>
+<span class="fc" id="L2098">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2101">    }</span>
+
+    @Test
+    public void assertValueSetOnlyThrowsWhenErrored() {
+<span class="fc" id="L2105">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2106">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L2108">        ts.onError(new TestException());</span>
+
+        try {
+<span class="nc" id="L2111">            ts.assertValueSetOnly(Collections.&lt;Integer&gt;emptySet());</span>
+<span class="nc" id="L2112">            throw new RuntimeException();</span>
+<span class="fc" id="L2113">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2116">    }</span>
+
+    @Test
+    public void assertValueSequenceOnly() {
+<span class="fc" id="L2120">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2121">        ts.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L2122">        ts.assertValueSequenceOnly(Collections.&lt;Integer&gt;emptyList());</span>
+
+<span class="fc" id="L2124">        ts.onNext(5);</span>
+<span class="fc" id="L2125">        ts.assertValueSequenceOnly(Collections.singletonList(5));</span>
+
+<span class="fc" id="L2127">        ts.onNext(-1);</span>
+<span class="fc" id="L2128">        ts.assertValueSequenceOnly(Arrays.asList(5, -1));</span>
+<span class="fc" id="L2129">    }</span>
+
+    @Test
+    public void assertValueSequenceOnlyThrowsOnUnexpectedValue() {
+<span class="fc" id="L2133">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2134">        ts.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L2135">        ts.assertValueSequenceOnly(Collections.&lt;Integer&gt;emptyList());</span>
+
+<span class="fc" id="L2137">        ts.onNext(5);</span>
+<span class="fc" id="L2138">        ts.assertValueSequenceOnly(Collections.singletonList(5));</span>
+
+<span class="fc" id="L2140">        ts.onNext(-1);</span>
+
+        try {
+<span class="nc" id="L2143">            ts.assertValueSequenceOnly(Collections.singletonList(5));</span>
+<span class="nc" id="L2144">            throw new RuntimeException();</span>
+<span class="fc" id="L2145">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2148">    }</span>
+
+    @Test
+    public void assertValueSequenceOnlyThrowsWhenCompleted() {
+<span class="fc" id="L2152">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2153">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L2155">        ts.onComplete();</span>
+
+        try {
+<span class="nc" id="L2158">            ts.assertValueSequenceOnly(Collections.&lt;Integer&gt;emptyList());</span>
+<span class="nc" id="L2159">            throw new RuntimeException();</span>
+<span class="fc" id="L2160">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2163">    }</span>
+
+    @Test
+    public void assertValueSequenceOnlyThrowsWhenErrored() {
+<span class="fc" id="L2167">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2168">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L2170">        ts.onError(new TestException());</span>
+
+        try {
+<span class="nc" id="L2173">            ts.assertValueSequenceOnly(Collections.&lt;Integer&gt;emptyList());</span>
+<span class="nc" id="L2174">            throw new RuntimeException();</span>
+<span class="fc" id="L2175">        } catch (AssertionError ex) {</span>
+            // expected
+        }
+<span class="fc" id="L2178">    }</span>
+
+    @Test(timeout = 1000)
+    public void awaitCount0() {
+<span class="fc" id="L2182">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+<span class="fc" id="L2183">        ts.awaitCount(0, TestWaitStrategy.SLEEP_1MS, 0);</span>
+<span class="fc" id="L2184">    }</span>
+
+    @Test
+    public void assertValueSetWiderSet() {
+<span class="fc" id="L2188">        Set&lt;Integer&gt; set = new HashSet&lt;Integer&gt;(Arrays.asList(0, 1, 2, 3, 4, 5, 6, 7));</span>
+
+<span class="fc" id="L2190">        Flowable.just(4, 5, 1, 3, 2)</span>
+<span class="fc" id="L2191">        .test()</span>
+<span class="fc" id="L2192">        .assertValueSet(set);</span>
+<span class="fc" id="L2193">    }</span>
+
+    @Test
+    public void assertValueSetExact() {
+<span class="fc" id="L2197">        Set&lt;Integer&gt; set = new HashSet&lt;Integer&gt;(Arrays.asList(1, 2, 3, 4, 5));</span>
+
+<span class="fc" id="L2199">        Flowable.just(4, 5, 1, 3, 2)</span>
+<span class="fc" id="L2200">        .test()</span>
+<span class="fc" id="L2201">        .assertValueSet(set)</span>
+<span class="fc" id="L2202">        .assertValueCount(set.size());</span>
+<span class="fc" id="L2203">    }</span>
+
+    @Test
+    public void assertValueSetMissing() {
+<span class="fc" id="L2207">        Set&lt;Integer&gt; set = new HashSet&lt;Integer&gt;(Arrays.asList(0, 1, 2, 4, 5, 6, 7));</span>
+
+        try {
+<span class="fc" id="L2210">            Flowable.range(1, 5)</span>
+<span class="fc" id="L2211">            .test()</span>
+<span class="nc" id="L2212">            .assertValueSet(set);</span>
+
+<span class="nc" id="L2214">            throw new RuntimeException(&quot;Should have failed&quot;);</span>
+<span class="fc" id="L2215">        } catch (AssertionError ex) {</span>
+<span class="fc" id="L2216">            assertTrue(ex.getMessage(), ex.getMessage().contains(&quot;Value not in the expected collection: &quot; + 3));</span>
+        }
+<span class="fc" id="L2218">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

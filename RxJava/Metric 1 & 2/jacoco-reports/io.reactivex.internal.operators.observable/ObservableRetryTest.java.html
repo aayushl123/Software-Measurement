@@ -1,0 +1,1196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableRetryTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableRetryTest.java</span></div><h1>ObservableRetryTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.Test;
+import org.mockito.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.observables.GroupedObservable;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L41">public class ObservableRetryTest {</span>
+
+    @Test
+    public void iterativeBackoff() {
+<span class="fc" id="L45">        Observer&lt;String&gt; consumer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L47">        Observable&lt;String&gt; producer = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+
+<span class="fc" id="L49">            private AtomicInteger count = new AtomicInteger(4);</span>
+<span class="fc" id="L50">            long last = System.currentTimeMillis();</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; t1) {
+<span class="fc" id="L54">                t1.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L55">                System.out.println(count.get() + &quot; @ &quot; + String.valueOf(last - System.currentTimeMillis()));</span>
+<span class="fc" id="L56">                last = System.currentTimeMillis();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                if (count.getAndDecrement() == 0) {</span>
+<span class="fc" id="L58">                    t1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L59">                    t1.onComplete();</span>
+                } else {
+<span class="fc" id="L61">                    t1.onError(new RuntimeException());</span>
+                }
+<span class="fc" id="L63">            }</span>
+
+        });
+<span class="fc" id="L66">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(consumer);</span>
+<span class="fc" id="L67">        producer.retryWhen(new Function&lt;Observable&lt;? extends Throwable&gt;, Observable&lt;Object&gt;&gt;() {</span>
+
+            @Override
+            public Observable&lt;Object&gt; apply(Observable&lt;? extends Throwable&gt; attempts) {
+                // Worker w = Schedulers.computation().createWorker();
+<span class="fc" id="L72">                return attempts</span>
+<span class="fc" id="L73">                    .map(new Function&lt;Throwable, Tuple&gt;() {</span>
+                        @Override
+                        public Tuple apply(Throwable n) {
+<span class="fc" id="L76">                            return new Tuple(new Long(1), n);</span>
+                        }})
+<span class="fc" id="L78">                    .scan(new BiFunction&lt;Tuple, Tuple, Tuple&gt;() {</span>
+                        @Override
+                        public Tuple apply(Tuple t, Tuple n) {
+<span class="fc" id="L81">                            return new Tuple(t.count + n.count, n.n);</span>
+                        }})
+<span class="fc" id="L83">                    .flatMap(new Function&lt;Tuple, Observable&lt;Long&gt;&gt;() {</span>
+                        @Override
+                        public Observable&lt;Long&gt; apply(Tuple t) {
+<span class="fc" id="L86">                            System.out.println(&quot;Retry # &quot; + t.count);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                            return t.count &gt; 20 ?</span>
+<span class="pc" id="L88">                                Observable.&lt;Long&gt;error(t.n) :</span>
+<span class="fc" id="L89">                                Observable.timer(t.count * 1L, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L90">                    }}).cast(Object.class);</span>
+            }
+<span class="fc" id="L92">        }).subscribe(to);</span>
+<span class="fc" id="L93">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L94">        to.assertNoErrors();</span>
+
+<span class="fc" id="L96">        InOrder inOrder = inOrder(consumer);</span>
+<span class="fc" id="L97">        inOrder.verify(consumer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L98">        inOrder.verify(consumer, times(1)).onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L99">        inOrder.verify(consumer, times(1)).onComplete();</span>
+<span class="fc" id="L100">        inOrder.verifyNoMoreInteractions();</span>
+
+<span class="fc" id="L102">    }</span>
+
+    public static class Tuple {
+        Long count;
+        Throwable n;
+
+<span class="fc" id="L108">        Tuple(Long c, Throwable n) {</span>
+<span class="fc" id="L109">            count = c;</span>
+<span class="fc" id="L110">            this.n = n;</span>
+<span class="fc" id="L111">        }</span>
+    }
+
+    @Test
+    public void testRetryIndefinitely() {
+<span class="fc" id="L116">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L117">        int numRetries = 20;</span>
+<span class="fc" id="L118">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(numRetries));</span>
+<span class="fc" id="L119">        origin.retry().subscribe(new TestObserver&lt;String&gt;(observer));</span>
+
+<span class="fc" id="L121">        InOrder inOrder = inOrder(observer);</span>
+        // should show 3 attempts
+<span class="fc" id="L123">        inOrder.verify(observer, times(numRetries + 1)).onNext(&quot;beginningEveryTime&quot;);</span>
+        // should have no errors
+<span class="fc" id="L125">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+        // should have a single success
+<span class="fc" id="L127">        inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);</span>
+        // should have a single successful onComplete
+<span class="fc" id="L129">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L130">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L131">    }</span>
+
+    @Test
+    public void testSchedulingNotificationHandler() {
+<span class="fc" id="L135">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L136">        int numRetries = 2;</span>
+<span class="fc" id="L137">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(numRetries));</span>
+<span class="fc" id="L138">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L139">        origin.retryWhen(new Function&lt;Observable&lt;? extends Throwable&gt;, Observable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Object&gt; apply(Observable&lt;? extends Throwable&gt; t1) {
+<span class="fc" id="L142">                return t1</span>
+<span class="fc" id="L143">                .observeOn(Schedulers.computation())</span>
+<span class="fc" id="L144">                .map(new Function&lt;Throwable, Object&gt;() {</span>
+                    @Override
+                    public Object apply(Throwable t1) {
+<span class="fc" id="L147">                        return 1;</span>
+                    }
+<span class="fc" id="L149">                }).startWith(1);</span>
+            }
+        })
+<span class="fc" id="L152">        .doOnError(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) {
+<span class="nc" id="L155">                e.printStackTrace();</span>
+<span class="nc" id="L156">            }</span>
+        })
+<span class="fc" id="L158">        .subscribe(to);</span>
+
+<span class="fc" id="L160">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L161">        InOrder inOrder = inOrder(observer);</span>
+        // should show 3 attempts
+<span class="fc" id="L163">        inOrder.verify(observer, times(1 + numRetries)).onNext(&quot;beginningEveryTime&quot;);</span>
+        // should have no errors
+<span class="fc" id="L165">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+        // should have a single success
+<span class="fc" id="L167">        inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);</span>
+        // should have a single successful onComplete
+<span class="fc" id="L169">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L170">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L171">    }</span>
+
+    @Test
+    public void testOnNextFromNotificationHandler() {
+<span class="fc" id="L175">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L176">        int numRetries = 2;</span>
+<span class="fc" id="L177">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(numRetries));</span>
+<span class="fc" id="L178">        origin.retryWhen(new Function&lt;Observable&lt;? extends Throwable&gt;, Observable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Object&gt; apply(Observable&lt;? extends Throwable&gt; t1) {
+<span class="fc" id="L181">                return t1.map(new Function&lt;Throwable, Integer&gt;() {</span>
+
+                    @Override
+                    public Integer apply(Throwable t1) {
+<span class="fc" id="L185">                        return 0;</span>
+                    }
+<span class="fc" id="L187">                }).startWith(0).cast(Object.class);</span>
+            }
+<span class="fc" id="L189">        }).subscribe(observer);</span>
+
+<span class="fc" id="L191">        InOrder inOrder = inOrder(observer);</span>
+        // should show 3 attempts
+<span class="fc" id="L193">        inOrder.verify(observer, times(numRetries + 1)).onNext(&quot;beginningEveryTime&quot;);</span>
+        // should have no errors
+<span class="fc" id="L195">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+        // should have a single success
+<span class="fc" id="L197">        inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);</span>
+        // should have a single successful onComplete
+<span class="fc" id="L199">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L200">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L201">    }</span>
+
+    @Test
+    public void testOnCompletedFromNotificationHandler() {
+<span class="fc" id="L205">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L206">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(1));</span>
+<span class="fc" id="L207">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L208">        origin.retryWhen(new Function&lt;Observable&lt;? extends Throwable&gt;, Observable&lt;?&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;?&gt; apply(Observable&lt;? extends Throwable&gt; t1) {
+<span class="fc" id="L211">                return Observable.empty();</span>
+            }
+<span class="fc" id="L213">        }).subscribe(to);</span>
+
+<span class="fc" id="L215">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L216">        inOrder.verify(observer).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L217">        inOrder.verify(observer, never()).onNext(&quot;beginningEveryTime&quot;);</span>
+<span class="fc" id="L218">        inOrder.verify(observer, never()).onNext(&quot;onSuccessOnly&quot;);</span>
+<span class="fc" id="L219">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L220">        inOrder.verify(observer, never()).onError(any(Exception.class));</span>
+<span class="fc" id="L221">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L222">    }</span>
+
+    @Test
+    public void testOnErrorFromNotificationHandler() {
+<span class="fc" id="L226">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L227">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(2));</span>
+<span class="fc" id="L228">        origin.retryWhen(new Function&lt;Observable&lt;? extends Throwable&gt;, Observable&lt;?&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;?&gt; apply(Observable&lt;? extends Throwable&gt; t1) {
+<span class="fc" id="L231">                return Observable.error(new RuntimeException());</span>
+            }
+<span class="fc" id="L233">        }).subscribe(observer);</span>
+
+<span class="fc" id="L235">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L236">        inOrder.verify(observer).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L237">        inOrder.verify(observer, never()).onNext(&quot;beginningEveryTime&quot;);</span>
+<span class="fc" id="L238">        inOrder.verify(observer, never()).onNext(&quot;onSuccessOnly&quot;);</span>
+<span class="fc" id="L239">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L240">        inOrder.verify(observer, times(1)).onError(any(RuntimeException.class));</span>
+<span class="fc" id="L241">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L242">    }</span>
+
+    @Test
+    public void testSingleSubscriptionOnFirst() throws Exception {
+<span class="fc" id="L246">        final AtomicInteger inc = new AtomicInteger(0);</span>
+<span class="fc" id="L247">        ObservableSource&lt;Integer&gt; onSubscribe = new ObservableSource&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L250">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L251">                final int emit = inc.incrementAndGet();</span>
+<span class="fc" id="L252">                observer.onNext(emit);</span>
+<span class="fc" id="L253">                observer.onComplete();</span>
+<span class="fc" id="L254">            }</span>
+        };
+
+<span class="fc" id="L257">        int first = Observable.unsafeCreate(onSubscribe)</span>
+<span class="fc" id="L258">                .retryWhen(new Function&lt;Observable&lt;? extends Throwable&gt;, Observable&lt;?&gt;&gt;() {</span>
+                    @Override
+                    public Observable&lt;?&gt; apply(Observable&lt;? extends Throwable&gt; attempt) {
+<span class="fc" id="L261">                        return attempt.zipWith(Observable.just(1), new BiFunction&lt;Throwable, Integer, Void&gt;() {</span>
+                            @Override
+                            public Void apply(Throwable o, Integer integer) {
+<span class="nc" id="L264">                                return null;</span>
+                            }
+                        });
+                    }
+                })
+<span class="fc" id="L269">                .blockingFirst();</span>
+
+<span class="fc" id="L271">        assertEquals(&quot;Observer did not receive the expected output&quot;, 1, first);</span>
+<span class="fc" id="L272">        assertEquals(&quot;Subscribe was not called once&quot;, 1, inc.get());</span>
+<span class="fc" id="L273">    }</span>
+
+    @Test
+    public void testOriginFails() {
+<span class="fc" id="L277">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L278">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(1));</span>
+<span class="fc" id="L279">        origin.subscribe(observer);</span>
+
+<span class="fc" id="L281">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L282">        inOrder.verify(observer, times(1)).onNext(&quot;beginningEveryTime&quot;);</span>
+<span class="fc" id="L283">        inOrder.verify(observer, times(1)).onError(any(RuntimeException.class));</span>
+<span class="fc" id="L284">        inOrder.verify(observer, never()).onNext(&quot;onSuccessOnly&quot;);</span>
+<span class="fc" id="L285">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L286">    }</span>
+
+    @Test
+    public void testRetryFail() {
+<span class="fc" id="L290">        int numRetries = 1;</span>
+<span class="fc" id="L291">        int numFailures = 2;</span>
+<span class="fc" id="L292">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L293">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(numFailures));</span>
+<span class="fc" id="L294">        origin.retry(numRetries).subscribe(observer);</span>
+
+<span class="fc" id="L296">        InOrder inOrder = inOrder(observer);</span>
+        // should show 2 attempts (first time fail, second time (1st retry) fail)
+<span class="fc" id="L298">        inOrder.verify(observer, times(1 + numRetries)).onNext(&quot;beginningEveryTime&quot;);</span>
+        // should only retry once, fail again and emit onError
+<span class="fc" id="L300">        inOrder.verify(observer, times(1)).onError(any(RuntimeException.class));</span>
+        // no success
+<span class="fc" id="L302">        inOrder.verify(observer, never()).onNext(&quot;onSuccessOnly&quot;);</span>
+<span class="fc" id="L303">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L304">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L305">    }</span>
+
+    @Test
+    public void testRetrySuccess() {
+<span class="fc" id="L309">        int numFailures = 1;</span>
+<span class="fc" id="L310">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L311">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(numFailures));</span>
+<span class="fc" id="L312">        origin.retry(3).subscribe(observer);</span>
+
+<span class="fc" id="L314">        InOrder inOrder = inOrder(observer);</span>
+        // should show 3 attempts
+<span class="fc" id="L316">        inOrder.verify(observer, times(1 + numFailures)).onNext(&quot;beginningEveryTime&quot;);</span>
+        // should have no errors
+<span class="fc" id="L318">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+        // should have a single success
+<span class="fc" id="L320">        inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);</span>
+        // should have a single successful onComplete
+<span class="fc" id="L322">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L323">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L324">    }</span>
+
+    @Test
+    public void testInfiniteRetry() {
+<span class="fc" id="L328">        int numFailures = 20;</span>
+<span class="fc" id="L329">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L330">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(numFailures));</span>
+<span class="fc" id="L331">        origin.retry().subscribe(observer);</span>
+
+<span class="fc" id="L333">        InOrder inOrder = inOrder(observer);</span>
+        // should show 3 attempts
+<span class="fc" id="L335">        inOrder.verify(observer, times(1 + numFailures)).onNext(&quot;beginningEveryTime&quot;);</span>
+        // should have no errors
+<span class="fc" id="L337">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+        // should have a single success
+<span class="fc" id="L339">        inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);</span>
+        // should have a single successful onComplete
+<span class="fc" id="L341">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L342">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L343">    }</span>
+
+    /*
+     * Checks in a simple and synchronous way that retry resubscribes
+     * after error. This test fails against 0.16.1-0.17.4, hangs on 0.17.5 and
+     * passes in 0.17.6 thanks to fix for issue #1027.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void testRetrySubscribesAgainAfterError() throws Exception {
+
+        // record emitted values with this action
+<span class="fc" id="L355">        Consumer&lt;Integer&gt; record = mock(Consumer.class);</span>
+<span class="fc" id="L356">        InOrder inOrder = inOrder(record);</span>
+
+        // always throw an exception with this action
+<span class="fc" id="L359">        Consumer&lt;Integer&gt; throwException = mock(Consumer.class);</span>
+<span class="fc" id="L360">        doThrow(new RuntimeException()).when(throwException).accept(Mockito.anyInt());</span>
+
+        // create a retrying Observable based on a PublishSubject
+<span class="fc" id="L363">        PublishSubject&lt;Integer&gt; subject = PublishSubject.create();</span>
+<span class="fc" id="L364">        subject</span>
+        // record item
+<span class="fc" id="L366">        .doOnNext(record)</span>
+        // throw a RuntimeException
+<span class="fc" id="L368">                .doOnNext(throwException)</span>
+                // retry on error
+<span class="fc" id="L370">                .retry()</span>
+                // subscribe and ignore
+<span class="fc" id="L372">                .subscribe();</span>
+
+<span class="fc" id="L374">        inOrder.verifyNoMoreInteractions();</span>
+
+<span class="fc" id="L376">        subject.onNext(1);</span>
+<span class="fc" id="L377">        inOrder.verify(record).accept(1);</span>
+
+<span class="fc" id="L379">        subject.onNext(2);</span>
+<span class="fc" id="L380">        inOrder.verify(record).accept(2);</span>
+
+<span class="fc" id="L382">        subject.onNext(3);</span>
+<span class="fc" id="L383">        inOrder.verify(record).accept(3);</span>
+
+<span class="fc" id="L385">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L386">    }</span>
+
+    public static class FuncWithErrors implements ObservableSource&lt;String&gt; {
+
+        private final int numFailures;
+<span class="fc" id="L391">        private final AtomicInteger count = new AtomicInteger(0);</span>
+
+<span class="fc" id="L393">        FuncWithErrors(int count) {</span>
+<span class="fc" id="L394">            this.numFailures = count;</span>
+<span class="fc" id="L395">        }</span>
+
+        @Override
+        public void subscribe(final Observer&lt;? super String&gt; o) {
+<span class="fc" id="L399">            o.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L400">            o.onNext(&quot;beginningEveryTime&quot;);</span>
+<span class="fc" id="L401">            int i = count.getAndIncrement();</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            if (i &lt; numFailures) {</span>
+<span class="fc" id="L403">                o.onError(new RuntimeException(&quot;forced failure: &quot; + (i + 1)));</span>
+            } else {
+<span class="fc" id="L405">                o.onNext(&quot;onSuccessOnly&quot;);</span>
+<span class="fc" id="L406">                o.onComplete();</span>
+            }
+<span class="fc" id="L408">        }</span>
+    }
+
+    @Test
+    public void testUnsubscribeFromRetry() {
+<span class="fc" id="L413">        PublishSubject&lt;Integer&gt; subject = PublishSubject.create();</span>
+<span class="fc" id="L414">        final AtomicInteger count = new AtomicInteger(0);</span>
+<span class="fc" id="L415">        Disposable sub = subject.retry().subscribe(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer n) {
+<span class="fc" id="L418">                count.incrementAndGet();</span>
+<span class="fc" id="L419">            }</span>
+        });
+<span class="fc" id="L421">        subject.onNext(1);</span>
+<span class="fc" id="L422">        sub.dispose();</span>
+<span class="fc" id="L423">        subject.onNext(2);</span>
+<span class="fc" id="L424">        assertEquals(1, count.get());</span>
+<span class="fc" id="L425">    }</span>
+
+    @Test
+    public void testRetryAllowsSubscriptionAfterAllSubscriptionsUnsubscribed() throws InterruptedException {
+<span class="fc" id="L429">        final AtomicInteger subsCount = new AtomicInteger(0);</span>
+<span class="fc" id="L430">        ObservableSource&lt;String&gt; onSubscribe = new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L433">                subsCount.incrementAndGet();</span>
+<span class="fc" id="L434">                observer.onSubscribe(Disposables.fromRunnable(new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L437">                            subsCount.decrementAndGet();</span>
+<span class="fc" id="L438">                    }</span>
+                }));
+
+<span class="fc" id="L441">            }</span>
+        };
+<span class="fc" id="L443">        Observable&lt;String&gt; stream = Observable.unsafeCreate(onSubscribe);</span>
+<span class="fc" id="L444">        Observable&lt;String&gt; streamWithRetry = stream.retry();</span>
+<span class="fc" id="L445">        Disposable sub = streamWithRetry.subscribe();</span>
+<span class="fc" id="L446">        assertEquals(1, subsCount.get());</span>
+<span class="fc" id="L447">        sub.dispose();</span>
+<span class="fc" id="L448">        assertEquals(0, subsCount.get());</span>
+<span class="fc" id="L449">        streamWithRetry.subscribe();</span>
+<span class="fc" id="L450">        assertEquals(1, subsCount.get());</span>
+<span class="fc" id="L451">    }</span>
+
+    @Test
+    public void testSourceObservableCallsUnsubscribe() throws InterruptedException {
+<span class="fc" id="L455">        final AtomicInteger subsCount = new AtomicInteger(0);</span>
+
+<span class="fc" id="L457">        final TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+
+<span class="fc" id="L459">        ObservableSource&lt;String&gt; onSubscribe = new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L462">                BooleanSubscription bs = new BooleanSubscription();</span>
+                // if isUnsubscribed is true that means we have a bug such as
+                // https://github.com/ReactiveX/RxJava/issues/1024
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">                if (!bs.isCancelled()) {</span>
+<span class="fc" id="L466">                    subsCount.incrementAndGet();</span>
+<span class="fc" id="L467">                    observer.onError(new RuntimeException(&quot;failed&quot;));</span>
+                    // it unsubscribes the child directly
+                    // this simulates various error/completion scenarios that could occur
+                    // or just a source that proactively triggers cleanup
+                    // FIXME can't unsubscribe child
+//                    s.unsubscribe();
+<span class="fc" id="L473">                    bs.cancel();</span>
+                } else {
+<span class="nc" id="L475">                    observer.onError(new RuntimeException());</span>
+                }
+<span class="fc" id="L477">            }</span>
+        };
+
+<span class="fc" id="L480">        Observable.unsafeCreate(onSubscribe).retry(3).subscribe(to);</span>
+<span class="fc" id="L481">        assertEquals(4, subsCount.get()); // 1 + 3 retries</span>
+<span class="fc" id="L482">    }</span>
+
+    @Test
+    public void testSourceObservableRetry1() throws InterruptedException {
+<span class="fc" id="L486">        final AtomicInteger subsCount = new AtomicInteger(0);</span>
+
+<span class="fc" id="L488">        final TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+
+<span class="fc" id="L490">        ObservableSource&lt;String&gt; onSubscribe = new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L493">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L494">                subsCount.incrementAndGet();</span>
+<span class="fc" id="L495">                observer.onError(new RuntimeException(&quot;failed&quot;));</span>
+<span class="fc" id="L496">            }</span>
+        };
+
+<span class="fc" id="L499">        Observable.unsafeCreate(onSubscribe).retry(1).subscribe(to);</span>
+<span class="fc" id="L500">        assertEquals(2, subsCount.get());</span>
+<span class="fc" id="L501">    }</span>
+
+    @Test
+    public void testSourceObservableRetry0() throws InterruptedException {
+<span class="fc" id="L505">        final AtomicInteger subsCount = new AtomicInteger(0);</span>
+
+<span class="fc" id="L507">        final TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+
+<span class="fc" id="L509">        ObservableSource&lt;String&gt; onSubscribe = new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L512">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L513">                subsCount.incrementAndGet();</span>
+<span class="fc" id="L514">                observer.onError(new RuntimeException(&quot;failed&quot;));</span>
+<span class="fc" id="L515">            }</span>
+        };
+
+<span class="fc" id="L518">        Observable.unsafeCreate(onSubscribe).retry(0).subscribe(to);</span>
+<span class="fc" id="L519">        assertEquals(1, subsCount.get());</span>
+<span class="fc" id="L520">    }</span>
+
+    static final class SlowObservable implements ObservableSource&lt;Long&gt; {
+
+<span class="fc" id="L524">        final AtomicInteger efforts = new AtomicInteger(0);</span>
+<span class="fc" id="L525">        final AtomicInteger active = new AtomicInteger(0), maxActive = new AtomicInteger(0);</span>
+        final AtomicInteger nextBeforeFailure;
+
+        final String context;
+
+        private final int emitDelay;
+
+<span class="fc" id="L532">        SlowObservable(int emitDelay, int countNext, String context) {</span>
+<span class="fc" id="L533">            this.emitDelay = emitDelay;</span>
+<span class="fc" id="L534">            this.nextBeforeFailure = new AtomicInteger(countNext);</span>
+<span class="fc" id="L535">            this.context = context;</span>
+<span class="fc" id="L536">        }</span>
+
+        @Override
+        public void subscribe(final Observer&lt;? super Long&gt; observer) {
+<span class="fc" id="L540">            final AtomicBoolean terminate = new AtomicBoolean(false);</span>
+<span class="fc" id="L541">            observer.onSubscribe(Disposables.fromRunnable(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L544">                        terminate.set(true);</span>
+<span class="fc" id="L545">                        active.decrementAndGet();</span>
+<span class="fc" id="L546">                }</span>
+            }));
+<span class="fc" id="L548">            efforts.getAndIncrement();</span>
+<span class="fc" id="L549">            active.getAndIncrement();</span>
+<span class="fc" id="L550">            maxActive.set(Math.max(active.get(), maxActive.get()));</span>
+<span class="fc" id="L551">            final Thread thread = new Thread(context) {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L554">                    long nr = 0;</span>
+                    try {
+<span class="fc bfc" id="L556" title="All 2 branches covered.">                        while (!terminate.get()) {</span>
+<span class="fc" id="L557">                            Thread.sleep(emitDelay);</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">                            if (nextBeforeFailure.getAndDecrement() &gt; 0) {</span>
+<span class="fc" id="L559">                                observer.onNext(nr++);</span>
+                            } else {
+<span class="fc" id="L561">                                active.decrementAndGet();</span>
+<span class="fc" id="L562">                                observer.onError(new RuntimeException(&quot;expected-failed&quot;));</span>
+<span class="fc" id="L563">                                break;</span>
+                            }
+                        }
+<span class="nc" id="L566">                    } catch (InterruptedException t) {</span>
+<span class="fc" id="L567">                    }</span>
+<span class="fc" id="L568">                }</span>
+            };
+<span class="fc" id="L570">            thread.start();</span>
+<span class="fc" id="L571">        }</span>
+    }
+
+    /** Observer for listener on seperate thread. */
+    static final class AsyncObserver&lt;T&gt; extends DefaultObserver&lt;T&gt; {
+
+<span class="fc" id="L577">        protected CountDownLatch latch = new CountDownLatch(1);</span>
+
+        protected Observer&lt;T&gt; target;
+
+        /**
+         * Wrap existing Observer.
+         * @param target the target nbp subscriber
+         */
+<span class="fc" id="L585">        AsyncObserver(Observer&lt;T&gt; target) {</span>
+<span class="fc" id="L586">            this.target = target;</span>
+<span class="fc" id="L587">        }</span>
+
+        /** Wait. */
+        public void await() {
+            try {
+<span class="fc" id="L592">                latch.await();</span>
+<span class="nc" id="L593">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L594">                fail(&quot;Test interrupted&quot;);</span>
+<span class="fc" id="L595">            }</span>
+<span class="fc" id="L596">        }</span>
+
+        // Observer implementation
+
+        @Override
+        public void onComplete() {
+<span class="nc" id="L602">            target.onComplete();</span>
+<span class="nc" id="L603">            latch.countDown();</span>
+<span class="nc" id="L604">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L608">            target.onError(t);</span>
+<span class="fc" id="L609">            latch.countDown();</span>
+<span class="fc" id="L610">        }</span>
+
+        @Override
+        public void onNext(T v) {
+<span class="nc" id="L614">            target.onNext(v);</span>
+<span class="nc" id="L615">        }</span>
+    }
+
+    @Test(timeout = 10000)
+    public void testUnsubscribeAfterError() {
+
+<span class="fc" id="L621">        Observer&lt;Long&gt; observer = TestHelper.mockObserver();</span>
+
+        // Observable that always fails after 100ms
+<span class="fc" id="L624">        SlowObservable so = new SlowObservable(100, 0, &quot;testUnsubscribeAfterError&quot;);</span>
+<span class="fc" id="L625">        Observable&lt;Long&gt; o = Observable.unsafeCreate(so).retry(5);</span>
+
+<span class="fc" id="L627">        AsyncObserver&lt;Long&gt; async = new AsyncObserver&lt;Long&gt;(observer);</span>
+
+<span class="fc" id="L629">        o.subscribe(async);</span>
+
+<span class="fc" id="L631">        async.await();</span>
+
+<span class="fc" id="L633">        InOrder inOrder = inOrder(observer);</span>
+        // Should fail once
+<span class="fc" id="L635">        inOrder.verify(observer, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L636">        inOrder.verify(observer, never()).onComplete();</span>
+
+<span class="fc" id="L638">        assertEquals(&quot;Start 6 threads, retry 5 then fail on 6&quot;, 6, so.efforts.get());</span>
+<span class="fc" id="L639">        assertEquals(&quot;Only 1 active subscription&quot;, 1, so.maxActive.get());</span>
+<span class="fc" id="L640">    }</span>
+
+    @Test(timeout = 10000)
+    public void testTimeoutWithRetry() {
+
+<span class="fc" id="L645">        Observer&lt;Long&gt; observer = TestHelper.mockObserver();</span>
+
+        // Observable that sends every 100ms (timeout fails instead)
+<span class="fc" id="L648">        SlowObservable so = new SlowObservable(100, 10, &quot;testTimeoutWithRetry&quot;);</span>
+<span class="fc" id="L649">        Observable&lt;Long&gt; o = Observable.unsafeCreate(so).timeout(80, TimeUnit.MILLISECONDS).retry(5);</span>
+
+<span class="fc" id="L651">        AsyncObserver&lt;Long&gt; async = new AsyncObserver&lt;Long&gt;(observer);</span>
+
+<span class="fc" id="L653">        o.subscribe(async);</span>
+
+<span class="fc" id="L655">        async.await();</span>
+
+<span class="fc" id="L657">        InOrder inOrder = inOrder(observer);</span>
+        // Should fail once
+<span class="fc" id="L659">        inOrder.verify(observer, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L660">        inOrder.verify(observer, never()).onComplete();</span>
+
+<span class="fc" id="L662">        assertEquals(&quot;Start 6 threads, retry 5 then fail on 6&quot;, 6, so.efforts.get());</span>
+<span class="fc" id="L663">    }</span>
+
+    @Test//(timeout = 15000)
+    public void testRetryWithBackpressure() throws InterruptedException {
+<span class="fc" id="L667">        final int NUM_LOOPS = 1;</span>
+<span class="fc bfc" id="L668" title="All 2 branches covered.">        for (int j = 0; j &lt; NUM_LOOPS; j++) {</span>
+<span class="fc" id="L669">            final int NUM_RETRIES = Flowable.bufferSize() * 2;</span>
+<span class="fc bfc" id="L670" title="All 2 branches covered.">            for (int i = 0; i &lt; 400; i++) {</span>
+<span class="fc" id="L671">                Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L672">                Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(NUM_RETRIES));</span>
+<span class="fc" id="L673">                TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L674">                origin.retry().observeOn(Schedulers.computation()).subscribe(to);</span>
+<span class="fc" id="L675">                to.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L677">                InOrder inOrder = inOrder(observer);</span>
+                // should have no errors
+<span class="fc" id="L679">                verify(observer, never()).onError(any(Throwable.class));</span>
+                // should show NUM_RETRIES attempts
+<span class="fc" id="L681">                inOrder.verify(observer, times(NUM_RETRIES + 1)).onNext(&quot;beginningEveryTime&quot;);</span>
+                // should have a single success
+<span class="fc" id="L683">                inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);</span>
+                // should have a single successful onComplete
+<span class="fc" id="L685">                inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L686">                inOrder.verifyNoMoreInteractions();</span>
+            }
+        }
+<span class="fc" id="L689">    }</span>
+
+    @Test//(timeout = 15000)
+    public void testRetryWithBackpressureParallel() throws InterruptedException {
+<span class="fc" id="L693">        final int NUM_LOOPS = 1;</span>
+<span class="fc" id="L694">        final int NUM_RETRIES = Flowable.bufferSize() * 2;</span>
+<span class="fc" id="L695">        int ncpu = Runtime.getRuntime().availableProcessors();</span>
+<span class="fc" id="L696">        ExecutorService exec = Executors.newFixedThreadPool(Math.max(ncpu / 2, 2));</span>
+        try {
+<span class="fc bfc" id="L698" title="All 2 branches covered.">            for (int r = 0; r &lt; NUM_LOOPS; r++) {</span>
+<span class="pc bpc" id="L699" title="1 of 2 branches missed.">                if (r % 10 == 0) {</span>
+<span class="fc" id="L700">                    System.out.println(&quot;testRetryWithBackpressureParallelLoop -&gt; &quot; + r);</span>
+                }
+
+<span class="fc" id="L703">                final AtomicInteger timeouts = new AtomicInteger();</span>
+<span class="fc" id="L704">                final Map&lt;Integer, List&lt;String&gt;&gt; data = new ConcurrentHashMap&lt;Integer, List&lt;String&gt;&gt;();</span>
+
+<span class="fc" id="L706">                int m = 5000;</span>
+<span class="fc" id="L707">                final CountDownLatch cdl = new CountDownLatch(m);</span>
+<span class="fc bfc" id="L708" title="All 2 branches covered.">                for (int i = 0; i &lt; m; i++) {</span>
+<span class="fc" id="L709">                    final int j = i;</span>
+<span class="fc" id="L710">                    exec.execute(new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L713">                            final AtomicInteger nexts = new AtomicInteger();</span>
+                            try {
+<span class="fc" id="L715">                                Observable&lt;String&gt; origin = Observable.unsafeCreate(new FuncWithErrors(NUM_RETRIES));</span>
+<span class="fc" id="L716">                                TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+<span class="fc" id="L717">                                origin.retry()</span>
+<span class="fc" id="L718">                                .observeOn(Schedulers.computation()).subscribe(to);</span>
+<span class="fc" id="L719">                                to.awaitTerminalEvent(2500, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L720">                                List&lt;String&gt; onNextEvents = new ArrayList&lt;String&gt;(to.values());</span>
+<span class="pc bpc" id="L721" title="1 of 2 branches missed.">                                if (onNextEvents.size() != NUM_RETRIES + 2) {</span>
+<span class="nc bnc" id="L722" title="All 2 branches missed.">                                    for (Throwable t : to.errors()) {</span>
+<span class="nc" id="L723">                                        onNextEvents.add(t.toString());</span>
+<span class="nc" id="L724">                                    }</span>
+<span class="nc bnc" id="L725" title="All 2 branches missed.">                                    for (long err = to.completions(); err != 0; err--) {</span>
+<span class="nc" id="L726">                                        onNextEvents.add(&quot;onComplete&quot;);</span>
+                                    }
+<span class="nc" id="L728">                                    data.put(j, onNextEvents);</span>
+                                }
+<span class="nc" id="L730">                            } catch (Throwable t) {</span>
+<span class="nc" id="L731">                                timeouts.incrementAndGet();</span>
+<span class="nc" id="L732">                                System.out.println(j + &quot; | &quot; + cdl.getCount() + &quot; !!! &quot; + nexts.get());</span>
+<span class="fc" id="L733">                            }</span>
+<span class="fc" id="L734">                            cdl.countDown();</span>
+<span class="fc" id="L735">                        }</span>
+                    });
+                }
+<span class="fc" id="L738">                cdl.await();</span>
+<span class="fc" id="L739">                assertEquals(0, timeouts.get());</span>
+<span class="pc bpc" id="L740" title="1 of 2 branches missed.">                if (data.size() &gt; 0) {</span>
+<span class="nc" id="L741">                    fail(&quot;Data content mismatch: &quot; + allSequenceFrequency(data));</span>
+                }
+            }
+        } finally {
+<span class="fc" id="L745">            exec.shutdown();</span>
+        }
+<span class="fc" id="L747">    }</span>
+    static &lt;T&gt; StringBuilder allSequenceFrequency(Map&lt;Integer, List&lt;T&gt;&gt; its) {
+<span class="nc" id="L749">        StringBuilder b = new StringBuilder();</span>
+<span class="nc bnc" id="L750" title="All 2 branches missed.">        for (Map.Entry&lt;Integer, List&lt;T&gt;&gt; e : its.entrySet()) {</span>
+<span class="nc bnc" id="L751" title="All 2 branches missed.">            if (b.length() &gt; 0) {</span>
+<span class="nc" id="L752">                b.append(&quot;, &quot;);</span>
+            }
+<span class="nc" id="L754">            b.append(e.getKey()).append(&quot;={&quot;);</span>
+<span class="nc" id="L755">            b.append(sequenceFrequency(e.getValue()));</span>
+<span class="nc" id="L756">            b.append(&quot;}&quot;);</span>
+<span class="nc" id="L757">        }</span>
+<span class="nc" id="L758">        return b;</span>
+    }
+    static &lt;T&gt; StringBuilder sequenceFrequency(Iterable&lt;T&gt; it) {
+<span class="nc" id="L761">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L763">        Object prev = null;</span>
+<span class="nc" id="L764">        int cnt = 0;</span>
+
+<span class="nc bnc" id="L766" title="All 2 branches missed.">        for (Object curr : it) {</span>
+<span class="nc bnc" id="L767" title="All 2 branches missed.">            if (sb.length() &gt; 0) {</span>
+<span class="nc bnc" id="L768" title="All 2 branches missed.">                if (!curr.equals(prev)) {</span>
+<span class="nc bnc" id="L769" title="All 2 branches missed.">                    if (cnt &gt; 1) {</span>
+<span class="nc" id="L770">                        sb.append(&quot; x &quot;).append(cnt);</span>
+<span class="nc" id="L771">                        cnt = 1;</span>
+                    }
+<span class="nc" id="L773">                    sb.append(&quot;, &quot;);</span>
+<span class="nc" id="L774">                    sb.append(curr);</span>
+                } else {
+<span class="nc" id="L776">                    cnt++;</span>
+                }
+            } else {
+<span class="nc" id="L779">                sb.append(curr);</span>
+<span class="nc" id="L780">                cnt++;</span>
+            }
+<span class="nc" id="L782">            prev = curr;</span>
+<span class="nc" id="L783">        }</span>
+<span class="nc bnc" id="L784" title="All 2 branches missed.">        if (cnt &gt; 1) {</span>
+<span class="nc" id="L785">            sb.append(&quot; x &quot;).append(cnt);</span>
+        }
+
+<span class="nc" id="L788">        return sb;</span>
+    }
+
+    @Test//(timeout = 3000)
+    public void testIssue1900() throws InterruptedException {
+<span class="fc" id="L793">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L794">        final int NUM_MSG = 1034;</span>
+<span class="fc" id="L795">        final AtomicInteger count = new AtomicInteger();</span>
+
+<span class="fc" id="L797">        Observable&lt;String&gt; origin = Observable.range(0, NUM_MSG)</span>
+<span class="fc" id="L798">                .map(new Function&lt;Integer, String&gt;() {</span>
+                    @Override
+                    public String apply(Integer t1) {
+<span class="fc" id="L801">                        return &quot;msg: &quot; + count.incrementAndGet();</span>
+                    }
+                });
+
+<span class="fc" id="L805">        origin.retry()</span>
+<span class="fc" id="L806">        .groupBy(new Function&lt;String, String&gt;() {</span>
+            @Override
+            public String apply(String t1) {
+<span class="fc" id="L809">                return t1;</span>
+            }
+        })
+<span class="fc" id="L812">        .flatMap(new Function&lt;GroupedObservable&lt;String, String&gt;, Observable&lt;String&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;String&gt; apply(GroupedObservable&lt;String, String&gt; t1) {
+<span class="fc" id="L815">                return t1.take(1);</span>
+            }
+        })
+<span class="fc" id="L818">        .subscribe(new TestObserver&lt;String&gt;(observer));</span>
+
+<span class="fc" id="L820">        InOrder inOrder = inOrder(observer);</span>
+        // should show 3 attempts
+<span class="fc" id="L822">        inOrder.verify(observer, times(NUM_MSG)).onNext(any(java.lang.String.class));</span>
+        //        // should have no errors
+<span class="fc" id="L824">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+        // should have a single success
+        //inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);
+        // should have a single successful onComplete
+<span class="fc" id="L828">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L829">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L830">    }</span>
+
+    @Test//(timeout = 3000)
+    public void testIssue1900SourceNotSupportingBackpressure() {
+<span class="fc" id="L834">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L835">        final int NUM_MSG = 1034;</span>
+<span class="fc" id="L836">        final AtomicInteger count = new AtomicInteger();</span>
+
+<span class="fc" id="L838">        Observable&lt;String&gt; origin = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; o) {
+<span class="fc" id="L842">                o.onSubscribe(Disposables.empty());</span>
+<span class="fc bfc" id="L843" title="All 2 branches covered.">                for (int i = 0; i &lt; NUM_MSG; i++) {</span>
+<span class="fc" id="L844">                    o.onNext(&quot;msg:&quot; + count.incrementAndGet());</span>
+                }
+<span class="fc" id="L846">                o.onComplete();</span>
+<span class="fc" id="L847">            }</span>
+        });
+
+<span class="fc" id="L850">        origin.retry()</span>
+<span class="fc" id="L851">        .groupBy(new Function&lt;String, String&gt;() {</span>
+            @Override
+            public String apply(String t1) {
+<span class="fc" id="L854">                return t1;</span>
+            }
+        })
+<span class="fc" id="L857">        .flatMap(new Function&lt;GroupedObservable&lt;String, String&gt;, Observable&lt;String&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;String&gt; apply(GroupedObservable&lt;String, String&gt; t1) {
+<span class="fc" id="L860">                return t1.take(1);</span>
+            }
+        })
+<span class="fc" id="L863">        .subscribe(new TestObserver&lt;String&gt;(observer));</span>
+
+<span class="fc" id="L865">        InOrder inOrder = inOrder(observer);</span>
+        // should show 3 attempts
+<span class="fc" id="L867">        inOrder.verify(observer, times(NUM_MSG)).onNext(any(java.lang.String.class));</span>
+        //        // should have no errors
+<span class="fc" id="L869">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+        // should have a single success
+        //inOrder.verify(observer, times(1)).onNext(&quot;onSuccessOnly&quot;);
+        // should have a single successful onComplete
+<span class="fc" id="L873">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L874">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L875">    }</span>
+
+    @Test
+    public void retryPredicate() {
+<span class="fc" id="L879">        Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L880">        .retry(new Predicate&lt;Throwable&gt;() {</span>
+            @Override
+            public boolean test(Throwable v) throws Exception {
+<span class="fc" id="L883">                return true;</span>
+            }
+        })
+<span class="fc" id="L886">        .take(5)</span>
+<span class="fc" id="L887">        .test()</span>
+<span class="fc" id="L888">        .assertResult(1, 1, 1, 1, 1);</span>
+<span class="fc" id="L889">    }</span>
+
+    @Test
+    public void retryUntil() {
+<span class="fc" id="L893">        Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L894">        .retryUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="fc" id="L897">                return false;</span>
+            }
+        })
+<span class="fc" id="L900">        .take(5)</span>
+<span class="fc" id="L901">        .test()</span>
+<span class="fc" id="L902">        .assertResult(1, 1, 1, 1, 1);</span>
+<span class="fc" id="L903">    }</span>
+
+    @Test
+    public void retryLongPredicateInvalid() {
+        try {
+<span class="pc" id="L908">            Observable.just(1).retry(-99, new Predicate&lt;Throwable&gt;() {</span>
+                @Override
+                public boolean test(Throwable e) throws Exception {
+<span class="nc" id="L911">                    return true;</span>
+                }
+            });
+<span class="nc" id="L914">            fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L915">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L916">            assertEquals(&quot;times &gt;= 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L917">        }</span>
+<span class="fc" id="L918">    }</span>
+
+    @Test
+    public void shouldDisposeInnerObservable() {
+<span class="fc" id="L922">      final PublishSubject&lt;Object&gt; subject = PublishSubject.create();</span>
+<span class="fc" id="L923">      final Disposable disposable = Observable.error(new RuntimeException(&quot;Leak&quot;))</span>
+<span class="fc" id="L924">          .retryWhen(new Function&lt;Observable&lt;Throwable&gt;, ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; apply(Observable&lt;Throwable&gt; errors) throws Exception {
+<span class="fc" id="L927">                return errors.switchMap(new Function&lt;Throwable, ObservableSource&lt;Object&gt;&gt;() {</span>
+                    @Override
+                    public ObservableSource&lt;Object&gt; apply(Throwable ignore) throws Exception {
+<span class="fc" id="L930">                        return subject;</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L935">          .subscribe();</span>
+
+<span class="fc" id="L937">      assertTrue(subject.hasObservers());</span>
+<span class="fc" id="L938">      disposable.dispose();</span>
+<span class="fc" id="L939">      assertFalse(subject.hasObservers());</span>
+<span class="fc" id="L940">    }</span>
+
+    @Test
+    public void noCancelPreviousRetry() {
+<span class="fc" id="L944">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L946">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L948">        Observable&lt;Integer&gt; source = Observable.defer(new Callable&lt;ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L951" title="All 2 branches covered.">                if (times.getAndIncrement() &lt; 4) {</span>
+<span class="fc" id="L952">                    return Observable.error(new TestException());</span>
+                }
+<span class="fc" id="L954">                return Observable.just(1);</span>
+            }
+        })
+<span class="fc" id="L957">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L960">                counter.getAndIncrement();</span>
+<span class="nc" id="L961">            }</span>
+        });
+
+<span class="fc" id="L964">        source.retry(5)</span>
+<span class="fc" id="L965">        .test()</span>
+<span class="fc" id="L966">        .assertResult(1);</span>
+
+<span class="fc" id="L968">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L969">    }</span>
+
+    @Test
+    public void noCancelPreviousRetryWhile() {
+<span class="fc" id="L973">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L975">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L977">        Observable&lt;Integer&gt; source = Observable.defer(new Callable&lt;ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L980" title="All 2 branches covered.">                if (times.getAndIncrement() &lt; 4) {</span>
+<span class="fc" id="L981">                    return Observable.error(new TestException());</span>
+                }
+<span class="fc" id="L983">                return Observable.just(1);</span>
+            }
+        })
+<span class="fc" id="L986">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L989">                counter.getAndIncrement();</span>
+<span class="nc" id="L990">            }</span>
+        });
+
+<span class="fc" id="L993">        source.retry(5, Functions.alwaysTrue())</span>
+<span class="fc" id="L994">        .test()</span>
+<span class="fc" id="L995">        .assertResult(1);</span>
+
+<span class="fc" id="L997">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L998">    }</span>
+
+    @Test
+    public void noCancelPreviousRetryWhile2() {
+<span class="fc" id="L1002">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1004">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L1006">        Observable&lt;Integer&gt; source = Observable.defer(new Callable&lt;ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1009" title="All 2 branches covered.">                if (times.getAndIncrement() &lt; 4) {</span>
+<span class="fc" id="L1010">                    return Observable.error(new TestException());</span>
+                }
+<span class="fc" id="L1012">                return Observable.just(1);</span>
+            }
+        })
+<span class="fc" id="L1015">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1018">                counter.getAndIncrement();</span>
+<span class="nc" id="L1019">            }</span>
+        });
+
+<span class="fc" id="L1022">        source.retry(new BiPredicate&lt;Integer, Throwable&gt;() {</span>
+            @Override
+            public boolean test(Integer a, Throwable b) throws Exception {
+<span class="pc bpc" id="L1025" title="1 of 2 branches missed.">                return a &lt; 5;</span>
+            }
+        })
+<span class="fc" id="L1028">        .test()</span>
+<span class="fc" id="L1029">        .assertResult(1);</span>
+
+<span class="fc" id="L1031">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1032">    }</span>
+
+    @Test
+    public void noCancelPreviousRetryUntil() {
+<span class="fc" id="L1036">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1038">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L1040">        Observable&lt;Integer&gt; source = Observable.defer(new Callable&lt;ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1043" title="All 2 branches covered.">                if (times.getAndIncrement() &lt; 4) {</span>
+<span class="fc" id="L1044">                    return Observable.error(new TestException());</span>
+                }
+<span class="fc" id="L1046">                return Observable.just(1);</span>
+            }
+        })
+<span class="fc" id="L1049">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1052">                counter.getAndIncrement();</span>
+<span class="nc" id="L1053">            }</span>
+        });
+
+<span class="fc" id="L1056">        source.retryUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="fc" id="L1059">                return false;</span>
+            }
+        })
+<span class="fc" id="L1062">        .test()</span>
+<span class="fc" id="L1063">        .assertResult(1);</span>
+
+<span class="fc" id="L1065">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1066">    }</span>
+
+    @Test
+    public void noCancelPreviousRepeatWhen() {
+<span class="fc" id="L1070">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1072">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L1074">        Observable&lt;Integer&gt; source = Observable.defer(new Callable&lt;ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1077" title="All 2 branches covered.">                if (times.get() &lt; 4) {</span>
+<span class="fc" id="L1078">                    return Observable.error(new TestException());</span>
+                }
+<span class="fc" id="L1080">                return Observable.just(1);</span>
+            }
+<span class="fc" id="L1082">        }).doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1085">                counter.getAndIncrement();</span>
+<span class="nc" id="L1086">            }</span>
+        });
+
+<span class="fc" id="L1089">        source.retryWhen(new Function&lt;Observable&lt;Throwable&gt;, ObservableSource&lt;?&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;?&gt; apply(Observable&lt;Throwable&gt; e) throws Exception {
+<span class="fc" id="L1092">                return e.takeWhile(new Predicate&lt;Object&gt;() {</span>
+                    @Override
+                    public boolean test(Object v) throws Exception {
+<span class="pc bpc" id="L1095" title="1 of 2 branches missed.">                        return times.getAndIncrement() &lt; 4;</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L1100">        .test()</span>
+<span class="fc" id="L1101">        .assertResult(1);</span>
+
+<span class="fc" id="L1103">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1104">    }</span>
+
+    @Test
+    public void noCancelPreviousRepeatWhen2() {
+<span class="fc" id="L1108">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1110">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L1112">        Observable&lt;Integer&gt; source = Observable.&lt;Integer&gt;error(new TestException()).doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1115">                counter.getAndIncrement();</span>
+<span class="nc" id="L1116">            }</span>
+        });
+
+<span class="fc" id="L1119">        source.retryWhen(new Function&lt;Observable&lt;Throwable&gt;, ObservableSource&lt;?&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;?&gt; apply(Observable&lt;Throwable&gt; e) throws Exception {
+<span class="fc" id="L1122">                return e.takeWhile(new Predicate&lt;Object&gt;() {</span>
+                    @Override
+                    public boolean test(Object v) throws Exception {
+<span class="fc bfc" id="L1125" title="All 2 branches covered.">                        return times.getAndIncrement() &lt; 4;</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L1130">        .test()</span>
+<span class="fc" id="L1131">        .assertResult();</span>
+
+<span class="fc" id="L1133">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1134">    }</span>
+
+    @Test
+    public void repeatFloodNoSubscriptionError() {
+<span class="fc" id="L1138">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+<span class="fc" id="L1140">        final TestException error = new TestException();</span>
+
+        try {
+<span class="fc" id="L1143">            final PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L1144">            final PublishSubject&lt;Integer&gt; signaller = PublishSubject.create();</span>
+
+<span class="fc bfc" id="L1146" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L1148">                TestObserver&lt;Integer&gt; to = source.take(1)</span>
+<span class="fc" id="L1149">                .map(new Function&lt;Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer v) throws Exception {
+<span class="fc" id="L1152">                        throw error;</span>
+                    }
+                })
+<span class="fc" id="L1155">                .retryWhen(new Function&lt;Observable&lt;Throwable&gt;, ObservableSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public ObservableSource&lt;Integer&gt; apply(Observable&lt;Throwable&gt; v)
+                            throws Exception {
+<span class="fc" id="L1159">                        return signaller;</span>
+                    }
+<span class="fc" id="L1161">                }).test();</span>
+
+<span class="fc" id="L1163">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L1166" title="All 2 branches covered.">                        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L1167">                            source.onNext(1);</span>
+                        }
+<span class="fc" id="L1169">                    }</span>
+                };
+<span class="fc" id="L1171">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L1174" title="All 2 branches covered.">                        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L1175">                            signaller.onNext(1);</span>
+                        }
+<span class="fc" id="L1177">                    }</span>
+                };
+
+<span class="fc" id="L1180">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L1182">                to.dispose();</span>
+            }
+
+<span class="pc bpc" id="L1185" title="1 of 2 branches missed.">            if (!errors.isEmpty()) {</span>
+<span class="nc bnc" id="L1186" title="All 2 branches missed.">                for (Throwable e : errors) {</span>
+<span class="nc" id="L1187">                    e.printStackTrace();</span>
+<span class="nc" id="L1188">                }</span>
+<span class="nc" id="L1189">                fail(errors + &quot;&quot;);</span>
+            }
+        } finally {
+<span class="fc" id="L1192">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1194">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

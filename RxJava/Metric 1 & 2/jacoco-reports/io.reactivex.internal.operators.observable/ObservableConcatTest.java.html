@@ -1,0 +1,1198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableConcatTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableConcatTest.java</span></div><h1>ObservableConcatTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.Test;
+import org.mockito.InOrder;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.*;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L38">public class ObservableConcatTest {</span>
+
+    @Test
+    public void testConcat() {
+<span class="fc" id="L42">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L44">        final String[] o = { &quot;1&quot;, &quot;3&quot;, &quot;5&quot;, &quot;7&quot; };</span>
+<span class="fc" id="L45">        final String[] e = { &quot;2&quot;, &quot;4&quot;, &quot;6&quot; };</span>
+
+<span class="fc" id="L47">        final Observable&lt;String&gt; odds = Observable.fromArray(o);</span>
+<span class="fc" id="L48">        final Observable&lt;String&gt; even = Observable.fromArray(e);</span>
+
+<span class="fc" id="L50">        Observable&lt;String&gt; concat = Observable.concat(odds, even);</span>
+<span class="fc" id="L51">        concat.subscribe(observer);</span>
+
+<span class="fc" id="L53">        verify(observer, times(7)).onNext(anyString());</span>
+<span class="fc" id="L54">    }</span>
+
+    @Test
+    public void testConcatWithList() {
+<span class="fc" id="L58">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L60">        final String[] o = { &quot;1&quot;, &quot;3&quot;, &quot;5&quot;, &quot;7&quot; };</span>
+<span class="fc" id="L61">        final String[] e = { &quot;2&quot;, &quot;4&quot;, &quot;6&quot; };</span>
+
+<span class="fc" id="L63">        final Observable&lt;String&gt; odds = Observable.fromArray(o);</span>
+<span class="fc" id="L64">        final Observable&lt;String&gt; even = Observable.fromArray(e);</span>
+<span class="fc" id="L65">        final List&lt;Observable&lt;String&gt;&gt; list = new ArrayList&lt;Observable&lt;String&gt;&gt;();</span>
+<span class="fc" id="L66">        list.add(odds);</span>
+<span class="fc" id="L67">        list.add(even);</span>
+<span class="fc" id="L68">        Observable&lt;String&gt; concat = Observable.concat(Observable.fromIterable(list));</span>
+<span class="fc" id="L69">        concat.subscribe(observer);</span>
+
+<span class="fc" id="L71">        verify(observer, times(7)).onNext(anyString());</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void testConcatObservableOfObservables() {
+<span class="fc" id="L76">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L78">        final String[] o = { &quot;1&quot;, &quot;3&quot;, &quot;5&quot;, &quot;7&quot; };</span>
+<span class="fc" id="L79">        final String[] e = { &quot;2&quot;, &quot;4&quot;, &quot;6&quot; };</span>
+
+<span class="fc" id="L81">        final Observable&lt;String&gt; odds = Observable.fromArray(o);</span>
+<span class="fc" id="L82">        final Observable&lt;String&gt; even = Observable.fromArray(e);</span>
+
+<span class="fc" id="L84">        Observable&lt;Observable&lt;String&gt;&gt; observableOfObservables = Observable.unsafeCreate(new ObservableSource&lt;Observable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super Observable&lt;String&gt;&gt; observer) {
+<span class="fc" id="L88">                observer.onSubscribe(Disposables.empty());</span>
+                // simulate what would happen in an Observable
+<span class="fc" id="L90">                observer.onNext(odds);</span>
+<span class="fc" id="L91">                observer.onNext(even);</span>
+<span class="fc" id="L92">                observer.onComplete();</span>
+<span class="fc" id="L93">            }</span>
+
+        });
+<span class="fc" id="L96">        Observable&lt;String&gt; concat = Observable.concat(observableOfObservables);</span>
+
+<span class="fc" id="L98">        concat.subscribe(observer);</span>
+
+<span class="fc" id="L100">        verify(observer, times(7)).onNext(anyString());</span>
+<span class="fc" id="L101">    }</span>
+
+    /**
+     * Simple concat of 2 asynchronous observables ensuring it emits in correct order.
+     */
+    @Test
+    public void testSimpleAsyncConcat() {
+<span class="fc" id="L108">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L110">        TestObservable&lt;String&gt; o1 = new TestObservable&lt;String&gt;(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L111">        TestObservable&lt;String&gt; o2 = new TestObservable&lt;String&gt;(&quot;four&quot;, &quot;five&quot;, &quot;six&quot;);</span>
+
+<span class="fc" id="L113">        Observable.concat(Observable.unsafeCreate(o1), Observable.unsafeCreate(o2)).subscribe(observer);</span>
+
+        try {
+            // wait for async observables to complete
+<span class="fc" id="L117">            o1.t.join();</span>
+<span class="fc" id="L118">            o2.t.join();</span>
+<span class="nc" id="L119">        } catch (Throwable e) {</span>
+<span class="nc" id="L120">            throw new RuntimeException(&quot;failed waiting on threads&quot;);</span>
+<span class="fc" id="L121">        }</span>
+
+<span class="fc" id="L123">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L124">        inOrder.verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L125">        inOrder.verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L126">        inOrder.verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L127">        inOrder.verify(observer, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L128">        inOrder.verify(observer, times(1)).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L129">        inOrder.verify(observer, times(1)).onNext(&quot;six&quot;);</span>
+<span class="fc" id="L130">    }</span>
+
+    @Test
+    public void testNestedAsyncConcatLoop() throws Throwable {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (i % 10 == 0) {</span>
+<span class="fc" id="L136">                System.out.println(&quot;testNestedAsyncConcat &gt;&gt; &quot; + i);</span>
+            }
+<span class="fc" id="L138">            testNestedAsyncConcat();</span>
+        }
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * Test an async Observable that emits more async Observables.
+     * @throws InterruptedException if the test is interrupted
+     */
+    @Test
+    public void testNestedAsyncConcat() throws InterruptedException {
+<span class="fc" id="L148">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L150">        final TestObservable&lt;String&gt; o1 = new TestObservable&lt;String&gt;(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L151">        final TestObservable&lt;String&gt; o2 = new TestObservable&lt;String&gt;(&quot;four&quot;, &quot;five&quot;, &quot;six&quot;);</span>
+<span class="fc" id="L152">        final TestObservable&lt;String&gt; o3 = new TestObservable&lt;String&gt;(&quot;seven&quot;, &quot;eight&quot;, &quot;nine&quot;);</span>
+<span class="fc" id="L153">        final CountDownLatch allowThird = new CountDownLatch(1);</span>
+
+<span class="fc" id="L155">        final AtomicReference&lt;Thread&gt; parent = new AtomicReference&lt;Thread&gt;();</span>
+<span class="fc" id="L156">        final CountDownLatch parentHasStarted = new CountDownLatch(1);</span>
+<span class="fc" id="L157">        final CountDownLatch parentHasFinished = new CountDownLatch(1);</span>
+
+<span class="fc" id="L159">        Observable&lt;Observable&lt;String&gt;&gt; observableOfObservables = Observable.unsafeCreate(new ObservableSource&lt;Observable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public void subscribe(final Observer&lt;? super Observable&lt;String&gt;&gt; observer) {
+<span class="fc" id="L163">                final Disposable d = Disposables.empty();</span>
+<span class="fc" id="L164">                observer.onSubscribe(d);</span>
+<span class="fc" id="L165">                parent.set(new Thread(new Runnable() {</span>
+
+                    @Override
+                    public void run() {
+                        try {
+                            // emit first
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">                            if (!d.isDisposed()) {</span>
+<span class="fc" id="L172">                                System.out.println(&quot;Emit o1&quot;);</span>
+<span class="fc" id="L173">                                observer.onNext(Observable.unsafeCreate(o1));</span>
+                            }
+                            // emit second
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                            if (!d.isDisposed()) {</span>
+<span class="fc" id="L177">                                System.out.println(&quot;Emit o2&quot;);</span>
+<span class="fc" id="L178">                                observer.onNext(Observable.unsafeCreate(o2));</span>
+                            }
+
+                            // wait until sometime later and emit third
+                            try {
+<span class="fc" id="L183">                                allowThird.await();</span>
+<span class="nc" id="L184">                            } catch (InterruptedException e) {</span>
+<span class="nc" id="L185">                                observer.onError(e);</span>
+<span class="fc" id="L186">                            }</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">                            if (!d.isDisposed()) {</span>
+<span class="fc" id="L188">                                System.out.println(&quot;Emit o3&quot;);</span>
+<span class="fc" id="L189">                                observer.onNext(Observable.unsafeCreate(o3));</span>
+                            }
+
+<span class="nc" id="L192">                        } catch (Throwable e) {</span>
+<span class="nc" id="L193">                            observer.onError(e);</span>
+                        } finally {
+<span class="fc" id="L195">                            System.out.println(&quot;Done parent Observable&quot;);</span>
+<span class="fc" id="L196">                            observer.onComplete();</span>
+<span class="fc" id="L197">                            parentHasFinished.countDown();</span>
+                        }
+<span class="fc" id="L199">                    }</span>
+                }));
+<span class="fc" id="L201">                parent.get().start();</span>
+<span class="fc" id="L202">                parentHasStarted.countDown();</span>
+<span class="fc" id="L203">            }</span>
+        });
+
+<span class="fc" id="L206">        Observable.concat(observableOfObservables).subscribe(observer);</span>
+
+        // wait for parent to start
+<span class="fc" id="L209">        parentHasStarted.await();</span>
+
+        try {
+            // wait for first 2 async observables to complete
+<span class="fc" id="L213">            System.out.println(&quot;Thread1 is starting ... waiting for it to complete ...&quot;);</span>
+<span class="fc" id="L214">            o1.waitForThreadDone();</span>
+<span class="fc" id="L215">            System.out.println(&quot;Thread2 is starting ... waiting for it to complete ...&quot;);</span>
+<span class="fc" id="L216">            o2.waitForThreadDone();</span>
+<span class="nc" id="L217">        } catch (Throwable e) {</span>
+<span class="nc" id="L218">            throw new RuntimeException(&quot;failed waiting on threads&quot;, e);</span>
+<span class="fc" id="L219">        }</span>
+
+<span class="fc" id="L221">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L222">        inOrder.verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L223">        inOrder.verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L224">        inOrder.verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L225">        inOrder.verify(observer, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L226">        inOrder.verify(observer, times(1)).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L227">        inOrder.verify(observer, times(1)).onNext(&quot;six&quot;);</span>
+        // we shouldn't have the following 3 yet
+<span class="fc" id="L229">        inOrder.verify(observer, never()).onNext(&quot;seven&quot;);</span>
+<span class="fc" id="L230">        inOrder.verify(observer, never()).onNext(&quot;eight&quot;);</span>
+<span class="fc" id="L231">        inOrder.verify(observer, never()).onNext(&quot;nine&quot;);</span>
+        // we should not be completed yet
+<span class="fc" id="L233">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L234">        verify(observer, never()).onError(any(Throwable.class));</span>
+
+        // now allow the third
+<span class="fc" id="L237">        allowThird.countDown();</span>
+
+        try {
+            // wait for 3rd to complete
+<span class="fc" id="L241">            o3.waitForThreadDone();</span>
+<span class="nc" id="L242">        } catch (Throwable e) {</span>
+<span class="nc" id="L243">            throw new RuntimeException(&quot;failed waiting on threads&quot;, e);</span>
+<span class="fc" id="L244">        }</span>
+
+        try {
+            // wait for the parent to complete
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">            if (!parentHasFinished.await(5, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L249">                fail(&quot;Parent didn't finish within the time limit&quot;);</span>
+            }
+<span class="nc" id="L251">        } catch (Throwable e) {</span>
+<span class="nc" id="L252">            throw new RuntimeException(&quot;failed waiting on threads&quot;, e);</span>
+<span class="fc" id="L253">        }</span>
+
+<span class="fc" id="L255">        inOrder.verify(observer, times(1)).onNext(&quot;seven&quot;);</span>
+<span class="fc" id="L256">        inOrder.verify(observer, times(1)).onNext(&quot;eight&quot;);</span>
+<span class="fc" id="L257">        inOrder.verify(observer, times(1)).onNext(&quot;nine&quot;);</span>
+
+<span class="fc" id="L259">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L260">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L261">    }</span>
+
+    @Test
+    public void testBlockedObservableOfObservables() {
+<span class="fc" id="L265">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L267">        final String[] o = { &quot;1&quot;, &quot;3&quot;, &quot;5&quot;, &quot;7&quot; };</span>
+<span class="fc" id="L268">        final String[] e = { &quot;2&quot;, &quot;4&quot;, &quot;6&quot; };</span>
+<span class="fc" id="L269">        final Observable&lt;String&gt; odds = Observable.fromArray(o);</span>
+<span class="fc" id="L270">        final Observable&lt;String&gt; even = Observable.fromArray(e);</span>
+<span class="fc" id="L271">        final CountDownLatch callOnce = new CountDownLatch(1);</span>
+<span class="fc" id="L272">        final CountDownLatch okToContinue = new CountDownLatch(1);</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L274">        TestObservable&lt;Observable&lt;String&gt;&gt; observableOfObservables = new TestObservable&lt;Observable&lt;String&gt;&gt;(callOnce, okToContinue, odds, even);</span>
+<span class="fc" id="L275">        Observable&lt;String&gt; concatF = Observable.concat(Observable.unsafeCreate(observableOfObservables));</span>
+<span class="fc" id="L276">        concatF.subscribe(observer);</span>
+        try {
+            //Block main thread to allow observables to serve up o1.
+<span class="fc" id="L279">            callOnce.await();</span>
+<span class="nc" id="L280">        } catch (Throwable ex) {</span>
+<span class="nc" id="L281">            ex.printStackTrace();</span>
+<span class="nc" id="L282">            fail(ex.getMessage());</span>
+<span class="fc" id="L283">        }</span>
+        // The concated Observable should have served up all of the odds.
+<span class="fc" id="L285">        verify(observer, times(1)).onNext(&quot;1&quot;);</span>
+<span class="fc" id="L286">        verify(observer, times(1)).onNext(&quot;3&quot;);</span>
+<span class="fc" id="L287">        verify(observer, times(1)).onNext(&quot;5&quot;);</span>
+<span class="fc" id="L288">        verify(observer, times(1)).onNext(&quot;7&quot;);</span>
+
+        try {
+            // unblock observables so it can serve up o2 and complete
+<span class="fc" id="L292">            okToContinue.countDown();</span>
+<span class="fc" id="L293">            observableOfObservables.t.join();</span>
+<span class="nc" id="L294">        } catch (Throwable ex) {</span>
+<span class="nc" id="L295">            ex.printStackTrace();</span>
+<span class="nc" id="L296">            fail(ex.getMessage());</span>
+<span class="fc" id="L297">        }</span>
+        // The concatenated Observable should now have served up all the evens.
+<span class="fc" id="L299">        verify(observer, times(1)).onNext(&quot;2&quot;);</span>
+<span class="fc" id="L300">        verify(observer, times(1)).onNext(&quot;4&quot;);</span>
+<span class="fc" id="L301">        verify(observer, times(1)).onNext(&quot;6&quot;);</span>
+<span class="fc" id="L302">    }</span>
+
+    @Test
+    public void testConcatConcurrentWithInfinity() {
+<span class="fc" id="L306">        final TestObservable&lt;String&gt; w1 = new TestObservable&lt;String&gt;(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+        //This Observable will send &quot;hello&quot; MAX_VALUE time.
+<span class="fc" id="L308">        final TestObservable&lt;String&gt; w2 = new TestObservable&lt;String&gt;(&quot;hello&quot;, Integer.MAX_VALUE);</span>
+
+<span class="fc" id="L310">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L313">        TestObservable&lt;Observable&lt;String&gt;&gt; observableOfObservables = new TestObservable&lt;Observable&lt;String&gt;&gt;(Observable.unsafeCreate(w1), Observable.unsafeCreate(w2));</span>
+<span class="fc" id="L314">        Observable&lt;String&gt; concatF = Observable.concat(Observable.unsafeCreate(observableOfObservables));</span>
+
+<span class="fc" id="L316">        concatF.take(50).subscribe(observer);</span>
+
+        //Wait for the thread to start up.
+        try {
+<span class="fc" id="L320">            w1.waitForThreadDone();</span>
+<span class="fc" id="L321">            w2.waitForThreadDone();</span>
+<span class="nc" id="L322">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L323">            e.printStackTrace();</span>
+<span class="fc" id="L324">        }</span>
+
+<span class="fc" id="L326">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L327">        inOrder.verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L328">        inOrder.verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L329">        inOrder.verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L330">        inOrder.verify(observer, times(47)).onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L331">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L332">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L333">    }</span>
+
+    @Test
+    public void testConcatNonBlockingObservables() {
+
+<span class="fc" id="L338">        final CountDownLatch okToContinueW1 = new CountDownLatch(1);</span>
+<span class="fc" id="L339">        final CountDownLatch okToContinueW2 = new CountDownLatch(1);</span>
+
+<span class="fc" id="L341">        final TestObservable&lt;String&gt; w1 = new TestObservable&lt;String&gt;(null, okToContinueW1, &quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L342">        final TestObservable&lt;String&gt; w2 = new TestObservable&lt;String&gt;(null, okToContinueW2, &quot;four&quot;, &quot;five&quot;, &quot;six&quot;);</span>
+
+<span class="fc" id="L344">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L346">        Observable&lt;Observable&lt;String&gt;&gt; observableOfObservables = Observable.unsafeCreate(new ObservableSource&lt;Observable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super Observable&lt;String&gt;&gt; observer) {
+<span class="fc" id="L350">                observer.onSubscribe(Disposables.empty());</span>
+                // simulate what would happen in an Observable
+<span class="fc" id="L352">                observer.onNext(Observable.unsafeCreate(w1));</span>
+<span class="fc" id="L353">                observer.onNext(Observable.unsafeCreate(w2));</span>
+<span class="fc" id="L354">                observer.onComplete();</span>
+<span class="fc" id="L355">            }</span>
+
+        });
+<span class="fc" id="L358">        Observable&lt;String&gt; concat = Observable.concat(observableOfObservables);</span>
+<span class="fc" id="L359">        concat.subscribe(observer);</span>
+
+<span class="fc" id="L361">        verify(observer, times(0)).onComplete();</span>
+
+        try {
+            // release both threads
+<span class="fc" id="L365">            okToContinueW1.countDown();</span>
+<span class="fc" id="L366">            okToContinueW2.countDown();</span>
+            // wait for both to finish
+<span class="fc" id="L368">            w1.t.join();</span>
+<span class="fc" id="L369">            w2.t.join();</span>
+<span class="nc" id="L370">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L371">            e.printStackTrace();</span>
+<span class="fc" id="L372">        }</span>
+
+<span class="fc" id="L374">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L375">        inOrder.verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L376">        inOrder.verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L377">        inOrder.verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L378">        inOrder.verify(observer, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L379">        inOrder.verify(observer, times(1)).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L380">        inOrder.verify(observer, times(1)).onNext(&quot;six&quot;);</span>
+<span class="fc" id="L381">        verify(observer, times(1)).onComplete();</span>
+
+<span class="fc" id="L383">    }</span>
+
+    /**
+     * Test unsubscribing the concatenated Observable in a single thread.
+     */
+    @Test
+    public void testConcatUnsubscribe() {
+<span class="fc" id="L390">        final CountDownLatch callOnce = new CountDownLatch(1);</span>
+<span class="fc" id="L391">        final CountDownLatch okToContinue = new CountDownLatch(1);</span>
+<span class="fc" id="L392">        final TestObservable&lt;String&gt; w1 = new TestObservable&lt;String&gt;(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L393">        final TestObservable&lt;String&gt; w2 = new TestObservable&lt;String&gt;(callOnce, okToContinue, &quot;four&quot;, &quot;five&quot;, &quot;six&quot;);</span>
+
+<span class="fc" id="L395">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L396">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+
+<span class="fc" id="L398">        final Observable&lt;String&gt; concat = Observable.concat(Observable.unsafeCreate(w1), Observable.unsafeCreate(w2));</span>
+
+        try {
+            // Subscribe
+<span class="fc" id="L402">            concat.subscribe(to);</span>
+            //Block main thread to allow Observable &quot;w1&quot; to complete and Observable &quot;w2&quot; to call onNext once.
+<span class="fc" id="L404">            callOnce.await();</span>
+            // Unsubcribe
+<span class="fc" id="L406">            to.dispose();</span>
+            //Unblock the Observable to continue.
+<span class="fc" id="L408">            okToContinue.countDown();</span>
+<span class="fc" id="L409">            w1.t.join();</span>
+<span class="fc" id="L410">            w2.t.join();</span>
+<span class="nc" id="L411">        } catch (Throwable e) {</span>
+<span class="nc" id="L412">            e.printStackTrace();</span>
+<span class="nc" id="L413">            fail(e.getMessage());</span>
+<span class="fc" id="L414">        }</span>
+
+<span class="fc" id="L416">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L417">        inOrder.verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L418">        inOrder.verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L419">        inOrder.verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L420">        inOrder.verify(observer, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L421">        inOrder.verify(observer, never()).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L422">        inOrder.verify(observer, never()).onNext(&quot;six&quot;);</span>
+<span class="fc" id="L423">        inOrder.verify(observer, never()).onComplete();</span>
+
+<span class="fc" id="L425">    }</span>
+
+    /**
+     * All observables will be running in different threads so subscribe() is unblocked. CountDownLatch is only used in order to call unsubscribe() in a predictable manner.
+     */
+    @Test
+    public void testConcatUnsubscribeConcurrent() {
+<span class="fc" id="L432">        final CountDownLatch callOnce = new CountDownLatch(1);</span>
+<span class="fc" id="L433">        final CountDownLatch okToContinue = new CountDownLatch(1);</span>
+<span class="fc" id="L434">        final TestObservable&lt;String&gt; w1 = new TestObservable&lt;String&gt;(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L435">        final TestObservable&lt;String&gt; w2 = new TestObservable&lt;String&gt;(callOnce, okToContinue, &quot;four&quot;, &quot;five&quot;, &quot;six&quot;);</span>
+
+<span class="fc" id="L437">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L438">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L441">        TestObservable&lt;Observable&lt;String&gt;&gt; observableOfObservables = new TestObservable&lt;Observable&lt;String&gt;&gt;(Observable.unsafeCreate(w1), Observable.unsafeCreate(w2));</span>
+<span class="fc" id="L442">        Observable&lt;String&gt; concatF = Observable.concat(Observable.unsafeCreate(observableOfObservables));</span>
+
+<span class="fc" id="L444">        concatF.subscribe(to);</span>
+
+        try {
+            //Block main thread to allow Observable &quot;w1&quot; to complete and Observable &quot;w2&quot; to call onNext exactly once.
+<span class="fc" id="L448">            callOnce.await();</span>
+            //&quot;four&quot; from w2 has been processed by onNext()
+<span class="fc" id="L450">            to.dispose();</span>
+            //&quot;five&quot; and &quot;six&quot; will NOT be processed by onNext()
+            //Unblock the Observable to continue.
+<span class="fc" id="L453">            okToContinue.countDown();</span>
+<span class="fc" id="L454">            w1.t.join();</span>
+<span class="fc" id="L455">            w2.t.join();</span>
+<span class="nc" id="L456">        } catch (Throwable e) {</span>
+<span class="nc" id="L457">            e.printStackTrace();</span>
+<span class="nc" id="L458">            fail(e.getMessage());</span>
+<span class="fc" id="L459">        }</span>
+
+<span class="fc" id="L461">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L462">        inOrder.verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L463">        inOrder.verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L464">        inOrder.verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L465">        inOrder.verify(observer, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L466">        inOrder.verify(observer, never()).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L467">        inOrder.verify(observer, never()).onNext(&quot;six&quot;);</span>
+<span class="fc" id="L468">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L469">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L470">    }</span>
+
+    static class TestObservable&lt;T&gt; implements ObservableSource&lt;T&gt; {
+
+<span class="fc" id="L474">        private final Disposable upstream = new Disposable() {</span>
+            @Override
+            public void dispose() {
+<span class="fc" id="L477">                    subscribed = false;</span>
+<span class="fc" id="L478">            }</span>
+
+            @Override
+            public boolean isDisposed() {
+<span class="nc" id="L482">                return subscribed;</span>
+            }
+        };
+        private final List&lt;T&gt; values;
+        private Thread t;
+        private int count;
+<span class="fc" id="L488">        private volatile boolean subscribed = true;</span>
+        private final CountDownLatch once;
+        private final CountDownLatch okToContinue;
+<span class="fc" id="L491">        private final CountDownLatch threadHasStarted = new CountDownLatch(1);</span>
+        private final T seed;
+        private final int size;
+
+        TestObservable(T... values) {
+<span class="fc" id="L496">            this(null, null, values);</span>
+<span class="fc" id="L497">        }</span>
+
+<span class="fc" id="L499">        TestObservable(CountDownLatch once, CountDownLatch okToContinue, T... values) {</span>
+<span class="fc" id="L500">            this.values = Arrays.asList(values);</span>
+<span class="fc" id="L501">            this.size = this.values.size();</span>
+<span class="fc" id="L502">            this.once = once;</span>
+<span class="fc" id="L503">            this.okToContinue = okToContinue;</span>
+<span class="fc" id="L504">            this.seed = null;</span>
+<span class="fc" id="L505">        }</span>
+
+<span class="fc" id="L507">        TestObservable(T seed, int size) {</span>
+<span class="fc" id="L508">            values = null;</span>
+<span class="fc" id="L509">            once = null;</span>
+<span class="fc" id="L510">            okToContinue = null;</span>
+<span class="fc" id="L511">            this.seed = seed;</span>
+<span class="fc" id="L512">            this.size = size;</span>
+<span class="fc" id="L513">        }</span>
+
+        @Override
+        public void subscribe(final Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L517">            observer.onSubscribe(upstream);</span>
+<span class="fc" id="L518">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+                    try {
+<span class="fc bfc" id="L523" title="All 4 branches covered.">                        while (count &lt; size &amp;&amp; subscribed) {</span>
+<span class="fc bfc" id="L524" title="All 2 branches covered.">                            if (null != values) {</span>
+<span class="fc" id="L525">                                observer.onNext(values.get(count));</span>
+                            } else {
+<span class="fc" id="L527">                                observer.onNext(seed);</span>
+                            }
+<span class="fc" id="L529">                            count++;</span>
+                            //Unblock the main thread to call unsubscribe.
+<span class="fc bfc" id="L531" title="All 2 branches covered.">                            if (null != once) {</span>
+<span class="fc" id="L532">                                once.countDown();</span>
+                            }
+                            //Block until the main thread has called unsubscribe.
+<span class="fc bfc" id="L535" title="All 2 branches covered.">                            if (null != okToContinue) {</span>
+<span class="fc" id="L536">                                okToContinue.await(5, TimeUnit.SECONDS);</span>
+                            }
+                        }
+<span class="fc bfc" id="L539" title="All 2 branches covered.">                        if (subscribed) {</span>
+<span class="fc" id="L540">                            observer.onComplete();</span>
+                        }
+<span class="nc" id="L542">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L543">                        e.printStackTrace();</span>
+<span class="nc" id="L544">                        fail(e.getMessage());</span>
+<span class="fc" id="L545">                    }</span>
+<span class="fc" id="L546">                }</span>
+
+            });
+<span class="fc" id="L549">            t.start();</span>
+<span class="fc" id="L550">            threadHasStarted.countDown();</span>
+<span class="fc" id="L551">        }</span>
+
+        void waitForThreadDone() throws InterruptedException {
+<span class="fc" id="L554">            threadHasStarted.await();</span>
+<span class="fc" id="L555">            t.join();</span>
+<span class="fc" id="L556">        }</span>
+    }
+
+    @Test
+    public void testMultipleObservers() {
+<span class="fc" id="L561">        Observer&lt;Object&gt; o1 = TestHelper.mockObserver();</span>
+<span class="fc" id="L562">        Observer&lt;Object&gt; o2 = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L564">        TestScheduler s = new TestScheduler();</span>
+
+<span class="fc" id="L566">        Observable&lt;Long&gt; timer = Observable.interval(500, TimeUnit.MILLISECONDS, s).take(2);</span>
+<span class="fc" id="L567">        Observable&lt;Long&gt; o = Observable.concat(timer, timer);</span>
+
+<span class="fc" id="L569">        o.subscribe(o1);</span>
+<span class="fc" id="L570">        o.subscribe(o2);</span>
+
+<span class="fc" id="L572">        InOrder inOrder1 = inOrder(o1);</span>
+<span class="fc" id="L573">        InOrder inOrder2 = inOrder(o2);</span>
+
+<span class="fc" id="L575">        s.advanceTimeBy(500, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L577">        inOrder1.verify(o1, times(1)).onNext(0L);</span>
+<span class="fc" id="L578">        inOrder2.verify(o2, times(1)).onNext(0L);</span>
+
+<span class="fc" id="L580">        s.advanceTimeBy(500, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L582">        inOrder1.verify(o1, times(1)).onNext(1L);</span>
+<span class="fc" id="L583">        inOrder2.verify(o2, times(1)).onNext(1L);</span>
+
+<span class="fc" id="L585">        s.advanceTimeBy(500, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L587">        inOrder1.verify(o1, times(1)).onNext(0L);</span>
+<span class="fc" id="L588">        inOrder2.verify(o2, times(1)).onNext(0L);</span>
+
+<span class="fc" id="L590">        s.advanceTimeBy(500, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L592">        inOrder1.verify(o1, times(1)).onNext(1L);</span>
+<span class="fc" id="L593">        inOrder2.verify(o2, times(1)).onNext(1L);</span>
+
+<span class="fc" id="L595">        inOrder1.verify(o1, times(1)).onComplete();</span>
+<span class="fc" id="L596">        inOrder2.verify(o2, times(1)).onComplete();</span>
+
+<span class="fc" id="L598">        verify(o1, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L599">        verify(o2, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L600">    }</span>
+
+    @Test
+    public void concatVeryLongObservableOfObservables() {
+<span class="fc" id="L604">        final int n = 10000;</span>
+<span class="fc" id="L605">        Observable&lt;Observable&lt;Integer&gt;&gt; source = Observable.range(0, n).map(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L608">                return Observable.just(v);</span>
+            }
+        });
+
+<span class="fc" id="L612">        Single&lt;List&lt;Integer&gt;&gt; result = Observable.concat(source).toList();</span>
+
+<span class="fc" id="L614">        SingleObserver&lt;List&lt;Integer&gt;&gt; o = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L615">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L617">        result.subscribe(o);</span>
+
+<span class="fc" id="L619">        List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;(n);</span>
+<span class="fc bfc" id="L620" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L621">            list.add(i);</span>
+        }
+<span class="fc" id="L623">        inOrder.verify(o).onSuccess(list);</span>
+<span class="fc" id="L624">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L625">    }</span>
+
+    @Test
+    public void concatVeryLongObservableOfObservablesTakeHalf() {
+<span class="fc" id="L629">        final int n = 10000;</span>
+<span class="fc" id="L630">        Observable&lt;Observable&lt;Integer&gt;&gt; source = Observable.range(0, n).map(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L633">                return Observable.just(v);</span>
+            }
+        });
+
+<span class="fc" id="L637">        Single&lt;List&lt;Integer&gt;&gt; result = Observable.concat(source).take(n / 2).toList();</span>
+
+<span class="fc" id="L639">        SingleObserver&lt;List&lt;Integer&gt;&gt; o = TestHelper.mockSingleObserver();</span>
+<span class="fc" id="L640">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L642">        result.subscribe(o);</span>
+
+<span class="fc" id="L644">        List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;(n);</span>
+<span class="fc bfc" id="L645" title="All 2 branches covered.">        for (int i = 0; i &lt; n / 2; i++) {</span>
+<span class="fc" id="L646">            list.add(i);</span>
+        }
+<span class="fc" id="L648">        inOrder.verify(o).onSuccess(list);</span>
+<span class="fc" id="L649">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L650">    }</span>
+
+    @Test
+    public void testConcatOuterBackpressure() {
+<span class="fc" id="L654">        assertEquals(1,</span>
+<span class="fc" id="L655">                (int) Observable.&lt;Integer&gt; empty()</span>
+<span class="fc" id="L656">                        .concatWith(Observable.just(1))</span>
+<span class="fc" id="L657">                        .take(1)</span>
+<span class="fc" id="L658">                        .blockingSingle());</span>
+<span class="fc" id="L659">    }</span>
+
+    // https://github.com/ReactiveX/RxJava/issues/1818
+    @Test
+    public void testConcatWithNonCompliantSourceDoubleOnComplete() {
+<span class="fc" id="L664">        Observable&lt;String&gt; o = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L668">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L669">                observer.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L670">                observer.onComplete();</span>
+<span class="fc" id="L671">                observer.onComplete();</span>
+<span class="fc" id="L672">            }</span>
+
+        });
+
+<span class="fc" id="L676">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+<span class="fc" id="L677">        Observable.concat(o, o).subscribe(to);</span>
+<span class="fc" id="L678">        to.awaitTerminalEvent(500, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L679">        to.assertTerminated();</span>
+<span class="fc" id="L680">        to.assertNoErrors();</span>
+<span class="fc" id="L681">        to.assertValues(&quot;hello&quot;, &quot;hello&quot;);</span>
+<span class="fc" id="L682">    }</span>
+
+    @Test(timeout = 30000)
+    public void testIssue2890NoStackoverflow() throws InterruptedException {
+<span class="fc" id="L686">        final ExecutorService executor = Executors.newFixedThreadPool(2);</span>
+<span class="fc" id="L687">        final Scheduler sch = Schedulers.from(executor);</span>
+
+<span class="fc" id="L689">        Function&lt;Integer, Observable&lt;Integer&gt;&gt; func = new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer t) {
+<span class="fc" id="L692">                Observable&lt;Integer&gt; o = Observable.just(t)</span>
+<span class="fc" id="L693">                        .subscribeOn(sch)</span>
+                ;
+<span class="fc" id="L695">                Subject&lt;Integer&gt; subject = UnicastSubject.create();</span>
+<span class="fc" id="L696">                o.subscribe(subject);</span>
+<span class="fc" id="L697">                return subject;</span>
+            }
+        };
+
+<span class="fc" id="L701">        int n = 5000;</span>
+<span class="fc" id="L702">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L704">        Observable.range(1, n)</span>
+<span class="fc" id="L705">        .concatMap(func).subscribe(new DefaultObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+                // Consume after sleep for 1 ms
+                try {
+<span class="fc" id="L710">                    Thread.sleep(1);</span>
+<span class="nc" id="L711">                } catch (InterruptedException e) {</span>
+                    // ignored
+<span class="fc" id="L713">                }</span>
+<span class="fc bfc" id="L714" title="All 2 branches covered.">                if (counter.getAndIncrement() % 100 == 0) {</span>
+<span class="fc" id="L715">                    System.out.println(&quot;testIssue2890NoStackoverflow -&gt; &quot; + counter.get());</span>
+                };
+<span class="fc" id="L717">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L721">                executor.shutdown();</span>
+<span class="fc" id="L722">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L726">                executor.shutdown();</span>
+<span class="nc" id="L727">            }</span>
+        });
+
+<span class="fc" id="L730">        executor.awaitTermination(20000, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L732">        assertEquals(n, counter.get());</span>
+<span class="fc" id="L733">    }</span>
+
+    @Test//(timeout = 100000)
+    public void concatMapRangeAsyncLoopIssue2876() {
+<span class="fc" id="L737">        final long durationSeconds = 2;</span>
+<span class="fc" id="L738">        final long startTime = System.currentTimeMillis();</span>
+<span class="fc" id="L739">        for (int i = 0;; i++) {</span>
+            //only run this for a max of ten seconds
+<span class="fc bfc" id="L741" title="All 2 branches covered.">            if (System.currentTimeMillis() - startTime &gt; TimeUnit.SECONDS.toMillis(durationSeconds)) {</span>
+<span class="fc" id="L742">                return;</span>
+            }
+<span class="fc bfc" id="L744" title="All 2 branches covered.">            if (i % 1000 == 0) {</span>
+<span class="fc" id="L745">                System.out.println(&quot;concatMapRangeAsyncLoop &gt; &quot; + i);</span>
+            }
+<span class="fc" id="L747">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L748">            Observable.range(0, 1000)</span>
+<span class="fc" id="L749">            .concatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Observable&lt;Integer&gt; apply(Integer t) {
+<span class="fc" id="L752">                    return Observable.fromIterable(Arrays.asList(t));</span>
+                }
+            })
+<span class="fc" id="L755">            .observeOn(Schedulers.computation()).subscribe(to);</span>
+
+<span class="fc" id="L757">            to.awaitTerminalEvent(2500, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L758">            to.assertTerminated();</span>
+<span class="fc" id="L759">            to.assertNoErrors();</span>
+<span class="fc" id="L760">            assertEquals(1000, to.valueCount());</span>
+<span class="fc" id="L761">            assertEquals((Integer)999, to.values().get(999));</span>
+        }
+    }
+
+    @Test
+    public void concat3() {
+<span class="fc" id="L767">        Observable.concat(Observable.just(1), Observable.just(2), Observable.just(3))</span>
+<span class="fc" id="L768">        .test()</span>
+<span class="fc" id="L769">        .assertResult(1, 2, 3);</span>
+<span class="fc" id="L770">    }</span>
+
+    @Test
+    public void concat4() {
+<span class="fc" id="L774">        Observable.concat(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L775">                Observable.just(3), Observable.just(4))</span>
+<span class="fc" id="L776">        .test()</span>
+<span class="fc" id="L777">        .assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L778">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatArrayDelayError() {
+<span class="fc" id="L783">        Observable.concatArrayDelayError(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L784">                Observable.just(3), Observable.just(4))</span>
+<span class="fc" id="L785">        .test()</span>
+<span class="fc" id="L786">        .assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L787">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatArrayDelayErrorWithError() {
+<span class="fc" id="L792">        Observable.concatArrayDelayError(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L793">                Observable.just(3).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L794">                Observable.just(4))</span>
+<span class="fc" id="L795">        .test()</span>
+<span class="fc" id="L796">        .assertFailure(TestException.class, 1, 2, 3, 4);</span>
+<span class="fc" id="L797">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatIterableDelayError() {
+<span class="fc" id="L802">        Observable.concatDelayError(</span>
+<span class="fc" id="L803">                Arrays.asList(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L804">                Observable.just(3), Observable.just(4)))</span>
+<span class="fc" id="L805">        .test()</span>
+<span class="fc" id="L806">        .assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L807">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatIterableDelayErrorWithError() {
+<span class="fc" id="L812">        Observable.concatDelayError(</span>
+<span class="fc" id="L813">                Arrays.asList(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L814">                Observable.just(3).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L815">                Observable.just(4)))</span>
+<span class="fc" id="L816">        .test()</span>
+<span class="fc" id="L817">        .assertFailure(TestException.class, 1, 2, 3, 4);</span>
+<span class="fc" id="L818">    }</span>
+
+    @Test
+    public void concatObservableDelayError() {
+<span class="fc" id="L822">        Observable.concatDelayError(</span>
+<span class="fc" id="L823">                Observable.just(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L824">                Observable.just(3), Observable.just(4)))</span>
+<span class="fc" id="L825">        .test()</span>
+<span class="fc" id="L826">        .assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L827">    }</span>
+
+    @Test
+    public void concatObservableDelayErrorWithError() {
+<span class="fc" id="L831">        Observable.concatDelayError(</span>
+<span class="fc" id="L832">                Observable.just(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L833">                Observable.just(3).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L834">                Observable.just(4)))</span>
+<span class="fc" id="L835">        .test()</span>
+<span class="fc" id="L836">        .assertFailure(TestException.class, 1, 2, 3, 4);</span>
+<span class="fc" id="L837">    }</span>
+
+    @Test
+    public void concatObservableDelayErrorBoundary() {
+<span class="fc" id="L841">        Observable.concatDelayError(</span>
+<span class="fc" id="L842">                Observable.just(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L843">                Observable.just(3).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L844">                Observable.just(4)), 2, false)</span>
+<span class="fc" id="L845">        .test()</span>
+<span class="fc" id="L846">        .assertFailure(TestException.class, 1, 2, 3);</span>
+<span class="fc" id="L847">    }</span>
+
+    @Test
+    public void concatObservableDelayErrorTillEnd() {
+<span class="fc" id="L851">        Observable.concatDelayError(</span>
+<span class="fc" id="L852">                Observable.just(Observable.just(1), Observable.just(2),</span>
+<span class="fc" id="L853">                Observable.just(3).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L854">                Observable.just(4)), 2, true)</span>
+<span class="fc" id="L855">        .test()</span>
+<span class="fc" id="L856">        .assertFailure(TestException.class, 1, 2, 3, 4);</span>
+<span class="fc" id="L857">    }</span>
+
+    @Test
+    public void concatMapDelayError() {
+<span class="fc" id="L861">        Observable.just(Observable.just(1), Observable.just(2))</span>
+<span class="fc" id="L862">        .concatMapDelayError(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L863">        .test()</span>
+<span class="fc" id="L864">        .assertResult(1, 2);</span>
+<span class="fc" id="L865">    }</span>
+
+    @Test
+    public void concatMapDelayErrorWithError() {
+<span class="fc" id="L869">        Observable.just(Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException())), Observable.just(2))</span>
+<span class="fc" id="L870">        .concatMapDelayError(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L871">        .test()</span>
+<span class="fc" id="L872">        .assertFailure(TestException.class, 1, 2);</span>
+<span class="fc" id="L873">    }</span>
+
+    @Test
+    public void concatMapIterableBufferSize() {
+
+<span class="fc" id="L878">        Observable.just(1, 2).concatMapIterable(new Function&lt;Integer, Iterable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L881">                return Arrays.asList(1, 2, 3, 4, 5);</span>
+            }
+        }, 1)
+<span class="fc" id="L884">        .test()</span>
+<span class="fc" id="L885">        .assertResult(1, 2, 3, 4, 5, 1, 2, 3, 4, 5);</span>
+<span class="fc" id="L886">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void emptyArray() {
+<span class="fc" id="L891">        assertSame(Observable.empty(), Observable.concatArrayDelayError());</span>
+<span class="fc" id="L892">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void singleElementArray() {
+<span class="fc" id="L897">        assertSame(Observable.never(), Observable.concatArrayDelayError(Observable.never()));</span>
+<span class="fc" id="L898">    }</span>
+
+    @Test
+    public void concatMapDelayErrorEmptySource() {
+<span class="fc" id="L902">        assertSame(Observable.empty(), Observable.&lt;Object&gt;empty()</span>
+<span class="fc" id="L903">                .concatMapDelayError(new Function&lt;Object, ObservableSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public ObservableSource&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="nc" id="L906">                        return Observable.just(1);</span>
+                    }
+                }, 16, true));
+<span class="fc" id="L909">    }</span>
+
+    @Test
+    public void concatMapDelayErrorJustSource() {
+<span class="fc" id="L913">        Observable.just(0)</span>
+<span class="fc" id="L914">        .concatMapDelayError(new Function&lt;Object, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L917">                return Observable.just(1);</span>
+            }
+        }, 16, true)
+<span class="fc" id="L920">        .test()</span>
+<span class="fc" id="L921">        .assertResult(1);</span>
+
+<span class="fc" id="L923">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatArrayEmpty() {
+<span class="fc" id="L928">        assertSame(Observable.empty(), Observable.concatArray());</span>
+<span class="fc" id="L929">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatArraySingleElement() {
+<span class="fc" id="L934">        assertSame(Observable.never(), Observable.concatArray(Observable.never()));</span>
+<span class="fc" id="L935">    }</span>
+
+    @Test
+    public void concatMapErrorEmptySource() {
+<span class="fc" id="L939">        assertSame(Observable.empty(), Observable.&lt;Object&gt;empty()</span>
+<span class="fc" id="L940">                .concatMap(new Function&lt;Object, ObservableSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public ObservableSource&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="nc" id="L943">                        return Observable.just(1);</span>
+                    }
+                }, 16));
+<span class="fc" id="L946">    }</span>
+
+    @Test
+    public void concatMapJustSource() {
+<span class="fc" id="L950">        Observable.just(0)</span>
+<span class="fc" id="L951">        .concatMap(new Function&lt;Object, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Object v) throws Exception {
+<span class="fc" id="L954">                return Observable.just(1);</span>
+            }
+        }, 16)
+<span class="fc" id="L957">        .test()</span>
+<span class="fc" id="L958">        .assertResult(1);</span>
+
+<span class="fc" id="L960">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noSubsequentSubscription() {
+<span class="fc" id="L965">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L967">        Observable&lt;Integer&gt; source = Observable.create(new ObservableOnSubscribe&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(ObservableEmitter&lt;Integer&gt; s) throws Exception {
+<span class="fc" id="L970">                calls[0]++;</span>
+<span class="fc" id="L971">                s.onNext(1);</span>
+<span class="fc" id="L972">                s.onComplete();</span>
+<span class="fc" id="L973">            }</span>
+        });
+
+<span class="fc" id="L976">        Observable.concatArray(source, source).firstElement()</span>
+<span class="fc" id="L977">        .test()</span>
+<span class="fc" id="L978">        .assertResult(1);</span>
+
+<span class="fc" id="L980">        assertEquals(1, calls[0]);</span>
+<span class="fc" id="L981">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noSubsequentSubscriptionDelayError() {
+<span class="fc" id="L986">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L988">        Observable&lt;Integer&gt; source = Observable.create(new ObservableOnSubscribe&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(ObservableEmitter&lt;Integer&gt; s) throws Exception {
+<span class="fc" id="L991">                calls[0]++;</span>
+<span class="fc" id="L992">                s.onNext(1);</span>
+<span class="fc" id="L993">                s.onComplete();</span>
+<span class="fc" id="L994">            }</span>
+        });
+
+<span class="fc" id="L997">        Observable.concatArrayDelayError(source, source).firstElement()</span>
+<span class="fc" id="L998">        .test()</span>
+<span class="fc" id="L999">        .assertResult(1);</span>
+
+<span class="fc" id="L1001">        assertEquals(1, calls[0]);</span>
+<span class="fc" id="L1002">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noSubsequentSubscriptionIterable() {
+<span class="fc" id="L1007">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L1009">        Observable&lt;Integer&gt; source = Observable.create(new ObservableOnSubscribe&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(ObservableEmitter&lt;Integer&gt; s) throws Exception {
+<span class="fc" id="L1012">                calls[0]++;</span>
+<span class="fc" id="L1013">                s.onNext(1);</span>
+<span class="fc" id="L1014">                s.onComplete();</span>
+<span class="fc" id="L1015">            }</span>
+        });
+
+<span class="fc" id="L1018">        Observable.concat(Arrays.asList(source, source)).firstElement()</span>
+<span class="fc" id="L1019">        .test()</span>
+<span class="fc" id="L1020">        .assertResult(1);</span>
+
+<span class="fc" id="L1022">        assertEquals(1, calls[0]);</span>
+<span class="fc" id="L1023">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noSubsequentSubscriptionDelayErrorIterable() {
+<span class="fc" id="L1028">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L1030">        Observable&lt;Integer&gt; source = Observable.create(new ObservableOnSubscribe&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(ObservableEmitter&lt;Integer&gt; s) throws Exception {
+<span class="fc" id="L1033">                calls[0]++;</span>
+<span class="fc" id="L1034">                s.onNext(1);</span>
+<span class="fc" id="L1035">                s.onComplete();</span>
+<span class="fc" id="L1036">            }</span>
+        });
+
+<span class="fc" id="L1039">        Observable.concatDelayError(Arrays.asList(source, source)).firstElement()</span>
+<span class="fc" id="L1040">        .test()</span>
+<span class="fc" id="L1041">        .assertResult(1);</span>
+
+<span class="fc" id="L1043">        assertEquals(1, calls[0]);</span>
+<span class="fc" id="L1044">    }</span>
+
+    @Test
+    public void concatReportsDisposedOnComplete() {
+<span class="fc" id="L1048">        final Disposable[] disposable = { null };</span>
+
+<span class="fc" id="L1050">        Observable.concat(Observable.just(1), Observable.just(2))</span>
+<span class="fc" id="L1051">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L1055">                disposable[0] = d;</span>
+<span class="fc" id="L1056">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1060">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L1064">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L1068">            }</span>
+        });
+
+<span class="fc" id="L1071">        assertTrue(disposable[0].isDisposed());</span>
+<span class="fc" id="L1072">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void concatReportsDisposedOnCompleteDelayError() {
+<span class="fc" id="L1077">        final Disposable[] disposable = { null };</span>
+
+<span class="fc" id="L1079">        Observable.concatArrayDelayError(Observable.just(1), Observable.just(2))</span>
+<span class="fc" id="L1080">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L1084">                disposable[0] = d;</span>
+<span class="fc" id="L1085">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1089">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L1093">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L1097">            }</span>
+        });
+
+<span class="fc" id="L1100">        assertTrue(disposable[0].isDisposed());</span>
+<span class="fc" id="L1101">    }</span>
+
+    @Test
+    public void concatReportsDisposedOnError() {
+<span class="fc" id="L1105">        final Disposable[] disposable = { null };</span>
+
+<span class="fc" id="L1107">        Observable.concat(Observable.just(1), Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L1108">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L1112">                disposable[0] = d;</span>
+<span class="fc" id="L1113">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1117">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L1121">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L1125">            }</span>
+        });
+
+<span class="fc" id="L1128">        assertTrue(disposable[0].isDisposed());</span>
+<span class="fc" id="L1129">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void concatReportsDisposedOnErrorDelayError() {
+<span class="fc" id="L1134">        final Disposable[] disposable = { null };</span>
+
+<span class="fc" id="L1136">        Observable.concatArrayDelayError(Observable.just(1), Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L1137">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L1141">                disposable[0] = d;</span>
+<span class="fc" id="L1142">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1146">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L1150">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L1154">            }</span>
+        });
+
+<span class="fc" id="L1157">        assertTrue(disposable[0].isDisposed());</span>
+<span class="fc" id="L1158">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noCancelPreviousArray() {
+<span class="fc" id="L1163">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1165">        Observable&lt;Integer&gt; source = Observable.just(1).doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1168">                counter.getAndIncrement();</span>
+<span class="nc" id="L1169">            }</span>
+        });
+
+<span class="fc" id="L1172">        Observable.concatArray(source, source, source, source, source)</span>
+<span class="fc" id="L1173">        .test()</span>
+<span class="fc" id="L1174">        .assertResult(1, 1, 1, 1, 1);</span>
+
+<span class="fc" id="L1176">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1177">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noCancelPreviousIterable() {
+<span class="fc" id="L1182">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1184">        Observable&lt;Integer&gt; source = Observable.just(1).doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1187">                counter.getAndIncrement();</span>
+<span class="nc" id="L1188">            }</span>
+        });
+
+<span class="fc" id="L1191">        Observable.concat(Arrays.asList(source, source, source, source, source))</span>
+<span class="fc" id="L1192">        .test()</span>
+<span class="fc" id="L1193">        .assertResult(1, 1, 1, 1, 1);</span>
+
+<span class="fc" id="L1195">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1196">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

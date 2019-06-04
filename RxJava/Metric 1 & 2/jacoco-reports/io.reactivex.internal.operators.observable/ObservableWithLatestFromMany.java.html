@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableWithLatestFromMany.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableWithLatestFromMany.java</span></div><h1>ObservableWithLatestFromMany.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.internal.operators.observable;
+
+import java.util.Arrays;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Combines a main sequence of values with the latest from multiple other sequences via
+ * a selector function.
+ *
+ * @param &lt;T&gt; the main sequence's type
+ * @param &lt;R&gt; the output type
+ */
+public final class ObservableWithLatestFromMany&lt;T, R&gt; extends AbstractObservableWithUpstream&lt;T, R&gt; {
+
+    @Nullable
+    final ObservableSource&lt;?&gt;[] otherArray;
+
+    @Nullable
+    final Iterable&lt;? extends ObservableSource&lt;?&gt;&gt; otherIterable;
+
+    @NonNull
+    final Function&lt;? super Object[], R&gt; combiner;
+
+    public ObservableWithLatestFromMany(@NonNull ObservableSource&lt;T&gt; source, @NonNull ObservableSource&lt;?&gt;[] otherArray, @NonNull Function&lt;? super Object[], R&gt; combiner) {
+<span class="fc" id="L48">        super(source);</span>
+<span class="fc" id="L49">        this.otherArray = otherArray;</span>
+<span class="fc" id="L50">        this.otherIterable = null;</span>
+<span class="fc" id="L51">        this.combiner = combiner;</span>
+<span class="fc" id="L52">    }</span>
+
+    public ObservableWithLatestFromMany(@NonNull ObservableSource&lt;T&gt; source, @NonNull Iterable&lt;? extends ObservableSource&lt;?&gt;&gt; otherIterable, @NonNull Function&lt;? super Object[], R&gt; combiner) {
+<span class="fc" id="L55">        super(source);</span>
+<span class="fc" id="L56">        this.otherArray = null;</span>
+<span class="fc" id="L57">        this.otherIterable = otherIterable;</span>
+<span class="fc" id="L58">        this.combiner = combiner;</span>
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super R&gt; observer) {
+<span class="fc" id="L63">        ObservableSource&lt;?&gt;[] others = otherArray;</span>
+<span class="fc" id="L64">        int n = 0;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (others == null) {</span>
+<span class="fc" id="L66">            others = new ObservableSource[8];</span>
+
+            try {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                for (ObservableSource&lt;?&gt; p : otherIterable) {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                    if (n == others.length) {</span>
+<span class="fc" id="L71">                        others = Arrays.copyOf(others, n + (n &gt;&gt; 1));</span>
+                    }
+<span class="fc" id="L73">                    others[n++] = p;</span>
+<span class="fc" id="L74">                }</span>
+<span class="fc" id="L75">            } catch (Throwable ex) {</span>
+<span class="fc" id="L76">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L77">                EmptyDisposable.error(ex, observer);</span>
+<span class="fc" id="L78">                return;</span>
+<span class="fc" id="L79">            }</span>
+
+        } else {
+<span class="fc" id="L82">            n = others.length;</span>
+        }
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (n == 0) {</span>
+<span class="fc" id="L86">            new ObservableMap&lt;T, R&gt;(source, new SingletonArrayFunc()).subscribeActual(observer);</span>
+<span class="fc" id="L87">            return;</span>
+        }
+
+<span class="fc" id="L90">        WithLatestFromObserver&lt;T, R&gt; parent = new WithLatestFromObserver&lt;T, R&gt;(observer, combiner, n);</span>
+<span class="fc" id="L91">        observer.onSubscribe(parent);</span>
+<span class="fc" id="L92">        parent.subscribe(others, n);</span>
+
+<span class="fc" id="L94">        source.subscribe(parent);</span>
+<span class="fc" id="L95">    }</span>
+
+    static final class WithLatestFromObserver&lt;T, R&gt;
+    extends AtomicInteger
+    implements Observer&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = 1577321883966341961L;
+
+        final Observer&lt;? super R&gt; downstream;
+
+        final Function&lt;? super Object[], R&gt; combiner;
+
+        final WithLatestInnerObserver[] observers;
+
+        final AtomicReferenceArray&lt;Object&gt; values;
+
+        final AtomicReference&lt;Disposable&gt; upstream;
+
+        final AtomicThrowable error;
+
+        volatile boolean done;
+
+<span class="fc" id="L117">        WithLatestFromObserver(Observer&lt;? super R&gt; actual, Function&lt;? super Object[], R&gt; combiner, int n) {</span>
+<span class="fc" id="L118">            this.downstream = actual;</span>
+<span class="fc" id="L119">            this.combiner = combiner;</span>
+<span class="fc" id="L120">            WithLatestInnerObserver[] s = new WithLatestInnerObserver[n];</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L122">                s[i] = new WithLatestInnerObserver(this, i);</span>
+            }
+<span class="fc" id="L124">            this.observers = s;</span>
+<span class="fc" id="L125">            this.values = new AtomicReferenceArray&lt;Object&gt;(n);</span>
+<span class="fc" id="L126">            this.upstream = new AtomicReference&lt;Disposable&gt;();</span>
+<span class="fc" id="L127">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L128">        }</span>
+
+        void subscribe(ObservableSource&lt;?&gt;[] others, int n) {
+<span class="fc" id="L131">            WithLatestInnerObserver[] observers = this.observers;</span>
+<span class="fc" id="L132">            AtomicReference&lt;Disposable&gt; upstream = this.upstream;</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">                if (DisposableHelper.isDisposed(upstream.get()) || done) {</span>
+<span class="fc" id="L135">                    return;</span>
+                }
+<span class="fc" id="L137">                others[i].subscribe(observers[i]);</span>
+            }
+<span class="fc" id="L139">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L143">            DisposableHelper.setOnce(this.upstream, d);</span>
+<span class="fc" id="L144">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L149">                return;</span>
+            }
+<span class="fc" id="L151">            AtomicReferenceArray&lt;Object&gt; ara = values;</span>
+<span class="fc" id="L152">            int n = ara.length();</span>
+<span class="fc" id="L153">            Object[] objects = new Object[n + 1];</span>
+<span class="fc" id="L154">            objects[0] = t;</span>
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L157">                Object o = ara.get(i);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                if (o == null) {</span>
+                    // no latest, skip this value
+<span class="fc" id="L160">                    return;</span>
+                }
+<span class="fc" id="L162">                objects[i + 1] = o;</span>
+            }
+
+            R v;
+
+            try {
+<span class="fc" id="L168">                v = ObjectHelper.requireNonNull(combiner.apply(objects), &quot;combiner returned a null value&quot;);</span>
+<span class="fc" id="L169">            } catch (Throwable ex) {</span>
+<span class="fc" id="L170">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L171">                dispose();</span>
+<span class="fc" id="L172">                onError(ex);</span>
+<span class="fc" id="L173">                return;</span>
+<span class="fc" id="L174">            }</span>
+
+<span class="fc" id="L176">            HalfSerializer.onNext(downstream, v, this, error);</span>
+<span class="fc" id="L177">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L182">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L183">                return;</span>
+            }
+<span class="fc" id="L185">            done = true;</span>
+<span class="fc" id="L186">            cancelAllBut(-1);</span>
+<span class="fc" id="L187">            HalfSerializer.onError(downstream, t, this, error);</span>
+<span class="fc" id="L188">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L193">                done = true;</span>
+<span class="fc" id="L194">                cancelAllBut(-1);</span>
+<span class="fc" id="L195">                HalfSerializer.onComplete(downstream, this, error);</span>
+            }
+<span class="fc" id="L197">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L201">            return DisposableHelper.isDisposed(upstream.get());</span>
+        }
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L206">            DisposableHelper.dispose(upstream);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            for (WithLatestInnerObserver observer : observers) {</span>
+<span class="fc" id="L208">                observer.dispose();</span>
+            }
+<span class="fc" id="L210">        }</span>
+
+        void innerNext(int index, Object o) {
+<span class="fc" id="L213">            values.set(index, o);</span>
+<span class="fc" id="L214">        }</span>
+
+        void innerError(int index, Throwable t) {
+<span class="fc" id="L217">            done = true;</span>
+<span class="fc" id="L218">            DisposableHelper.dispose(upstream);</span>
+<span class="fc" id="L219">            cancelAllBut(index);</span>
+<span class="fc" id="L220">            HalfSerializer.onError(downstream, t, this, error);</span>
+<span class="fc" id="L221">        }</span>
+
+        void innerComplete(int index, boolean nonEmpty) {
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (!nonEmpty) {</span>
+<span class="fc" id="L225">                done = true;</span>
+<span class="fc" id="L226">                cancelAllBut(index);</span>
+<span class="fc" id="L227">                HalfSerializer.onComplete(downstream, this, error);</span>
+            }
+<span class="fc" id="L229">        }</span>
+
+        void cancelAllBut(int index) {
+<span class="fc" id="L232">            WithLatestInnerObserver[] observers = this.observers;</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">            for (int i = 0; i &lt; observers.length; i++) {</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                if (i != index) {</span>
+<span class="fc" id="L235">                    observers[i].dispose();</span>
+                }
+            }
+<span class="fc" id="L238">        }</span>
+    }
+
+    static final class WithLatestInnerObserver
+    extends AtomicReference&lt;Disposable&gt;
+    implements Observer&lt;Object&gt; {
+
+        private static final long serialVersionUID = 3256684027868224024L;
+
+        final WithLatestFromObserver&lt;?, ?&gt; parent;
+
+        final int index;
+
+        boolean hasValue;
+
+<span class="fc" id="L253">        WithLatestInnerObserver(WithLatestFromObserver&lt;?, ?&gt; parent, int index) {</span>
+<span class="fc" id="L254">            this.parent = parent;</span>
+<span class="fc" id="L255">            this.index = index;</span>
+<span class="fc" id="L256">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L260">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L261">        }</span>
+
+        @Override
+        public void onNext(Object t) {
+<span class="fc bfc" id="L265" title="All 2 branches covered.">            if (!hasValue) {</span>
+<span class="fc" id="L266">                hasValue = true;</span>
+            }
+<span class="fc" id="L268">            parent.innerNext(index, t);</span>
+<span class="fc" id="L269">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L273">            parent.innerError(index, t);</span>
+<span class="fc" id="L274">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L278">            parent.innerComplete(index, hasValue);</span>
+<span class="fc" id="L279">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L282">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L283">        }</span>
+    }
+
+<span class="fc" id="L286">    final class SingletonArrayFunc implements Function&lt;T, R&gt; {</span>
+        @Override
+        public R apply(T t) throws Exception {
+<span class="fc" id="L289">            return ObjectHelper.requireNonNull(combiner.apply(new Object[] { t }), &quot;The combiner returned a null value&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

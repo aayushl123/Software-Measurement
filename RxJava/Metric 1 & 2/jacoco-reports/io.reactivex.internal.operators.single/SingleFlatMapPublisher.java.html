@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleFlatMapPublisher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleFlatMapPublisher.java</span></div><h1>SingleFlatMapPublisher.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.reactivestreams.Publisher;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+
+import io.reactivex.Flowable;
+import io.reactivex.FlowableSubscriber;
+import io.reactivex.Scheduler;
+import io.reactivex.SingleObserver;
+import io.reactivex.SingleSource;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+
+/**
+ * A Flowable that emits items based on applying a specified function to the item emitted by the
+ * source Single, where that function returns a Publisher.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;305&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/Single.flatMapPublisher.png&quot; alt=&quot;&quot;&gt;
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Backpressure:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;The returned {@code Flowable} honors the backpressure of the downstream consumer
+ *  and the {@code Publisher} returned by the mapper function is expected to honor it as well.&lt;/dd&gt;
+ * &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ * &lt;dd&gt;{@code flatMapPublisher} does not operate by default on a particular {@link Scheduler}.&lt;/dd&gt;
+ * &lt;/dl&gt;
+ * 
+ * @param &lt;T&gt; the source value type
+ * @param &lt;R&gt; the result value type
+ * 
+ * @see &lt;a href=&quot;http://reactivex.io/documentation/operators/flatmap.html&quot;&gt;ReactiveX operators documentation: FlatMap&lt;/a&gt;
+ * @since 2.1.15
+ */
+public final class SingleFlatMapPublisher&lt;T, R&gt; extends Flowable&lt;R&gt; {
+
+    final SingleSource&lt;T&gt; source;
+    final Function&lt;? super T, ? extends Publisher&lt;? extends R&gt;&gt; mapper;
+
+    public SingleFlatMapPublisher(SingleSource&lt;T&gt; source,
+<span class="fc" id="L59">            Function&lt;? super T, ? extends Publisher&lt;? extends R&gt;&gt; mapper) {</span>
+<span class="fc" id="L60">        this.source = source;</span>
+<span class="fc" id="L61">        this.mapper = mapper;</span>
+<span class="fc" id="L62">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super R&gt; downstream) {
+<span class="fc" id="L66">        source.subscribe(new SingleFlatMapPublisherObserver&lt;T, R&gt;(downstream, mapper));</span>
+<span class="fc" id="L67">    }</span>
+
+    static final class SingleFlatMapPublisherObserver&lt;S, T&gt; extends AtomicLong
+            implements SingleObserver&lt;S&gt;, FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = 7759721921468635667L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+        final Function&lt;? super S, ? extends Publisher&lt;? extends T&gt;&gt; mapper;
+        final AtomicReference&lt;Subscription&gt; parent;
+        Disposable disposable;
+
+        SingleFlatMapPublisherObserver(Subscriber&lt;? super T&gt; actual,
+<span class="fc" id="L80">                Function&lt;? super S, ? extends Publisher&lt;? extends T&gt;&gt; mapper) {</span>
+<span class="fc" id="L81">            this.downstream = actual;</span>
+<span class="fc" id="L82">            this.mapper = mapper;</span>
+<span class="fc" id="L83">            this.parent = new AtomicReference&lt;Subscription&gt;();</span>
+<span class="fc" id="L84">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L88">            this.disposable = d;</span>
+<span class="fc" id="L89">            downstream.onSubscribe(this);</span>
+<span class="fc" id="L90">        }</span>
+
+        @Override
+        public void onSuccess(S value) {
+            Publisher&lt;? extends T&gt; f;
+            try {
+<span class="fc" id="L96">                f = ObjectHelper.requireNonNull(mapper.apply(value), &quot;the mapper returned a null Publisher&quot;);</span>
+<span class="fc" id="L97">            } catch (Throwable e) {</span>
+<span class="fc" id="L98">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L99">                downstream.onError(e);</span>
+<span class="fc" id="L100">                return;</span>
+<span class="fc" id="L101">            }</span>
+<span class="fc" id="L102">            f.subscribe(this);</span>
+<span class="fc" id="L103">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L107">            SubscriptionHelper.deferredSetOnce(parent, this, s);</span>
+<span class="fc" id="L108">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L112">            downstream.onNext(t);</span>
+<span class="fc" id="L113">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L117">            downstream.onComplete();</span>
+<span class="fc" id="L118">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L122">            downstream.onError(e);</span>
+<span class="fc" id="L123">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L127">            SubscriptionHelper.deferredRequest(parent, this, n);</span>
+<span class="fc" id="L128">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L132">            disposable.dispose();</span>
+<span class="fc" id="L133">            SubscriptionHelper.cancel(parent);</span>
+<span class="fc" id="L134">        }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

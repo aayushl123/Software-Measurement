@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableRefCount.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableRefCount.java</span></div><h1>ObservableRefCount.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Consumer;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.observables.ConnectableObservable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Returns an observable sequence that stays connected to the source as long as
+ * there is at least one subscription to the observable sequence.
+ *
+ * @param &lt;T&gt;
+ *            the value type
+ */
+public final class ObservableRefCount&lt;T&gt; extends Observable&lt;T&gt; {
+
+    final ConnectableObservable&lt;T&gt; source;
+
+    final int n;
+
+    final long timeout;
+
+    final TimeUnit unit;
+
+    final Scheduler scheduler;
+
+    RefConnection connection;
+
+    public ObservableRefCount(ConnectableObservable&lt;T&gt; source) {
+<span class="fc" id="L48">        this(source, 1, 0L, TimeUnit.NANOSECONDS, null);</span>
+<span class="fc" id="L49">    }</span>
+
+    public ObservableRefCount(ConnectableObservable&lt;T&gt; source, int n, long timeout, TimeUnit unit,
+<span class="fc" id="L52">            Scheduler scheduler) {</span>
+<span class="fc" id="L53">        this.source = source;</span>
+<span class="fc" id="L54">        this.n = n;</span>
+<span class="fc" id="L55">        this.timeout = timeout;</span>
+<span class="fc" id="L56">        this.unit = unit;</span>
+<span class="fc" id="L57">        this.scheduler = scheduler;</span>
+<span class="fc" id="L58">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+
+        RefConnection conn;
+
+<span class="fc" id="L65">        boolean connect = false;</span>
+<span class="fc" id="L66">        synchronized (this) {</span>
+<span class="fc" id="L67">            conn = connection;</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (conn == null) {</span>
+<span class="fc" id="L69">                conn = new RefConnection(this);</span>
+<span class="fc" id="L70">                connection = conn;</span>
+            }
+
+<span class="fc" id="L73">            long c = conn.subscriberCount;</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">            if (c == 0L &amp;&amp; conn.timer != null) {</span>
+<span class="fc" id="L75">                conn.timer.dispose();</span>
+            }
+<span class="fc" id="L77">            conn.subscriberCount = c + 1;</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">            if (!conn.connected &amp;&amp; c + 1 == n) {</span>
+<span class="fc" id="L79">                connect = true;</span>
+<span class="fc" id="L80">                conn.connected = true;</span>
+            }
+<span class="fc" id="L82">        }</span>
+
+<span class="fc" id="L84">        source.subscribe(new RefCountObserver&lt;T&gt;(observer, this, conn));</span>
+
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (connect) {</span>
+<span class="fc" id="L87">            source.connect(conn);</span>
+        }
+<span class="fc" id="L89">    }</span>
+
+    void cancel(RefConnection rc) {
+        SequentialDisposable sd;
+<span class="fc" id="L93">        synchronized (this) {</span>
+<span class="fc bfc" id="L94" title="All 4 branches covered.">            if (connection == null || connection != rc) {</span>
+<span class="fc" id="L95">                return;</span>
+            }
+<span class="fc" id="L97">            long c = rc.subscriberCount - 1;</span>
+<span class="fc" id="L98">            rc.subscriberCount = c;</span>
+<span class="fc bfc" id="L99" title="All 4 branches covered.">            if (c != 0L || !rc.connected) {</span>
+<span class="fc" id="L100">                return;</span>
+            }
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (timeout == 0L) {</span>
+<span class="fc" id="L103">                timeout(rc);</span>
+<span class="fc" id="L104">                return;</span>
+            }
+<span class="fc" id="L106">            sd = new SequentialDisposable();</span>
+<span class="fc" id="L107">            rc.timer = sd;</span>
+<span class="fc" id="L108">        }</span>
+
+<span class="fc" id="L110">        sd.replace(scheduler.scheduleDirect(rc, timeout, unit));</span>
+<span class="fc" id="L111">    }</span>
+
+    void terminated(RefConnection rc) {
+<span class="fc" id="L114">        synchronized (this) {</span>
+<span class="fc bfc" id="L115" title="All 4 branches covered.">            if (connection != null &amp;&amp; connection == rc) {</span>
+<span class="fc" id="L116">                connection = null;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                if (rc.timer != null) {</span>
+<span class="fc" id="L118">                    rc.timer.dispose();</span>
+                }
+            }
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (--rc.subscriberCount == 0) {</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                if (source instanceof Disposable) {</span>
+<span class="fc" id="L123">                    ((Disposable)source).dispose();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                } else if (source instanceof ResettableConnectable) {</span>
+<span class="fc" id="L125">                    ((ResettableConnectable)source).resetIf(rc.get());</span>
+                }
+            }
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">    }</span>
+
+    void timeout(RefConnection rc) {
+<span class="fc" id="L132">        synchronized (this) {</span>
+<span class="fc bfc" id="L133" title="All 4 branches covered.">            if (rc.subscriberCount == 0 &amp;&amp; rc == connection) {</span>
+<span class="fc" id="L134">                connection = null;</span>
+<span class="fc" id="L135">                Disposable connectionObject = rc.get();</span>
+<span class="fc" id="L136">                DisposableHelper.dispose(rc);</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                if (source instanceof Disposable) {</span>
+<span class="fc" id="L139">                    ((Disposable)source).dispose();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                } else if (source instanceof ResettableConnectable) {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                    if (connectionObject == null) {</span>
+<span class="fc" id="L142">                        rc.disconnectedEarly = true;</span>
+                    } else {
+<span class="fc" id="L144">                        ((ResettableConnectable)source).resetIf(connectionObject);</span>
+                    }
+                }
+            }
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">    }</span>
+
+    static final class RefConnection extends AtomicReference&lt;Disposable&gt;
+    implements Runnable, Consumer&lt;Disposable&gt; {
+
+        private static final long serialVersionUID = -4552101107598366241L;
+
+        final ObservableRefCount&lt;?&gt; parent;
+
+        Disposable timer;
+
+        long subscriberCount;
+
+        boolean connected;
+
+        boolean disconnectedEarly;
+
+<span class="fc" id="L166">        RefConnection(ObservableRefCount&lt;?&gt; parent) {</span>
+<span class="fc" id="L167">            this.parent = parent;</span>
+<span class="fc" id="L168">        }</span>
+
+        @Override
+        public void run() {
+<span class="fc" id="L172">            parent.timeout(this);</span>
+<span class="fc" id="L173">        }</span>
+
+        @Override
+        public void accept(Disposable t) throws Exception {
+<span class="fc" id="L177">            DisposableHelper.replace(this, t);</span>
+<span class="fc" id="L178">            synchronized (parent) {</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                if (disconnectedEarly) {</span>
+<span class="fc" id="L180">                    ((ResettableConnectable)parent.source).resetIf(t);</span>
+                }
+<span class="fc" id="L182">            }</span>
+<span class="fc" id="L183">        }</span>
+    }
+
+    static final class RefCountObserver&lt;T&gt;
+    extends AtomicBoolean implements Observer&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = -7419642935409022375L;
+
+        final Observer&lt;? super T&gt; downstream;
+
+        final ObservableRefCount&lt;T&gt; parent;
+
+        final RefConnection connection;
+
+        Disposable upstream;
+
+<span class="fc" id="L199">        RefCountObserver(Observer&lt;? super T&gt; downstream, ObservableRefCount&lt;T&gt; parent, RefConnection connection) {</span>
+<span class="fc" id="L200">            this.downstream = downstream;</span>
+<span class="fc" id="L201">            this.parent = parent;</span>
+<span class="fc" id="L202">            this.connection = connection;</span>
+<span class="fc" id="L203">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L207">            downstream.onNext(t);</span>
+<span class="fc" id="L208">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (compareAndSet(false, true)) {</span>
+<span class="fc" id="L213">                parent.terminated(connection);</span>
+<span class="fc" id="L214">                downstream.onError(t);</span>
+            } else {
+<span class="fc" id="L216">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L218">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (compareAndSet(false, true)) {</span>
+<span class="fc" id="L223">                parent.terminated(connection);</span>
+<span class="fc" id="L224">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L226">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L230">            upstream.dispose();</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (compareAndSet(false, true)) {</span>
+<span class="fc" id="L232">                parent.cancel(connection);</span>
+            }
+<span class="fc" id="L234">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L238">            return upstream.isDisposed();</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            if (DisposableHelper.validate(upstream, d)) {</span>
+<span class="fc" id="L244">                this.upstream = d;</span>
+
+<span class="fc" id="L246">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L248">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

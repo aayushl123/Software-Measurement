@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SafeSubscriber.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subscribers</a> &gt; <span class="el_source">SafeSubscriber.java</span></div><h1>SafeSubscriber.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.subscribers;
+
+import org.reactivestreams.*;
+
+import io.reactivex.FlowableSubscriber;
+import io.reactivex.exceptions.*;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Wraps another Subscriber and ensures all onXXX methods conform the protocol
+ * (except the requirement for serialized access).
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class SafeSubscriber&lt;T&gt; implements FlowableSubscriber&lt;T&gt;, Subscription {
+    /** The actual Subscriber. */
+    final Subscriber&lt;? super T&gt; downstream;
+    /** The subscription. */
+    Subscription upstream;
+    /** Indicates a terminal state. */
+    boolean done;
+
+    /**
+     * Constructs a SafeSubscriber by wrapping the given actual Subscriber.
+     * @param downstream the actual Subscriber to wrap, not null (not validated)
+     */
+<span class="fc" id="L40">    public SafeSubscriber(Subscriber&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L41">        this.downstream = downstream;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Override
+    public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L47">            this.upstream = s;</span>
+            try {
+<span class="fc" id="L49">                downstream.onSubscribe(this);</span>
+<span class="fc" id="L50">            } catch (Throwable e) {</span>
+<span class="fc" id="L51">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L52">                done = true;</span>
+                // can't call onError because the actual's state may be corrupt at this point
+                try {
+<span class="fc" id="L55">                    s.cancel();</span>
+<span class="fc" id="L56">                } catch (Throwable e1) {</span>
+<span class="fc" id="L57">                    Exceptions.throwIfFatal(e1);</span>
+<span class="fc" id="L58">                    RxJavaPlugins.onError(new CompositeException(e, e1));</span>
+<span class="fc" id="L59">                    return;</span>
+<span class="fc" id="L60">                }</span>
+<span class="fc" id="L61">                RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L62">            }</span>
+        }
+<span class="fc" id="L64">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L69">            return;</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (upstream == null) {</span>
+<span class="fc" id="L72">            onNextNoSubscription();</span>
+<span class="fc" id="L73">            return;</span>
+        }
+
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (t == null) {</span>
+<span class="fc" id="L77">            Throwable ex = new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+            try {
+<span class="fc" id="L79">                upstream.cancel();</span>
+<span class="fc" id="L80">            } catch (Throwable e1) {</span>
+<span class="fc" id="L81">                Exceptions.throwIfFatal(e1);</span>
+<span class="fc" id="L82">                onError(new CompositeException(ex, e1));</span>
+<span class="fc" id="L83">                return;</span>
+<span class="fc" id="L84">            }</span>
+<span class="fc" id="L85">            onError(ex);</span>
+<span class="fc" id="L86">            return;</span>
+        }
+
+        try {
+<span class="fc" id="L90">            downstream.onNext(t);</span>
+<span class="fc" id="L91">        } catch (Throwable e) {</span>
+<span class="fc" id="L92">            Exceptions.throwIfFatal(e);</span>
+            try {
+<span class="fc" id="L94">                upstream.cancel();</span>
+<span class="fc" id="L95">            } catch (Throwable e1) {</span>
+<span class="fc" id="L96">                Exceptions.throwIfFatal(e1);</span>
+<span class="fc" id="L97">                onError(new CompositeException(e, e1));</span>
+<span class="fc" id="L98">                return;</span>
+<span class="fc" id="L99">            }</span>
+<span class="fc" id="L100">            onError(e);</span>
+<span class="fc" id="L101">        }</span>
+<span class="fc" id="L102">    }</span>
+
+    void onNextNoSubscription() {
+<span class="fc" id="L105">        done = true;</span>
+<span class="fc" id="L106">        Throwable ex = new NullPointerException(&quot;Subscription not set!&quot;);</span>
+
+        try {
+<span class="fc" id="L109">            downstream.onSubscribe(EmptySubscription.INSTANCE);</span>
+<span class="fc" id="L110">        } catch (Throwable e) {</span>
+<span class="fc" id="L111">            Exceptions.throwIfFatal(e);</span>
+            // can't call onError because the actual's state may be corrupt at this point
+<span class="fc" id="L113">            RxJavaPlugins.onError(new CompositeException(ex, e));</span>
+<span class="fc" id="L114">            return;</span>
+<span class="fc" id="L115">        }</span>
+        try {
+<span class="fc" id="L117">            downstream.onError(ex);</span>
+<span class="fc" id="L118">        } catch (Throwable e) {</span>
+<span class="fc" id="L119">            Exceptions.throwIfFatal(e);</span>
+            // if onError failed, all that's left is to report the error to plugins
+<span class="fc" id="L121">            RxJavaPlugins.onError(new CompositeException(ex, e));</span>
+<span class="fc" id="L122">        }</span>
+<span class="fc" id="L123">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L128">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L129">            return;</span>
+        }
+<span class="fc" id="L131">        done = true;</span>
+
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (upstream == null) {</span>
+<span class="fc" id="L134">            Throwable npe = new NullPointerException(&quot;Subscription not set!&quot;);</span>
+
+            try {
+<span class="fc" id="L137">                downstream.onSubscribe(EmptySubscription.INSTANCE);</span>
+<span class="fc" id="L138">            } catch (Throwable e) {</span>
+<span class="fc" id="L139">                Exceptions.throwIfFatal(e);</span>
+                // can't call onError because the actual's state may be corrupt at this point
+<span class="fc" id="L141">                RxJavaPlugins.onError(new CompositeException(t, npe, e));</span>
+<span class="fc" id="L142">                return;</span>
+<span class="fc" id="L143">            }</span>
+            try {
+<span class="fc" id="L145">                downstream.onError(new CompositeException(t, npe));</span>
+<span class="fc" id="L146">            } catch (Throwable e) {</span>
+<span class="fc" id="L147">                Exceptions.throwIfFatal(e);</span>
+                // if onError failed, all that's left is to report the error to plugins
+<span class="fc" id="L149">                RxJavaPlugins.onError(new CompositeException(t, npe, e));</span>
+<span class="fc" id="L150">            }</span>
+<span class="fc" id="L151">            return;</span>
+        }
+
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (t == null) {</span>
+<span class="fc" id="L155">            t = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+        }
+
+        try {
+<span class="fc" id="L159">            downstream.onError(t);</span>
+<span class="fc" id="L160">        } catch (Throwable ex) {</span>
+<span class="fc" id="L161">            Exceptions.throwIfFatal(ex);</span>
+
+<span class="fc" id="L163">            RxJavaPlugins.onError(new CompositeException(t, ex));</span>
+<span class="fc" id="L164">        }</span>
+<span class="fc" id="L165">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L170">            return;</span>
+        }
+<span class="fc" id="L172">        done = true;</span>
+
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (upstream == null) {</span>
+<span class="fc" id="L175">            onCompleteNoSubscription();</span>
+<span class="fc" id="L176">            return;</span>
+        }
+
+        try {
+<span class="fc" id="L180">            downstream.onComplete();</span>
+<span class="fc" id="L181">        } catch (Throwable e) {</span>
+<span class="fc" id="L182">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L183">            RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L184">        }</span>
+<span class="fc" id="L185">    }</span>
+
+    void onCompleteNoSubscription() {
+
+<span class="fc" id="L189">        Throwable ex = new NullPointerException(&quot;Subscription not set!&quot;);</span>
+
+        try {
+<span class="fc" id="L192">            downstream.onSubscribe(EmptySubscription.INSTANCE);</span>
+<span class="fc" id="L193">        } catch (Throwable e) {</span>
+<span class="fc" id="L194">            Exceptions.throwIfFatal(e);</span>
+            // can't call onError because the actual's state may be corrupt at this point
+<span class="fc" id="L196">            RxJavaPlugins.onError(new CompositeException(ex, e));</span>
+<span class="fc" id="L197">            return;</span>
+<span class="fc" id="L198">        }</span>
+        try {
+<span class="fc" id="L200">            downstream.onError(ex);</span>
+<span class="fc" id="L201">        } catch (Throwable e) {</span>
+<span class="fc" id="L202">            Exceptions.throwIfFatal(e);</span>
+            // if onError failed, all that's left is to report the error to plugins
+<span class="fc" id="L204">            RxJavaPlugins.onError(new CompositeException(ex, e));</span>
+<span class="fc" id="L205">        }</span>
+<span class="fc" id="L206">    }</span>
+
+    @Override
+    public void request(long n) {
+        try {
+<span class="fc" id="L211">            upstream.request(n);</span>
+<span class="fc" id="L212">        } catch (Throwable e) {</span>
+<span class="fc" id="L213">            Exceptions.throwIfFatal(e);</span>
+            try {
+<span class="fc" id="L215">                upstream.cancel();</span>
+<span class="fc" id="L216">            } catch (Throwable e1) {</span>
+<span class="fc" id="L217">                Exceptions.throwIfFatal(e1);</span>
+<span class="fc" id="L218">                RxJavaPlugins.onError(new CompositeException(e, e1));</span>
+<span class="fc" id="L219">                return;</span>
+<span class="fc" id="L220">            }</span>
+<span class="fc" id="L221">            RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L222">        }</span>
+<span class="fc" id="L223">    }</span>
+
+    @Override
+    public void cancel() {
+        try {
+<span class="fc" id="L228">            upstream.cancel();</span>
+<span class="fc" id="L229">        } catch (Throwable e1) {</span>
+<span class="fc" id="L230">            Exceptions.throwIfFatal(e1);</span>
+<span class="fc" id="L231">            RxJavaPlugins.onError(e1);</span>
+<span class="fc" id="L232">        }</span>
+<span class="fc" id="L233">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

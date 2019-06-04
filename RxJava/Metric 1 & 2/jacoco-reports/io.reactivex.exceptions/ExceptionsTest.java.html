@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExceptionsTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.exceptions</a> &gt; <span class="el_source">ExceptionsTest.java</span></div><h1>ExceptionsTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.reactivex.exceptions;
+
+import static org.junit.Assert.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.*;
+import io.reactivex.internal.util.ExceptionHelper;
+import io.reactivex.observables.GroupedObservable;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L35">public class ExceptionsTest {</span>
+
+    @Ignore(&quot;Exceptions is not an enum&quot;)
+    @Test
+    public void constructorShouldBePrivate() {
+<span class="nc" id="L40">        TestHelper.checkUtilityClass(ExceptionHelper.class);</span>
+<span class="nc" id="L41">    }</span>
+
+    @Test
+    public void testOnErrorNotImplementedIsThrown() {
+<span class="fc" id="L45">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+<span class="fc" id="L47">        Observable.just(1, 2, 3).subscribe(new Consumer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void accept(Integer t1) {
+<span class="fc" id="L51">                throw new RuntimeException(&quot;hello&quot;);</span>
+            }
+
+        });
+
+<span class="fc" id="L56">        TestHelper.assertError(errors, 0, RuntimeException.class);</span>
+<span class="fc" id="L57">        assertTrue(errors.get(0).toString(), errors.get(0).getMessage().contains(&quot;hello&quot;));</span>
+<span class="fc" id="L58">        RxJavaPlugins.reset();</span>
+<span class="fc" id="L59">    }</span>
+
+    /**
+     * Outdated test: Observer should not suppress errors from onCompleted.
+     * https://github.com/ReactiveX/RxJava/issues/3885
+     */
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnCompletedExceptionIsThrown() {
+<span class="nc" id="L68">        Observable.empty()</span>
+<span class="nc" id="L69">            .subscribe(new Observer&lt;Object&gt;() {</span>
+                @Override
+                public void onComplete() {
+<span class="nc" id="L72">                    throw new RuntimeException();</span>
+                }
+
+                @Override
+                public void onError(Throwable e) {
+<span class="nc" id="L77">                }</span>
+
+                @Override
+                public void onNext(Object o) {
+<span class="nc" id="L81">                }</span>
+
+                @Override
+                public void onSubscribe(Disposable d) {
+
+<span class="nc" id="L86">                }</span>
+            });
+<span class="nc" id="L88">    }</span>
+
+    @Test
+    public void testStackOverflowWouldOccur() {
+<span class="fc" id="L92">        final PublishSubject&lt;Integer&gt; a = PublishSubject.create();</span>
+<span class="fc" id="L93">        final PublishSubject&lt;Integer&gt; b = PublishSubject.create();</span>
+<span class="fc" id="L94">        final int MAX_STACK_DEPTH = 800;</span>
+<span class="fc" id="L95">        final AtomicInteger depth = new AtomicInteger();</span>
+
+<span class="fc" id="L97">        a.subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+
+<span class="fc" id="L102">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L107">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L111">                e.printStackTrace();</span>
+<span class="nc" id="L112">            }</span>
+
+            @Override
+            public void onNext(Integer n) {
+<span class="fc" id="L116">                b.onNext(n + 1);</span>
+<span class="fc" id="L117">            }</span>
+        });
+<span class="fc" id="L119">        b.subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+                // TODO Auto-generated method stub
+
+<span class="fc" id="L125">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L130">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L134">                e.printStackTrace();</span>
+<span class="nc" id="L135">            }</span>
+
+            @Override
+            public void onNext(Integer n) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                if (depth.get() &lt; MAX_STACK_DEPTH) {</span>
+<span class="fc" id="L140">                    depth.set(Thread.currentThread().getStackTrace().length);</span>
+<span class="fc" id="L141">                    a.onNext(n + 1);</span>
+                }
+<span class="fc" id="L143">            }</span>
+        });
+<span class="fc" id="L145">        a.onNext(1);</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        assertTrue(depth.get() &gt;= MAX_STACK_DEPTH);</span>
+<span class="fc" id="L147">    }</span>
+
+    @Test(expected = StackOverflowError.class)
+    public void testStackOverflowErrorIsThrown() {
+<span class="pc" id="L151">        Observable.just(1).subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+
+<span class="fc" id="L156">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L161">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L165">                e.printStackTrace();</span>
+<span class="nc" id="L166">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L170">                throw new StackOverflowError();</span>
+            }
+
+        });
+<span class="nc" id="L174">    }</span>
+
+    @Test(expected = ThreadDeath.class)
+    public void testThreadDeathIsThrown() {
+<span class="pc" id="L178">        Observable.just(1).subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+
+<span class="fc" id="L183">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L188">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L192">                e.printStackTrace();</span>
+<span class="nc" id="L193">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L197">                throw new ThreadDeath();</span>
+            }
+
+        });
+<span class="nc" id="L201">    }</span>
+
+    /**
+     * Outdated test: throwing from onError handler.
+     * https://github.com/ReactiveX/RxJava/issues/969
+     */
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test
+    public void testOnErrorExceptionIsThrown() {
+        try {
+<span class="nc" id="L211">            Observable.error(new IllegalArgumentException(&quot;original exception&quot;)).subscribe(new Observer&lt;Object&gt;() {</span>
+
+                @Override
+                public void onSubscribe(Disposable d) {
+
+<span class="nc" id="L216">                }</span>
+
+                @Override
+                public void onComplete() {
+
+<span class="nc" id="L221">                }</span>
+
+                @Override
+                public void onError(Throwable e) {
+<span class="nc" id="L225">                    throw new IllegalStateException(&quot;This should be thrown&quot;);</span>
+                }
+
+                @Override
+                public void onNext(Object o) {
+
+<span class="nc" id="L231">                }</span>
+            });
+<span class="nc" id="L233">            fail(&quot;expecting an exception to be thrown&quot;);</span>
+<span class="nc" id="L234">        } catch (RuntimeException t) {</span>
+<span class="nc" id="L235">            CompositeException cause = (CompositeException) t.getCause();</span>
+<span class="nc" id="L236">            assertTrue(cause.getExceptions().get(0) instanceof IllegalArgumentException);</span>
+<span class="nc" id="L237">            assertTrue(cause.getExceptions().get(1) instanceof IllegalStateException);</span>
+<span class="nc" id="L238">        }</span>
+<span class="nc" id="L239">    }</span>
+
+    /**
+     * Outdated test: throwing from onError.
+     * https://github.com/ReactiveX/RxJava/issues/2998
+     * @throws Exception on arbitrary errors
+     */
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnErrorExceptionIsThrownFromGroupBy() throws Exception {
+<span class="nc" id="L249">        Observable</span>
+<span class="nc" id="L250">            .just(1)</span>
+<span class="nc" id="L251">            .groupBy(new Function&lt;Integer, Integer&gt;() {</span>
+                @Override
+                public Integer apply(Integer integer) {
+<span class="nc" id="L254">                    throw new RuntimeException();</span>
+                }
+            })
+<span class="nc" id="L257">            .subscribe(new Observer&lt;GroupedObservable&lt;Integer, Integer&gt;&gt;() {</span>
+
+                @Override
+                public void onSubscribe(Disposable d) {
+
+<span class="nc" id="L262">                }</span>
+
+                @Override
+                public void onComplete() {
+
+<span class="nc" id="L267">                }</span>
+
+                @Override
+                public void onError(Throwable e) {
+<span class="nc" id="L271">                    throw new RuntimeException();</span>
+                }
+
+                @Override
+                public void onNext(GroupedObservable&lt;Integer, Integer&gt; integerIntegerGroupedObservable) {
+
+<span class="nc" id="L277">                }</span>
+            });
+<span class="nc" id="L279">    }</span>
+
+    /**
+     * Outdated test: throwing from onError.
+     * https://github.com/ReactiveX/RxJava/issues/2998
+     * @throws Exception on arbitrary errors
+     */
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnErrorExceptionIsThrownFromOnNext() throws Exception {
+<span class="nc" id="L289">        Observable</span>
+<span class="nc" id="L290">            .just(1)</span>
+<span class="nc" id="L291">            .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+                @Override
+                public void accept(Integer integer) {
+<span class="nc" id="L294">                    throw new RuntimeException();</span>
+                }
+            })
+<span class="nc" id="L297">            .subscribe(new Observer&lt;Integer&gt;() {</span>
+
+                @Override
+                public void onSubscribe(Disposable d) {
+
+<span class="nc" id="L302">                }</span>
+
+                @Override
+                public void onComplete() {
+
+<span class="nc" id="L307">                }</span>
+
+                @Override
+                public void onError(Throwable e) {
+<span class="nc" id="L311">                    throw new RuntimeException();</span>
+                }
+
+                @Override
+                public void onNext(Integer integer) {
+
+<span class="nc" id="L317">                }</span>
+            });
+<span class="nc" id="L319">    }</span>
+
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnErrorExceptionIsThrownFromSubscribe() {
+<span class="nc" id="L324">        Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+                              @Override
+                              public void subscribe(Observer&lt;? super Integer&gt; observer1) {
+<span class="nc" id="L327">                                  Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+                                      @Override
+                                      public void subscribe(Observer&lt;? super Integer&gt; observer2) {
+<span class="nc" id="L330">                                          throw new IllegalArgumentException(&quot;original exception&quot;);</span>
+                                      }
+<span class="nc" id="L332">                                  }).subscribe(observer1);</span>
+<span class="nc" id="L333">                              }</span>
+                          }
+<span class="nc" id="L335">        ).subscribe(new OnErrorFailedSubscriber());</span>
+<span class="nc" id="L336">    }</span>
+
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnErrorExceptionIsThrownFromUnsafeSubscribe() {
+<span class="nc" id="L341">        Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+                              @Override
+                              public void subscribe(Observer&lt;? super Integer&gt; observer1) {
+<span class="nc" id="L344">                                  Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+                                      @Override
+                                      public void subscribe(Observer&lt;? super Integer&gt; observer2) {
+<span class="nc" id="L347">                                          throw new IllegalArgumentException(&quot;original exception&quot;);</span>
+                                      }
+<span class="nc" id="L349">                                  }).subscribe(observer1);</span>
+<span class="nc" id="L350">                              }</span>
+                          }
+<span class="nc" id="L352">        ).subscribe(new OnErrorFailedSubscriber());</span>
+<span class="nc" id="L353">    }</span>
+
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnErrorExceptionIsThrownFromSingleDoOnSuccess() throws Exception {
+<span class="nc" id="L358">        Single.just(1)</span>
+<span class="nc" id="L359">                .doOnSuccess(new Consumer&lt;Integer&gt;() {</span>
+                    @Override
+                    public void accept(Integer integer) {
+<span class="nc" id="L362">                        throw new RuntimeException();</span>
+                    }
+                })
+<span class="nc" id="L365">                .toObservable().subscribe(new OnErrorFailedSubscriber());</span>
+<span class="nc" id="L366">    }</span>
+
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnErrorExceptionIsThrownFromSingleSubscribe() {
+<span class="nc" id="L371">        Single.unsafeCreate(new SingleSource&lt;Integer&gt;() {</span>
+                          @Override
+                          public void subscribe(SingleObserver&lt;? super Integer&gt; observer1) {
+<span class="nc" id="L374">                              Single.unsafeCreate(new SingleSource&lt;Integer&gt;() {</span>
+                                  @Override
+                                  public void subscribe(SingleObserver&lt;? super Integer&gt; observer2) {
+<span class="nc" id="L377">                                      throw new IllegalArgumentException(&quot;original exception&quot;);</span>
+                                  }
+<span class="nc" id="L379">                              }).subscribe(observer1);</span>
+<span class="nc" id="L380">                          }</span>
+                      }
+<span class="nc" id="L382">        ).toObservable().subscribe(new OnErrorFailedSubscriber());</span>
+<span class="nc" id="L383">    }</span>
+
+    @Ignore(&quot;v2 components should not throw&quot;)
+    @Test(expected = RuntimeException.class)
+    public void testOnErrorExceptionIsThrownFromSingleUnsafeSubscribe() {
+<span class="nc" id="L388">        Single.unsafeCreate(new SingleSource&lt;Integer&gt;() {</span>
+                          @Override
+                          public void subscribe(final SingleObserver&lt;? super Integer&gt; observer1) {
+<span class="nc" id="L391">                              Single.unsafeCreate(new SingleSource&lt;Integer&gt;() {</span>
+                                  @Override
+                                  public void subscribe(SingleObserver&lt;? super Integer&gt; observer2) {
+<span class="nc" id="L394">                                      throw new IllegalArgumentException(&quot;original exception&quot;);</span>
+                                  }
+<span class="nc" id="L396">                              }).toFlowable().subscribe(new FlowableSubscriber&lt;Integer&gt;() {</span>
+
+                                  @Override
+                                  public void onSubscribe(Subscription s) {
+<span class="nc" id="L400">                                      s.request(Long.MAX_VALUE);</span>
+<span class="nc" id="L401">                                  }</span>
+
+                                  @Override
+                                  public void onComplete() {
+<span class="nc" id="L405">                                  }</span>
+
+                                  @Override
+                                  public void onError(Throwable e) {
+<span class="nc" id="L409">                                      observer1.onError(e);</span>
+<span class="nc" id="L410">                                  }</span>
+
+                                  @Override
+                                  public void onNext(Integer v) {
+<span class="nc" id="L414">                                      observer1.onSuccess(v);</span>
+<span class="nc" id="L415">                                  }</span>
+
+                              });
+<span class="nc" id="L418">                          }</span>
+                      }
+<span class="nc" id="L420">        ).toObservable().subscribe(new OnErrorFailedSubscriber());</span>
+<span class="nc" id="L421">    }</span>
+
+<span class="nc" id="L423">    private class OnErrorFailedSubscriber implements Observer&lt;Integer&gt; {</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+
+<span class="nc" id="L428">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="nc" id="L432">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="nc" id="L436">            throw new RuntimeException();</span>
+        }
+
+        @Override
+        public void onNext(Integer value) {
+<span class="nc" id="L441">        }</span>
+    }
+
+    @Test
+    public void utilityClass() {
+<span class="fc" id="L446">        TestHelper.checkUtilityClass(Exceptions.class);</span>
+<span class="fc" id="L447">    }</span>
+
+    @Test
+    public void manualThrowIfFatal() {
+
+        try {
+<span class="nc" id="L453">            Exceptions.throwIfFatal(new ThreadDeath());</span>
+<span class="nc" id="L454">            fail(&quot;Didn't throw fatal exception&quot;);</span>
+<span class="fc" id="L455">        } catch (ThreadDeath ex) {</span>
+            // expected
+<span class="nc" id="L457">        }</span>
+
+        try {
+<span class="nc" id="L460">            Exceptions.throwIfFatal(new LinkageError());</span>
+<span class="nc" id="L461">            fail(&quot;Didn't throw fatal error&quot;);</span>
+<span class="fc" id="L462">        } catch (LinkageError ex) {</span>
+            // expected
+<span class="nc" id="L464">        }</span>
+
+        try {
+<span class="nc" id="L467">            ExceptionHelper.wrapOrThrow(new LinkageError());</span>
+<span class="nc" id="L468">            fail(&quot;Didn't propagate Error&quot;);</span>
+<span class="fc" id="L469">        } catch (LinkageError ex) {</span>
+            // expected
+<span class="nc" id="L471">        }</span>
+<span class="fc" id="L472">    }</span>
+
+    @Test
+    public void manualPropagate() {
+
+        try {
+<span class="nc" id="L478">            Exceptions.propagate(new InternalError());</span>
+<span class="nc" id="L479">            fail(&quot;Didn't throw exception&quot;);</span>
+<span class="fc" id="L480">        } catch (InternalError ex) {</span>
+            // expected
+<span class="nc" id="L482">        }</span>
+
+        try {
+<span class="nc" id="L485">            throw Exceptions.propagate(new IllegalArgumentException());</span>
+<span class="fc" id="L486">        } catch (IllegalArgumentException ex) {</span>
+            // expected
+        }
+
+        try {
+<span class="fc" id="L491">            throw ExceptionHelper.wrapOrThrow(new IOException());</span>
+<span class="fc" id="L492">        } catch (RuntimeException ex) {</span>
+<span class="pc bpc" id="L493" title="1 of 2 branches missed.">            if (!(ex.getCause() instanceof IOException)) {</span>
+<span class="nc" id="L494">                fail(ex.toString() + &quot;: should have thrown RuntimeException(IOException)&quot;);</span>
+            }
+        }
+<span class="fc" id="L497">    }</span>
+
+    @Test
+    public void errorNotImplementedNull1() {
+<span class="fc" id="L501">        OnErrorNotImplementedException ex = new OnErrorNotImplementedException(null);</span>
+
+<span class="fc" id="L503">        assertTrue(&quot;&quot; + ex.getCause(), ex.getCause() instanceof NullPointerException);</span>
+<span class="fc" id="L504">    }</span>
+
+    @Test
+    public void errorNotImplementedNull2() {
+<span class="fc" id="L508">        OnErrorNotImplementedException ex = new OnErrorNotImplementedException(&quot;Message&quot;, null);</span>
+
+<span class="fc" id="L510">        assertTrue(&quot;&quot; + ex.getCause(), ex.getCause() instanceof NullPointerException);</span>
+<span class="fc" id="L511">    }</span>
+
+    @Test
+    public void errorNotImplementedWithCause() {
+<span class="fc" id="L515">        OnErrorNotImplementedException ex = new OnErrorNotImplementedException(&quot;Message&quot;, new TestException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L517">        assertTrue(&quot;&quot; + ex.getCause(), ex.getCause() instanceof TestException);</span>
+
+<span class="fc" id="L519">        assertEquals(&quot;&quot; + ex.getCause(), &quot;Forced failure&quot;, ex.getCause().getMessage());</span>
+<span class="fc" id="L520">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

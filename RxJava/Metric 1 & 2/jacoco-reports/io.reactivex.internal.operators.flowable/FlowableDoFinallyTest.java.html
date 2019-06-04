@@ -1,0 +1,521 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableDoFinallyTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableDoFinallyTest.java</span></div><h1>FlowableDoFinallyTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.UnicastProcessor;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L32">public class FlowableDoFinallyTest implements Action {</span>
+
+    int calls;
+
+    @Override
+    public void run() throws Exception {
+<span class="fc" id="L38">        calls++;</span>
+<span class="fc" id="L39">    }</span>
+
+    @Test
+    public void normalJust() {
+<span class="fc" id="L43">        Flowable.just(1)</span>
+<span class="fc" id="L44">        .doFinally(this)</span>
+<span class="fc" id="L45">        .test()</span>
+<span class="fc" id="L46">        .assertResult(1);</span>
+
+<span class="fc" id="L48">        assertEquals(1, calls);</span>
+<span class="fc" id="L49">    }</span>
+
+    @Test
+    public void normalEmpty() {
+<span class="fc" id="L53">        Flowable.empty()</span>
+<span class="fc" id="L54">        .doFinally(this)</span>
+<span class="fc" id="L55">        .test()</span>
+<span class="fc" id="L56">        .assertResult();</span>
+
+<span class="fc" id="L58">        assertEquals(1, calls);</span>
+<span class="fc" id="L59">    }</span>
+
+    @Test
+    public void normalError() {
+<span class="fc" id="L63">        Flowable.error(new TestException())</span>
+<span class="fc" id="L64">        .doFinally(this)</span>
+<span class="fc" id="L65">        .test()</span>
+<span class="fc" id="L66">        .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L68">        assertEquals(1, calls);</span>
+<span class="fc" id="L69">    }</span>
+
+    @Test
+    public void normalTake() {
+<span class="fc" id="L73">        Flowable.range(1, 10)</span>
+<span class="fc" id="L74">        .doFinally(this)</span>
+<span class="fc" id="L75">        .take(5)</span>
+<span class="fc" id="L76">        .test()</span>
+<span class="fc" id="L77">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L79">        assertEquals(1, calls);</span>
+<span class="fc" id="L80">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L84">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Publisher&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L87">                return f.doFinally(FlowableDoFinallyTest.this);</span>
+            }
+        });
+<span class="fc" id="L90">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Publisher&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L93">                return f.doFinally(FlowableDoFinallyTest.this).filter(Functions.alwaysTrue());</span>
+            }
+        });
+<span class="fc" id="L96">    }</span>
+
+    @Test
+    public void syncFused() {
+<span class="fc" id="L100">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L102">        Flowable.range(1, 5)</span>
+<span class="fc" id="L103">        .doFinally(this)</span>
+<span class="fc" id="L104">        .subscribe(ts);</span>
+
+<span class="fc" id="L106">        SubscriberFusion.assertFusion(ts, QueueFuseable.SYNC)</span>
+<span class="fc" id="L107">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L109">        assertEquals(1, calls);</span>
+<span class="fc" id="L110">    }</span>
+
+    @Test
+    public void syncFusedBoundary() {
+<span class="fc" id="L114">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L116">        Flowable.range(1, 5)</span>
+<span class="fc" id="L117">        .doFinally(this)</span>
+<span class="fc" id="L118">        .subscribe(ts);</span>
+
+<span class="fc" id="L120">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L121">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L123">        assertEquals(1, calls);</span>
+<span class="fc" id="L124">    }</span>
+
+    @Test
+    public void asyncFused() {
+<span class="fc" id="L128">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ASYNC);</span>
+
+<span class="fc" id="L130">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+<span class="fc" id="L131">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L133">        up</span>
+<span class="fc" id="L134">        .doFinally(this)</span>
+<span class="fc" id="L135">        .subscribe(ts);</span>
+
+<span class="fc" id="L137">        SubscriberFusion.assertFusion(ts, QueueFuseable.ASYNC)</span>
+<span class="fc" id="L138">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L140">        assertEquals(1, calls);</span>
+<span class="fc" id="L141">    }</span>
+
+    @Test
+    public void asyncFusedBoundary() {
+<span class="fc" id="L145">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ASYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L147">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+<span class="fc" id="L148">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L150">        up</span>
+<span class="fc" id="L151">        .doFinally(this)</span>
+<span class="fc" id="L152">        .subscribe(ts);</span>
+
+<span class="fc" id="L154">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L155">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L157">        assertEquals(1, calls);</span>
+<span class="fc" id="L158">    }</span>
+
+    @Test
+    public void normalJustConditional() {
+<span class="fc" id="L162">        Flowable.just(1)</span>
+<span class="fc" id="L163">        .doFinally(this)</span>
+<span class="fc" id="L164">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L165">        .test()</span>
+<span class="fc" id="L166">        .assertResult(1);</span>
+
+<span class="fc" id="L168">        assertEquals(1, calls);</span>
+<span class="fc" id="L169">    }</span>
+
+    @Test
+    public void normalEmptyConditional() {
+<span class="fc" id="L173">        Flowable.empty()</span>
+<span class="fc" id="L174">        .doFinally(this)</span>
+<span class="fc" id="L175">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L176">        .test()</span>
+<span class="fc" id="L177">        .assertResult();</span>
+
+<span class="fc" id="L179">        assertEquals(1, calls);</span>
+<span class="fc" id="L180">    }</span>
+
+    @Test
+    public void normalErrorConditional() {
+<span class="fc" id="L184">        Flowable.error(new TestException())</span>
+<span class="fc" id="L185">        .doFinally(this)</span>
+<span class="fc" id="L186">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L187">        .test()</span>
+<span class="fc" id="L188">        .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L190">        assertEquals(1, calls);</span>
+<span class="fc" id="L191">    }</span>
+
+    @Test
+    public void normalTakeConditional() {
+<span class="fc" id="L195">        Flowable.range(1, 10)</span>
+<span class="fc" id="L196">        .doFinally(this)</span>
+<span class="fc" id="L197">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L198">        .take(5)</span>
+<span class="fc" id="L199">        .test()</span>
+<span class="fc" id="L200">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L202">        assertEquals(1, calls);</span>
+<span class="fc" id="L203">    }</span>
+
+    @Test
+    public void syncFusedConditional() {
+<span class="fc" id="L207">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L209">        Flowable.range(1, 5)</span>
+<span class="fc" id="L210">        .doFinally(this)</span>
+<span class="fc" id="L211">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L212">        .subscribe(ts);</span>
+
+<span class="fc" id="L214">        SubscriberFusion.assertFusion(ts, QueueFuseable.SYNC)</span>
+<span class="fc" id="L215">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L217">        assertEquals(1, calls);</span>
+<span class="fc" id="L218">    }</span>
+
+    @Test
+    public void nonFused() {
+<span class="fc" id="L222">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L224">        Flowable.range(1, 5).hide()</span>
+<span class="fc" id="L225">        .doFinally(this)</span>
+<span class="fc" id="L226">        .subscribe(ts);</span>
+
+<span class="fc" id="L228">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L229">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L231">        assertEquals(1, calls);</span>
+<span class="fc" id="L232">    }</span>
+
+    @Test
+    public void nonFusedConditional() {
+<span class="fc" id="L236">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L238">        Flowable.range(1, 5).hide()</span>
+<span class="fc" id="L239">        .doFinally(this)</span>
+<span class="fc" id="L240">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L241">        .subscribe(ts);</span>
+
+<span class="fc" id="L243">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L244">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L246">        assertEquals(1, calls);</span>
+<span class="fc" id="L247">    }</span>
+
+    @Test
+    public void syncFusedBoundaryConditional() {
+<span class="fc" id="L251">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L253">        Flowable.range(1, 5)</span>
+<span class="fc" id="L254">        .doFinally(this)</span>
+<span class="fc" id="L255">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L256">        .subscribe(ts);</span>
+
+<span class="fc" id="L258">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L259">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L261">        assertEquals(1, calls);</span>
+<span class="fc" id="L262">    }</span>
+
+    @Test
+    public void asyncFusedConditional() {
+<span class="fc" id="L266">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ASYNC);</span>
+
+<span class="fc" id="L268">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+<span class="fc" id="L269">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L271">        up</span>
+<span class="fc" id="L272">        .doFinally(this)</span>
+<span class="fc" id="L273">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L274">        .subscribe(ts);</span>
+
+<span class="fc" id="L276">        SubscriberFusion.assertFusion(ts, QueueFuseable.ASYNC)</span>
+<span class="fc" id="L277">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L279">        assertEquals(1, calls);</span>
+<span class="fc" id="L280">    }</span>
+
+    @Test
+    public void asyncFusedBoundaryConditional() {
+<span class="fc" id="L284">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ASYNC | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L286">        UnicastProcessor&lt;Integer&gt; up = UnicastProcessor.create();</span>
+<span class="fc" id="L287">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L289">        up</span>
+<span class="fc" id="L290">        .doFinally(this)</span>
+<span class="fc" id="L291">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L292">        .subscribe(ts);</span>
+
+<span class="fc" id="L294">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L295">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L297">        assertEquals(1, calls);</span>
+<span class="fc" id="L298">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void nullAction() {
+<span class="nc" id="L302">        Flowable.just(1).doFinally(null);</span>
+<span class="nc" id="L303">    }</span>
+
+    @Test
+    public void actionThrows() {
+<span class="fc" id="L307">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L309">            Flowable.just(1)</span>
+<span class="fc" id="L310">            .doFinally(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L313">                    throw new TestException();</span>
+                }
+            })
+<span class="fc" id="L316">            .test()</span>
+<span class="fc" id="L317">            .assertResult(1)</span>
+<span class="fc" id="L318">            .cancel();</span>
+
+<span class="fc" id="L320">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L322">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L324">    }</span>
+
+    @Test
+    public void actionThrowsConditional() {
+<span class="fc" id="L328">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L330">            Flowable.just(1)</span>
+<span class="fc" id="L331">            .doFinally(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L334">                    throw new TestException();</span>
+                }
+            })
+<span class="fc" id="L337">            .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L338">            .test()</span>
+<span class="fc" id="L339">            .assertResult(1)</span>
+<span class="fc" id="L340">            .cancel();</span>
+
+<span class="fc" id="L342">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L344">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L346">    }</span>
+
+    @Test
+    public void clearIsEmpty() {
+<span class="fc" id="L350">        Flowable.range(1, 5)</span>
+<span class="fc" id="L351">        .doFinally(this)</span>
+<span class="fc" id="L352">        .subscribe(new FlowableSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Subscription s) {
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L357">                QueueSubscription&lt;Integer&gt; qs = (QueueSubscription&lt;Integer&gt;)s;</span>
+
+<span class="fc" id="L359">                qs.requestFusion(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L361">                assertFalse(qs.isEmpty());</span>
+
+                try {
+<span class="fc" id="L364">                    assertEquals(1, qs.poll().intValue());</span>
+<span class="nc" id="L365">                } catch (Throwable ex) {</span>
+<span class="nc" id="L366">                    throw new RuntimeException(ex);</span>
+<span class="fc" id="L367">                }</span>
+
+<span class="fc" id="L369">                assertFalse(qs.isEmpty());</span>
+
+<span class="fc" id="L371">                qs.clear();</span>
+
+<span class="fc" id="L373">                assertTrue(qs.isEmpty());</span>
+
+<span class="fc" id="L375">                qs.cancel();</span>
+<span class="fc" id="L376">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="nc" id="L380">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L384">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L388">            }</span>
+        });
+
+<span class="fc" id="L391">        assertEquals(1, calls);</span>
+<span class="fc" id="L392">    }</span>
+
+    @Test
+    public void clearIsEmptyConditional() {
+<span class="fc" id="L396">        Flowable.range(1, 5)</span>
+<span class="fc" id="L397">        .doFinally(this)</span>
+<span class="fc" id="L398">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L399">        .subscribe(new FlowableSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Subscription s) {
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L404">                QueueSubscription&lt;Integer&gt; qs = (QueueSubscription&lt;Integer&gt;)s;</span>
+
+<span class="fc" id="L406">                qs.requestFusion(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L408">                assertFalse(qs.isEmpty());</span>
+
+                try {
+<span class="fc" id="L411">                    assertEquals(1, qs.poll().intValue());</span>
+<span class="nc" id="L412">                } catch (Throwable ex) {</span>
+<span class="nc" id="L413">                    throw new RuntimeException(ex);</span>
+<span class="fc" id="L414">                }</span>
+
+<span class="fc" id="L416">                assertFalse(qs.isEmpty());</span>
+
+<span class="fc" id="L418">                qs.clear();</span>
+
+<span class="fc" id="L420">                assertTrue(qs.isEmpty());</span>
+
+<span class="fc" id="L422">                qs.cancel();</span>
+<span class="fc" id="L423">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="nc" id="L427">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L431">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L435">            }</span>
+        });
+
+<span class="fc" id="L438">        assertEquals(1, calls);</span>
+<span class="fc" id="L439">    }</span>
+
+    @Test
+    public void eventOrdering() {
+<span class="fc" id="L443">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+<span class="fc" id="L445">        Flowable.error(new TestException())</span>
+<span class="fc" id="L446">        .doOnCancel(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L449">                list.add(&quot;cancel&quot;);</span>
+<span class="nc" id="L450">            }</span>
+        })
+<span class="fc" id="L452">        .doFinally(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L455">                list.add(&quot;finally&quot;);</span>
+<span class="fc" id="L456">            }</span>
+        })
+<span class="fc" id="L458">        .subscribe(</span>
+<span class="fc" id="L459">                new Consumer&lt;Object&gt;() {</span>
+                    @Override
+                    public void accept(Object v) throws Exception {
+<span class="nc" id="L462">                        list.add(&quot;onNext&quot;);</span>
+<span class="nc" id="L463">                    }</span>
+                },
+<span class="fc" id="L465">                new Consumer&lt;Throwable&gt;() {</span>
+                    @Override
+                    public void accept(Throwable e) throws Exception {
+<span class="fc" id="L468">                        list.add(&quot;onError&quot;);</span>
+<span class="fc" id="L469">                    }</span>
+                },
+<span class="fc" id="L471">                new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="nc" id="L474">                        list.add(&quot;onComplete&quot;);</span>
+<span class="nc" id="L475">                    }</span>
+                });
+
+<span class="fc" id="L478">        assertEquals(Arrays.asList(&quot;onError&quot;, &quot;finally&quot;), list);</span>
+<span class="fc" id="L479">    }</span>
+
+    @Test
+    public void eventOrdering2() {
+<span class="fc" id="L483">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+<span class="fc" id="L485">        Flowable.just(1)</span>
+<span class="fc" id="L486">        .doOnCancel(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L489">                list.add(&quot;cancel&quot;);</span>
+<span class="nc" id="L490">            }</span>
+        })
+<span class="fc" id="L492">        .doFinally(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L495">                list.add(&quot;finally&quot;);</span>
+<span class="fc" id="L496">            }</span>
+        })
+<span class="fc" id="L498">        .subscribe(</span>
+<span class="fc" id="L499">                new Consumer&lt;Object&gt;() {</span>
+                    @Override
+                    public void accept(Object v) throws Exception {
+<span class="fc" id="L502">                        list.add(&quot;onNext&quot;);</span>
+<span class="fc" id="L503">                    }</span>
+                },
+<span class="fc" id="L505">                new Consumer&lt;Throwable&gt;() {</span>
+                    @Override
+                    public void accept(Throwable e) throws Exception {
+<span class="nc" id="L508">                        list.add(&quot;onError&quot;);</span>
+<span class="nc" id="L509">                    }</span>
+                },
+<span class="fc" id="L511">                new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="fc" id="L514">                        list.add(&quot;onComplete&quot;);</span>
+<span class="fc" id="L515">                    }</span>
+                });
+
+<span class="fc" id="L518">        assertEquals(Arrays.asList(&quot;onNext&quot;, &quot;onComplete&quot;, &quot;finally&quot;), list);</span>
+<span class="fc" id="L519">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

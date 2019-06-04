@@ -1,0 +1,606 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSwitchMapSingleTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.mixed</a> &gt; <span class="el_source">FlowableSwitchMapSingleTest.java</span></div><h1>FlowableSwitchMapSingleTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.mixed;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subjects.SingleSubject;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L35">public class FlowableSwitchMapSingleTest {</span>
+
+    @Test
+    public void simple() {
+<span class="fc" id="L39">        Flowable.range(1, 5)</span>
+<span class="fc" id="L40">        .switchMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L44">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L47">        .test()</span>
+<span class="fc" id="L48">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L49">    }</span>
+
+    @Test
+    public void mainError() {
+<span class="fc" id="L53">        Flowable.error(new TestException())</span>
+<span class="fc" id="L54">        .switchMapSingle(Functions.justFunction(Single.never()))</span>
+<span class="fc" id="L55">        .test()</span>
+<span class="fc" id="L56">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L57">    }</span>
+
+    @Test
+    public void innerError() {
+<span class="fc" id="L61">        Flowable.just(1)</span>
+<span class="fc" id="L62">        .switchMapSingle(Functions.justFunction(Single.error(new TestException())))</span>
+<span class="fc" id="L63">        .test()</span>
+<span class="fc" id="L64">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L65">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L69">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Publisher&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Object&gt; apply(Flowable&lt;Object&gt; f)
+                    throws Exception {
+<span class="fc" id="L73">                return f</span>
+<span class="fc" id="L74">                        .switchMapSingle(Functions.justFunction(Single.never()));</span>
+            }
+        }
+        );
+<span class="fc" id="L78">    }</span>
+
+    @Test
+    public void limit() {
+<span class="fc" id="L82">        Flowable.range(1, 5)</span>
+<span class="fc" id="L83">        .switchMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L87">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L90">        .limit(3)</span>
+<span class="fc" id="L91">        .test()</span>
+<span class="fc" id="L92">        .assertResult(1, 2, 3);</span>
+<span class="fc" id="L93">    }</span>
+
+    @Test
+    public void switchOver() {
+<span class="fc" id="L97">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L99">        final SingleSubject&lt;Integer&gt; ms1 = SingleSubject.create();</span>
+<span class="fc" id="L100">        final SingleSubject&lt;Integer&gt; ms2 = SingleSubject.create();</span>
+
+<span class="fc" id="L102">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                        if (v == 1) {</span>
+<span class="fc" id="L107">                            return ms1;</span>
+                        }
+<span class="fc" id="L109">                        return ms2;</span>
+                    }
+<span class="fc" id="L111">        }).test();</span>
+
+<span class="fc" id="L113">        ts.assertEmpty();</span>
+
+<span class="fc" id="L115">        pp.onNext(1);</span>
+
+<span class="fc" id="L117">        ts.assertEmpty();</span>
+
+<span class="fc" id="L119">        assertTrue(ms1.hasObservers());</span>
+
+<span class="fc" id="L121">        pp.onNext(2);</span>
+
+<span class="fc" id="L123">        assertFalse(ms1.hasObservers());</span>
+<span class="fc" id="L124">        assertTrue(ms2.hasObservers());</span>
+
+<span class="fc" id="L126">        ms2.onError(new TestException());</span>
+
+<span class="fc" id="L128">        assertFalse(pp.hasSubscribers());</span>
+
+<span class="fc" id="L130">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L131">    }</span>
+
+    @Test
+    public void switchOverDelayError() {
+<span class="fc" id="L135">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L137">        final SingleSubject&lt;Integer&gt; ms1 = SingleSubject.create();</span>
+<span class="fc" id="L138">        final SingleSubject&lt;Integer&gt; ms2 = SingleSubject.create();</span>
+
+<span class="fc" id="L140">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                        if (v == 1) {</span>
+<span class="fc" id="L145">                            return ms1;</span>
+                        }
+<span class="fc" id="L147">                        return ms2;</span>
+                    }
+<span class="fc" id="L149">        }).test();</span>
+
+<span class="fc" id="L151">        ts.assertEmpty();</span>
+
+<span class="fc" id="L153">        pp.onNext(1);</span>
+
+<span class="fc" id="L155">        ts.assertEmpty();</span>
+
+<span class="fc" id="L157">        assertTrue(ms1.hasObservers());</span>
+
+<span class="fc" id="L159">        pp.onNext(2);</span>
+
+<span class="fc" id="L161">        assertFalse(ms1.hasObservers());</span>
+<span class="fc" id="L162">        assertTrue(ms2.hasObservers());</span>
+
+<span class="fc" id="L164">        ms2.onError(new TestException());</span>
+
+<span class="fc" id="L166">        ts.assertEmpty();</span>
+
+<span class="fc" id="L168">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L170">        pp.onComplete();</span>
+
+<span class="fc" id="L172">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L173">    }</span>
+
+    @Test
+    public void mainErrorInnerCompleteDelayError() {
+<span class="fc" id="L177">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L179">        final SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L181">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L185">                        return ms;</span>
+                    }
+<span class="fc" id="L187">        }).test();</span>
+
+<span class="fc" id="L189">        ts.assertEmpty();</span>
+
+<span class="fc" id="L191">        pp.onNext(1);</span>
+
+<span class="fc" id="L193">        ts.assertEmpty();</span>
+
+<span class="fc" id="L195">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L197">        pp.onError(new TestException());</span>
+
+<span class="fc" id="L199">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L201">        ts.assertEmpty();</span>
+
+<span class="fc" id="L203">        ms.onSuccess(1);</span>
+
+<span class="fc" id="L205">        ts.assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L206">    }</span>
+
+    @Test
+    public void mainErrorInnerSuccessDelayError() {
+<span class="fc" id="L210">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L212">        final SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L214">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L218">                        return ms;</span>
+                    }
+<span class="fc" id="L220">        }).test();</span>
+
+<span class="fc" id="L222">        ts.assertEmpty();</span>
+
+<span class="fc" id="L224">        pp.onNext(1);</span>
+
+<span class="fc" id="L226">        ts.assertEmpty();</span>
+
+<span class="fc" id="L228">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L230">        pp.onError(new TestException());</span>
+
+<span class="fc" id="L232">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L234">        ts.assertEmpty();</span>
+
+<span class="fc" id="L236">        ms.onSuccess(1);</span>
+
+<span class="fc" id="L238">        ts.assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L239">    }</span>
+
+    @Test
+    public void mapperCrash() {
+<span class="fc" id="L243">        Flowable.just(1)</span>
+<span class="fc" id="L244">        .switchMapSingle(new Function&lt;Integer, SingleSource&lt;? extends Object&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;? extends Object&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L248">                        throw new TestException();</span>
+                    }
+        })
+<span class="fc" id="L251">        .test()</span>
+<span class="fc" id="L252">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L253">    }</span>
+
+    @Test
+    public void disposeBeforeSwitchInOnNext() {
+<span class="fc" id="L257">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L259">        Flowable.just(1)</span>
+<span class="fc" id="L260">        .switchMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L264">                        ts.cancel();</span>
+<span class="fc" id="L265">                        return Single.just(1);</span>
+                    }
+<span class="fc" id="L267">        }).subscribe(ts);</span>
+
+<span class="fc" id="L269">        ts.assertEmpty();</span>
+<span class="fc" id="L270">    }</span>
+
+    @Test
+    public void disposeOnNextAfterFirst() {
+<span class="fc" id="L274">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L276">        Flowable.just(1, 2)</span>
+<span class="fc" id="L277">        .switchMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">                if (v == 2) {</span>
+<span class="fc" id="L282">                    ts.cancel();</span>
+                }
+<span class="fc" id="L284">                return Single.just(1);</span>
+            }
+<span class="fc" id="L286">        }).subscribe(ts);</span>
+
+<span class="fc" id="L288">        ts.assertValue(1)</span>
+<span class="fc" id="L289">        .assertNoErrors()</span>
+<span class="fc" id="L290">        .assertNotComplete();</span>
+<span class="fc" id="L291">    }</span>
+
+    @Test
+    public void cancel() {
+<span class="fc" id="L295">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L297">        final SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L299">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L303">                        return ms;</span>
+                    }
+<span class="fc" id="L305">        }).test();</span>
+
+<span class="fc" id="L307">        ts.assertEmpty();</span>
+
+<span class="fc" id="L309">        pp.onNext(1);</span>
+
+<span class="fc" id="L311">        ts.assertEmpty();</span>
+
+<span class="fc" id="L313">        assertTrue(pp.hasSubscribers());</span>
+<span class="fc" id="L314">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L316">        ts.cancel();</span>
+
+<span class="fc" id="L318">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L319">        assertFalse(ms.hasObservers());</span>
+<span class="fc" id="L320">    }</span>
+
+    @Test
+    public void mainErrorAfterTermination() {
+<span class="fc" id="L324">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L326">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L329">                    s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L330">                    s.onNext(1);</span>
+<span class="fc" id="L331">                    s.onError(new TestException(&quot;outer&quot;));</span>
+<span class="fc" id="L332">                }</span>
+            }
+<span class="fc" id="L334">            .switchMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public SingleSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc" id="L338">                    return Single.error(new TestException(&quot;inner&quot;));</span>
+                }
+            })
+<span class="fc" id="L341">            .test()</span>
+<span class="fc" id="L342">            .assertFailureAndMessage(TestException.class, &quot;inner&quot;);</span>
+
+<span class="fc" id="L344">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;outer&quot;);</span>
+        } finally {
+<span class="fc" id="L346">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L348">    }</span>
+
+    @Test
+    public void innerErrorAfterTermination() {
+<span class="fc" id="L352">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L354">            final AtomicReference&lt;SingleObserver&lt;? super Integer&gt;&gt; moRef = new AtomicReference&lt;SingleObserver&lt;? super Integer&gt;&gt;();</span>
+
+<span class="fc" id="L356">            TestSubscriber&lt;Integer&gt; ts = new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L359">                    s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L360">                    s.onNext(1);</span>
+<span class="fc" id="L361">                    s.onError(new TestException(&quot;outer&quot;));</span>
+<span class="fc" id="L362">                }</span>
+            }
+<span class="fc" id="L364">            .switchMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public SingleSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc" id="L368">                    return new Single&lt;Integer&gt;() {</span>
+                        @Override
+                        protected void subscribeActual(
+                                SingleObserver&lt;? super Integer&gt; observer) {
+<span class="fc" id="L372">                            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L373">                            moRef.set(observer);</span>
+<span class="fc" id="L374">                        }</span>
+                    };
+                }
+            })
+<span class="fc" id="L378">            .test();</span>
+
+<span class="fc" id="L380">            ts.assertFailureAndMessage(TestException.class, &quot;outer&quot;);</span>
+
+<span class="fc" id="L382">            moRef.get().onError(new TestException(&quot;inner&quot;));</span>
+
+<span class="fc" id="L384">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;inner&quot;);</span>
+        } finally {
+<span class="fc" id="L386">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L388">    }</span>
+
+    @Test
+    public void nextCancelRace() {
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L394">            final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L396">            final SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L398">            final TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public SingleSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc" id="L402">                            return ms;</span>
+                        }
+<span class="fc" id="L404">            }).test();</span>
+
+<span class="fc" id="L406">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L409">                    pp.onNext(1);</span>
+<span class="fc" id="L410">                }</span>
+            };
+
+<span class="fc" id="L413">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L416">                    ts.cancel();</span>
+<span class="fc" id="L417">                }</span>
+            };
+
+<span class="fc" id="L420">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L422">            ts.assertNoErrors()</span>
+<span class="fc" id="L423">            .assertNotComplete();</span>
+        }
+<span class="fc" id="L425">    }</span>
+
+    @Test
+    public void nextInnerErrorRace() {
+<span class="fc" id="L429">        final TestException ex = new TestException();</span>
+
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L433">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L435">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L437">                final SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L439">                final TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public SingleSource&lt;Integer&gt; apply(Integer v)
+                            throws Exception {
+<span class="fc bfc" id="L443" title="All 2 branches covered.">                        if (v == 1) {</span>
+<span class="fc" id="L444">                            return ms;</span>
+                        }
+<span class="fc" id="L446">                        return Single.never();</span>
+                    }
+<span class="fc" id="L448">                }).test();</span>
+
+<span class="fc" id="L450">                pp.onNext(1);</span>
+
+<span class="fc" id="L452">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L455">                        pp.onNext(2);</span>
+<span class="fc" id="L456">                    }</span>
+                };
+
+<span class="fc" id="L459">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L462">                        ms.onError(ex);</span>
+<span class="fc" id="L463">                    }</span>
+                };
+
+<span class="fc" id="L466">                TestHelper.race(r1, r2);</span>
+
+<span class="pc bpc" id="L468" title="1 of 2 branches missed.">                if (ts.errorCount() != 0) {</span>
+<span class="nc" id="L469">                    assertTrue(errors.isEmpty());</span>
+<span class="nc" id="L470">                    ts.assertFailure(TestException.class);</span>
+<span class="fc bfc" id="L471" title="All 2 branches covered.">                } else if (!errors.isEmpty()) {</span>
+<span class="fc" id="L472">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L475">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L478">    }</span>
+
+    @Test
+    public void mainErrorInnerErrorRace() {
+<span class="fc" id="L482">        final TestException ex = new TestException();</span>
+<span class="fc" id="L483">        final TestException ex2 = new TestException();</span>
+
+<span class="fc bfc" id="L485" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L487">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L489">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L491">                final SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L493">                final TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public SingleSource&lt;Integer&gt; apply(Integer v)
+                            throws Exception {
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">                        if (v == 1) {</span>
+<span class="fc" id="L498">                            return ms;</span>
+                        }
+<span class="nc" id="L500">                        return Single.never();</span>
+                    }
+<span class="fc" id="L502">                }).test();</span>
+
+<span class="fc" id="L504">                pp.onNext(1);</span>
+
+<span class="fc" id="L506">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L509">                        pp.onError(ex);</span>
+<span class="fc" id="L510">                    }</span>
+                };
+
+<span class="fc" id="L513">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L516">                        ms.onError(ex2);</span>
+<span class="fc" id="L517">                    }</span>
+                };
+
+<span class="fc" id="L520">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L522">                ts.assertError(new Predicate&lt;Throwable&gt;() {</span>
+                    @Override
+                    public boolean test(Throwable e) throws Exception {
+<span class="pc bpc" id="L525" title="1 of 4 branches missed.">                        return e instanceof TestException || e instanceof CompositeException;</span>
+                    }
+                });
+
+<span class="fc bfc" id="L529" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L530">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L533">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L536">    }</span>
+
+    @Test
+    public void nextInnerSuccessRace() {
+<span class="fc bfc" id="L540" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L542">            final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L544">            final SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L546">            final TestSubscriber&lt;Integer&gt; ts = pp.switchMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public SingleSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc bfc" id="L550" title="All 2 branches covered.">                    if (v == 1) {</span>
+<span class="fc" id="L551">                            return ms;</span>
+                    }
+<span class="fc" id="L553">                    return Single.never();</span>
+                }
+<span class="fc" id="L555">            }).test();</span>
+
+<span class="fc" id="L557">            pp.onNext(1);</span>
+
+<span class="fc" id="L559">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L562">                    pp.onNext(2);</span>
+<span class="fc" id="L563">                }</span>
+            };
+
+<span class="fc" id="L566">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L569">                    ms.onSuccess(3);</span>
+<span class="fc" id="L570">                }</span>
+            };
+
+<span class="fc" id="L573">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L575">            ts.assertNoErrors()</span>
+<span class="fc" id="L576">            .assertNotComplete();</span>
+        }
+<span class="fc" id="L578">    }</span>
+
+    @Test
+    public void requestMoreOnNext() {
+<span class="fc" id="L582">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(1) {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L585">                super.onNext(t);</span>
+<span class="fc" id="L586">                requestMore(1);</span>
+<span class="fc" id="L587">            }</span>
+        };
+<span class="fc" id="L589">        Flowable.range(1, 5)</span>
+<span class="fc" id="L590">        .switchMapSingle(Functions.justFunction(Single.just(1)))</span>
+<span class="fc" id="L591">        .subscribe(ts);</span>
+
+<span class="fc" id="L593">        ts.assertResult(1, 1, 1, 1, 1);</span>
+<span class="fc" id="L594">    }</span>
+
+    @Test
+    public void backpressured() {
+<span class="fc" id="L598">        Flowable.just(1)</span>
+<span class="fc" id="L599">        .switchMapSingle(Functions.justFunction(Single.just(1)))</span>
+<span class="fc" id="L600">        .test(0)</span>
+<span class="fc" id="L601">        .assertEmpty()</span>
+<span class="fc" id="L602">        .requestMore(1)</span>
+<span class="fc" id="L603">        .assertResult(1);</span>
+<span class="fc" id="L604">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

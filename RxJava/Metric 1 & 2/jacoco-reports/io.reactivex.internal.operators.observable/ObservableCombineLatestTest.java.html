@@ -1,0 +1,1221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableCombineLatestTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableCombineLatestTest.java</span></div><h1>ObservableCombineLatestTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.Test;
+import org.mockito.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.*;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L39">public class ObservableCombineLatestTest {</span>
+
+    @Test
+    public void testCombineLatestWithFunctionThatThrowsAnException() {
+<span class="fc" id="L43">        Observer&lt;String&gt; w = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L45">        PublishSubject&lt;String&gt; w1 = PublishSubject.create();</span>
+<span class="fc" id="L46">        PublishSubject&lt;String&gt; w2 = PublishSubject.create();</span>
+
+<span class="fc" id="L48">        Observable&lt;String&gt; combined = Observable.combineLatest(w1, w2, new BiFunction&lt;String, String, String&gt;() {</span>
+            @Override
+            public String apply(String v1, String v2) {
+<span class="fc" id="L51">                throw new RuntimeException(&quot;I don't work.&quot;);</span>
+            }
+        });
+<span class="fc" id="L54">        combined.subscribe(w);</span>
+
+<span class="fc" id="L56">        w1.onNext(&quot;first value of w1&quot;);</span>
+<span class="fc" id="L57">        w2.onNext(&quot;first value of w2&quot;);</span>
+
+<span class="fc" id="L59">        verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L60">        verify(w, never()).onComplete();</span>
+<span class="fc" id="L61">        verify(w, times(1)).onError(Mockito.&lt;RuntimeException&gt; any());</span>
+<span class="fc" id="L62">    }</span>
+
+    @Test
+    public void testCombineLatestDifferentLengthObservableSequences1() {
+<span class="fc" id="L66">        Observer&lt;String&gt; w = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L68">        PublishSubject&lt;String&gt; w1 = PublishSubject.create();</span>
+<span class="fc" id="L69">        PublishSubject&lt;String&gt; w2 = PublishSubject.create();</span>
+<span class="fc" id="L70">        PublishSubject&lt;String&gt; w3 = PublishSubject.create();</span>
+
+<span class="fc" id="L72">        Observable&lt;String&gt; combineLatestW = Observable.combineLatest(w1, w2, w3,</span>
+<span class="fc" id="L73">                getConcat3StringsCombineLatestFunction());</span>
+<span class="fc" id="L74">        combineLatestW.subscribe(w);</span>
+
+        /* simulate sending data */
+        // once for w1
+<span class="fc" id="L78">        w1.onNext(&quot;1a&quot;);</span>
+<span class="fc" id="L79">        w2.onNext(&quot;2a&quot;);</span>
+<span class="fc" id="L80">        w3.onNext(&quot;3a&quot;);</span>
+<span class="fc" id="L81">        w1.onComplete();</span>
+        // twice for w2
+<span class="fc" id="L83">        w2.onNext(&quot;2b&quot;);</span>
+<span class="fc" id="L84">        w2.onComplete();</span>
+        // 4 times for w3
+<span class="fc" id="L86">        w3.onNext(&quot;3b&quot;);</span>
+<span class="fc" id="L87">        w3.onNext(&quot;3c&quot;);</span>
+<span class="fc" id="L88">        w3.onNext(&quot;3d&quot;);</span>
+<span class="fc" id="L89">        w3.onComplete();</span>
+
+        /* we should have been called 4 times on the Observer */
+<span class="fc" id="L92">        InOrder inOrder = inOrder(w);</span>
+<span class="fc" id="L93">        inOrder.verify(w).onNext(&quot;1a2a3a&quot;);</span>
+<span class="fc" id="L94">        inOrder.verify(w).onNext(&quot;1a2b3a&quot;);</span>
+<span class="fc" id="L95">        inOrder.verify(w).onNext(&quot;1a2b3b&quot;);</span>
+<span class="fc" id="L96">        inOrder.verify(w).onNext(&quot;1a2b3c&quot;);</span>
+<span class="fc" id="L97">        inOrder.verify(w).onNext(&quot;1a2b3d&quot;);</span>
+<span class="fc" id="L98">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L99">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L100">    }</span>
+
+    @Test
+    public void testCombineLatestDifferentLengthObservableSequences2() {
+<span class="fc" id="L104">        Observer&lt;String&gt; w = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L106">        PublishSubject&lt;String&gt; w1 = PublishSubject.create();</span>
+<span class="fc" id="L107">        PublishSubject&lt;String&gt; w2 = PublishSubject.create();</span>
+<span class="fc" id="L108">        PublishSubject&lt;String&gt; w3 = PublishSubject.create();</span>
+
+<span class="fc" id="L110">        Observable&lt;String&gt; combineLatestW = Observable.combineLatest(w1, w2, w3, getConcat3StringsCombineLatestFunction());</span>
+<span class="fc" id="L111">        combineLatestW.subscribe(w);</span>
+
+        /* simulate sending data */
+        // 4 times for w1
+<span class="fc" id="L115">        w1.onNext(&quot;1a&quot;);</span>
+<span class="fc" id="L116">        w1.onNext(&quot;1b&quot;);</span>
+<span class="fc" id="L117">        w1.onNext(&quot;1c&quot;);</span>
+<span class="fc" id="L118">        w1.onNext(&quot;1d&quot;);</span>
+<span class="fc" id="L119">        w1.onComplete();</span>
+        // twice for w2
+<span class="fc" id="L121">        w2.onNext(&quot;2a&quot;);</span>
+<span class="fc" id="L122">        w2.onNext(&quot;2b&quot;);</span>
+<span class="fc" id="L123">        w2.onComplete();</span>
+        // 1 times for w3
+<span class="fc" id="L125">        w3.onNext(&quot;3a&quot;);</span>
+<span class="fc" id="L126">        w3.onComplete();</span>
+
+        /* we should have been called 1 time only on the Observer since we only combine the &quot;latest&quot; we don't go back and loop through others once completed */
+<span class="fc" id="L129">        InOrder inOrder = inOrder(w);</span>
+<span class="fc" id="L130">        inOrder.verify(w, times(1)).onNext(&quot;1d2b3a&quot;);</span>
+<span class="fc" id="L131">        inOrder.verify(w, never()).onNext(anyString());</span>
+
+<span class="fc" id="L133">        inOrder.verify(w, times(1)).onComplete();</span>
+
+<span class="fc" id="L135">    }</span>
+
+    @Test
+    public void testCombineLatestWithInterleavingSequences() {
+<span class="fc" id="L139">        Observer&lt;String&gt; w = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L141">        PublishSubject&lt;String&gt; w1 = PublishSubject.create();</span>
+<span class="fc" id="L142">        PublishSubject&lt;String&gt; w2 = PublishSubject.create();</span>
+<span class="fc" id="L143">        PublishSubject&lt;String&gt; w3 = PublishSubject.create();</span>
+
+<span class="fc" id="L145">        Observable&lt;String&gt; combineLatestW = Observable.combineLatest(w1, w2, w3, getConcat3StringsCombineLatestFunction());</span>
+<span class="fc" id="L146">        combineLatestW.subscribe(w);</span>
+
+        /* simulate sending data */
+<span class="fc" id="L149">        w1.onNext(&quot;1a&quot;);</span>
+<span class="fc" id="L150">        w2.onNext(&quot;2a&quot;);</span>
+<span class="fc" id="L151">        w2.onNext(&quot;2b&quot;);</span>
+<span class="fc" id="L152">        w3.onNext(&quot;3a&quot;);</span>
+
+<span class="fc" id="L154">        w1.onNext(&quot;1b&quot;);</span>
+<span class="fc" id="L155">        w2.onNext(&quot;2c&quot;);</span>
+<span class="fc" id="L156">        w2.onNext(&quot;2d&quot;);</span>
+<span class="fc" id="L157">        w3.onNext(&quot;3b&quot;);</span>
+
+<span class="fc" id="L159">        w1.onComplete();</span>
+<span class="fc" id="L160">        w2.onComplete();</span>
+<span class="fc" id="L161">        w3.onComplete();</span>
+
+        /* we should have been called 5 times on the Observer */
+<span class="fc" id="L164">        InOrder inOrder = inOrder(w);</span>
+<span class="fc" id="L165">        inOrder.verify(w).onNext(&quot;1a2b3a&quot;);</span>
+<span class="fc" id="L166">        inOrder.verify(w).onNext(&quot;1b2b3a&quot;);</span>
+<span class="fc" id="L167">        inOrder.verify(w).onNext(&quot;1b2c3a&quot;);</span>
+<span class="fc" id="L168">        inOrder.verify(w).onNext(&quot;1b2d3a&quot;);</span>
+<span class="fc" id="L169">        inOrder.verify(w).onNext(&quot;1b2d3b&quot;);</span>
+
+<span class="fc" id="L171">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L172">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L173">    }</span>
+
+    @Test
+    public void testCombineLatest2Types() {
+<span class="fc" id="L177">        BiFunction&lt;String, Integer, String&gt; combineLatestFunction = getConcatStringIntegerCombineLatestFunction();</span>
+
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L180">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L182">        Observable&lt;String&gt; w = Observable.combineLatest(Observable.just(&quot;one&quot;, &quot;two&quot;), Observable.just(2, 3, 4), combineLatestFunction);</span>
+<span class="fc" id="L183">        w.subscribe(observer);</span>
+
+<span class="fc" id="L185">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L186">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L187">        verify(observer, times(1)).onNext(&quot;two2&quot;);</span>
+<span class="fc" id="L188">        verify(observer, times(1)).onNext(&quot;two3&quot;);</span>
+<span class="fc" id="L189">        verify(observer, times(1)).onNext(&quot;two4&quot;);</span>
+<span class="fc" id="L190">    }</span>
+
+    @Test
+    public void testCombineLatest3TypesA() {
+<span class="fc" id="L194">        Function3&lt;String, Integer, int[], String&gt; combineLatestFunction = getConcatStringIntegerIntArrayCombineLatestFunction();</span>
+
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L197">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L199">        Observable&lt;String&gt; w = Observable.combineLatest(Observable.just(&quot;one&quot;, &quot;two&quot;), Observable.just(2), Observable.just(new int[] { 4, 5, 6 }), combineLatestFunction);</span>
+<span class="fc" id="L200">        w.subscribe(observer);</span>
+
+<span class="fc" id="L202">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L203">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L204">        verify(observer, times(1)).onNext(&quot;two2[4, 5, 6]&quot;);</span>
+<span class="fc" id="L205">    }</span>
+
+    @Test
+    public void testCombineLatest3TypesB() {
+<span class="fc" id="L209">        Function3&lt;String, Integer, int[], String&gt; combineLatestFunction = getConcatStringIntegerIntArrayCombineLatestFunction();</span>
+
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L212">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L214">        Observable&lt;String&gt; w = Observable.combineLatest(Observable.just(&quot;one&quot;), Observable.just(2), Observable.just(new int[] { 4, 5, 6 }, new int[] { 7, 8 }), combineLatestFunction);</span>
+<span class="fc" id="L215">        w.subscribe(observer);</span>
+
+<span class="fc" id="L217">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L218">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L219">        verify(observer, times(1)).onNext(&quot;one2[4, 5, 6]&quot;);</span>
+<span class="fc" id="L220">        verify(observer, times(1)).onNext(&quot;one2[7, 8]&quot;);</span>
+<span class="fc" id="L221">    }</span>
+
+    private Function3&lt;String, String, String, String&gt; getConcat3StringsCombineLatestFunction() {
+<span class="fc" id="L224">        Function3&lt;String, String, String, String&gt; combineLatestFunction = new Function3&lt;String, String, String, String&gt;() {</span>
+            @Override
+            public String apply(String a1, String a2, String a3) {
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">                if (a1 == null) {</span>
+<span class="nc" id="L228">                    a1 = &quot;&quot;;</span>
+                }
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">                if (a2 == null) {</span>
+<span class="nc" id="L231">                    a2 = &quot;&quot;;</span>
+                }
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">                if (a3 == null) {</span>
+<span class="nc" id="L234">                    a3 = &quot;&quot;;</span>
+                }
+<span class="fc" id="L236">                return a1 + a2 + a3;</span>
+            }
+        };
+<span class="fc" id="L239">        return combineLatestFunction;</span>
+    }
+
+    private BiFunction&lt;String, Integer, String&gt; getConcatStringIntegerCombineLatestFunction() {
+<span class="fc" id="L243">        BiFunction&lt;String, Integer, String&gt; combineLatestFunction = new BiFunction&lt;String, Integer, String&gt;() {</span>
+            @Override
+            public String apply(String s, Integer i) {
+<span class="fc" id="L246">                return getStringValue(s) + getStringValue(i);</span>
+            }
+        };
+<span class="fc" id="L249">        return combineLatestFunction;</span>
+    }
+
+    private Function3&lt;String, Integer, int[], String&gt; getConcatStringIntegerIntArrayCombineLatestFunction() {
+<span class="fc" id="L253">        return new Function3&lt;String, Integer, int[], String&gt;() {</span>
+            @Override
+            public String apply(String s, Integer i, int[] iArray) {
+<span class="fc" id="L256">                return getStringValue(s) + getStringValue(i) + getStringValue(iArray);</span>
+            }
+        };
+    }
+
+    private static String getStringValue(Object o) {
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (o == null) {</span>
+<span class="nc" id="L263">            return &quot;&quot;;</span>
+        } else {
+<span class="fc bfc" id="L265" title="All 2 branches covered.">            if (o instanceof int[]) {</span>
+<span class="fc" id="L266">                return Arrays.toString((int[]) o);</span>
+            } else {
+<span class="fc" id="L268">                return String.valueOf(o);</span>
+            }
+        }
+    }
+
+<span class="fc" id="L273">    BiFunction&lt;Integer, Integer, Integer&gt; or = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+        @Override
+        public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L276">            return t1 | t2;</span>
+        }
+    };
+
+    @Test
+    public void combineSimple() {
+<span class="fc" id="L282">        PublishSubject&lt;Integer&gt; a = PublishSubject.create();</span>
+<span class="fc" id="L283">        PublishSubject&lt;Integer&gt; b = PublishSubject.create();</span>
+
+<span class="fc" id="L285">        Observable&lt;Integer&gt; source = Observable.combineLatest(a, b, or);</span>
+
+<span class="fc" id="L287">        Observer&lt;Object&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L288">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L290">        source.subscribe(observer);</span>
+
+<span class="fc" id="L292">        a.onNext(1);</span>
+
+<span class="fc" id="L294">        inOrder.verify(observer, never()).onNext(any());</span>
+
+<span class="fc" id="L296">        a.onNext(2);</span>
+
+<span class="fc" id="L298">        inOrder.verify(observer, never()).onNext(any());</span>
+
+<span class="fc" id="L300">        b.onNext(0x10);</span>
+
+<span class="fc" id="L302">        inOrder.verify(observer, times(1)).onNext(0x12);</span>
+
+<span class="fc" id="L304">        b.onNext(0x20);</span>
+<span class="fc" id="L305">        inOrder.verify(observer, times(1)).onNext(0x22);</span>
+
+<span class="fc" id="L307">        b.onComplete();</span>
+
+<span class="fc" id="L309">        inOrder.verify(observer, never()).onComplete();</span>
+
+<span class="fc" id="L311">        a.onComplete();</span>
+
+<span class="fc" id="L313">        inOrder.verify(observer, times(1)).onComplete();</span>
+
+<span class="fc" id="L315">        a.onNext(3);</span>
+<span class="fc" id="L316">        b.onNext(0x30);</span>
+<span class="fc" id="L317">        a.onComplete();</span>
+<span class="fc" id="L318">        b.onComplete();</span>
+
+<span class="fc" id="L320">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L321">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L322">    }</span>
+
+    @Test
+    public void combineMultipleObservers() {
+<span class="fc" id="L326">        PublishSubject&lt;Integer&gt; a = PublishSubject.create();</span>
+<span class="fc" id="L327">        PublishSubject&lt;Integer&gt; b = PublishSubject.create();</span>
+
+<span class="fc" id="L329">        Observable&lt;Integer&gt; source = Observable.combineLatest(a, b, or);</span>
+
+<span class="fc" id="L331">        Observer&lt;Object&gt; observer1 = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L333">        Observer&lt;Object&gt; observer2 = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L335">        InOrder inOrder1 = inOrder(observer1);</span>
+<span class="fc" id="L336">        InOrder inOrder2 = inOrder(observer2);</span>
+
+<span class="fc" id="L338">        source.subscribe(observer1);</span>
+<span class="fc" id="L339">        source.subscribe(observer2);</span>
+
+<span class="fc" id="L341">        a.onNext(1);</span>
+
+<span class="fc" id="L343">        inOrder1.verify(observer1, never()).onNext(any());</span>
+<span class="fc" id="L344">        inOrder2.verify(observer2, never()).onNext(any());</span>
+
+<span class="fc" id="L346">        a.onNext(2);</span>
+
+<span class="fc" id="L348">        inOrder1.verify(observer1, never()).onNext(any());</span>
+<span class="fc" id="L349">        inOrder2.verify(observer2, never()).onNext(any());</span>
+
+<span class="fc" id="L351">        b.onNext(0x10);</span>
+
+<span class="fc" id="L353">        inOrder1.verify(observer1, times(1)).onNext(0x12);</span>
+<span class="fc" id="L354">        inOrder2.verify(observer2, times(1)).onNext(0x12);</span>
+
+<span class="fc" id="L356">        b.onNext(0x20);</span>
+<span class="fc" id="L357">        inOrder1.verify(observer1, times(1)).onNext(0x22);</span>
+<span class="fc" id="L358">        inOrder2.verify(observer2, times(1)).onNext(0x22);</span>
+
+<span class="fc" id="L360">        b.onComplete();</span>
+
+<span class="fc" id="L362">        inOrder1.verify(observer1, never()).onComplete();</span>
+<span class="fc" id="L363">        inOrder2.verify(observer2, never()).onComplete();</span>
+
+<span class="fc" id="L365">        a.onComplete();</span>
+
+<span class="fc" id="L367">        inOrder1.verify(observer1, times(1)).onComplete();</span>
+<span class="fc" id="L368">        inOrder2.verify(observer2, times(1)).onComplete();</span>
+
+<span class="fc" id="L370">        a.onNext(3);</span>
+<span class="fc" id="L371">        b.onNext(0x30);</span>
+<span class="fc" id="L372">        a.onComplete();</span>
+<span class="fc" id="L373">        b.onComplete();</span>
+
+<span class="fc" id="L375">        inOrder1.verifyNoMoreInteractions();</span>
+<span class="fc" id="L376">        inOrder2.verifyNoMoreInteractions();</span>
+<span class="fc" id="L377">        verify(observer1, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L378">        verify(observer2, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L379">    }</span>
+
+    @Test
+    public void testFirstNeverProduces() {
+<span class="fc" id="L383">        PublishSubject&lt;Integer&gt; a = PublishSubject.create();</span>
+<span class="fc" id="L384">        PublishSubject&lt;Integer&gt; b = PublishSubject.create();</span>
+
+<span class="fc" id="L386">        Observable&lt;Integer&gt; source = Observable.combineLatest(a, b, or);</span>
+
+<span class="fc" id="L388">        Observer&lt;Object&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L389">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L391">        source.subscribe(observer);</span>
+
+<span class="fc" id="L393">        b.onNext(0x10);</span>
+<span class="fc" id="L394">        b.onNext(0x20);</span>
+
+<span class="fc" id="L396">        a.onComplete();</span>
+
+<span class="fc" id="L398">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L399">        verify(observer, never()).onNext(any());</span>
+<span class="fc" id="L400">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L401">    }</span>
+
+    @Test
+    public void testSecondNeverProduces() {
+<span class="fc" id="L405">        PublishSubject&lt;Integer&gt; a = PublishSubject.create();</span>
+<span class="fc" id="L406">        PublishSubject&lt;Integer&gt; b = PublishSubject.create();</span>
+
+<span class="fc" id="L408">        Observable&lt;Integer&gt; source = Observable.combineLatest(a, b, or);</span>
+
+<span class="fc" id="L410">        Observer&lt;Object&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L411">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L413">        source.subscribe(observer);</span>
+
+<span class="fc" id="L415">        a.onNext(0x1);</span>
+<span class="fc" id="L416">        a.onNext(0x2);</span>
+
+<span class="fc" id="L418">        b.onComplete();</span>
+<span class="fc" id="L419">        a.onComplete();</span>
+
+<span class="fc" id="L421">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L422">        verify(observer, never()).onNext(any());</span>
+<span class="fc" id="L423">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L424">    }</span>
+
+    public void test0Sources() {
+
+<span class="nc" id="L428">    }</span>
+
+    @Test
+    public void test1ToNSources() {
+<span class="fc" id="L432">        int n = 30;</span>
+<span class="fc" id="L433">        Function&lt;Object[], List&lt;Object&gt;&gt; func = new Function&lt;Object[], List&lt;Object&gt;&gt;() {</span>
+
+            @Override
+            public List&lt;Object&gt; apply(Object[] args) {
+<span class="fc" id="L437">                return Arrays.asList(args);</span>
+            }
+        };
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        for (int i = 1; i &lt;= n; i++) {</span>
+<span class="fc" id="L441">            System.out.println(&quot;test1ToNSources: &quot; + i + &quot; sources&quot;);</span>
+<span class="fc" id="L442">            List&lt;Observable&lt;Integer&gt;&gt; sources = new ArrayList&lt;Observable&lt;Integer&gt;&gt;();</span>
+<span class="fc" id="L443">            List&lt;Object&gt; values = new ArrayList&lt;Object&gt;();</span>
+<span class="fc bfc" id="L444" title="All 2 branches covered.">            for (int j = 0; j &lt; i; j++) {</span>
+<span class="fc" id="L445">                sources.add(Observable.just(j));</span>
+<span class="fc" id="L446">                values.add(j);</span>
+            }
+
+<span class="fc" id="L449">            Observable&lt;List&lt;Object&gt;&gt; result = Observable.combineLatest(sources, func);</span>
+
+<span class="fc" id="L451">            Observer&lt;List&lt;Object&gt;&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L453">            result.subscribe(o);</span>
+
+<span class="fc" id="L455">            verify(o).onNext(values);</span>
+<span class="fc" id="L456">            verify(o).onComplete();</span>
+<span class="fc" id="L457">            verify(o, never()).onError(any(Throwable.class));</span>
+        }
+<span class="fc" id="L459">    }</span>
+
+    @Test(timeout = 5000)
+    public void test1ToNSourcesScheduled() throws InterruptedException {
+<span class="fc" id="L463">        int n = 10;</span>
+<span class="fc" id="L464">        Function&lt;Object[], List&lt;Object&gt;&gt; func = new Function&lt;Object[], List&lt;Object&gt;&gt;() {</span>
+
+            @Override
+            public List&lt;Object&gt; apply(Object[] args) {
+<span class="fc" id="L468">                return Arrays.asList(args);</span>
+            }
+        };
+<span class="fc bfc" id="L471" title="All 2 branches covered.">        for (int i = 1; i &lt;= n; i++) {</span>
+<span class="fc" id="L472">            System.out.println(&quot;test1ToNSourcesScheduled: &quot; + i + &quot; sources&quot;);</span>
+<span class="fc" id="L473">            List&lt;Observable&lt;Integer&gt;&gt; sources = new ArrayList&lt;Observable&lt;Integer&gt;&gt;();</span>
+<span class="fc" id="L474">            List&lt;Object&gt; values = new ArrayList&lt;Object&gt;();</span>
+<span class="fc bfc" id="L475" title="All 2 branches covered.">            for (int j = 0; j &lt; i; j++) {</span>
+<span class="fc" id="L476">                sources.add(Observable.just(j).subscribeOn(Schedulers.io()));</span>
+<span class="fc" id="L477">                values.add(j);</span>
+            }
+
+<span class="fc" id="L480">            Observable&lt;List&lt;Object&gt;&gt; result = Observable.combineLatest(sources, func);</span>
+
+<span class="fc" id="L482">            final Observer&lt;List&lt;Object&gt;&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L484">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L486">            Observer&lt;List&lt;Object&gt;&gt; observer = new DefaultObserver&lt;List&lt;Object&gt;&gt;() {</span>
+
+                @Override
+                public void onNext(List&lt;Object&gt; t) {
+<span class="fc" id="L490">                    o.onNext(t);</span>
+<span class="fc" id="L491">                }</span>
+
+                @Override
+                public void onError(Throwable e) {
+<span class="nc" id="L495">                    o.onError(e);</span>
+<span class="nc" id="L496">                    cdl.countDown();</span>
+<span class="nc" id="L497">                }</span>
+
+                @Override
+                public void onComplete() {
+<span class="fc" id="L501">                    o.onComplete();</span>
+<span class="fc" id="L502">                    cdl.countDown();</span>
+<span class="fc" id="L503">                }</span>
+            };
+
+<span class="fc" id="L506">            result.subscribe(observer);</span>
+
+<span class="fc" id="L508">            cdl.await();</span>
+
+<span class="fc" id="L510">            verify(o).onNext(values);</span>
+<span class="fc" id="L511">            verify(o).onComplete();</span>
+<span class="fc" id="L512">            verify(o, never()).onError(any(Throwable.class));</span>
+        }
+<span class="fc" id="L514">    }</span>
+
+    @Test
+    public void test2SourcesOverload() {
+<span class="fc" id="L518">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L519">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+
+<span class="fc" id="L521">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2,</span>
+<span class="fc" id="L522">                new BiFunction&lt;Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public List&lt;Integer&gt; apply(Integer t1, Integer t2) {
+<span class="fc" id="L525">                        return Arrays.asList(t1, t2);</span>
+                    }
+                });
+
+<span class="fc" id="L529">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L531">        result.subscribe(o);</span>
+
+<span class="fc" id="L533">        verify(o).onNext(Arrays.asList(1, 2));</span>
+<span class="fc" id="L534">        verify(o).onComplete();</span>
+<span class="fc" id="L535">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L536">    }</span>
+
+    @Test
+    public void test3SourcesOverload() {
+<span class="fc" id="L540">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L541">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+<span class="fc" id="L542">        Observable&lt;Integer&gt; s3 = Observable.just(3);</span>
+
+<span class="fc" id="L544">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2, s3,</span>
+<span class="fc" id="L545">                new Function3&lt;Integer, Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public List&lt;Integer&gt; apply(Integer t1, Integer t2, Integer t3) {
+<span class="fc" id="L548">                return Arrays.asList(t1, t2, t3);</span>
+            }
+        });
+
+<span class="fc" id="L552">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L554">        result.subscribe(o);</span>
+
+<span class="fc" id="L556">        verify(o).onNext(Arrays.asList(1, 2, 3));</span>
+<span class="fc" id="L557">        verify(o).onComplete();</span>
+<span class="fc" id="L558">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L559">    }</span>
+
+    @Test
+    public void test4SourcesOverload() {
+<span class="fc" id="L563">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L564">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+<span class="fc" id="L565">        Observable&lt;Integer&gt; s3 = Observable.just(3);</span>
+<span class="fc" id="L566">        Observable&lt;Integer&gt; s4 = Observable.just(4);</span>
+
+<span class="fc" id="L568">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2, s3, s4,</span>
+<span class="fc" id="L569">                new Function4&lt;Integer, Integer, Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public List&lt;Integer&gt; apply(Integer t1, Integer t2, Integer t3, Integer t4) {
+<span class="fc" id="L572">                        return Arrays.asList(t1, t2, t3, t4);</span>
+                    }
+                });
+
+<span class="fc" id="L576">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L578">        result.subscribe(o);</span>
+
+<span class="fc" id="L580">        verify(o).onNext(Arrays.asList(1, 2, 3, 4));</span>
+<span class="fc" id="L581">        verify(o).onComplete();</span>
+<span class="fc" id="L582">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L583">    }</span>
+
+    @Test
+    public void test5SourcesOverload() {
+<span class="fc" id="L587">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L588">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+<span class="fc" id="L589">        Observable&lt;Integer&gt; s3 = Observable.just(3);</span>
+<span class="fc" id="L590">        Observable&lt;Integer&gt; s4 = Observable.just(4);</span>
+<span class="fc" id="L591">        Observable&lt;Integer&gt; s5 = Observable.just(5);</span>
+
+<span class="fc" id="L593">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2, s3, s4, s5,</span>
+<span class="fc" id="L594">                new Function5&lt;Integer, Integer, Integer, Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public List&lt;Integer&gt; apply(Integer t1, Integer t2, Integer t3, Integer t4, Integer t5) {
+<span class="fc" id="L597">                        return Arrays.asList(t1, t2, t3, t4, t5);</span>
+                    }
+                });
+
+<span class="fc" id="L601">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L603">        result.subscribe(o);</span>
+
+<span class="fc" id="L605">        verify(o).onNext(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L606">        verify(o).onComplete();</span>
+<span class="fc" id="L607">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L608">    }</span>
+
+    @Test
+    public void test6SourcesOverload() {
+<span class="fc" id="L612">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L613">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+<span class="fc" id="L614">        Observable&lt;Integer&gt; s3 = Observable.just(3);</span>
+<span class="fc" id="L615">        Observable&lt;Integer&gt; s4 = Observable.just(4);</span>
+<span class="fc" id="L616">        Observable&lt;Integer&gt; s5 = Observable.just(5);</span>
+<span class="fc" id="L617">        Observable&lt;Integer&gt; s6 = Observable.just(6);</span>
+
+<span class="fc" id="L619">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2, s3, s4, s5, s6,</span>
+<span class="fc" id="L620">                new Function6&lt;Integer, Integer, Integer, Integer, Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public List&lt;Integer&gt; apply(Integer t1, Integer t2, Integer t3, Integer t4, Integer t5, Integer t6) {
+<span class="fc" id="L623">                        return Arrays.asList(t1, t2, t3, t4, t5, t6);</span>
+                    }
+                });
+
+<span class="fc" id="L627">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L629">        result.subscribe(o);</span>
+
+<span class="fc" id="L631">        verify(o).onNext(Arrays.asList(1, 2, 3, 4, 5, 6));</span>
+<span class="fc" id="L632">        verify(o).onComplete();</span>
+<span class="fc" id="L633">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L634">    }</span>
+
+    @Test
+    public void test7SourcesOverload() {
+<span class="fc" id="L638">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L639">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+<span class="fc" id="L640">        Observable&lt;Integer&gt; s3 = Observable.just(3);</span>
+<span class="fc" id="L641">        Observable&lt;Integer&gt; s4 = Observable.just(4);</span>
+<span class="fc" id="L642">        Observable&lt;Integer&gt; s5 = Observable.just(5);</span>
+<span class="fc" id="L643">        Observable&lt;Integer&gt; s6 = Observable.just(6);</span>
+<span class="fc" id="L644">        Observable&lt;Integer&gt; s7 = Observable.just(7);</span>
+
+<span class="fc" id="L646">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2, s3, s4, s5, s6, s7,</span>
+<span class="fc" id="L647">                new Function7&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public List&lt;Integer&gt; apply(Integer t1, Integer t2, Integer t3, Integer t4, Integer t5, Integer t6, Integer t7) {
+<span class="fc" id="L650">                        return Arrays.asList(t1, t2, t3, t4, t5, t6, t7);</span>
+                    }
+                });
+
+<span class="fc" id="L654">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L656">        result.subscribe(o);</span>
+
+<span class="fc" id="L658">        verify(o).onNext(Arrays.asList(1, 2, 3, 4, 5, 6, 7));</span>
+<span class="fc" id="L659">        verify(o).onComplete();</span>
+<span class="fc" id="L660">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L661">    }</span>
+
+    @Test
+    public void test8SourcesOverload() {
+<span class="fc" id="L665">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L666">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+<span class="fc" id="L667">        Observable&lt;Integer&gt; s3 = Observable.just(3);</span>
+<span class="fc" id="L668">        Observable&lt;Integer&gt; s4 = Observable.just(4);</span>
+<span class="fc" id="L669">        Observable&lt;Integer&gt; s5 = Observable.just(5);</span>
+<span class="fc" id="L670">        Observable&lt;Integer&gt; s6 = Observable.just(6);</span>
+<span class="fc" id="L671">        Observable&lt;Integer&gt; s7 = Observable.just(7);</span>
+<span class="fc" id="L672">        Observable&lt;Integer&gt; s8 = Observable.just(8);</span>
+
+<span class="fc" id="L674">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2, s3, s4, s5, s6, s7, s8,</span>
+<span class="fc" id="L675">                new Function8&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public List&lt;Integer&gt; apply(Integer t1, Integer t2, Integer t3, Integer t4, Integer t5, Integer t6, Integer t7, Integer t8) {
+<span class="fc" id="L678">                        return Arrays.asList(t1, t2, t3, t4, t5, t6, t7, t8);</span>
+                    }
+                });
+
+<span class="fc" id="L682">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L684">        result.subscribe(o);</span>
+
+<span class="fc" id="L686">        verify(o).onNext(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8));</span>
+<span class="fc" id="L687">        verify(o).onComplete();</span>
+<span class="fc" id="L688">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L689">    }</span>
+
+    @Test
+    public void test9SourcesOverload() {
+<span class="fc" id="L693">        Observable&lt;Integer&gt; s1 = Observable.just(1);</span>
+<span class="fc" id="L694">        Observable&lt;Integer&gt; s2 = Observable.just(2);</span>
+<span class="fc" id="L695">        Observable&lt;Integer&gt; s3 = Observable.just(3);</span>
+<span class="fc" id="L696">        Observable&lt;Integer&gt; s4 = Observable.just(4);</span>
+<span class="fc" id="L697">        Observable&lt;Integer&gt; s5 = Observable.just(5);</span>
+<span class="fc" id="L698">        Observable&lt;Integer&gt; s6 = Observable.just(6);</span>
+<span class="fc" id="L699">        Observable&lt;Integer&gt; s7 = Observable.just(7);</span>
+<span class="fc" id="L700">        Observable&lt;Integer&gt; s8 = Observable.just(8);</span>
+<span class="fc" id="L701">        Observable&lt;Integer&gt; s9 = Observable.just(9);</span>
+
+<span class="fc" id="L703">        Observable&lt;List&lt;Integer&gt;&gt; result = Observable.combineLatest(s1, s2, s3, s4, s5, s6, s7, s8, s9,</span>
+<span class="fc" id="L704">                new Function9&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, List&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public List&lt;Integer&gt; apply(Integer t1, Integer t2, Integer t3, Integer t4, Integer t5, Integer t6, Integer t7, Integer t8, Integer t9) {
+<span class="fc" id="L707">                        return Arrays.asList(t1, t2, t3, t4, t5, t6, t7, t8, t9);</span>
+                    }
+                });
+
+<span class="fc" id="L711">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L713">        result.subscribe(o);</span>
+
+<span class="fc" id="L715">        verify(o).onNext(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9));</span>
+<span class="fc" id="L716">        verify(o).onComplete();</span>
+<span class="fc" id="L717">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L718">    }</span>
+
+    @Test
+    public void testZeroSources() {
+<span class="fc" id="L722">        Observable&lt;Object&gt; result = Observable.combineLatest(</span>
+<span class="fc" id="L723">                Collections.&lt;Observable&lt;Object&gt;&gt; emptyList(), new Function&lt;Object[], Object&gt;() {</span>
+
+            @Override
+            public Object apply(Object[] args) {
+<span class="nc" id="L727">                return args;</span>
+            }
+
+        });
+
+<span class="fc" id="L732">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L734">        result.subscribe(o);</span>
+
+<span class="fc" id="L736">        verify(o).onComplete();</span>
+<span class="fc" id="L737">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L738">        verify(o, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L740">    }</span>
+
+    @Test
+    public void testWithCombineLatestIssue1717() throws InterruptedException {
+<span class="fc" id="L744">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L745">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc" id="L746">        final int SIZE = 2000;</span>
+<span class="fc" id="L747">        Observable&lt;Long&gt; timer = Observable.interval(0, 1, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L748">                .observeOn(Schedulers.newThread())</span>
+<span class="fc" id="L749">                .doOnEach(new Consumer&lt;Notification&lt;Long&gt;&gt;() {</span>
+                    @Override
+                    public void accept(Notification&lt;Long&gt; n) {
+                            //                        System.out.println(n);
+<span class="fc bfc" id="L753" title="All 2 branches covered.">                            if (count.incrementAndGet() &gt;= SIZE) {</span>
+<span class="fc" id="L754">                                latch.countDown();</span>
+                            }
+<span class="fc" id="L756">                    }</span>
+<span class="fc" id="L757">                }).take(SIZE);</span>
+
+<span class="fc" id="L759">        TestObserver&lt;Long&gt; to = new TestObserver&lt;Long&gt;();</span>
+
+<span class="fc" id="L761">        Observable.combineLatest(timer, Observable.&lt;Integer&gt; never(), new BiFunction&lt;Long, Integer, Long&gt;() {</span>
+            @Override
+            public Long apply(Long t1, Integer t2) {
+<span class="nc" id="L764">                return t1;</span>
+            }
+<span class="fc" id="L766">        }).subscribe(to);</span>
+
+<span class="pc bpc" id="L768" title="1 of 2 branches missed.">        if (!latch.await(SIZE + 1000, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L769">            fail(&quot;timed out&quot;);</span>
+        }
+
+<span class="fc" id="L772">        assertEquals(SIZE, count.get());</span>
+<span class="fc" id="L773">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void combineLatestArrayOfSources() {
+
+<span class="fc" id="L779">        Observable.combineLatest(new ObservableSource[] {</span>
+<span class="fc" id="L780">                Observable.just(1), Observable.just(2)</span>
+<span class="fc" id="L781">        }, new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L784">                return Arrays.toString(a);</span>
+            }
+        })
+<span class="fc" id="L787">        .test()</span>
+<span class="fc" id="L788">        .assertResult(&quot;[1, 2]&quot;);</span>
+<span class="fc" id="L789">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void combineLatestDelayErrorArrayOfSources() {
+
+<span class="fc" id="L795">        Observable.combineLatestDelayError(new ObservableSource[] {</span>
+<span class="fc" id="L796">                Observable.just(1), Observable.just(2)</span>
+<span class="fc" id="L797">        }, new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L800">                return Arrays.toString(a);</span>
+            }
+        })
+<span class="fc" id="L803">        .test()</span>
+<span class="fc" id="L804">        .assertResult(&quot;[1, 2]&quot;);</span>
+<span class="fc" id="L805">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void combineLatestDelayErrorArrayOfSourcesWithError() {
+
+<span class="fc" id="L811">        Observable.combineLatestDelayError(new ObservableSource[] {</span>
+<span class="fc" id="L812">                Observable.just(1), Observable.just(2).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L813">        }, new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L816">                return Arrays.toString(a);</span>
+            }
+        })
+<span class="fc" id="L819">        .test()</span>
+<span class="fc" id="L820">        .assertFailure(TestException.class, &quot;[1, 2]&quot;);</span>
+<span class="fc" id="L821">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void combineLatestDelayErrorIterableOfSources() {
+
+<span class="fc" id="L827">        Observable.combineLatestDelayError(Arrays.asList(</span>
+<span class="fc" id="L828">                Observable.just(1), Observable.just(2)</span>
+<span class="fc" id="L829">        ), new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L832">                return Arrays.toString(a);</span>
+            }
+        })
+<span class="fc" id="L835">        .test()</span>
+<span class="fc" id="L836">        .assertResult(&quot;[1, 2]&quot;);</span>
+<span class="fc" id="L837">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void combineLatestDelayErrorIterableOfSourcesWithError() {
+
+<span class="fc" id="L843">        Observable.combineLatestDelayError(Arrays.asList(</span>
+<span class="fc" id="L844">                Observable.just(1), Observable.just(2).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L845">        ), new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L848">                return Arrays.toString(a);</span>
+            }
+        })
+<span class="fc" id="L851">        .test()</span>
+<span class="fc" id="L852">        .assertFailure(TestException.class, &quot;[1, 2]&quot;);</span>
+<span class="fc" id="L853">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void combineLatestEmpty() {
+<span class="fc" id="L858">        assertSame(Observable.empty(), Observable.combineLatest(new ObservableSource[0], Functions.&lt;Object[]&gt;identity(), 16));</span>
+<span class="fc" id="L859">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void combineLatestDelayErrorEmpty() {
+<span class="fc" id="L864">        assertSame(Observable.empty(), Observable.combineLatestDelayError(new ObservableSource[0], Functions.&lt;Object[]&gt;identity(), 16));</span>
+<span class="fc" id="L865">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L869">        TestHelper.checkDisposed(Observable.combineLatest(Observable.never(), Observable.never(), new BiFunction&lt;Object, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L872">                return a;</span>
+            }
+        }));
+<span class="fc" id="L875">    }</span>
+
+    @Test
+    public void cancelWhileSubscribing() {
+<span class="fc" id="L879">        final TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L881">        Observable.combineLatest(</span>
+<span class="fc" id="L882">                Observable.just(1)</span>
+<span class="fc" id="L883">                .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+                    @Override
+                    public void accept(Integer v) throws Exception {
+<span class="fc" id="L886">                        to.cancel();</span>
+<span class="fc" id="L887">                    }</span>
+                }),
+<span class="fc" id="L889">                Observable.never(),</span>
+<span class="fc" id="L890">                new BiFunction&lt;Object, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L893">                return a;</span>
+            }
+        })
+<span class="fc" id="L896">        .subscribe(to);</span>
+<span class="fc" id="L897">    }</span>
+
+    @Test
+    public void combineAsync() {
+<span class="fc" id="L901">        Observable&lt;Integer&gt; source = Observable.range(1, 1000).subscribeOn(Schedulers.computation());</span>
+
+<span class="fc" id="L903">        Observable.combineLatest(source, source, new BiFunction&lt;Object, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Object a, Object b) throws Exception {
+<span class="fc" id="L906">                return a;</span>
+            }
+        })
+<span class="fc" id="L909">        .take(500)</span>
+<span class="fc" id="L910">        .test()</span>
+<span class="fc" id="L911">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L912">        .assertNoErrors()</span>
+<span class="fc" id="L913">        .assertComplete();</span>
+<span class="fc" id="L914">    }</span>
+
+    @Test
+    public void error() {
+<span class="fc" id="L918">        Observable.combineLatest(Observable.never(), Observable.error(new TestException()), new BiFunction&lt;Object, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L921">                return a;</span>
+            }
+        })
+<span class="fc" id="L924">        .test()</span>
+<span class="fc" id="L925">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L926">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void errorDelayed() {
+<span class="fc" id="L931">        Observable.combineLatestDelayError(</span>
+<span class="fc" id="L932">                new Function&lt;Object[], Object&gt;() {</span>
+                    @Override
+                    public Object apply(Object[] a) throws Exception {
+<span class="nc" id="L935">                        return a;</span>
+                    }
+                },
+                128,
+<span class="fc" id="L939">                Observable.error(new TestException()),</span>
+<span class="fc" id="L940">                Observable.just(1)</span>
+        )
+<span class="fc" id="L942">        .test()</span>
+<span class="fc" id="L943">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L944">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void errorDelayed2() {
+<span class="fc" id="L949">        Observable.combineLatestDelayError(</span>
+<span class="fc" id="L950">                new Function&lt;Object[], Object&gt;() {</span>
+                    @Override
+                    public Object apply(Object[] a) throws Exception {
+<span class="nc" id="L953">                        return a;</span>
+                    }
+                },
+                128,
+<span class="fc" id="L957">                Observable.error(new TestException()).startWith(1),</span>
+<span class="fc" id="L958">                Observable.empty()</span>
+        )
+<span class="fc" id="L960">        .test()</span>
+<span class="fc" id="L961">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L962">    }</span>
+
+    @Test
+    public void onErrorRace() {
+<span class="fc bfc" id="L966" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L967">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L969">                final PublishSubject&lt;Integer&gt; ps1 = PublishSubject.create();</span>
+<span class="fc" id="L970">                final PublishSubject&lt;Integer&gt; ps2 = PublishSubject.create();</span>
+
+<span class="fc" id="L972">                TestObserver&lt;Integer&gt; to = Observable.combineLatest(ps1, ps2, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L975">                        return a;</span>
+                    }
+<span class="fc" id="L977">                }).test();</span>
+
+<span class="fc" id="L979">                final TestException ex1 = new TestException();</span>
+<span class="fc" id="L980">                final TestException ex2 = new TestException();</span>
+
+<span class="fc" id="L982">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L985">                        ps1.onError(ex1);</span>
+<span class="fc" id="L986">                    }</span>
+                };
+<span class="fc" id="L988">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L991">                        ps2.onError(ex2);</span>
+<span class="fc" id="L992">                    }</span>
+                };
+
+<span class="fc" id="L995">                TestHelper.race(r1, r2);</span>
+
+<span class="pc bpc" id="L997" title="1 of 2 branches missed.">                if (to.errorCount() != 0) {</span>
+<span class="fc bfc" id="L998" title="All 2 branches covered.">                    if (to.errors().get(0) instanceof CompositeException) {</span>
+<span class="fc" id="L999">                        to.assertSubscribed()</span>
+<span class="fc" id="L1000">                        .assertNotComplete()</span>
+<span class="fc" id="L1001">                        .assertNoValues();</span>
+
+<span class="fc bfc" id="L1003" title="All 2 branches covered.">                        for (Throwable e : TestHelper.errorList(to)) {</span>
+<span class="fc" id="L1004">                            assertTrue(e.toString(), e instanceof TestException);</span>
+<span class="fc" id="L1005">                        }</span>
+
+                    } else {
+<span class="fc" id="L1008">                        to.assertFailure(TestException.class);</span>
+                    }
+                }
+
+<span class="fc bfc" id="L1012" title="All 2 branches covered.">                for (Throwable e : errors) {</span>
+<span class="fc" id="L1013">                    assertTrue(e.toString(), e.getCause() instanceof TestException);</span>
+<span class="fc" id="L1014">                }</span>
+            } finally {
+<span class="fc" id="L1016">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L1019">    }</span>
+
+    @Test
+    public void dontSubscribeIfDone() {
+<span class="fc" id="L1023">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1025">            final int[] count = { 0 };</span>
+
+<span class="fc" id="L1027">            Observable.combineLatest(Observable.empty(),</span>
+<span class="fc" id="L1028">                    Observable.error(new TestException())</span>
+<span class="fc" id="L1029">                    .doOnSubscribe(new Consumer&lt;Disposable&gt;() {</span>
+                        @Override
+                        public void accept(Disposable d) throws Exception {
+<span class="nc" id="L1032">                            count[0]++;</span>
+<span class="nc" id="L1033">                        }</span>
+                    }),
+<span class="fc" id="L1035">                    new BiFunction&lt;Object, Object, Object&gt;() {</span>
+                        @Override
+                        public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L1038">                            return 0;</span>
+                        }
+                    })
+<span class="fc" id="L1041">            .test()</span>
+<span class="fc" id="L1042">            .assertResult();</span>
+
+<span class="fc" id="L1044">            assertEquals(0, count[0]);</span>
+
+<span class="fc" id="L1046">            assertTrue(errors.toString(), errors.isEmpty());</span>
+        } finally {
+<span class="fc" id="L1048">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1050">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void dontSubscribeIfDone2() {
+<span class="fc" id="L1055">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1057">            final int[] count = { 0 };</span>
+
+<span class="fc" id="L1059">            Observable.combineLatestDelayError(</span>
+<span class="fc" id="L1060">                    Arrays.asList(Observable.empty(),</span>
+<span class="fc" id="L1061">                        Observable.error(new TestException())</span>
+<span class="fc" id="L1062">                        .doOnSubscribe(new Consumer&lt;Disposable&gt;() {</span>
+                            @Override
+                            public void accept(Disposable d) throws Exception {
+<span class="nc" id="L1065">                                count[0]++;</span>
+<span class="nc" id="L1066">                            }</span>
+                        })
+                    ),
+<span class="fc" id="L1069">                    new Function&lt;Object[], Object&gt;() {</span>
+                        @Override
+                        public Object apply(Object[] a) throws Exception {
+<span class="nc" id="L1072">                            return 0;</span>
+                        }
+                    })
+<span class="fc" id="L1075">            .test()</span>
+<span class="fc" id="L1076">            .assertResult();</span>
+
+<span class="fc" id="L1078">            assertEquals(0, count[0]);</span>
+
+<span class="fc" id="L1080">            assertTrue(errors.toString(), errors.isEmpty());</span>
+        } finally {
+<span class="fc" id="L1082">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1084">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void combine2Observable2Errors() throws Exception {
+<span class="fc" id="L1089">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1091">            TestObserver&lt;Object&gt; testObserver = TestObserver.create();</span>
+
+<span class="fc" id="L1093">            TestScheduler testScheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1095">            Observable&lt;Integer&gt; emptyObservable = Observable.timer(10, TimeUnit.MILLISECONDS, testScheduler)</span>
+<span class="fc" id="L1096">                    .flatMap(new Function&lt;Long, ObservableSource&lt;Integer&gt;&gt;() {</span>
+                        @Override
+                        public ObservableSource&lt;Integer&gt; apply(Long aLong) throws Exception {
+<span class="fc" id="L1099">                            return Observable.error(new Exception());</span>
+                        }
+                    });
+<span class="fc" id="L1102">            Observable&lt;Object&gt; errorObservable = Observable.timer(100, TimeUnit.MILLISECONDS, testScheduler).map(new Function&lt;Long, Object&gt;() {</span>
+                @Override
+                public Object apply(Long aLong) throws Exception {
+<span class="nc" id="L1105">                    throw new Exception();</span>
+                }
+            });
+
+<span class="fc" id="L1109">            Observable.combineLatestDelayError(</span>
+<span class="fc" id="L1110">                    Arrays.asList(</span>
+                            emptyObservable
+<span class="fc" id="L1112">                                    .doOnEach(new Consumer&lt;Notification&lt;Integer&gt;&gt;() {</span>
+                                        @Override
+                                        public void accept(Notification&lt;Integer&gt; integerNotification) throws Exception {
+<span class="fc" id="L1115">                                            System.out.println(&quot;emptyObservable: &quot; + integerNotification);</span>
+<span class="fc" id="L1116">                                        }</span>
+                                    })
+<span class="fc" id="L1118">                                    .doFinally(new Action() {</span>
+                                        @Override
+                                        public void run() throws Exception {
+<span class="fc" id="L1121">                                            System.out.println(&quot;emptyObservable: doFinally&quot;);</span>
+<span class="fc" id="L1122">                                        }</span>
+                                    }),
+                            errorObservable
+<span class="fc" id="L1125">                                    .doOnEach(new Consumer&lt;Notification&lt;Object&gt;&gt;() {</span>
+                                        @Override
+                                        public void accept(Notification&lt;Object&gt; integerNotification) throws Exception {
+<span class="nc" id="L1128">                                            System.out.println(&quot;errorObservable: &quot; + integerNotification);</span>
+<span class="nc" id="L1129">                                        }</span>
+                                    })
+<span class="fc" id="L1131">                                    .doFinally(new Action() {</span>
+                                        @Override
+                                        public void run() throws Exception {
+<span class="fc" id="L1134">                                            System.out.println(&quot;errorObservable: doFinally&quot;);</span>
+<span class="fc" id="L1135">                                        }</span>
+                                    })),
+<span class="fc" id="L1137">                    new Function&lt;Object[], Object&gt;() {</span>
+                        @Override
+                        public Object apply(Object[] objects) throws Exception {
+<span class="nc" id="L1140">                            return 0;</span>
+                        }
+                    }
+            )
+<span class="fc" id="L1144">                    .doOnEach(new Consumer&lt;Notification&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public void accept(Notification&lt;Object&gt; integerNotification) throws Exception {
+<span class="fc" id="L1147">                            System.out.println(&quot;combineLatestDelayError: &quot; + integerNotification);</span>
+<span class="fc" id="L1148">                        }</span>
+                    })
+<span class="fc" id="L1150">                    .doFinally(new Action() {</span>
+                        @Override
+                        public void run() throws Exception {
+<span class="fc" id="L1153">                            System.out.println(&quot;combineLatestDelayError: doFinally&quot;);</span>
+<span class="fc" id="L1154">                        }</span>
+                    })
+<span class="fc" id="L1156">                    .subscribe(testObserver);</span>
+
+<span class="fc" id="L1158">            testScheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L1160">            testObserver.awaitTerminalEvent();</span>
+
+<span class="fc" id="L1162">            assertTrue(errors.toString(), errors.isEmpty());</span>
+        } finally {
+<span class="fc" id="L1164">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1166">    }</span>
+
+    @Test
+    public void eagerDispose() {
+<span class="fc" id="L1170">        final PublishSubject&lt;Integer&gt; ps1 = PublishSubject.create();</span>
+<span class="fc" id="L1171">        final PublishSubject&lt;Integer&gt; ps2 = PublishSubject.create();</span>
+
+<span class="fc" id="L1173">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1176">                super.onNext(t);</span>
+<span class="fc" id="L1177">                cancel();</span>
+<span class="pc bpc" id="L1178" title="1 of 2 branches missed.">                if (ps1.hasObservers()) {</span>
+<span class="nc" id="L1179">                    onError(new IllegalStateException(&quot;ps1 not disposed&quot;));</span>
+                } else
+<span class="pc bpc" id="L1181" title="1 of 2 branches missed.">                if (ps2.hasObservers()) {</span>
+<span class="nc" id="L1182">                    onError(new IllegalStateException(&quot;ps2 not disposed&quot;));</span>
+                } else {
+<span class="fc" id="L1184">                    onComplete();</span>
+                }
+<span class="fc" id="L1186">            }</span>
+        };
+
+<span class="fc" id="L1189">        Observable.combineLatest(ps1, ps2, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1, Integer t2) throws Exception {
+<span class="fc" id="L1192">                return t1 + t2;</span>
+            }
+        })
+<span class="fc" id="L1195">        .subscribe(to);</span>
+
+<span class="fc" id="L1197">        ps1.onNext(1);</span>
+<span class="fc" id="L1198">        ps2.onNext(2);</span>
+<span class="fc" id="L1199">        to.assertResult(3);</span>
+<span class="fc" id="L1200">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void syncFirstErrorsAfterItemDelayError() {
+<span class="fc" id="L1205">        Observable.combineLatestDelayError(Arrays.asList(</span>
+<span class="fc" id="L1206">                    Observable.just(21).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L1207">                    Observable.just(21).delay(100, TimeUnit.MILLISECONDS)</span>
+                ),
+<span class="fc" id="L1209">                new Function&lt;Object[], Object&gt;() {</span>
+                    @Override
+                    public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L1212">                        return (Integer)a[0] + (Integer)a[1];</span>
+                    }
+                }
+                )
+<span class="fc" id="L1216">        .test()</span>
+<span class="fc" id="L1217">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1218">        .assertFailure(TestException.class, 42);</span>
+<span class="fc" id="L1219">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableFromIterableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableFromIterableTest.java</span></div><h1>ObservableFromIterableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.Test;
+import org.mockito.Mockito;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.util.CrashingIterable;
+import io.reactivex.observers.*;
+
+<span class="fc" id="L36">public class ObservableFromIterableTest {</span>
+
+    @Test(expected = NullPointerException.class)
+    public void testNull() {
+<span class="nc" id="L40">        Observable.fromIterable(null);</span>
+<span class="nc" id="L41">    }</span>
+
+    @Test
+    public void testListIterable() {
+<span class="fc" id="L45">        Observable&lt;String&gt; o = Observable.fromIterable(Arrays.&lt;String&gt; asList(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+
+<span class="fc" id="L47">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L49">        o.subscribe(observer);</span>
+
+<span class="fc" id="L51">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L52">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L53">        verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L54">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L55">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * This tests the path that can not optimize based on size so must use setProducer.
+     */
+    @Test
+    public void testRawIterable() {
+<span class="fc" id="L63">        Iterable&lt;String&gt; it = new Iterable&lt;String&gt;() {</span>
+
+            @Override
+            public Iterator&lt;String&gt; iterator() {
+<span class="fc" id="L67">                return new Iterator&lt;String&gt;() {</span>
+
+                    int i;
+
+                    @Override
+                    public boolean hasNext() {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                        return i &lt; 3;</span>
+                    }
+
+                    @Override
+                    public String next() {
+<span class="fc" id="L78">                        return String.valueOf(++i);</span>
+                    }
+
+                    @Override
+                    public void remove() {
+<span class="nc" id="L83">                    }</span>
+
+                };
+            }
+
+        };
+<span class="fc" id="L89">        Observable&lt;String&gt; o = Observable.fromIterable(it);</span>
+
+<span class="fc" id="L91">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L93">        o.subscribe(observer);</span>
+
+<span class="fc" id="L95">        verify(observer, times(1)).onNext(&quot;1&quot;);</span>
+<span class="fc" id="L96">        verify(observer, times(1)).onNext(&quot;2&quot;);</span>
+<span class="fc" id="L97">        verify(observer, times(1)).onNext(&quot;3&quot;);</span>
+<span class="fc" id="L98">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L99">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L100">    }</span>
+
+    @Test
+    public void testObservableFromIterable() {
+<span class="fc" id="L104">        Observable&lt;String&gt; o = Observable.fromIterable(Arrays.&lt;String&gt; asList(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+
+<span class="fc" id="L106">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L108">        o.subscribe(observer);</span>
+
+<span class="fc" id="L110">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L111">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L112">        verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L113">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L114">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L115">    }</span>
+
+    @Test
+    public void testNoBackpressure() {
+<span class="fc" id="L119">        Observable&lt;Integer&gt; o = Observable.fromIterable(Arrays.asList(1, 2, 3, 4, 5));</span>
+
+<span class="fc" id="L121">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L123">        o.subscribe(to);</span>
+
+<span class="fc" id="L125">        to.assertValues(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L126">        to.assertTerminated();</span>
+<span class="fc" id="L127">    }</span>
+
+    @Test
+    public void testSubscribeMultipleTimes() {
+<span class="fc" id="L131">        Observable&lt;Integer&gt; o = Observable.fromIterable(Arrays.asList(1, 2, 3));</span>
+
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L134">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L136">            o.subscribe(to);</span>
+
+<span class="fc" id="L138">            to.assertValues(1, 2, 3);</span>
+<span class="fc" id="L139">            to.assertNoErrors();</span>
+<span class="fc" id="L140">            to.assertComplete();</span>
+        }
+<span class="fc" id="L142">    }</span>
+
+    @Test
+    public void testDoesNotCallIteratorHasNextMoreThanRequiredWithBackpressure() {
+<span class="fc" id="L146">        final AtomicBoolean called = new AtomicBoolean(false);</span>
+<span class="fc" id="L147">        Iterable&lt;Integer&gt; iterable = new Iterable&lt;Integer&gt;() {</span>
+
+            @Override
+            public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L151">                return new Iterator&lt;Integer&gt;() {</span>
+
+<span class="fc" id="L153">                    int count = 1;</span>
+
+                    @Override
+                    public void remove() {
+                        // ignore
+<span class="nc" id="L158">                    }</span>
+
+                    @Override
+                    public boolean hasNext() {
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                        if (count &gt; 1) {</span>
+<span class="nc" id="L163">                            called.set(true);</span>
+<span class="nc" id="L164">                            return false;</span>
+                        }
+<span class="fc" id="L166">                        return true;</span>
+                    }
+
+                    @Override
+                    public Integer next() {
+<span class="fc" id="L171">                        return count++;</span>
+                    }
+
+                };
+            }
+        };
+<span class="fc" id="L177">        Observable.fromIterable(iterable).take(1).subscribe();</span>
+<span class="fc" id="L178">        assertFalse(called.get());</span>
+<span class="fc" id="L179">    }</span>
+
+    @Test
+    public void testDoesNotCallIteratorHasNextMoreThanRequiredFastPath() {
+<span class="fc" id="L183">        final AtomicBoolean called = new AtomicBoolean(false);</span>
+<span class="fc" id="L184">        Iterable&lt;Integer&gt; iterable = new Iterable&lt;Integer&gt;() {</span>
+
+            @Override
+            public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L188">                return new Iterator&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public void remove() {
+                        // ignore
+<span class="nc" id="L193">                    }</span>
+
+<span class="fc" id="L195">                    int count = 1;</span>
+
+                    @Override
+                    public boolean hasNext() {
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                        if (count &gt; 1) {</span>
+<span class="nc" id="L200">                            called.set(true);</span>
+<span class="nc" id="L201">                            return false;</span>
+                        }
+<span class="fc" id="L203">                        return true;</span>
+                    }
+
+                    @Override
+                    public Integer next() {
+<span class="fc" id="L208">                        return count++;</span>
+                    }
+
+                };
+            }
+        };
+<span class="fc" id="L214">        Observable.fromIterable(iterable).subscribe(new DefaultObserver&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L219">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L224">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+                // unsubscribe on first emission
+<span class="fc" id="L229">                cancel();</span>
+<span class="fc" id="L230">            }</span>
+        });
+<span class="fc" id="L232">        assertFalse(called.get());</span>
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void fusionWithConcatMap() {
+<span class="fc" id="L237">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L239">        Observable.fromIterable(Arrays.asList(1, 2, 3, 4)).concatMap(</span>
+<span class="fc" id="L240">        new Function&lt;Integer, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L243">                return Observable.range(v, 2);</span>
+            }
+<span class="fc" id="L245">        }).subscribe(to);</span>
+
+<span class="fc" id="L247">        to.assertValues(1, 2, 2, 3, 3, 4, 4, 5);</span>
+<span class="fc" id="L248">        to.assertNoErrors();</span>
+<span class="fc" id="L249">        to.assertComplete();</span>
+<span class="fc" id="L250">    }</span>
+
+    @Test
+    public void iteratorThrows() {
+<span class="fc" id="L254">        Observable.fromIterable(new CrashingIterable(1, 100, 100))</span>
+<span class="fc" id="L255">        .test()</span>
+<span class="fc" id="L256">        .assertFailureAndMessage(TestException.class, &quot;iterator()&quot;);</span>
+<span class="fc" id="L257">    }</span>
+
+    @Test
+    public void hasNext2Throws() {
+<span class="fc" id="L261">        Observable.fromIterable(new CrashingIterable(100, 2, 100))</span>
+<span class="fc" id="L262">        .test()</span>
+<span class="fc" id="L263">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;, 0);</span>
+<span class="fc" id="L264">    }</span>
+
+    @Test
+    public void hasNextCancels() {
+<span class="fc" id="L268">        final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L270">        Observable.fromIterable(new Iterable&lt;Integer&gt;() {</span>
+            @Override
+            public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L273">                return new Iterator&lt;Integer&gt;() {</span>
+                    int count;
+
+                    @Override
+                    public boolean hasNext() {
+<span class="fc bfc" id="L278" title="All 2 branches covered.">                        if (++count == 2) {</span>
+<span class="fc" id="L279">                            to.cancel();</span>
+                        }
+<span class="fc" id="L281">                        return true;</span>
+                    }
+
+                    @Override
+                    public Integer next() {
+<span class="fc" id="L286">                        return 1;</span>
+                    }
+
+                    @Override
+                    public void remove() {
+<span class="nc" id="L291">                        throw new UnsupportedOperationException();</span>
+                    }
+                };
+            }
+        })
+<span class="fc" id="L296">        .subscribe(to);</span>
+
+<span class="fc" id="L298">        to.assertValue(1)</span>
+<span class="fc" id="L299">        .assertNoErrors()</span>
+<span class="fc" id="L300">        .assertNotComplete();</span>
+<span class="fc" id="L301">    }</span>
+
+    @Test
+    public void fusionRejected() {
+<span class="fc" id="L305">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ASYNC);</span>
+
+<span class="fc" id="L307">        Observable.fromIterable(Arrays.asList(1, 2, 3))</span>
+<span class="fc" id="L308">        .subscribe(to);</span>
+
+<span class="fc" id="L310">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L311">        .assertResult(1, 2, 3);</span>
+<span class="fc" id="L312">    }</span>
+
+    @Test
+    public void fusionClear() {
+<span class="fc" id="L316">        Observable.fromIterable(Arrays.asList(1, 2, 3))</span>
+<span class="fc" id="L317">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+            @Override
+            public void onSubscribe(Disposable d) {
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L321">                QueueDisposable&lt;Integer&gt; qd = (QueueDisposable&lt;Integer&gt;)d;</span>
+
+<span class="fc" id="L323">                qd.requestFusion(QueueFuseable.ANY);</span>
+
+                try {
+<span class="fc" id="L326">                    assertEquals(1, qd.poll().intValue());</span>
+<span class="nc" id="L327">                } catch (Throwable ex) {</span>
+<span class="nc" id="L328">                    fail(ex.toString());</span>
+<span class="fc" id="L329">                }</span>
+
+<span class="fc" id="L331">                qd.clear();</span>
+                try {
+<span class="fc" id="L333">                    assertNull(qd.poll());</span>
+<span class="nc" id="L334">                } catch (Throwable ex) {</span>
+<span class="nc" id="L335">                    fail(ex.toString());</span>
+<span class="fc" id="L336">                }</span>
+<span class="fc" id="L337">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="nc" id="L341">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L345">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L349">            }</span>
+        });
+<span class="fc" id="L351">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,641 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MulticastProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.processors</a> &gt; <span class="el_source">MulticastProcessor.java</span></div><h1>MulticastProcessor.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.processors;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.annotations.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.queue.*;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * A {@link FlowableProcessor} implementation that coordinates downstream requests through
+ * a front-buffer and stable-prefetching, optionally canceling the upstream if all
+ * subscribers have cancelled.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;360&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/MulticastProcessor.png&quot; alt=&quot;&quot;&gt;
+ * &lt;p&gt;
+ * This processor does not have a public constructor by design; a new empty instance of this
+ * {@code MulticastProcessor} can be created via the following {@code create} methods that
+ * allow configuring it:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #create()}: create an empty {@code MulticastProcessor} with
+ *      {@link io.reactivex.Flowable#bufferSize() Flowable.bufferSize()} prefetch amount
+ *      and no reference counting behavior.&lt;/li&gt;
+ * &lt;li&gt;{@link #create(int)}: create an empty {@code MulticastProcessor} with
+ *      the given prefetch amount and no reference counting behavior.&lt;/li&gt;
+ * &lt;li&gt;{@link #create(boolean)}: create an empty {@code MulticastProcessor} with
+ *      {@link io.reactivex.Flowable#bufferSize() Flowable.bufferSize()} prefetch amount
+ *      and an optional reference counting behavior.&lt;/li&gt;
+ * &lt;li&gt;{@link #create(int, boolean)}: create an empty {@code MulticastProcessor} with
+ *      the given prefetch amount and an optional reference counting behavior.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * When the reference counting behavior is enabled, the {@code MulticastProcessor} cancels its
+ * upstream when all {@link Subscriber}s have cancelled. Late {@code Subscriber}s will then be
+ * immediately completed.
+ * &lt;p&gt;
+ * Because {@code MulticastProcessor} implements the {@link Subscriber} interface, calling
+ * {@code onSubscribe} is mandatory (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.12&quot;&gt;Rule 2.12&lt;/a&gt;).
+ * If {@code MulticastProcessor} should run standalone, i.e., without subscribing the {@code MulticastProcessor} to another {@link Publisher},
+ * use {@link #start()} or {@link #startUnbounded()} methods to initialize the internal buffer.
+ * Failing to do so will lead to a {@link NullPointerException} at runtime.
+ * &lt;p&gt;
+ * Use {@link #offer(Object)} to try and offer/emit items but don't fail if the
+ * internal buffer is full.
+ * &lt;p&gt;
+ * A {@code MulticastProcessor} is a {@link Processor} type in the Reactive Streams specification,
+ * {@code null}s are not allowed (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.13&quot;&gt;Rule 2.13&lt;/a&gt;) as
+ * parameters to {@link #onSubscribe(Subscription)}, {@link #offer(Object)}, {@link #onNext(Object)} and {@link #onError(Throwable)}.
+ * Such calls will result in a {@link NullPointerException} being thrown and the processor's state is not changed.
+ * &lt;p&gt;
+ * Since a {@code MulticastProcessor} is a {@link io.reactivex.Flowable}, it supports backpressure.
+ * The backpressure from the currently subscribed {@link Subscriber}s are coordinated by emitting upstream
+ * items only if all of those {@code Subscriber}s have requested at least one item. This behavior
+ * is also called &lt;em&gt;lockstep-mode&lt;/em&gt; because even if some {@code Subscriber}s can take any number
+ * of items, other {@code Subscriber}s requesting less or infrequently will slow down the overall
+ * throughput of the flow.
+ * &lt;p&gt;
+ * Calling {@link #onNext(Object)}, {@link #offer(Object)}, {@link #onError(Throwable)} and {@link #onComplete()}
+ * is required to be serialized (called from the same thread or called non-overlappingly from different threads
+ * through external means of serialization). The {@link #toSerialized()} method available to all {@link FlowableProcessor}s
+ * provides such serialization and also protects against reentrance (i.e., when a downstream {@code Subscriber}
+ * consuming this processor also wants to call {@link #onNext(Object)} on this processor recursively).
+ * &lt;p&gt;
+ * This {@code MulticastProcessor} supports the standard state-peeking methods {@link #hasComplete()}, {@link #hasThrowable()},
+ * {@link #getThrowable()} and {@link #hasSubscribers()}. This processor doesn't allow peeking into its buffer.
+ * &lt;p&gt;
+ * When this {@code MulticastProcessor} is terminated via {@link #onError(Throwable)} or {@link #onComplete()},
+ * all previously signaled but not yet consumed items will be still available to {@code Subscriber}s and the respective
+ * terminal even is only emitted when all previous items have been successfully delivered to {@code Subscriber}s.
+ * If there are no {@code Subscriber}s, the remaining items will be buffered indefinitely.
+ * &lt;p&gt;
+ * The {@code MulticastProcessor} does not support clearing its cached events (to appear empty again).
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Backpressure:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;The backpressure from the currently subscribed {@code Subscriber}s are coordinated by emitting upstream
+ *  items only if all of those {@code Subscriber}s have requested at least one item. This behavior
+ *  is also called &lt;em&gt;lockstep-mode&lt;/em&gt; because even if some {@code Subscriber}s can take any number
+ *  of items, other {@code Subscriber}s requesting less or infrequently will slow down the overall
+ *  throughput of the flow.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;{@code MulticastProcessor} does not operate by default on a particular {@link io.reactivex.Scheduler} and
+ *  the {@code Subscriber}s get notified on an arbitrary thread in a serialized fashion.&lt;/dd&gt;
+ * &lt;/dl&gt;
+ * &lt;p&gt;
+ * Example:
+ * &lt;pre&gt;&lt;code&gt;
+    MulticastProcessor&amp;lt;Integer&amp;gt; mp = Flowable.range(1, 10)
+    .subscribeWith(MulticastProcessor.create());
+
+    mp.test().assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+
+    // --------------------
+
+    MulticastProcessor&amp;lt;Integer&amp;gt; mp2 = MulticastProcessor.create(4);
+    mp2.start();
+
+    assertTrue(mp2.offer(1));
+    assertTrue(mp2.offer(2));
+    assertTrue(mp2.offer(3));
+    assertTrue(mp2.offer(4));
+
+    assertFalse(mp2.offer(5));
+
+    mp2.onComplete();
+
+    mp2.test().assertResult(1, 2, 3, 4);
+ * &lt;/code&gt;&lt;/pre&gt;
+ * &lt;p&gt;History: 2.1.14 - experimental
+ * @param &lt;T&gt; the input and output value type
+ * @since 2.2
+ */
+@BackpressureSupport(BackpressureKind.FULL)
+@SchedulerSupport(SchedulerSupport.NONE)
+public final class MulticastProcessor&lt;T&gt; extends FlowableProcessor&lt;T&gt; {
+
+    final AtomicInteger wip;
+
+    final AtomicReference&lt;Subscription&gt; upstream;
+
+    final AtomicReference&lt;MulticastSubscription&lt;T&gt;[]&gt; subscribers;
+
+    final AtomicBoolean once;
+
+    final int bufferSize;
+
+    final int limit;
+
+    final boolean refcount;
+
+    volatile SimpleQueue&lt;T&gt; queue;
+
+    volatile boolean done;
+    volatile Throwable error;
+
+    int consumed;
+
+    int fusionMode;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L158">    static final MulticastSubscription[] EMPTY = new MulticastSubscription[0];</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L161">    static final MulticastSubscription[] TERMINATED = new MulticastSubscription[0];</span>
+
+    /**
+     * Constructs a fresh instance with the default Flowable.bufferSize() prefetch
+     * amount and no refCount-behavior.
+     * @param &lt;T&gt; the input and output value type
+     * @return the new MulticastProcessor instance
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; MulticastProcessor&lt;T&gt; create() {
+<span class="fc" id="L172">        return new MulticastProcessor&lt;T&gt;(bufferSize(), false);</span>
+    }
+
+    /**
+     * Constructs a fresh instance with the default Flowable.bufferSize() prefetch
+     * amount and the optional refCount-behavior.
+     * @param &lt;T&gt; the input and output value type
+     * @param refCount if true and if all Subscribers have canceled, the upstream
+     * is cancelled
+     * @return the new MulticastProcessor instance
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; MulticastProcessor&lt;T&gt; create(boolean refCount) {
+<span class="fc" id="L186">        return new MulticastProcessor&lt;T&gt;(bufferSize(), refCount);</span>
+    }
+
+    /**
+     * Constructs a fresh instance with the given prefetch amount and no refCount behavior.
+     * @param bufferSize the prefetch amount
+     * @param &lt;T&gt; the input and output value type
+     * @return the new MulticastProcessor instance
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; MulticastProcessor&lt;T&gt; create(int bufferSize) {
+<span class="fc" id="L198">        return new MulticastProcessor&lt;T&gt;(bufferSize, false);</span>
+    }
+
+    /**
+     * Constructs a fresh instance with the given prefetch amount and the optional
+     * refCount-behavior.
+     * @param bufferSize the prefetch amount
+     * @param refCount if true and if all Subscribers have canceled, the upstream
+     * is cancelled
+     * @param &lt;T&gt; the input and output value type
+     * @return the new MulticastProcessor instance
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; MulticastProcessor&lt;T&gt; create(int bufferSize, boolean refCount) {
+<span class="fc" id="L213">        return new MulticastProcessor&lt;T&gt;(bufferSize, refCount);</span>
+    }
+
+    /**
+     * Constructs a fresh instance with the given prefetch amount and the optional
+     * refCount-behavior.
+     * @param bufferSize the prefetch amount
+     * @param refCount if true and if all Subscribers have canceled, the upstream
+     * is cancelled
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L224">    MulticastProcessor(int bufferSize, boolean refCount) {</span>
+<span class="fc" id="L225">        ObjectHelper.verifyPositive(bufferSize, &quot;bufferSize&quot;);</span>
+<span class="fc" id="L226">        this.bufferSize = bufferSize;</span>
+<span class="fc" id="L227">        this.limit = bufferSize - (bufferSize &gt;&gt; 2);</span>
+<span class="fc" id="L228">        this.wip = new AtomicInteger();</span>
+<span class="fc" id="L229">        this.subscribers = new AtomicReference&lt;MulticastSubscription&lt;T&gt;[]&gt;(EMPTY);</span>
+<span class="fc" id="L230">        this.upstream = new AtomicReference&lt;Subscription&gt;();</span>
+<span class="fc" id="L231">        this.refcount = refCount;</span>
+<span class="fc" id="L232">        this.once = new AtomicBoolean();</span>
+<span class="fc" id="L233">    }</span>
+
+    /**
+     * Initializes this Processor by setting an upstream Subscription that
+     * ignores request amounts, uses a fixed buffer
+     * and allows using the onXXX and offer methods
+     * afterwards.
+     */
+    public void start() {
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (SubscriptionHelper.setOnce(upstream, EmptySubscription.INSTANCE)) {</span>
+<span class="fc" id="L243">            queue = new SpscArrayQueue&lt;T&gt;(bufferSize);</span>
+        }
+<span class="fc" id="L245">    }</span>
+
+    /**
+     * Initializes this Processor by setting an upstream Subscription that
+     * ignores request amounts, uses an unbounded buffer
+     * and allows using the onXXX and offer methods
+     * afterwards.
+     */
+    public void startUnbounded() {
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        if (SubscriptionHelper.setOnce(upstream, EmptySubscription.INSTANCE)) {</span>
+<span class="fc" id="L255">            queue = new SpscLinkedArrayQueue&lt;T&gt;(bufferSize);</span>
+        }
+<span class="fc" id="L257">    }</span>
+
+    @Override
+    public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (SubscriptionHelper.setOnce(upstream, s)) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">            if (s instanceof QueueSubscription) {</span>
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L264">                QueueSubscription&lt;T&gt; qs = (QueueSubscription&lt;T&gt;)s;</span>
+
+<span class="fc" id="L266">                int m = qs.requestFusion(QueueSubscription.ANY);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                if (m == QueueSubscription.SYNC) {</span>
+<span class="fc" id="L268">                    fusionMode = m;</span>
+<span class="fc" id="L269">                    queue = qs;</span>
+<span class="fc" id="L270">                    done = true;</span>
+<span class="fc" id="L271">                    drain();</span>
+<span class="fc" id="L272">                    return;</span>
+                }
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                if (m == QueueSubscription.ASYNC) {</span>
+<span class="fc" id="L275">                    fusionMode = m;</span>
+<span class="fc" id="L276">                    queue = qs;</span>
+
+<span class="fc" id="L278">                    s.request(bufferSize);</span>
+<span class="fc" id="L279">                    return;</span>
+                }
+            }
+
+<span class="fc" id="L283">            queue = new SpscArrayQueue&lt;T&gt;(bufferSize);</span>
+
+<span class="fc" id="L285">            s.request(bufferSize);</span>
+        }
+<span class="fc" id="L287">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        if (once.get()) {</span>
+<span class="fc" id="L292">            return;</span>
+        }
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (fusionMode == QueueSubscription.NONE) {</span>
+<span class="fc" id="L295">            ObjectHelper.requireNonNull(t, &quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">            if (!queue.offer(t)) {</span>
+<span class="fc" id="L297">                SubscriptionHelper.cancel(upstream);</span>
+<span class="fc" id="L298">                onError(new MissingBackpressureException());</span>
+<span class="fc" id="L299">                return;</span>
+            }
+        }
+<span class="fc" id="L302">        drain();</span>
+<span class="fc" id="L303">    }</span>
+
+    /**
+     * Tries to offer an item into the internal queue and returns false
+     * if the queue is full.
+     * @param t the item to offer, not null
+     * @return true if successful, false if the queue is full
+     */
+    public boolean offer(T t) {
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (once.get()) {</span>
+<span class="fc" id="L313">            return false;</span>
+        }
+<span class="fc" id="L315">        ObjectHelper.requireNonNull(t, &quot;offer called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        if (fusionMode == QueueSubscription.NONE) {</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">            if (queue.offer(t)) {</span>
+<span class="fc" id="L318">                drain();</span>
+<span class="fc" id="L319">                return true;</span>
+            }
+        }
+<span class="fc" id="L322">        return false;</span>
+    }
+
+    @Override
+    public void onError(Throwable t) {
+<span class="fc" id="L327">        ObjectHelper.requireNonNull(t, &quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        if (once.compareAndSet(false, true)) {</span>
+<span class="fc" id="L329">            error = t;</span>
+<span class="fc" id="L330">            done = true;</span>
+<span class="fc" id="L331">            drain();</span>
+        } else {
+<span class="fc" id="L333">            RxJavaPlugins.onError(t);</span>
+        }
+<span class="fc" id="L335">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (once.compareAndSet(false, true)) {</span>
+<span class="fc" id="L340">            done = true;</span>
+<span class="fc" id="L341">            drain();</span>
+        }
+<span class="fc" id="L343">    }</span>
+
+    @Override
+    public boolean hasSubscribers() {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        return subscribers.get().length != 0;</span>
+    }
+
+    @Override
+    public boolean hasThrowable() {
+<span class="fc bfc" id="L352" title="All 4 branches covered.">        return once.get() &amp;&amp; error != null;</span>
+    }
+
+    @Override
+    public boolean hasComplete() {
+<span class="fc bfc" id="L357" title="All 4 branches covered.">        return once.get() &amp;&amp; error == null;</span>
+    }
+
+    @Override
+    public Throwable getThrowable() {
+<span class="fc bfc" id="L362" title="All 2 branches covered.">        return once.get() ? error : null;</span>
+    }
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L367">        MulticastSubscription&lt;T&gt; ms = new MulticastSubscription&lt;T&gt;(s, this);</span>
+<span class="fc" id="L368">        s.onSubscribe(ms);</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        if (add(ms)) {</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">            if (ms.get() == Long.MIN_VALUE) {</span>
+<span class="fc" id="L371">                remove(ms);</span>
+            } else {
+<span class="fc" id="L373">                drain();</span>
+            }
+        } else {
+<span class="pc bpc" id="L376" title="1 of 4 branches missed.">            if (once.get() || !refcount) {</span>
+<span class="fc" id="L377">                Throwable ex = error;</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">                if (ex != null) {</span>
+<span class="fc" id="L379">                    s.onError(ex);</span>
+<span class="fc" id="L380">                    return;</span>
+                }
+            }
+<span class="fc" id="L383">            s.onComplete();</span>
+        }
+<span class="fc" id="L385">    }</span>
+
+    boolean add(MulticastSubscription&lt;T&gt; inner) {
+        for (;;) {
+<span class="fc" id="L389">            MulticastSubscription&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">            if (a == TERMINATED) {</span>
+<span class="fc" id="L391">                return false;</span>
+            }
+<span class="fc" id="L393">            int n = a.length;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L395">            MulticastSubscription&lt;T&gt;[] b = new MulticastSubscription[n + 1];</span>
+<span class="fc" id="L396">            System.arraycopy(a, 0, b, 0, n);</span>
+<span class="fc" id="L397">            b[n] = inner;</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L399">                return true;</span>
+            }
+<span class="fc" id="L401">        }</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    void remove(MulticastSubscription&lt;T&gt; inner) {
+        for (;;) {
+<span class="fc" id="L407">            MulticastSubscription&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc" id="L408">            int n = a.length;</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">            if (n == 0) {</span>
+<span class="fc" id="L410">                return;</span>
+            }
+
+<span class="fc" id="L413">            int j = -1;</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L415" title="All 2 branches covered.">                if (a[i] == inner) {</span>
+<span class="fc" id="L416">                    j = i;</span>
+<span class="fc" id="L417">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L421" title="All 2 branches covered.">            if (j &lt; 0) {</span>
+<span class="fc" id="L422">                break;</span>
+            }
+
+<span class="fc bfc" id="L425" title="All 2 branches covered.">            if (n == 1) {</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">                if (refcount) {</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">                    if (subscribers.compareAndSet(a, TERMINATED)) {</span>
+<span class="fc" id="L428">                        SubscriptionHelper.cancel(upstream);</span>
+<span class="fc" id="L429">                        once.set(true);</span>
+<span class="fc" id="L430">                        break;</span>
+                    }
+                } else {
+<span class="fc bfc" id="L433" title="All 2 branches covered.">                    if (subscribers.compareAndSet(a, EMPTY)) {</span>
+<span class="fc" id="L434">                        break;</span>
+                    }
+                }
+            } else {
+<span class="fc" id="L438">                MulticastSubscription&lt;T&gt;[] b = new MulticastSubscription[n - 1];</span>
+<span class="fc" id="L439">                System.arraycopy(a, 0, b, 0, j);</span>
+<span class="fc" id="L440">                System.arraycopy(a, j + 1, b, j, n - j - 1);</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">                if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L442">                    break;</span>
+                }
+            }
+<span class="fc" id="L445">        }</span>
+<span class="fc" id="L446">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    void drain() {
+<span class="fc bfc" id="L450" title="All 2 branches covered.">        if (wip.getAndIncrement() != 0) {</span>
+<span class="fc" id="L451">            return;</span>
+        }
+
+<span class="fc" id="L454">        int missed = 1;</span>
+<span class="fc" id="L455">        AtomicReference&lt;MulticastSubscription&lt;T&gt;[]&gt; subs = subscribers;</span>
+<span class="fc" id="L456">        int c = consumed;</span>
+<span class="fc" id="L457">        int lim = limit;</span>
+<span class="fc" id="L458">        int fm = fusionMode;</span>
+
+        outer:
+        for (;;) {
+
+<span class="fc" id="L463">            SimpleQueue&lt;T&gt; q = queue;</span>
+
+<span class="fc bfc" id="L465" title="All 2 branches covered.">            if (q != null) {</span>
+<span class="fc" id="L466">                MulticastSubscription&lt;T&gt;[] as = subs.get();</span>
+<span class="fc" id="L467">                int n = as.length;</span>
+
+<span class="fc bfc" id="L469" title="All 2 branches covered.">                if (n != 0) {</span>
+<span class="fc" id="L470">                    long r = -1L;</span>
+
+<span class="fc bfc" id="L472" title="All 2 branches covered.">                    for (MulticastSubscription&lt;T&gt; a : as) {</span>
+<span class="fc" id="L473">                        long ra = a.get();</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">                        if (ra &gt;= 0L) {</span>
+<span class="fc bfc" id="L475" title="All 2 branches covered.">                            if (r == -1L) {</span>
+<span class="fc" id="L476">                                r = ra - a.emitted;</span>
+                            } else {
+<span class="fc" id="L478">                                r = Math.min(r, ra - a.emitted);</span>
+                            }
+                        }
+                    }
+
+<span class="fc bfc" id="L483" title="All 2 branches covered.">                    while (r &gt; 0L) {</span>
+<span class="fc" id="L484">                        MulticastSubscription&lt;T&gt;[] bs = subs.get();</span>
+
+<span class="fc bfc" id="L486" title="All 2 branches covered.">                        if (bs == TERMINATED) {</span>
+<span class="fc" id="L487">                            q.clear();</span>
+<span class="fc" id="L488">                            return;</span>
+                        }
+
+<span class="fc bfc" id="L491" title="All 2 branches covered.">                        if (as != bs) {</span>
+<span class="fc" id="L492">                            continue outer;</span>
+                        }
+
+<span class="fc" id="L495">                        boolean d = done;</span>
+
+                        T v;
+
+                        try {
+<span class="fc" id="L500">                            v = q.poll();</span>
+<span class="fc" id="L501">                        } catch (Throwable ex) {</span>
+<span class="fc" id="L502">                            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L503">                            SubscriptionHelper.cancel(upstream);</span>
+<span class="fc" id="L504">                            d = true;</span>
+<span class="fc" id="L505">                            v = null;</span>
+<span class="fc" id="L506">                            error = ex;</span>
+<span class="fc" id="L507">                            done = true;</span>
+<span class="fc" id="L508">                        }</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">                        boolean empty = v == null;</span>
+
+<span class="fc bfc" id="L511" title="All 4 branches covered.">                        if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L512">                            Throwable ex = error;</span>
+<span class="fc bfc" id="L513" title="All 2 branches covered.">                            if (ex != null) {</span>
+<span class="fc bfc" id="L514" title="All 2 branches covered.">                                for (MulticastSubscription&lt;T&gt; inner : subs.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L515">                                    inner.onError(ex);</span>
+                                }
+                            } else {
+<span class="fc bfc" id="L518" title="All 2 branches covered.">                                for (MulticastSubscription&lt;T&gt; inner : subs.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L519">                                    inner.onComplete();</span>
+                                }
+                            }
+<span class="fc" id="L522">                            return;</span>
+                        }
+
+<span class="fc bfc" id="L525" title="All 2 branches covered.">                        if (empty) {</span>
+<span class="fc" id="L526">                            break;</span>
+                        }
+
+<span class="fc bfc" id="L529" title="All 2 branches covered.">                        for (MulticastSubscription&lt;T&gt; inner : as) {</span>
+<span class="fc" id="L530">                            inner.onNext(v);</span>
+                        }
+
+<span class="fc" id="L533">                        r--;</span>
+
+<span class="fc bfc" id="L535" title="All 2 branches covered.">                        if (fm != QueueSubscription.SYNC) {</span>
+<span class="fc bfc" id="L536" title="All 2 branches covered.">                            if (++c == lim) {</span>
+<span class="fc" id="L537">                                c = 0;</span>
+<span class="fc" id="L538">                                upstream.get().request(lim);</span>
+                            }
+                        }
+<span class="fc" id="L541">                    }</span>
+
+<span class="fc bfc" id="L543" title="All 2 branches covered.">                    if (r == 0) {</span>
+<span class="fc" id="L544">                        MulticastSubscription&lt;T&gt;[] bs = subs.get();</span>
+
+<span class="fc bfc" id="L546" title="All 2 branches covered.">                        if (bs == TERMINATED) {</span>
+<span class="fc" id="L547">                            q.clear();</span>
+<span class="fc" id="L548">                            return;</span>
+                        }
+
+<span class="fc bfc" id="L551" title="All 2 branches covered.">                        if (as != bs) {</span>
+<span class="fc" id="L552">                            continue outer;</span>
+                        }
+
+<span class="fc bfc" id="L555" title="All 4 branches covered.">                        if (done &amp;&amp; q.isEmpty()) {</span>
+<span class="fc" id="L556">                            Throwable ex = error;</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">                            if (ex != null) {</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">                                for (MulticastSubscription&lt;T&gt; inner : subs.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L559">                                    inner.onError(ex);</span>
+                                }
+                            } else {
+<span class="fc bfc" id="L562" title="All 2 branches covered.">                                for (MulticastSubscription&lt;T&gt; inner : subs.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L563">                                    inner.onComplete();</span>
+                                }
+                            }
+<span class="fc" id="L566">                            return;</span>
+                        }
+                    }
+                }
+            }
+
+<span class="fc" id="L572">            missed = wip.addAndGet(-missed);</span>
+<span class="fc bfc" id="L573" title="All 2 branches covered.">            if (missed == 0) {</span>
+<span class="fc" id="L574">                break;</span>
+            }
+<span class="fc" id="L576">        }</span>
+<span class="fc" id="L577">    }</span>
+
+    static final class MulticastSubscription&lt;T&gt; extends AtomicLong implements Subscription {
+
+        private static final long serialVersionUID = -363282618957264509L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        final MulticastProcessor&lt;T&gt; parent;
+
+        long emitted;
+
+<span class="fc" id="L589">        MulticastSubscription(Subscriber&lt;? super T&gt; actual, MulticastProcessor&lt;T&gt; parent) {</span>
+<span class="fc" id="L590">            this.downstream = actual;</span>
+<span class="fc" id="L591">            this.parent = parent;</span>
+<span class="fc" id="L592">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L596" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+                for (;;) {
+<span class="fc" id="L598">                    long r = get();</span>
+<span class="fc bfc" id="L599" title="All 4 branches covered.">                    if (r == Long.MIN_VALUE || r == Long.MAX_VALUE) {</span>
+<span class="fc" id="L600">                        break;</span>
+                    }
+<span class="fc" id="L602">                    long u = r + n;</span>
+<span class="fc bfc" id="L603" title="All 2 branches covered.">                    if (u &lt; 0L) {</span>
+<span class="fc" id="L604">                        u = Long.MAX_VALUE;</span>
+                    }
+<span class="pc bpc" id="L606" title="1 of 2 branches missed.">                    if (compareAndSet(r, u)) {</span>
+<span class="fc" id="L607">                        parent.drain();</span>
+<span class="fc" id="L608">                        break;</span>
+                    }
+<span class="nc" id="L610">                }</span>
+            }
+<span class="fc" id="L612">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L616" title="All 2 branches covered.">            if (getAndSet(Long.MIN_VALUE) != Long.MIN_VALUE) {</span>
+<span class="fc" id="L617">                parent.remove(this);</span>
+            }
+<span class="fc" id="L619">        }</span>
+
+        void onNext(T t) {
+<span class="fc bfc" id="L622" title="All 2 branches covered.">            if (get() != Long.MIN_VALUE) {</span>
+<span class="fc" id="L623">                emitted++;</span>
+<span class="fc" id="L624">                downstream.onNext(t);</span>
+            }
+<span class="fc" id="L626">        }</span>
+
+        void onError(Throwable t) {
+<span class="fc bfc" id="L629" title="All 2 branches covered.">            if (get() != Long.MIN_VALUE) {</span>
+<span class="fc" id="L630">                downstream.onError(t);</span>
+            }
+<span class="fc" id="L632">        }</span>
+
+        void onComplete() {
+<span class="fc bfc" id="L635" title="All 2 branches covered.">            if (get() != Long.MIN_VALUE) {</span>
+<span class="fc" id="L636">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L638">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

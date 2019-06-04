@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BlockingObservableMostRecent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">BlockingObservableMostRecent.java</span></div><h1>BlockingObservableMostRecent.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import java.util.*;
+
+import io.reactivex.ObservableSource;
+import io.reactivex.internal.util.*;
+import io.reactivex.observers.DefaultObserver;
+
+/**
+ * Returns an Iterable that always returns the item most recently emitted by an Observable, or a
+ * seed value if no item has yet been emitted.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;490&quot; src=&quot;https://github.com/ReactiveX/RxJava/wiki/images/rx-operators/B.mostRecent.png&quot; alt=&quot;&quot;&gt;
+ * 
+ * @param &lt;T&gt; the value type
+ */
+public final class BlockingObservableMostRecent&lt;T&gt; implements Iterable&lt;T&gt; {
+
+    final ObservableSource&lt;T&gt; source;
+
+    final T initialValue;
+
+<span class="fc" id="L36">    public BlockingObservableMostRecent(ObservableSource&lt;T&gt; source, T initialValue) {</span>
+<span class="fc" id="L37">        this.source = source;</span>
+<span class="fc" id="L38">        this.initialValue = initialValue;</span>
+<span class="fc" id="L39">    }</span>
+
+    @Override
+    public Iterator&lt;T&gt; iterator() {
+<span class="fc" id="L43">        MostRecentObserver&lt;T&gt; mostRecentObserver = new MostRecentObserver&lt;T&gt;(initialValue);</span>
+
+        /**
+         * Subscribe instead of unsafeSubscribe since this is the final subscribe in the chain
+         * since it is for BlockingObservable.
+         */
+<span class="fc" id="L49">        source.subscribe(mostRecentObserver);</span>
+
+<span class="fc" id="L51">        return mostRecentObserver.getIterable();</span>
+    }
+
+    static final class MostRecentObserver&lt;T&gt; extends DefaultObserver&lt;T&gt; {
+        volatile Object value;
+
+<span class="fc" id="L57">        MostRecentObserver(T value) {</span>
+<span class="fc" id="L58">            this.value = NotificationLite.next(value);</span>
+<span class="fc" id="L59">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L63">            value = NotificationLite.complete();</span>
+<span class="fc" id="L64">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L68">            value = NotificationLite.error(e);</span>
+<span class="fc" id="L69">        }</span>
+
+        @Override
+        public void onNext(T args) {
+<span class="fc" id="L73">            value = NotificationLite.next(args);</span>
+<span class="fc" id="L74">        }</span>
+
+        /**
+         * The {@link Iterator} return is not thread safe. In other words don't call {@link Iterator#hasNext()} in one
+         * thread expect {@link Iterator#next()} called from a different thread to work.
+         * @return the Iterator
+         */
+        public Iterator getIterable() {
+<span class="fc" id="L82">            return new Iterator();</span>
+        }
+
+<span class="fc" id="L85">        final class Iterator implements java.util.Iterator&lt;T&gt; {</span>
+            /**
+             * buffer to make sure that the state of the iterator doesn't change between calling hasNext() and next().
+             */
+            private Object buf;
+
+            @Override
+            public boolean hasNext() {
+<span class="fc" id="L93">                buf = value;</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                return !NotificationLite.isComplete(buf);</span>
+            }
+
+            @Override
+            public T next() {
+                try {
+                    // if hasNext wasn't called before calling next.
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                    if (buf == null) {</span>
+<span class="fc" id="L102">                        buf = value;</span>
+                    }
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                    if (NotificationLite.isComplete(buf)) {</span>
+<span class="fc" id="L105">                        throw new NoSuchElementException();</span>
+                    }
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                    if (NotificationLite.isError(buf)) {</span>
+<span class="fc" id="L108">                        throw ExceptionHelper.wrapOrThrow(NotificationLite.getError(buf));</span>
+                    }
+<span class="fc" id="L110">                    return NotificationLite.getValue(buf);</span>
+                }
+                finally {
+<span class="fc" id="L113">                    buf = null;</span>
+                }
+            }
+
+            @Override
+            public void remove() {
+<span class="fc" id="L119">                throw new UnsupportedOperationException(&quot;Read only iterator&quot;);</span>
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

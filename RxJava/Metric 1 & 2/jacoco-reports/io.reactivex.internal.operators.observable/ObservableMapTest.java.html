@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableMapTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableMapTest.java</span></div><h1>ObservableMapTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.UnicastSubject;
+
+<span class="fc" id="L34">public class ObservableMapTest {</span>
+
+    Observer&lt;String&gt; stringObserver;
+    Observer&lt;String&gt; stringObserver2;
+
+<span class="fc" id="L39">    static final BiFunction&lt;String, Integer, String&gt; APPEND_INDEX = new BiFunction&lt;String, Integer, String&gt;() {</span>
+        @Override
+        public String apply(String value, Integer index) {
+<span class="nc" id="L42">            return value + index;</span>
+        }
+    };
+
+    @Before
+    public void before() {
+<span class="fc" id="L48">        stringObserver = TestHelper.mockObserver();</span>
+<span class="fc" id="L49">        stringObserver2 = TestHelper.mockObserver();</span>
+<span class="fc" id="L50">    }</span>
+
+    @Test
+    public void testMap() {
+<span class="fc" id="L54">        Map&lt;String, String&gt; m1 = getMap(&quot;One&quot;);</span>
+<span class="fc" id="L55">        Map&lt;String, String&gt; m2 = getMap(&quot;Two&quot;);</span>
+<span class="fc" id="L56">        Observable&lt;Map&lt;String, String&gt;&gt; o = Observable.just(m1, m2);</span>
+
+<span class="fc" id="L58">        Observable&lt;String&gt; m = o.map(new Function&lt;Map&lt;String, String&gt;, String&gt;() {</span>
+            @Override
+            public String apply(Map&lt;String, String&gt; map) {
+<span class="fc" id="L61">                return map.get(&quot;firstName&quot;);</span>
+            }
+        });
+
+<span class="fc" id="L65">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L67">        verify(stringObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L68">        verify(stringObserver, times(1)).onNext(&quot;OneFirst&quot;);</span>
+<span class="fc" id="L69">        verify(stringObserver, times(1)).onNext(&quot;TwoFirst&quot;);</span>
+<span class="fc" id="L70">        verify(stringObserver, times(1)).onComplete();</span>
+<span class="fc" id="L71">    }</span>
+
+    @Test
+    public void testMapMany() {
+        /* simulate a top-level async call which returns IDs */
+<span class="fc" id="L76">        Observable&lt;Integer&gt; ids = Observable.just(1, 2);</span>
+
+        /* now simulate the behavior to take those IDs and perform nested async calls based on them */
+<span class="fc" id="L79">        Observable&lt;String&gt; m = ids.flatMap(new Function&lt;Integer, Observable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public Observable&lt;String&gt; apply(Integer id) {
+                /* simulate making a nested async call which creates another Observable */
+<span class="fc" id="L84">                Observable&lt;Map&lt;String, String&gt;&gt; subObservable = null;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                if (id == 1) {</span>
+<span class="fc" id="L86">                    Map&lt;String, String&gt; m1 = getMap(&quot;One&quot;);</span>
+<span class="fc" id="L87">                    Map&lt;String, String&gt; m2 = getMap(&quot;Two&quot;);</span>
+<span class="fc" id="L88">                    subObservable = Observable.just(m1, m2);</span>
+<span class="fc" id="L89">                } else {</span>
+<span class="fc" id="L90">                    Map&lt;String, String&gt; m3 = getMap(&quot;Three&quot;);</span>
+<span class="fc" id="L91">                    Map&lt;String, String&gt; m4 = getMap(&quot;Four&quot;);</span>
+<span class="fc" id="L92">                    subObservable = Observable.just(m3, m4);</span>
+                }
+
+                /* simulate kicking off the async call and performing a select on it to transform the data */
+<span class="fc" id="L96">                return subObservable.map(new Function&lt;Map&lt;String, String&gt;, String&gt;() {</span>
+                    @Override
+                    public String apply(Map&lt;String, String&gt; map) {
+<span class="fc" id="L99">                        return map.get(&quot;firstName&quot;);</span>
+                    }
+                });
+            }
+
+        });
+<span class="fc" id="L105">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L107">        verify(stringObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L108">        verify(stringObserver, times(1)).onNext(&quot;OneFirst&quot;);</span>
+<span class="fc" id="L109">        verify(stringObserver, times(1)).onNext(&quot;TwoFirst&quot;);</span>
+<span class="fc" id="L110">        verify(stringObserver, times(1)).onNext(&quot;ThreeFirst&quot;);</span>
+<span class="fc" id="L111">        verify(stringObserver, times(1)).onNext(&quot;FourFirst&quot;);</span>
+<span class="fc" id="L112">        verify(stringObserver, times(1)).onComplete();</span>
+<span class="fc" id="L113">    }</span>
+
+    @Test
+    public void testMapMany2() {
+<span class="fc" id="L117">        Map&lt;String, String&gt; m1 = getMap(&quot;One&quot;);</span>
+<span class="fc" id="L118">        Map&lt;String, String&gt; m2 = getMap(&quot;Two&quot;);</span>
+<span class="fc" id="L119">        Observable&lt;Map&lt;String, String&gt;&gt; observable1 = Observable.just(m1, m2);</span>
+
+<span class="fc" id="L121">        Map&lt;String, String&gt; m3 = getMap(&quot;Three&quot;);</span>
+<span class="fc" id="L122">        Map&lt;String, String&gt; m4 = getMap(&quot;Four&quot;);</span>
+<span class="fc" id="L123">        Observable&lt;Map&lt;String, String&gt;&gt; observable2 = Observable.just(m3, m4);</span>
+
+<span class="fc" id="L125">        Observable&lt;Observable&lt;Map&lt;String, String&gt;&gt;&gt; o = Observable.just(observable1, observable2);</span>
+
+<span class="fc" id="L127">        Observable&lt;String&gt; m = o.flatMap(new Function&lt;Observable&lt;Map&lt;String, String&gt;&gt;, Observable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public Observable&lt;String&gt; apply(Observable&lt;Map&lt;String, String&gt;&gt; o) {
+<span class="fc" id="L131">                return o.map(new Function&lt;Map&lt;String, String&gt;, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Map&lt;String, String&gt; map) {
+<span class="fc" id="L135">                        return map.get(&quot;firstName&quot;);</span>
+                    }
+                });
+            }
+
+        });
+<span class="fc" id="L141">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L143">        verify(stringObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L144">        verify(stringObserver, times(1)).onNext(&quot;OneFirst&quot;);</span>
+<span class="fc" id="L145">        verify(stringObserver, times(1)).onNext(&quot;TwoFirst&quot;);</span>
+<span class="fc" id="L146">        verify(stringObserver, times(1)).onNext(&quot;ThreeFirst&quot;);</span>
+<span class="fc" id="L147">        verify(stringObserver, times(1)).onNext(&quot;FourFirst&quot;);</span>
+<span class="fc" id="L148">        verify(stringObserver, times(1)).onComplete();</span>
+
+<span class="fc" id="L150">    }</span>
+
+    @Test
+    public void testMapWithError() {
+<span class="fc" id="L154">        Observable&lt;String&gt; w = Observable.just(&quot;one&quot;, &quot;fail&quot;, &quot;two&quot;, &quot;three&quot;, &quot;fail&quot;);</span>
+<span class="fc" id="L155">        Observable&lt;String&gt; m = w.map(new Function&lt;String, String&gt;() {</span>
+            @Override
+            public String apply(String s) {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                if (&quot;fail&quot;.equals(s)) {</span>
+<span class="fc" id="L159">                    throw new RuntimeException(&quot;Forced Failure&quot;);</span>
+                }
+<span class="fc" id="L161">                return s;</span>
+            }
+<span class="fc" id="L163">        }).doOnError(new Consumer&lt;Throwable&gt;() {</span>
+
+            @Override
+            public void accept(Throwable t1) {
+<span class="fc" id="L167">                t1.printStackTrace();</span>
+<span class="fc" id="L168">            }</span>
+
+        });
+
+<span class="fc" id="L172">        m.subscribe(stringObserver);</span>
+<span class="fc" id="L173">        verify(stringObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L174">        verify(stringObserver, never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L175">        verify(stringObserver, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L176">        verify(stringObserver, never()).onComplete();</span>
+<span class="fc" id="L177">        verify(stringObserver, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L178">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testMapWithIssue417() {
+<span class="fc" id="L182">        Observable.just(1).observeOn(Schedulers.computation())</span>
+<span class="fc" id="L183">                .map(new Function&lt;Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer arg0) {
+<span class="fc" id="L186">                        throw new IllegalArgumentException(&quot;any error&quot;);</span>
+                    }
+<span class="nc" id="L188">                }).blockingSingle();</span>
+<span class="nc" id="L189">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testMapWithErrorInFuncAndThreadPoolScheduler() throws InterruptedException {
+        // The error will throw in one of threads in the thread pool.
+        // If map does not handle it, the error will disappear.
+        // so map needs to handle the error by itself.
+<span class="fc" id="L196">        Observable&lt;String&gt; m = Observable.just(&quot;one&quot;)</span>
+<span class="fc" id="L197">                .observeOn(Schedulers.computation())</span>
+<span class="fc" id="L198">                .map(new Function&lt;String, String&gt;() {</span>
+                    @Override
+                    public String apply(String arg0) {
+<span class="fc" id="L201">                        throw new IllegalArgumentException(&quot;any error&quot;);</span>
+                    }
+                });
+
+        // block for response, expecting exception thrown
+<span class="nc" id="L206">        m.blockingLast();</span>
+<span class="nc" id="L207">    }</span>
+
+    /**
+     * While mapping over range(1,0).last() we expect NoSuchElementException since the sequence is empty.
+     */
+    @Test
+    public void testErrorPassesThruMap() {
+<span class="fc" id="L214">        assertNull(Observable.range(1, 0).lastElement().map(new Function&lt;Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer i) {
+<span class="nc" id="L218">                return i;</span>
+            }
+
+<span class="fc" id="L221">        }).blockingGet());</span>
+<span class="fc" id="L222">    }</span>
+
+    /**
+     * We expect IllegalStateException to pass thru map.
+     */
+    @Test(expected = IllegalStateException.class)
+    public void testErrorPassesThruMap2() {
+<span class="fc" id="L229">        Observable.error(new IllegalStateException()).map(new Function&lt;Object, Object&gt;() {</span>
+
+            @Override
+            public Object apply(Object i) {
+<span class="nc" id="L233">                return i;</span>
+            }
+
+<span class="nc" id="L236">        }).blockingSingle();</span>
+<span class="nc" id="L237">    }</span>
+
+    /**
+     * We expect an ArithmeticException exception here because last() emits a single value
+     * but then we divide by 0.
+     */
+    @Test(expected = ArithmeticException.class)
+    public void testMapWithErrorInFunc() {
+<span class="fc" id="L245">        Observable.range(1, 1).lastElement().map(new Function&lt;Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer i) {
+<span class="nc" id="L249">                return i / 0;</span>
+            }
+
+<span class="nc" id="L252">        }).blockingGet();</span>
+<span class="nc" id="L253">    }</span>
+
+    // FIXME RS subscribers can't throw
+//    @Test(expected = OnErrorNotImplementedException.class)
+//    public void verifyExceptionIsThrownIfThereIsNoExceptionHandler() {
+//
+//        ObservableSource&lt;Object&gt; creator = new ObservableSource&lt;Object&gt;() {
+//
+//            @Override
+//            public void subscribeActual(Observer&lt;? super Object&gt; observer) {
+//                observer.onSubscribe(EmptyDisposable.INSTANCE);
+//                observer.onNext(&quot;a&quot;);
+//                observer.onNext(&quot;b&quot;);
+//                observer.onNext(&quot;c&quot;);
+//                observer.onComplete();
+//            }
+//        };
+//
+//        Function&lt;Object, Observable&lt;Object&gt;&gt; manyMapper = new Function&lt;Object, Observable&lt;Object&gt;&gt;() {
+//
+//            @Override
+//            public Observable&lt;Object&gt; apply(Object object) {
+//                return Observable.just(object);
+//            }
+//        };
+//
+//        Function&lt;Object, Object&gt; mapper = new Function&lt;Object, Object&gt;() {
+//            private int count = 0;
+//
+//            @Override
+//            public Object apply(Object object) {
+//                ++count;
+//                if (count &gt; 2) {
+//                    throw new RuntimeException();
+//                }
+//                return object;
+//            }
+//        };
+//
+//        Consumer&lt;Object&gt; onNext = new Consumer&lt;Object&gt;() {
+//
+//            @Override
+//            public void accept(Object object) {
+//                System.out.println(object.toString());
+//            }
+//        };
+//
+//        try {
+//            Observable.unsafeCreate(creator).flatMap(manyMapper).map(mapper).subscribe(onNext);
+//        } catch (RuntimeException e) {
+//            e.printStackTrace();
+//            throw e;
+//        }
+//    }
+
+    private static Map&lt;String, String&gt; getMap(String prefix) {
+<span class="fc" id="L309">        Map&lt;String, String&gt; m = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L310">        m.put(&quot;firstName&quot;, prefix + &quot;First&quot;);</span>
+<span class="fc" id="L311">        m.put(&quot;lastName&quot;, prefix + &quot;Last&quot;);</span>
+<span class="fc" id="L312">        return m;</span>
+    }
+
+    // FIXME RS subscribers can't throw
+//    @Test(expected = OnErrorNotImplementedException.class)
+//    public void testShouldNotSwallowOnErrorNotImplementedException() {
+//        Observable.just(&quot;a&quot;, &quot;b&quot;).flatMap(new Function&lt;String, Observable&lt;String&gt;&gt;() {
+//            @Override
+//            public Observable&lt;String&gt; apply(String s) {
+//                return Observable.just(s + &quot;1&quot;, s + &quot;2&quot;);
+//            }
+//        }).flatMap(new Function&lt;String, Observable&lt;String&gt;&gt;() {
+//            @Override
+//            public Observable&lt;String&gt; apply(String s) {
+//                return Observable.error(new Exception(&quot;test&quot;));
+//            }
+//        }).forEach(new Consumer&lt;String&gt;() {
+//            @Override
+//            public void accept(String s) {
+//                System.out.println(s);
+//            }
+//        });
+//    }
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L338">        TestHelper.checkDisposed(Observable.range(1, 5).map(Functions.identity()));</span>
+<span class="fc" id="L339">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L343">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; apply(Observable&lt;Object&gt; o) throws Exception {
+<span class="fc" id="L346">                return o.map(Functions.identity());</span>
+            }
+        });
+<span class="fc" id="L349">    }</span>
+
+    @Test
+    public void fusedSync() {
+<span class="fc" id="L353">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L355">        Observable.range(1, 5)</span>
+<span class="fc" id="L356">        .map(Functions.&lt;Integer&gt;identity())</span>
+<span class="fc" id="L357">        .subscribe(to);</span>
+
+<span class="fc" id="L359">        ObserverFusion.assertFusion(to, QueueFuseable.SYNC)</span>
+<span class="fc" id="L360">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L361">    }</span>
+
+    @Test
+    public void fusedAsync() {
+<span class="fc" id="L365">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L367">        UnicastSubject&lt;Integer&gt; us = UnicastSubject.create();</span>
+
+<span class="fc" id="L369">        us</span>
+<span class="fc" id="L370">        .map(Functions.&lt;Integer&gt;identity())</span>
+<span class="fc" id="L371">        .subscribe(to);</span>
+
+<span class="fc" id="L373">        TestHelper.emit(us, 1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L375">        ObserverFusion.assertFusion(to, QueueFuseable.ASYNC)</span>
+<span class="fc" id="L376">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L377">    }</span>
+
+    @Test
+    public void fusedReject() {
+<span class="fc" id="L381">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY | QueueFuseable.BOUNDARY);</span>
+
+<span class="fc" id="L383">        Observable.range(1, 5)</span>
+<span class="fc" id="L384">        .map(Functions.&lt;Integer&gt;identity())</span>
+<span class="fc" id="L385">        .subscribe(to);</span>
+
+<span class="fc" id="L387">        ObserverFusion.assertFusion(to, QueueFuseable.NONE)</span>
+<span class="fc" id="L388">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L389">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L393">        TestHelper.checkBadSourceObservable(new Function&lt;Observable&lt;Object&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Observable&lt;Object&gt; o) throws Exception {
+<span class="fc" id="L396">                return o.map(Functions.identity());</span>
+            }
+<span class="fc" id="L398">        }, false, 1, 1, 1);</span>
+<span class="fc" id="L399">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

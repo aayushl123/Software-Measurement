@@ -1,0 +1,662 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableMergeDelayErrorTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableMergeDelayErrorTest.java</span></div><h1>ObservableMergeDelayErrorTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+import org.junit.*;
+import org.mockito.InOrder;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.*;
+import io.reactivex.observers.*;
+
+<span class="fc" id="L32">public class ObservableMergeDelayErrorTest {</span>
+
+    Observer&lt;String&gt; stringObserver;
+
+    @Before
+    public void before() {
+<span class="fc" id="L38">        stringObserver = TestHelper.mockObserver();</span>
+<span class="fc" id="L39">    }</span>
+
+    @Test
+    public void testErrorDelayed1() {
+<span class="fc" id="L43">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestErrorObservable(&quot;four&quot;, null, &quot;six&quot;)); // we expect to lose &quot;six&quot; from the source (and it should never be sent by the source since onError was called</span>
+<span class="fc" id="L44">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestErrorObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+
+<span class="fc" id="L46">        Observable&lt;String&gt; m = Observable.mergeDelayError(o1, o2);</span>
+<span class="fc" id="L47">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L49">        verify(stringObserver, times(1)).onError(any(NullPointerException.class));</span>
+<span class="fc" id="L50">        verify(stringObserver, never()).onComplete();</span>
+<span class="fc" id="L51">        verify(stringObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L52">        verify(stringObserver, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L53">        verify(stringObserver, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L54">        verify(stringObserver, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L55">        verify(stringObserver, times(0)).onNext(&quot;five&quot;);</span>
+        // despite not expecting it ... we don't do anything to prevent it if the source Observable keeps sending after onError
+        // inner Observable errors are considered terminal for that source
+//        verify(stringObserver, times(1)).onNext(&quot;six&quot;);
+        // inner Observable errors are considered terminal for that source
+<span class="fc" id="L60">    }</span>
+
+    @Test
+    public void testErrorDelayed2() {
+<span class="fc" id="L64">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestErrorObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L65">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestErrorObservable(&quot;four&quot;, null, &quot;six&quot;)); // we expect to lose &quot;six&quot; from the source (and it should never be sent by the source since onError was called</span>
+<span class="fc" id="L66">        final Observable&lt;String&gt; o3 = Observable.unsafeCreate(new TestErrorObservable(&quot;seven&quot;, &quot;eight&quot;, null));</span>
+<span class="fc" id="L67">        final Observable&lt;String&gt; o4 = Observable.unsafeCreate(new TestErrorObservable(&quot;nine&quot;));</span>
+
+<span class="fc" id="L69">        Observable&lt;String&gt; m = Observable.mergeDelayError(o1, o2, o3, o4);</span>
+<span class="fc" id="L70">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L72">        verify(stringObserver, times(1)).onError(any(CompositeException.class));</span>
+<span class="fc" id="L73">        verify(stringObserver, never()).onComplete();</span>
+<span class="fc" id="L74">        verify(stringObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L75">        verify(stringObserver, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L76">        verify(stringObserver, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L77">        verify(stringObserver, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L78">        verify(stringObserver, times(0)).onNext(&quot;five&quot;);</span>
+        // despite not expecting it ... we don't do anything to prevent it if the source Observable keeps sending after onError
+        // inner Observable errors are considered terminal for that source
+//        verify(stringObserver, times(1)).onNext(&quot;six&quot;);
+<span class="fc" id="L82">        verify(stringObserver, times(1)).onNext(&quot;seven&quot;);</span>
+<span class="fc" id="L83">        verify(stringObserver, times(1)).onNext(&quot;eight&quot;);</span>
+<span class="fc" id="L84">        verify(stringObserver, times(1)).onNext(&quot;nine&quot;);</span>
+<span class="fc" id="L85">    }</span>
+
+    @Test
+    public void testErrorDelayed3() {
+<span class="fc" id="L89">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestErrorObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L90">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestErrorObservable(&quot;four&quot;, &quot;five&quot;, &quot;six&quot;));</span>
+<span class="fc" id="L91">        final Observable&lt;String&gt; o3 = Observable.unsafeCreate(new TestErrorObservable(&quot;seven&quot;, &quot;eight&quot;, null));</span>
+<span class="fc" id="L92">        final Observable&lt;String&gt; o4 = Observable.unsafeCreate(new TestErrorObservable(&quot;nine&quot;));</span>
+
+<span class="fc" id="L94">        Observable&lt;String&gt; m = Observable.mergeDelayError(o1, o2, o3, o4);</span>
+<span class="fc" id="L95">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L97">        verify(stringObserver, times(1)).onError(any(NullPointerException.class));</span>
+<span class="fc" id="L98">        verify(stringObserver, never()).onComplete();</span>
+<span class="fc" id="L99">        verify(stringObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L100">        verify(stringObserver, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L101">        verify(stringObserver, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L102">        verify(stringObserver, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L103">        verify(stringObserver, times(1)).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L104">        verify(stringObserver, times(1)).onNext(&quot;six&quot;);</span>
+<span class="fc" id="L105">        verify(stringObserver, times(1)).onNext(&quot;seven&quot;);</span>
+<span class="fc" id="L106">        verify(stringObserver, times(1)).onNext(&quot;eight&quot;);</span>
+<span class="fc" id="L107">        verify(stringObserver, times(1)).onNext(&quot;nine&quot;);</span>
+<span class="fc" id="L108">    }</span>
+
+    @Test
+    public void testErrorDelayed4() {
+<span class="fc" id="L112">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestErrorObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L113">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestErrorObservable(&quot;four&quot;, &quot;five&quot;, &quot;six&quot;));</span>
+<span class="fc" id="L114">        final Observable&lt;String&gt; o3 = Observable.unsafeCreate(new TestErrorObservable(&quot;seven&quot;, &quot;eight&quot;));</span>
+<span class="fc" id="L115">        final Observable&lt;String&gt; o4 = Observable.unsafeCreate(new TestErrorObservable(&quot;nine&quot;, null));</span>
+
+<span class="fc" id="L117">        Observable&lt;String&gt; m = Observable.mergeDelayError(o1, o2, o3, o4);</span>
+<span class="fc" id="L118">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L120">        verify(stringObserver, times(1)).onError(any(NullPointerException.class));</span>
+<span class="fc" id="L121">        verify(stringObserver, never()).onComplete();</span>
+<span class="fc" id="L122">        verify(stringObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L123">        verify(stringObserver, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L124">        verify(stringObserver, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L125">        verify(stringObserver, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L126">        verify(stringObserver, times(1)).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L127">        verify(stringObserver, times(1)).onNext(&quot;six&quot;);</span>
+<span class="fc" id="L128">        verify(stringObserver, times(1)).onNext(&quot;seven&quot;);</span>
+<span class="fc" id="L129">        verify(stringObserver, times(1)).onNext(&quot;eight&quot;);</span>
+<span class="fc" id="L130">        verify(stringObserver, times(1)).onNext(&quot;nine&quot;);</span>
+<span class="fc" id="L131">    }</span>
+
+    @Test
+    public void testErrorDelayed4WithThreading() {
+<span class="fc" id="L135">        final TestAsyncErrorObservable o1 = new TestAsyncErrorObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L136">        final TestAsyncErrorObservable o2 = new TestAsyncErrorObservable(&quot;four&quot;, &quot;five&quot;, &quot;six&quot;);</span>
+<span class="fc" id="L137">        final TestAsyncErrorObservable o3 = new TestAsyncErrorObservable(&quot;seven&quot;, &quot;eight&quot;);</span>
+        // throw the error at the very end so no onComplete will be called after it
+<span class="fc" id="L139">        final TestAsyncErrorObservable o4 = new TestAsyncErrorObservable(&quot;nine&quot;, null);</span>
+
+<span class="fc" id="L141">        Observable&lt;String&gt; m = Observable.mergeDelayError(Observable.unsafeCreate(o1), Observable.unsafeCreate(o2), Observable.unsafeCreate(o3), Observable.unsafeCreate(o4));</span>
+<span class="fc" id="L142">        m.subscribe(stringObserver);</span>
+
+        try {
+<span class="fc" id="L145">            o1.t.join();</span>
+<span class="fc" id="L146">            o2.t.join();</span>
+<span class="fc" id="L147">            o3.t.join();</span>
+<span class="fc" id="L148">            o4.t.join();</span>
+<span class="nc" id="L149">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L150">            throw new RuntimeException(e);</span>
+<span class="fc" id="L151">        }</span>
+
+<span class="fc" id="L153">        verify(stringObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L154">        verify(stringObserver, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L155">        verify(stringObserver, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L156">        verify(stringObserver, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L157">        verify(stringObserver, times(1)).onNext(&quot;five&quot;);</span>
+<span class="fc" id="L158">        verify(stringObserver, times(1)).onNext(&quot;six&quot;);</span>
+<span class="fc" id="L159">        verify(stringObserver, times(1)).onNext(&quot;seven&quot;);</span>
+<span class="fc" id="L160">        verify(stringObserver, times(1)).onNext(&quot;eight&quot;);</span>
+<span class="fc" id="L161">        verify(stringObserver, times(1)).onNext(&quot;nine&quot;);</span>
+<span class="fc" id="L162">        verify(stringObserver, times(1)).onError(any(NullPointerException.class));</span>
+<span class="fc" id="L163">        verify(stringObserver, never()).onComplete();</span>
+<span class="fc" id="L164">    }</span>
+
+    @Test
+    public void testCompositeErrorDelayed1() {
+<span class="fc" id="L168">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestErrorObservable(&quot;four&quot;, null, &quot;six&quot;)); // we expect to lose &quot;six&quot; from the source (and it should never be sent by the source since onError was called</span>
+<span class="fc" id="L169">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestErrorObservable(&quot;one&quot;, &quot;two&quot;, null));</span>
+
+<span class="fc" id="L171">        Observable&lt;String&gt; m = Observable.mergeDelayError(o1, o2);</span>
+<span class="fc" id="L172">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L174">        verify(stringObserver, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L175">        verify(stringObserver, never()).onComplete();</span>
+<span class="fc" id="L176">        verify(stringObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L177">        verify(stringObserver, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L178">        verify(stringObserver, times(0)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L179">        verify(stringObserver, times(1)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L180">        verify(stringObserver, times(0)).onNext(&quot;five&quot;);</span>
+        // despite not expecting it ... we don't do anything to prevent it if the source Observable keeps sending after onError
+        // inner Observable errors are considered terminal for that source
+//        verify(stringObserver, times(1)).onNext(&quot;six&quot;);
+<span class="fc" id="L184">    }</span>
+
+    @Test
+    public void testCompositeErrorDelayed2() {
+<span class="fc" id="L188">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestErrorObservable(&quot;four&quot;, null, &quot;six&quot;)); // we expect to lose &quot;six&quot; from the source (and it should never be sent by the source since onError was called</span>
+<span class="fc" id="L189">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestErrorObservable(&quot;one&quot;, &quot;two&quot;, null));</span>
+
+<span class="fc" id="L191">        Observable&lt;String&gt; m = Observable.mergeDelayError(o1, o2);</span>
+<span class="fc" id="L192">        CaptureObserver w = new CaptureObserver();</span>
+<span class="fc" id="L193">        m.subscribe(w);</span>
+
+<span class="fc" id="L195">        assertNotNull(w.e);</span>
+
+<span class="fc" id="L197">        assertEquals(2, ((CompositeException)w.e).size());</span>
+
+//        if (w.e instanceof CompositeException) {
+//            assertEquals(2, ((CompositeException) w.e).getExceptions().size());
+//            w.e.printStackTrace();
+//        } else {
+//            fail(&quot;Expecting CompositeException&quot;);
+//        }
+
+<span class="fc" id="L206">    }</span>
+
+    /**
+     * The unit tests below are from OperationMerge and should ensure the normal merge functionality is correct.
+     */
+
+    @Test
+    public void testMergeObservableOfObservables() {
+<span class="fc" id="L214">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestSynchronousObservable());</span>
+<span class="fc" id="L215">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestSynchronousObservable());</span>
+
+<span class="fc" id="L217">        Observable&lt;Observable&lt;String&gt;&gt; observableOfObservables = Observable.unsafeCreate(new ObservableSource&lt;Observable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super Observable&lt;String&gt;&gt; observer) {
+<span class="fc" id="L221">                observer.onSubscribe(Disposables.empty());</span>
+                // simulate what would happen in an Observable
+<span class="fc" id="L223">                observer.onNext(o1);</span>
+<span class="fc" id="L224">                observer.onNext(o2);</span>
+<span class="fc" id="L225">                observer.onComplete();</span>
+<span class="fc" id="L226">            }</span>
+
+        });
+<span class="fc" id="L229">        Observable&lt;String&gt; m = Observable.mergeDelayError(observableOfObservables);</span>
+<span class="fc" id="L230">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L232">        verify(stringObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L233">        verify(stringObserver, times(1)).onComplete();</span>
+<span class="fc" id="L234">        verify(stringObserver, times(2)).onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L235">    }</span>
+
+    @Test
+    public void testMergeArray() {
+<span class="fc" id="L239">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestSynchronousObservable());</span>
+<span class="fc" id="L240">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestSynchronousObservable());</span>
+
+<span class="fc" id="L242">        Observable&lt;String&gt; m = Observable.mergeDelayError(o1, o2);</span>
+<span class="fc" id="L243">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L245">        verify(stringObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L246">        verify(stringObserver, times(2)).onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L247">        verify(stringObserver, times(1)).onComplete();</span>
+<span class="fc" id="L248">    }</span>
+
+    @Test
+    public void testMergeList() {
+<span class="fc" id="L252">        final Observable&lt;String&gt; o1 = Observable.unsafeCreate(new TestSynchronousObservable());</span>
+<span class="fc" id="L253">        final Observable&lt;String&gt; o2 = Observable.unsafeCreate(new TestSynchronousObservable());</span>
+<span class="fc" id="L254">        List&lt;Observable&lt;String&gt;&gt; listOfObservables = new ArrayList&lt;Observable&lt;String&gt;&gt;();</span>
+<span class="fc" id="L255">        listOfObservables.add(o1);</span>
+<span class="fc" id="L256">        listOfObservables.add(o2);</span>
+
+<span class="fc" id="L258">        Observable&lt;String&gt; m = Observable.mergeDelayError(Observable.fromIterable(listOfObservables));</span>
+<span class="fc" id="L259">        m.subscribe(stringObserver);</span>
+
+<span class="fc" id="L261">        verify(stringObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L262">        verify(stringObserver, times(1)).onComplete();</span>
+<span class="fc" id="L263">        verify(stringObserver, times(2)).onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L264">    }</span>
+
+    @Test
+    public void testMergeArrayWithThreading() {
+<span class="fc" id="L268">        final TestASynchronousObservable o1 = new TestASynchronousObservable();</span>
+<span class="fc" id="L269">        final TestASynchronousObservable o2 = new TestASynchronousObservable();</span>
+
+<span class="fc" id="L271">        Observable&lt;String&gt; m = Observable.mergeDelayError(Observable.unsafeCreate(o1), Observable.unsafeCreate(o2));</span>
+<span class="fc" id="L272">        m.subscribe(stringObserver);</span>
+
+        try {
+<span class="fc" id="L275">            o1.t.join();</span>
+<span class="fc" id="L276">            o2.t.join();</span>
+<span class="nc" id="L277">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L278">            throw new RuntimeException(e);</span>
+<span class="fc" id="L279">        }</span>
+
+<span class="fc" id="L281">        verify(stringObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L282">        verify(stringObserver, times(2)).onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L283">        verify(stringObserver, times(1)).onComplete();</span>
+<span class="fc" id="L284">    }</span>
+
+    @Test(timeout = 1000L)
+    public void testSynchronousError() {
+<span class="fc" id="L288">        final Observable&lt;Observable&lt;String&gt;&gt; o1 = Observable.error(new RuntimeException(&quot;unit test&quot;));</span>
+
+<span class="fc" id="L290">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L291">        Observable.mergeDelayError(o1).subscribe(new DefaultObserver&lt;String&gt;() {</span>
+            @Override
+            public void onComplete() {
+<span class="nc" id="L294">                fail(&quot;Expected onError path&quot;);</span>
+<span class="nc" id="L295">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L299">                latch.countDown();</span>
+<span class="fc" id="L300">            }</span>
+
+            @Override
+            public void onNext(String s) {
+<span class="nc" id="L304">                fail(&quot;Expected onError path&quot;);</span>
+<span class="nc" id="L305">            }</span>
+        });
+
+        try {
+<span class="fc" id="L309">            latch.await();</span>
+<span class="nc" id="L310">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L311">            fail(&quot;interrupted&quot;);</span>
+<span class="fc" id="L312">        }</span>
+<span class="fc" id="L313">    }</span>
+
+    private static class TestSynchronousObservable implements ObservableSource&lt;String&gt; {
+
+        @Override
+        public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L319">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L320">            observer.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L321">            observer.onComplete();</span>
+<span class="fc" id="L322">        }</span>
+    }
+
+    private static class TestASynchronousObservable implements ObservableSource&lt;String&gt; {
+        Thread t;
+
+        @Override
+        public void subscribe(final Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L330">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L331">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+<span class="fc" id="L335">                    observer.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L336">                    observer.onComplete();</span>
+<span class="fc" id="L337">                }</span>
+
+            });
+<span class="fc" id="L340">            t.start();</span>
+<span class="fc" id="L341">        }</span>
+    }
+
+    private static class TestErrorObservable implements ObservableSource&lt;String&gt; {
+
+        String[] valuesToReturn;
+
+<span class="fc" id="L348">        TestErrorObservable(String... values) {</span>
+<span class="fc" id="L349">            valuesToReturn = values;</span>
+<span class="fc" id="L350">        }</span>
+
+        @Override
+        public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L354">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L355">            boolean errorThrown = false;</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">            for (String s : valuesToReturn) {</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">                if (s == null) {</span>
+<span class="fc" id="L358">                    System.out.println(&quot;throwing exception&quot;);</span>
+<span class="fc" id="L359">                    observer.onError(new NullPointerException());</span>
+<span class="fc" id="L360">                    errorThrown = true;</span>
+                    // purposefully not returning here so it will continue calling onNext
+                    // so that we also test that we handle bad sequences like this
+                } else {
+<span class="fc" id="L364">                    observer.onNext(s);</span>
+                }
+            }
+<span class="fc bfc" id="L367" title="All 2 branches covered.">            if (!errorThrown) {</span>
+<span class="fc" id="L368">                observer.onComplete();</span>
+            }
+<span class="fc" id="L370">        }</span>
+    }
+
+    private static class TestAsyncErrorObservable implements ObservableSource&lt;String&gt; {
+
+        String[] valuesToReturn;
+
+<span class="fc" id="L377">        TestAsyncErrorObservable(String... values) {</span>
+<span class="fc" id="L378">            valuesToReturn = values;</span>
+<span class="fc" id="L379">        }</span>
+
+        Thread t;
+
+        @Override
+        public void subscribe(final Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L385">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L386">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+<span class="fc bfc" id="L390" title="All 2 branches covered.">                    for (String s : valuesToReturn) {</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">                        if (s == null) {</span>
+<span class="fc" id="L392">                            System.out.println(&quot;throwing exception&quot;);</span>
+                            try {
+<span class="fc" id="L394">                                Thread.sleep(100);</span>
+<span class="nc" id="L395">                            } catch (Throwable e) {</span>
+
+<span class="fc" id="L397">                            }</span>
+<span class="fc" id="L398">                            observer.onError(new NullPointerException());</span>
+<span class="fc" id="L399">                            return;</span>
+                        } else {
+<span class="fc" id="L401">                            observer.onNext(s);</span>
+                        }
+                    }
+<span class="fc" id="L404">                    System.out.println(&quot;subscription complete&quot;);</span>
+<span class="fc" id="L405">                    observer.onComplete();</span>
+<span class="fc" id="L406">                }</span>
+
+            });
+<span class="fc" id="L409">            t.start();</span>
+<span class="fc" id="L410">        }</span>
+    }
+
+    private static class CaptureObserver extends DefaultObserver&lt;String&gt; {
+        volatile Throwable e;
+
+        @Override
+        public void onComplete() {
+
+<span class="nc" id="L419">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L423">            this.e = e;</span>
+<span class="fc" id="L424">        }</span>
+
+        @Override
+        public void onNext(String args) {
+
+<span class="fc" id="L429">        }</span>
+
+    }
+
+    @Test
+    @Ignore(&quot;Subscribers should not throw&quot;)
+    public void testMergeSourceWhichDoesntPropagateExceptionBack() {
+<span class="nc" id="L436">        Observable&lt;Integer&gt; source = Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super Integer&gt; t1) {
+<span class="nc" id="L439">                t1.onSubscribe(Disposables.empty());</span>
+                try {
+<span class="nc" id="L441">                    t1.onNext(0);</span>
+<span class="nc" id="L442">                } catch (Throwable swallow) {</span>
+
+<span class="nc" id="L444">                }</span>
+<span class="nc" id="L445">                t1.onNext(1);</span>
+<span class="nc" id="L446">                t1.onComplete();</span>
+<span class="nc" id="L447">            }</span>
+        });
+
+<span class="nc" id="L450">        Observable&lt;Integer&gt; result = Observable.mergeDelayError(source, Observable.just(2));</span>
+
+<span class="nc" id="L452">        final Observer&lt;Integer&gt; o = TestHelper.mockObserver();</span>
+<span class="nc" id="L453">        InOrder inOrder = inOrder(o);</span>
+
+<span class="nc" id="L455">        result.subscribe(new DefaultObserver&lt;Integer&gt;() {</span>
+            int calls;
+            @Override
+            public void onNext(Integer t) {
+<span class="nc bnc" id="L459" title="All 2 branches missed.">                if (calls++ == 0) {</span>
+<span class="nc" id="L460">                    throw new TestException();</span>
+                }
+<span class="nc" id="L462">                o.onNext(t);</span>
+<span class="nc" id="L463">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L467">                o.onError(e);</span>
+<span class="nc" id="L468">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L472">                o.onComplete();</span>
+<span class="nc" id="L473">            }</span>
+
+        });
+
+        /*
+         * If the child onNext throws, why would we keep accepting values from
+         * other sources?
+         */
+<span class="nc" id="L481">        inOrder.verify(o).onNext(2);</span>
+<span class="nc" id="L482">        inOrder.verify(o, never()).onNext(0);</span>
+<span class="nc" id="L483">        inOrder.verify(o, never()).onNext(1);</span>
+<span class="nc" id="L484">        inOrder.verify(o, never()).onNext(anyInt());</span>
+<span class="nc" id="L485">        inOrder.verify(o).onError(any(TestException.class));</span>
+<span class="nc" id="L486">        verify(o, never()).onComplete();</span>
+<span class="nc" id="L487">    }</span>
+
+    @Test
+    public void testErrorInParentObservable() {
+<span class="fc" id="L491">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L492">        Observable.mergeDelayError(</span>
+<span class="fc" id="L493">                Observable.just(Observable.just(1), Observable.just(2))</span>
+<span class="fc" id="L494">                        .startWith(Observable.&lt;Integer&gt; error(new RuntimeException()))</span>
+<span class="fc" id="L495">                ).subscribe(to);</span>
+<span class="fc" id="L496">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L497">        to.assertTerminated();</span>
+<span class="fc" id="L498">        to.assertValues(1, 2);</span>
+<span class="fc" id="L499">        assertEquals(1, to.errorCount());</span>
+
+<span class="fc" id="L501">    }</span>
+
+    @Test
+    public void testErrorInParentObservableDelayed() throws Exception {
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        for (int i = 0; i &lt; 50; i++) {</span>
+<span class="fc" id="L506">            final TestASynchronous1sDelayedObservable o1 = new TestASynchronous1sDelayedObservable();</span>
+<span class="fc" id="L507">            final TestASynchronous1sDelayedObservable o2 = new TestASynchronous1sDelayedObservable();</span>
+<span class="fc" id="L508">            Observable&lt;Observable&lt;String&gt;&gt; parentObservable = Observable.unsafeCreate(new ObservableSource&lt;Observable&lt;String&gt;&gt;() {</span>
+                @Override
+                public void subscribe(Observer&lt;? super Observable&lt;String&gt;&gt; op) {
+<span class="fc" id="L511">                    op.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L512">                    op.onNext(Observable.unsafeCreate(o1));</span>
+<span class="fc" id="L513">                    op.onNext(Observable.unsafeCreate(o2));</span>
+<span class="fc" id="L514">                    op.onError(new NullPointerException(&quot;throwing exception in parent&quot;));</span>
+<span class="fc" id="L515">                }</span>
+            });
+
+<span class="fc" id="L518">            Observer&lt;String&gt; stringObserver = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L520">            TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(stringObserver);</span>
+<span class="fc" id="L521">            Observable&lt;String&gt; m = Observable.mergeDelayError(parentObservable);</span>
+<span class="fc" id="L522">            m.subscribe(to);</span>
+<span class="fc" id="L523">            System.out.println(&quot;testErrorInParentObservableDelayed | &quot; + i);</span>
+<span class="fc" id="L524">            to.awaitTerminalEvent(2000, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L525">            to.assertTerminated();</span>
+
+<span class="fc" id="L527">            verify(stringObserver, times(2)).onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L528">            verify(stringObserver, times(1)).onError(any(NullPointerException.class));</span>
+<span class="fc" id="L529">            verify(stringObserver, never()).onComplete();</span>
+        }
+<span class="fc" id="L531">    }</span>
+
+    private static class TestASynchronous1sDelayedObservable implements ObservableSource&lt;String&gt; {
+        Thread t;
+
+        @Override
+        public void subscribe(final Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L538">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L539">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+                    try {
+<span class="fc" id="L544">                        Thread.sleep(100);</span>
+<span class="nc" id="L545">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L546">                        observer.onError(e);</span>
+<span class="fc" id="L547">                    }</span>
+<span class="fc" id="L548">                    observer.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L549">                    observer.onComplete();</span>
+<span class="fc" id="L550">                }</span>
+
+            });
+<span class="fc" id="L553">            t.start();</span>
+<span class="fc" id="L554">        }</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void mergeIterableDelayError() {
+<span class="fc" id="L560">        Observable.mergeDelayError(Arrays.asList(Observable.just(1), Observable.just(2)))</span>
+<span class="fc" id="L561">        .test()</span>
+<span class="fc" id="L562">        .assertResult(1, 2);</span>
+<span class="fc" id="L563">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void mergeArrayDelayError() {
+<span class="fc" id="L568">        Observable.mergeArrayDelayError(Observable.just(1), Observable.just(2))</span>
+<span class="fc" id="L569">        .test()</span>
+<span class="fc" id="L570">        .assertResult(1, 2);</span>
+<span class="fc" id="L571">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void mergeIterableDelayErrorWithError() {
+<span class="fc" id="L576">        Observable.mergeDelayError(</span>
+<span class="fc" id="L577">                Arrays.asList(Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L578">                Observable.just(2)))</span>
+<span class="fc" id="L579">        .test()</span>
+<span class="fc" id="L580">        .assertFailure(TestException.class, 1, 2);</span>
+<span class="fc" id="L581">    }</span>
+
+    @Test
+    public void mergeDelayError() {
+<span class="fc" id="L585">        Observable.mergeDelayError(</span>
+<span class="fc" id="L586">                Observable.just(Observable.just(1),</span>
+<span class="fc" id="L587">                Observable.just(2)))</span>
+<span class="fc" id="L588">        .test()</span>
+<span class="fc" id="L589">        .assertResult(1, 2);</span>
+<span class="fc" id="L590">    }</span>
+
+    @Test
+    public void mergeDelayErrorWithError() {
+<span class="fc" id="L594">        Observable.mergeDelayError(</span>
+<span class="fc" id="L595">                Observable.just(Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L596">                Observable.just(2)))</span>
+<span class="fc" id="L597">        .test()</span>
+<span class="fc" id="L598">        .assertFailure(TestException.class, 1, 2);</span>
+<span class="fc" id="L599">    }</span>
+
+    @Test
+    public void mergeDelayErrorMaxConcurrency() {
+<span class="fc" id="L603">        Observable.mergeDelayError(</span>
+<span class="fc" id="L604">                Observable.just(Observable.just(1),</span>
+<span class="fc" id="L605">                Observable.just(2)), 1)</span>
+<span class="fc" id="L606">        .test()</span>
+<span class="fc" id="L607">        .assertResult(1, 2);</span>
+<span class="fc" id="L608">    }</span>
+
+    @Test
+    public void mergeDelayErrorWithErrorMaxConcurrency() {
+<span class="fc" id="L612">        Observable.mergeDelayError(</span>
+<span class="fc" id="L613">                Observable.just(Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L614">                Observable.just(2)), 1)</span>
+<span class="fc" id="L615">        .test()</span>
+<span class="fc" id="L616">        .assertFailure(TestException.class, 1, 2);</span>
+<span class="fc" id="L617">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void mergeIterableDelayErrorMaxConcurrency() {
+<span class="fc" id="L622">        Observable.mergeDelayError(</span>
+<span class="fc" id="L623">                Arrays.asList(Observable.just(1),</span>
+<span class="fc" id="L624">                Observable.just(2)), 1)</span>
+<span class="fc" id="L625">        .test()</span>
+<span class="fc" id="L626">        .assertResult(1, 2);</span>
+<span class="fc" id="L627">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void mergeIterableDelayErrorWithErrorMaxConcurrency() {
+<span class="fc" id="L632">        Observable.mergeDelayError(</span>
+<span class="fc" id="L633">                Arrays.asList(Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L634">                Observable.just(2)), 1)</span>
+<span class="fc" id="L635">        .test()</span>
+<span class="fc" id="L636">        .assertFailure(TestException.class, 1, 2);</span>
+<span class="fc" id="L637">    }</span>
+
+    @Test
+    public void mergeDelayError3() {
+<span class="fc" id="L641">        Observable.mergeDelayError(</span>
+<span class="fc" id="L642">                Observable.just(1),</span>
+<span class="fc" id="L643">                Observable.just(2),</span>
+<span class="fc" id="L644">                Observable.just(3)</span>
+        )
+<span class="fc" id="L646">        .test()</span>
+<span class="fc" id="L647">        .assertResult(1, 2, 3);</span>
+<span class="fc" id="L648">    }</span>
+
+    @Test
+    public void mergeDelayError3WithError() {
+<span class="fc" id="L652">        Observable.mergeDelayError(</span>
+<span class="fc" id="L653">                Observable.just(1),</span>
+<span class="fc" id="L654">                Observable.just(2).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L655">                Observable.just(3)</span>
+        )
+<span class="fc" id="L657">        .test()</span>
+<span class="fc" id="L658">        .assertFailure(TestException.class, 1, 2, 3);</span>
+<span class="fc" id="L659">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

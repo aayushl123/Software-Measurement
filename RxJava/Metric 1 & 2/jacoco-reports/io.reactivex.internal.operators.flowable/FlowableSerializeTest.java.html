@@ -1,0 +1,409 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSerializeTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableSerializeTest.java</span></div><h1>FlowableSerializeTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.subscribers.DefaultSubscriber;
+
+<span class="fc" id="L29">public class FlowableSerializeTest {</span>
+
+    Subscriber&lt;String&gt; subscriber;
+
+    @Before
+    public void before() {
+<span class="fc" id="L35">        subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L36">    }</span>
+
+    @Test
+    public void testSingleThreadedBasic() {
+<span class="fc" id="L40">        TestSingleThreadedObservable onSubscribe = new TestSingleThreadedObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L41">        Flowable&lt;String&gt; w = Flowable.unsafeCreate(onSubscribe);</span>
+
+<span class="fc" id="L43">        w.serialize().subscribe(subscriber);</span>
+<span class="fc" id="L44">        onSubscribe.waitToFinish();</span>
+
+<span class="fc" id="L46">        verify(subscriber, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L47">        verify(subscriber, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L48">        verify(subscriber, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L49">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L50">        verify(subscriber, times(1)).onComplete();</span>
+        // non-deterministic because unsubscribe happens after 'waitToFinish' releases
+        // so commenting out for now as this is not a critical thing to test here
+        //            verify(s, times(1)).unsubscribe();
+<span class="fc" id="L54">    }</span>
+
+    @Test
+    public void testMultiThreadedBasic() {
+<span class="fc" id="L58">        TestMultiThreadedObservable onSubscribe = new TestMultiThreadedObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L59">        Flowable&lt;String&gt; w = Flowable.unsafeCreate(onSubscribe);</span>
+
+<span class="fc" id="L61">        BusyObserver busyobserver = new BusyObserver();</span>
+
+<span class="fc" id="L63">        w.serialize().subscribe(busyobserver);</span>
+<span class="fc" id="L64">        onSubscribe.waitToFinish();</span>
+
+<span class="fc" id="L66">        assertEquals(3, busyobserver.onNextCount.get());</span>
+<span class="fc" id="L67">        assertFalse(busyobserver.onError);</span>
+<span class="fc" id="L68">        assertTrue(busyobserver.onComplete);</span>
+        // non-deterministic because unsubscribe happens after 'waitToFinish' releases
+        // so commenting out for now as this is not a critical thing to test here
+        //            verify(s, times(1)).unsubscribe();
+
+        // we can have concurrency ...
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        assertTrue(onSubscribe.maxConcurrentThreads.get() &gt; 1);</span>
+        // ... but the onNext execution should be single threaded
+<span class="fc" id="L76">        assertEquals(1, busyobserver.maxConcurrentThreads.get());</span>
+<span class="fc" id="L77">    }</span>
+
+    @Test
+    public void testMultiThreadedWithNPE() {
+<span class="fc" id="L81">        TestMultiThreadedObservable onSubscribe = new TestMultiThreadedObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;, null);</span>
+<span class="fc" id="L82">        Flowable&lt;String&gt; w = Flowable.unsafeCreate(onSubscribe);</span>
+
+<span class="fc" id="L84">        BusyObserver busyobserver = new BusyObserver();</span>
+
+<span class="fc" id="L86">        w.serialize().subscribe(busyobserver);</span>
+<span class="fc" id="L87">        onSubscribe.waitToFinish();</span>
+
+<span class="fc" id="L89">        System.out.println(&quot;maxConcurrentThreads: &quot; + onSubscribe.maxConcurrentThreads.get());</span>
+
+        // we can't know how many onNext calls will occur since they each run on a separate thread
+        // that depends on thread scheduling so 0, 1, 2 and 3 are all valid options
+        // assertEquals(3, busyobserver.onNextCount.get());
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        assertTrue(busyobserver.onNextCount.get() &lt; 4);</span>
+<span class="fc" id="L95">        assertTrue(busyobserver.onError);</span>
+        // no onComplete because onError was invoked
+<span class="fc" id="L97">        assertFalse(busyobserver.onComplete);</span>
+        // non-deterministic because unsubscribe happens after 'waitToFinish' releases
+        // so commenting out for now as this is not a critical thing to test here
+        //verify(s, times(1)).unsubscribe();
+
+        // we can have concurrency ...
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        assertTrue(onSubscribe.maxConcurrentThreads.get() &gt; 1);</span>
+        // ... but the onNext execution should be single threaded
+<span class="fc" id="L105">        assertEquals(1, busyobserver.maxConcurrentThreads.get());</span>
+<span class="fc" id="L106">    }</span>
+
+    @Test
+    public void testMultiThreadedWithNPEinMiddle() {
+<span class="fc" id="L110">        boolean lessThan9 = false;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (int i = 0; i &lt; 3; i++) {</span>
+<span class="fc" id="L112">            TestMultiThreadedObservable onSubscribe = new TestMultiThreadedObservable(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;, null, &quot;four&quot;, &quot;five&quot;, &quot;six&quot;, &quot;seven&quot;, &quot;eight&quot;, &quot;nine&quot;);</span>
+<span class="fc" id="L113">            Flowable&lt;String&gt; w = Flowable.unsafeCreate(onSubscribe);</span>
+
+<span class="fc" id="L115">            BusyObserver busyobserver = new BusyObserver();</span>
+
+<span class="fc" id="L117">            w.serialize().subscribe(busyobserver);</span>
+<span class="fc" id="L118">            onSubscribe.waitToFinish();</span>
+
+<span class="fc" id="L120">            System.out.println(&quot;maxConcurrentThreads: &quot; + onSubscribe.maxConcurrentThreads.get());</span>
+            // this should not always be the full number of items since the error should (very often)
+            // stop it before it completes all 9
+<span class="fc" id="L123">            System.out.println(&quot;onNext count: &quot; + busyobserver.onNextCount.get());</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">            if (busyobserver.onNextCount.get() &lt; 9) {</span>
+<span class="fc" id="L125">                lessThan9 = true;</span>
+            }
+<span class="fc" id="L127">            assertTrue(busyobserver.onError);</span>
+            // no onComplete because onError was invoked
+<span class="fc" id="L129">            assertFalse(busyobserver.onComplete);</span>
+            // non-deterministic because unsubscribe happens after 'waitToFinish' releases
+            // so commenting out for now as this is not a critical thing to test here
+            // verify(s, times(1)).unsubscribe();
+
+            // we can have concurrency ...
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            assertTrue(onSubscribe.maxConcurrentThreads.get() &gt; 1);</span>
+            // ... but the onNext execution should be single threaded
+<span class="fc" id="L137">            assertEquals(1, busyobserver.maxConcurrentThreads.get());</span>
+        }
+<span class="fc" id="L139">        assertTrue(lessThan9);</span>
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * A thread that will pass data to onNext.
+     */
+    static class OnNextThread implements Runnable {
+
+        private final DefaultSubscriber&lt;String&gt; subscriber;
+        private final int numStringsToSend;
+
+<span class="nc" id="L150">        OnNextThread(DefaultSubscriber&lt;String&gt; subscriber, int numStringsToSend) {</span>
+<span class="nc" id="L151">            this.subscriber = subscriber;</span>
+<span class="nc" id="L152">            this.numStringsToSend = numStringsToSend;</span>
+<span class="nc" id="L153">        }</span>
+
+        @Override
+        public void run() {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">            for (int i = 0; i &lt; numStringsToSend; i++) {</span>
+<span class="nc" id="L158">                subscriber.onNext(&quot;aString&quot;);</span>
+            }
+<span class="nc" id="L160">        }</span>
+    }
+
+    /**
+     * A thread that will call onError or onNext.
+     */
+    static class CompletionThread implements Runnable {
+
+        private final DefaultSubscriber&lt;String&gt; subscriber;
+        private final TestConcurrencyobserverEvent event;
+        private final Future&lt;?&gt;[] waitOnThese;
+
+<span class="nc" id="L172">        CompletionThread(DefaultSubscriber&lt;String&gt; subscriber, TestConcurrencyobserverEvent event, Future&lt;?&gt;... waitOnThese) {</span>
+<span class="nc" id="L173">            this.subscriber = subscriber;</span>
+<span class="nc" id="L174">            this.event = event;</span>
+<span class="nc" id="L175">            this.waitOnThese = waitOnThese;</span>
+<span class="nc" id="L176">        }</span>
+
+        @Override
+        public void run() {
+            /* if we have 'waitOnThese' futures, we'll wait on them before proceeding */
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            if (waitOnThese != null) {</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                for (Future&lt;?&gt; f : waitOnThese) {</span>
+                    try {
+<span class="nc" id="L184">                        f.get();</span>
+<span class="nc" id="L185">                    } catch (Throwable e) {</span>
+<span class="nc" id="L186">                        System.err.println(&quot;Error while waiting on future in CompletionThread&quot;);</span>
+<span class="nc" id="L187">                    }</span>
+                }
+            }
+
+            /* send the event */
+<span class="nc bnc" id="L192" title="All 2 branches missed.">            if (event == TestConcurrencyobserverEvent.onError) {</span>
+<span class="nc" id="L193">                subscriber.onError(new RuntimeException(&quot;mocked exception&quot;));</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            } else if (event == TestConcurrencyobserverEvent.onComplete) {</span>
+<span class="nc" id="L195">                subscriber.onComplete();</span>
+
+            } else {
+<span class="nc" id="L198">                throw new IllegalArgumentException(&quot;Expecting either onError or onComplete&quot;);</span>
+            }
+<span class="nc" id="L200">        }</span>
+    }
+
+<span class="nc" id="L203">    enum TestConcurrencyobserverEvent {</span>
+<span class="nc" id="L204">        onComplete, onError, onNext</span>
+    }
+
+    /**
+     * This spawns a single thread for the subscribe execution.
+     */
+    private static class TestSingleThreadedObservable implements Publisher&lt;String&gt; {
+
+        final String[] values;
+        private Thread t;
+
+<span class="fc" id="L215">        TestSingleThreadedObservable(final String... values) {</span>
+<span class="fc" id="L216">            this.values = values;</span>
+
+<span class="fc" id="L218">        }</span>
+
+        @Override
+        public void subscribe(final Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L222">            subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L223">            System.out.println(&quot;TestSingleThreadedObservable subscribed to ...&quot;);</span>
+<span class="fc" id="L224">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+                    try {
+<span class="fc" id="L229">                        System.out.println(&quot;running TestSingleThreadedObservable thread&quot;);</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                        for (String s : values) {</span>
+<span class="fc" id="L231">                            System.out.println(&quot;TestSingleThreadedObservable onNext: &quot; + s);</span>
+<span class="fc" id="L232">                            subscriber.onNext(s);</span>
+                        }
+<span class="fc" id="L234">                        subscriber.onComplete();</span>
+<span class="nc" id="L235">                    } catch (Throwable e) {</span>
+<span class="nc" id="L236">                        throw new RuntimeException(e);</span>
+<span class="fc" id="L237">                    }</span>
+<span class="fc" id="L238">                }</span>
+
+            });
+<span class="fc" id="L241">            System.out.println(&quot;starting TestSingleThreadedObservable thread&quot;);</span>
+<span class="fc" id="L242">            t.start();</span>
+<span class="fc" id="L243">            System.out.println(&quot;done starting TestSingleThreadedObservable thread&quot;);</span>
+<span class="fc" id="L244">        }</span>
+
+        public void waitToFinish() {
+            try {
+<span class="fc" id="L248">                t.join();</span>
+<span class="nc" id="L249">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L250">                throw new RuntimeException(e);</span>
+<span class="fc" id="L251">            }</span>
+<span class="fc" id="L252">        }</span>
+
+    }
+
+    /**
+     * This spawns a thread for the subscription, then a separate thread for each onNext call.
+     */
+    private static class TestMultiThreadedObservable implements Publisher&lt;String&gt; {
+        final String[] values;
+        Thread t;
+<span class="fc" id="L262">        AtomicInteger threadsRunning = new AtomicInteger();</span>
+<span class="fc" id="L263">        AtomicInteger maxConcurrentThreads = new AtomicInteger();</span>
+        ExecutorService threadPool;
+
+<span class="fc" id="L266">        TestMultiThreadedObservable(String... values) {</span>
+<span class="fc" id="L267">            this.values = values;</span>
+<span class="fc" id="L268">            this.threadPool = Executors.newCachedThreadPool();</span>
+<span class="fc" id="L269">        }</span>
+
+        @Override
+        public void subscribe(final Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L273">            subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L274">            System.out.println(&quot;TestMultiThreadedObservable subscribed to ...&quot;);</span>
+<span class="fc" id="L275">            final NullPointerException npe = new NullPointerException();</span>
+<span class="fc" id="L276">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+                    try {
+<span class="fc" id="L281">                        System.out.println(&quot;running TestMultiThreadedObservable thread&quot;);</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">                        for (final String s : values) {</span>
+<span class="fc" id="L283">                            threadPool.execute(new Runnable() {</span>
+
+                                @Override
+                                public void run() {
+<span class="fc" id="L287">                                    threadsRunning.incrementAndGet();</span>
+                                    try {
+                                        // perform onNext call
+<span class="fc bfc" id="L290" title="All 2 branches covered.">                                        if (s == null) {</span>
+<span class="fc" id="L291">                                            System.out.println(&quot;TestMultiThreadedObservable onNext: null&quot;);</span>
+                                            // force an error
+<span class="fc" id="L293">                                            throw npe;</span>
+                                        } else {
+                                            try {
+<span class="fc" id="L296">                                                Thread.sleep(10);</span>
+<span class="nc" id="L297">                                            } catch (InterruptedException ex) {</span>
+                                                // ignored
+<span class="fc" id="L299">                                            }</span>
+<span class="fc" id="L300">                                            System.out.println(&quot;TestMultiThreadedObservable onNext: &quot; + s);</span>
+                                        }
+<span class="fc" id="L302">                                        subscriber.onNext(s);</span>
+                                        // capture 'maxThreads'
+<span class="fc" id="L304">                                        int concurrentThreads = threadsRunning.get();</span>
+<span class="fc" id="L305">                                        int maxThreads = maxConcurrentThreads.get();</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                                        if (concurrentThreads &gt; maxThreads) {</span>
+<span class="fc" id="L307">                                            maxConcurrentThreads.compareAndSet(maxThreads, concurrentThreads);</span>
+                                        }
+<span class="fc" id="L309">                                    } catch (Throwable e) {</span>
+<span class="fc" id="L310">                                        subscriber.onError(e);</span>
+                                    } finally {
+<span class="fc" id="L312">                                        threadsRunning.decrementAndGet();</span>
+                                    }
+<span class="fc" id="L314">                                }</span>
+                            });
+                        }
+                        // we are done spawning threads
+<span class="fc" id="L318">                        threadPool.shutdown();</span>
+<span class="nc" id="L319">                    } catch (Throwable e) {</span>
+<span class="nc" id="L320">                        throw new RuntimeException(e);</span>
+<span class="fc" id="L321">                    }</span>
+
+                    // wait until all threads are done, then mark it as COMPLETED
+                    try {
+                        // wait for all the threads to finish
+<span class="fc" id="L326">                        threadPool.awaitTermination(2, TimeUnit.SECONDS);</span>
+<span class="nc" id="L327">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L328">                        throw new RuntimeException(e);</span>
+<span class="fc" id="L329">                    }</span>
+<span class="fc" id="L330">                    subscriber.onComplete();</span>
+<span class="fc" id="L331">                }</span>
+            });
+<span class="fc" id="L333">            System.out.println(&quot;starting TestMultiThreadedObservable thread&quot;);</span>
+<span class="fc" id="L334">            t.start();</span>
+<span class="fc" id="L335">            System.out.println(&quot;done starting TestMultiThreadedObservable thread&quot;);</span>
+<span class="fc" id="L336">        }</span>
+
+        public void waitToFinish() {
+            try {
+<span class="fc" id="L340">                t.join();</span>
+<span class="nc" id="L341">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L342">                throw new RuntimeException(e);</span>
+<span class="fc" id="L343">            }</span>
+<span class="fc" id="L344">        }</span>
+    }
+
+<span class="fc" id="L347">    private static class BusyObserver extends DefaultSubscriber&lt;String&gt; {</span>
+        volatile boolean onComplete;
+        volatile boolean onError;
+<span class="fc" id="L350">        AtomicInteger onNextCount = new AtomicInteger();</span>
+<span class="fc" id="L351">        AtomicInteger threadsRunning = new AtomicInteger();</span>
+<span class="fc" id="L352">        AtomicInteger maxConcurrentThreads = new AtomicInteger();</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L356">            threadsRunning.incrementAndGet();</span>
+
+<span class="fc" id="L358">            System.out.println(&quot;&gt;&gt;&gt; Busyobserver received onComplete&quot;);</span>
+<span class="fc" id="L359">            onComplete = true;</span>
+
+<span class="fc" id="L361">            int concurrentThreads = threadsRunning.get();</span>
+<span class="fc" id="L362">            int maxThreads = maxConcurrentThreads.get();</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">            if (concurrentThreads &gt; maxThreads) {</span>
+<span class="nc" id="L364">                maxConcurrentThreads.compareAndSet(maxThreads, concurrentThreads);</span>
+            }
+<span class="fc" id="L366">            threadsRunning.decrementAndGet();</span>
+<span class="fc" id="L367">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L371">            threadsRunning.incrementAndGet();</span>
+
+<span class="fc" id="L373">            System.out.println(&quot;&gt;&gt;&gt; Busyobserver received onError: &quot; + e.getMessage());</span>
+<span class="fc" id="L374">            onError = true;</span>
+
+<span class="fc" id="L376">            int concurrentThreads = threadsRunning.get();</span>
+<span class="fc" id="L377">            int maxThreads = maxConcurrentThreads.get();</span>
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">            if (concurrentThreads &gt; maxThreads) {</span>
+<span class="fc" id="L379">                maxConcurrentThreads.compareAndSet(maxThreads, concurrentThreads);</span>
+            }
+<span class="fc" id="L381">            threadsRunning.decrementAndGet();</span>
+<span class="fc" id="L382">        }</span>
+
+        @Override
+        public void onNext(String args) {
+<span class="fc" id="L386">            threadsRunning.incrementAndGet();</span>
+            try {
+<span class="fc" id="L388">                onNextCount.incrementAndGet();</span>
+<span class="fc" id="L389">                System.out.println(&quot;&gt;&gt;&gt; Busyobserver received onNext: &quot; + args);</span>
+                try {
+                    // simulate doing something computational
+<span class="fc" id="L392">                    Thread.sleep(200);</span>
+<span class="nc" id="L393">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L394">                    e.printStackTrace();</span>
+<span class="fc" id="L395">                }</span>
+            } finally {
+                // capture 'maxThreads'
+<span class="fc" id="L398">                int concurrentThreads = threadsRunning.get();</span>
+<span class="fc" id="L399">                int maxThreads = maxConcurrentThreads.get();</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">                if (concurrentThreads &gt; maxThreads) {</span>
+<span class="fc" id="L401">                    maxConcurrentThreads.compareAndSet(maxThreads, concurrentThreads);</span>
+                }
+<span class="fc" id="L403">                threadsRunning.decrementAndGet();</span>
+            }
+<span class="fc" id="L405">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SerializedProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.processors</a> &gt; <span class="el_source">SerializedProcessor.java</span></div><h1>SerializedProcessor.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.processors;
+
+import io.reactivex.annotations.Nullable;
+import org.reactivestreams.*;
+
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Serializes calls to the Subscriber methods.
+ * &lt;p&gt;All other Publisher and Subject methods are thread-safe by design.
+ *
+ * @param &lt;T&gt; the item value type
+ */
+/* public */ final class SerializedProcessor&lt;T&gt; extends FlowableProcessor&lt;T&gt; {
+    /** The actual subscriber to serialize Subscriber calls to. */
+    final FlowableProcessor&lt;T&gt; actual;
+    /** Indicates an emission is going on, guarded by this. */
+    boolean emitting;
+    /** If not null, it holds the missed NotificationLite events. */
+    AppendOnlyLinkedArrayList&lt;Object&gt; queue;
+    /** Indicates a terminal event has been received and all further events will be dropped. */
+    volatile boolean done;
+
+    /**
+     * Constructor that wraps an actual subject.
+     * @param actual the subject wrapped
+     */
+<span class="fc" id="L42">    SerializedProcessor(final FlowableProcessor&lt;T&gt; actual) {</span>
+<span class="fc" id="L43">        this.actual = actual;</span>
+<span class="fc" id="L44">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L48">        actual.subscribe(s);</span>
+<span class="fc" id="L49">    }</span>
+
+    @Override
+    public void onSubscribe(Subscription s) {
+        boolean cancel;
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (!done) {</span>
+<span class="fc" id="L55">            synchronized (this) {</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                if (done) {</span>
+<span class="fc" id="L57">                    cancel = true;</span>
+                } else {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                    if (emitting) {</span>
+<span class="fc" id="L60">                        AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                        if (q == null) {</span>
+<span class="fc" id="L62">                            q = new AppendOnlyLinkedArrayList&lt;Object&gt;(4);</span>
+<span class="fc" id="L63">                            queue = q;</span>
+                        }
+<span class="fc" id="L65">                        q.add(NotificationLite.subscription(s));</span>
+<span class="fc" id="L66">                        return;</span>
+                    }
+<span class="fc" id="L68">                    emitting = true;</span>
+<span class="fc" id="L69">                    cancel = false;</span>
+                }
+<span class="fc" id="L71">            }</span>
+        } else {
+<span class="fc" id="L73">            cancel = true;</span>
+        }
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (cancel) {</span>
+<span class="fc" id="L76">            s.cancel();</span>
+        } else {
+<span class="fc" id="L78">            actual.onSubscribe(s);</span>
+<span class="fc" id="L79">            emitLoop();</span>
+        }
+<span class="fc" id="L81">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L86">            return;</span>
+        }
+<span class="fc" id="L88">        synchronized (this) {</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L90">                return;</span>
+            }
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            if (emitting) {</span>
+<span class="fc" id="L93">                AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                if (q == null) {</span>
+<span class="fc" id="L95">                    q = new AppendOnlyLinkedArrayList&lt;Object&gt;(4);</span>
+<span class="fc" id="L96">                    queue = q;</span>
+                }
+<span class="fc" id="L98">                q.add(NotificationLite.next(t));</span>
+<span class="fc" id="L99">                return;</span>
+            }
+<span class="fc" id="L101">            emitting = true;</span>
+<span class="fc" id="L102">        }</span>
+<span class="fc" id="L103">        actual.onNext(t);</span>
+<span class="fc" id="L104">        emitLoop();</span>
+<span class="fc" id="L105">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L110">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L111">            return;</span>
+        }
+        boolean reportError;
+<span class="fc" id="L114">        synchronized (this) {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L116">                reportError = true;</span>
+            } else {
+<span class="fc" id="L118">                done = true;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                if (emitting) {</span>
+<span class="fc" id="L120">                    AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                    if (q == null) {</span>
+<span class="fc" id="L122">                        q = new AppendOnlyLinkedArrayList&lt;Object&gt;(4);</span>
+<span class="fc" id="L123">                        queue = q;</span>
+                    }
+<span class="fc" id="L125">                    q.setFirst(NotificationLite.error(t));</span>
+<span class="fc" id="L126">                    return;</span>
+                }
+<span class="fc" id="L128">                reportError = false;</span>
+<span class="fc" id="L129">                emitting = true;</span>
+            }
+<span class="fc" id="L131">        }</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (reportError) {</span>
+<span class="fc" id="L133">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L134">            return;</span>
+        }
+<span class="fc" id="L136">        actual.onError(t);</span>
+<span class="fc" id="L137">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L142">            return;</span>
+        }
+<span class="fc" id="L144">        synchronized (this) {</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L146">                return;</span>
+            }
+<span class="fc" id="L148">            done = true;</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (emitting) {</span>
+<span class="fc" id="L150">                AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                if (q == null) {</span>
+<span class="fc" id="L152">                    q = new AppendOnlyLinkedArrayList&lt;Object&gt;(4);</span>
+<span class="fc" id="L153">                    queue = q;</span>
+                }
+<span class="fc" id="L155">                q.add(NotificationLite.complete());</span>
+<span class="fc" id="L156">                return;</span>
+            }
+<span class="fc" id="L158">            emitting = true;</span>
+<span class="fc" id="L159">        }</span>
+<span class="fc" id="L160">        actual.onComplete();</span>
+<span class="fc" id="L161">    }</span>
+
+    /** Loops until all notifications in the queue has been processed. */
+    void emitLoop() {
+        for (;;) {
+            AppendOnlyLinkedArrayList&lt;Object&gt; q;
+<span class="fc" id="L167">            synchronized (this) {</span>
+<span class="fc" id="L168">                q = queue;</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                if (q == null) {</span>
+<span class="fc" id="L170">                    emitting = false;</span>
+<span class="fc" id="L171">                    return;</span>
+                }
+<span class="fc" id="L173">                queue = null;</span>
+<span class="fc" id="L174">            }</span>
+
+<span class="fc" id="L176">            q.accept(actual);</span>
+<span class="fc" id="L177">        }</span>
+    }
+
+    @Override
+    public boolean hasSubscribers() {
+<span class="fc" id="L182">        return actual.hasSubscribers();</span>
+    }
+
+    @Override
+    public boolean hasThrowable() {
+<span class="fc" id="L187">        return actual.hasThrowable();</span>
+    }
+
+    @Override
+    @Nullable
+    public Throwable getThrowable() {
+<span class="fc" id="L193">        return actual.getThrowable();</span>
+    }
+
+    @Override
+    public boolean hasComplete() {
+<span class="fc" id="L198">        return actual.hasComplete();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

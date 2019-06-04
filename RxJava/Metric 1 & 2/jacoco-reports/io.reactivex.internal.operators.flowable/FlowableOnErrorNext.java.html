@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableOnErrorNext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableOnErrorNext.java</span></div><h1>FlowableOnErrorNext.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.SubscriptionArbiter;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableOnErrorNext&lt;T&gt; extends AbstractFlowableWithUpstream&lt;T, T&gt; {
+    final Function&lt;? super Throwable, ? extends Publisher&lt;? extends T&gt;&gt; nextSupplier;
+    final boolean allowFatal;
+
+    public FlowableOnErrorNext(Flowable&lt;T&gt; source,
+            Function&lt;? super Throwable, ? extends Publisher&lt;? extends T&gt;&gt; nextSupplier, boolean allowFatal) {
+<span class="fc" id="L31">        super(source);</span>
+<span class="fc" id="L32">        this.nextSupplier = nextSupplier;</span>
+<span class="fc" id="L33">        this.allowFatal = allowFatal;</span>
+<span class="fc" id="L34">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L38">        OnErrorNextSubscriber&lt;T&gt; parent = new OnErrorNextSubscriber&lt;T&gt;(s, nextSupplier, allowFatal);</span>
+<span class="fc" id="L39">        s.onSubscribe(parent);</span>
+<span class="fc" id="L40">        source.subscribe(parent);</span>
+<span class="fc" id="L41">    }</span>
+
+    static final class OnErrorNextSubscriber&lt;T&gt;
+    extends SubscriptionArbiter
+    implements FlowableSubscriber&lt;T&gt; {
+        private static final long serialVersionUID = 4063763155303814625L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        final Function&lt;? super Throwable, ? extends Publisher&lt;? extends T&gt;&gt; nextSupplier;
+
+        final boolean allowFatal;
+
+        boolean once;
+
+        boolean done;
+
+        long produced;
+
+        OnErrorNextSubscriber(Subscriber&lt;? super T&gt; actual, Function&lt;? super Throwable, ? extends Publisher&lt;? extends T&gt;&gt; nextSupplier, boolean allowFatal) {
+<span class="fc" id="L61">            super(false);</span>
+<span class="fc" id="L62">            this.downstream = actual;</span>
+<span class="fc" id="L63">            this.nextSupplier = nextSupplier;</span>
+<span class="fc" id="L64">            this.allowFatal = allowFatal;</span>
+<span class="fc" id="L65">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L69">            setSubscription(s);</span>
+<span class="fc" id="L70">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L75">                return;</span>
+            }
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (!once) {</span>
+<span class="fc" id="L78">                produced++;</span>
+            }
+<span class="fc" id="L80">            downstream.onNext(t);</span>
+<span class="fc" id="L81">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (once) {</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                if (done) {</span>
+<span class="fc" id="L87">                    RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L88">                    return;</span>
+                }
+<span class="fc" id="L90">                downstream.onError(t);</span>
+<span class="fc" id="L91">                return;</span>
+            }
+<span class="fc" id="L93">            once = true;</span>
+
+<span class="fc bfc" id="L95" title="All 4 branches covered.">            if (allowFatal &amp;&amp; !(t instanceof Exception)) {</span>
+<span class="fc" id="L96">                downstream.onError(t);</span>
+<span class="fc" id="L97">                return;</span>
+            }
+
+            Publisher&lt;? extends T&gt; p;
+
+            try {
+<span class="fc" id="L103">                p = ObjectHelper.requireNonNull(nextSupplier.apply(t), &quot;The nextSupplier returned a null Publisher&quot;);</span>
+<span class="fc" id="L104">            } catch (Throwable e) {</span>
+<span class="fc" id="L105">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L106">                downstream.onError(new CompositeException(t, e));</span>
+<span class="fc" id="L107">                return;</span>
+<span class="fc" id="L108">            }</span>
+
+<span class="fc" id="L110">            long mainProduced = produced;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (mainProduced != 0L) {</span>
+<span class="fc" id="L112">                produced(mainProduced);</span>
+            }
+
+<span class="fc" id="L115">            p.subscribe(this);</span>
+<span class="fc" id="L116">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L121">                return;</span>
+            }
+<span class="fc" id="L123">            done = true;</span>
+<span class="fc" id="L124">            once = true;</span>
+<span class="fc" id="L125">            downstream.onComplete();</span>
+<span class="fc" id="L126">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

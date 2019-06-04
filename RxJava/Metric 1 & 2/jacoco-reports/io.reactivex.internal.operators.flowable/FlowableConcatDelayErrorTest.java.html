@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableConcatDelayErrorTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableConcatDelayErrorTest.java</span></div><h1>FlowableConcatDelayErrorTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+
+import org.junit.Test;
+
+import io.reactivex.Flowable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L28">public class FlowableConcatDelayErrorTest {</span>
+
+    @Test
+    public void mainCompletes() {
+<span class="fc" id="L32">        PublishProcessor&lt;Integer&gt; source = PublishProcessor.create();</span>
+
+<span class="fc" id="L34">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L36">        source.concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L39">                return Flowable.range(v, 2);</span>
+            }
+<span class="fc" id="L41">        }).subscribe(ts);</span>
+
+<span class="fc" id="L43">        source.onNext(1);</span>
+<span class="fc" id="L44">        source.onNext(2);</span>
+<span class="fc" id="L45">        source.onComplete();</span>
+
+<span class="fc" id="L47">        ts.assertValues(1, 2, 2, 3);</span>
+<span class="fc" id="L48">        ts.assertNoErrors();</span>
+<span class="fc" id="L49">        ts.assertComplete();</span>
+<span class="fc" id="L50">    }</span>
+
+    @Test
+    public void mainErrors() {
+<span class="fc" id="L54">        PublishProcessor&lt;Integer&gt; source = PublishProcessor.create();</span>
+
+<span class="fc" id="L56">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L58">        source.concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L61">                return Flowable.range(v, 2);</span>
+            }
+<span class="fc" id="L63">        }).subscribe(ts);</span>
+
+<span class="fc" id="L65">        source.onNext(1);</span>
+<span class="fc" id="L66">        source.onNext(2);</span>
+<span class="fc" id="L67">        source.onError(new TestException());</span>
+
+<span class="fc" id="L69">        ts.assertValues(1, 2, 2, 3);</span>
+<span class="fc" id="L70">        ts.assertError(TestException.class);</span>
+<span class="fc" id="L71">        ts.assertNotComplete();</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void innerErrors() {
+<span class="fc" id="L76">        final Flowable&lt;Integer&gt; inner = Flowable.range(1, 2)</span>
+<span class="fc" id="L77">                .concatWith(Flowable.&lt;Integer&gt;error(new TestException()));</span>
+
+<span class="fc" id="L79">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L81">        Flowable.range(1, 3).concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L84">                return inner;</span>
+            }
+<span class="fc" id="L86">        }).subscribe(ts);</span>
+
+<span class="fc" id="L88">        ts.assertValues(1, 2, 1, 2, 1, 2);</span>
+<span class="fc" id="L89">        ts.assertError(CompositeException.class);</span>
+<span class="fc" id="L90">        ts.assertNotComplete();</span>
+<span class="fc" id="L91">    }</span>
+
+    @Test
+    public void singleInnerErrors() {
+<span class="fc" id="L95">        final Flowable&lt;Integer&gt; inner = Flowable.range(1, 2).concatWith(Flowable.&lt;Integer&gt;error(new TestException()));</span>
+
+<span class="fc" id="L97">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L99">        Flowable.just(1)</span>
+<span class="fc" id="L100">        .hide() // prevent scalar optimization</span>
+<span class="fc" id="L101">        .concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L104">                return inner;</span>
+            }
+<span class="fc" id="L106">        }).subscribe(ts);</span>
+
+<span class="fc" id="L108">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L109">        ts.assertError(TestException.class);</span>
+<span class="fc" id="L110">        ts.assertNotComplete();</span>
+<span class="fc" id="L111">    }</span>
+
+    @Test
+    public void innerNull() {
+<span class="fc" id="L115">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L117">        Flowable.just(1)</span>
+<span class="fc" id="L118">        .hide() // prevent scalar optimization</span>
+<span class="fc" id="L119">        .concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L122">                return null;</span>
+            }
+<span class="fc" id="L124">        }).subscribe(ts);</span>
+
+<span class="fc" id="L126">        ts.assertNoValues();</span>
+<span class="fc" id="L127">        ts.assertError(NullPointerException.class);</span>
+<span class="fc" id="L128">        ts.assertNotComplete();</span>
+<span class="fc" id="L129">    }</span>
+
+    @Test
+    public void innerThrows() {
+<span class="fc" id="L133">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L135">        Flowable.just(1)</span>
+<span class="fc" id="L136">        .hide() // prevent scalar optimization</span>
+<span class="fc" id="L137">        .concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L140">                throw new TestException();</span>
+            }
+<span class="fc" id="L142">        }).subscribe(ts);</span>
+
+<span class="fc" id="L144">        ts.assertNoValues();</span>
+<span class="fc" id="L145">        ts.assertError(TestException.class);</span>
+<span class="fc" id="L146">        ts.assertNotComplete();</span>
+<span class="fc" id="L147">    }</span>
+
+    @Test
+    public void innerWithEmpty() {
+<span class="fc" id="L151">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L153">        Flowable.range(1, 3)</span>
+<span class="fc" id="L154">        .concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                return v == 2 ? Flowable.&lt;Integer&gt;empty() : Flowable.range(1, 2);</span>
+            }
+<span class="fc" id="L159">        }).subscribe(ts);</span>
+
+<span class="fc" id="L161">        ts.assertValues(1, 2, 1, 2);</span>
+<span class="fc" id="L162">        ts.assertNoErrors();</span>
+<span class="fc" id="L163">        ts.assertComplete();</span>
+<span class="fc" id="L164">    }</span>
+
+    @Test
+    public void innerWithScalar() {
+<span class="fc" id="L168">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L170">        Flowable.range(1, 3)</span>
+<span class="fc" id="L171">        .concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                return v == 2 ? Flowable.just(3) : Flowable.range(1, 2);</span>
+            }
+<span class="fc" id="L176">        }).subscribe(ts);</span>
+
+<span class="fc" id="L178">        ts.assertValues(1, 2, 3, 1, 2);</span>
+<span class="fc" id="L179">        ts.assertNoErrors();</span>
+<span class="fc" id="L180">        ts.assertComplete();</span>
+<span class="fc" id="L181">    }</span>
+
+    @Test
+    public void backpressure() {
+<span class="fc" id="L185">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create(0);</span>
+
+<span class="fc" id="L187">        Flowable.range(1, 3).concatMapDelayError(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="fc" id="L190">                return Flowable.range(v, 2);</span>
+            }
+<span class="fc" id="L192">        }).subscribe(ts);</span>
+
+<span class="fc" id="L194">        ts.assertNoValues();</span>
+<span class="fc" id="L195">        ts.assertNoErrors();</span>
+<span class="fc" id="L196">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L198">        ts.request(1);</span>
+<span class="fc" id="L199">        ts.assertValues(1);</span>
+<span class="fc" id="L200">        ts.assertNoErrors();</span>
+<span class="fc" id="L201">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L203">        ts.request(3);</span>
+<span class="fc" id="L204">        ts.assertValues(1, 2, 2, 3);</span>
+<span class="fc" id="L205">        ts.assertNoErrors();</span>
+<span class="fc" id="L206">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L208">        ts.request(2);</span>
+
+<span class="fc" id="L210">        ts.assertValues(1, 2, 2, 3, 3, 4);</span>
+<span class="fc" id="L211">        ts.assertNoErrors();</span>
+<span class="fc" id="L212">        ts.assertComplete();</span>
+<span class="fc" id="L213">    }</span>
+
+    static &lt;T&gt; Flowable&lt;T&gt; withError(Flowable&lt;T&gt; source) {
+<span class="fc" id="L216">        return source.concatWith(Flowable.&lt;T&gt;error(new TestException()));</span>
+    }
+
+    @Test
+    public void concatDelayErrorFlowable() {
+<span class="fc" id="L221">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L223">        Flowable.concatDelayError(</span>
+<span class="fc" id="L224">                Flowable.just(Flowable.just(1), Flowable.just(2)))</span>
+<span class="fc" id="L225">        .subscribe(ts);</span>
+
+<span class="fc" id="L227">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L228">        ts.assertNoErrors();</span>
+<span class="fc" id="L229">        ts.assertComplete();</span>
+<span class="fc" id="L230">    }</span>
+
+    @Test
+    public void concatDelayErrorFlowableError() {
+<span class="fc" id="L234">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L236">        Flowable.concatDelayError(</span>
+<span class="fc" id="L237">                withError(Flowable.just(withError(Flowable.just(1)), withError(Flowable.just(2)))))</span>
+<span class="fc" id="L238">        .subscribe(ts);</span>
+
+<span class="fc" id="L240">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L241">        ts.assertError(CompositeException.class);</span>
+<span class="fc" id="L242">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L244">        CompositeException ce = (CompositeException)ts.errors().get(0);</span>
+<span class="fc" id="L245">        List&lt;Throwable&gt; cex = ce.getExceptions();</span>
+
+<span class="fc" id="L247">        assertEquals(3, cex.size());</span>
+
+<span class="fc" id="L249">        assertTrue(cex.get(0).toString(), cex.get(0) instanceof TestException);</span>
+<span class="fc" id="L250">        assertTrue(cex.get(1).toString(), cex.get(1) instanceof TestException);</span>
+<span class="fc" id="L251">        assertTrue(cex.get(2).toString(), cex.get(2) instanceof TestException);</span>
+<span class="fc" id="L252">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatDelayErrorIterable() {
+<span class="fc" id="L257">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L259">        Flowable.concatDelayError(</span>
+<span class="fc" id="L260">                Arrays.asList(Flowable.just(1), Flowable.just(2)))</span>
+<span class="fc" id="L261">        .subscribe(ts);</span>
+
+<span class="fc" id="L263">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L264">        ts.assertNoErrors();</span>
+<span class="fc" id="L265">        ts.assertComplete();</span>
+<span class="fc" id="L266">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void concatDelayErrorIterableError() {
+<span class="fc" id="L271">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L273">        Flowable.concatDelayError(</span>
+<span class="fc" id="L274">                Arrays.asList(withError(Flowable.just(1)), withError(Flowable.just(2))))</span>
+<span class="fc" id="L275">        .subscribe(ts);</span>
+
+<span class="fc" id="L277">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L278">        ts.assertError(CompositeException.class);</span>
+<span class="fc" id="L279">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L281">        assertEquals(2, ((CompositeException)ts.errors().get(0)).getExceptions().size());</span>
+<span class="fc" id="L282">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

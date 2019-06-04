@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableBufferBoundarySupplier.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableBufferBoundarySupplier.java</span></div><h1>ObservableBufferBoundarySupplier.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import io.reactivex.internal.functions.ObjectHelper;
+import java.util.Collection;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.observers.QueueDrainObserver;
+import io.reactivex.internal.queue.MpscLinkedQueue;
+import io.reactivex.internal.util.QueueDrainHelper;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class ObservableBufferBoundarySupplier&lt;T, U extends Collection&lt;? super T&gt;, B&gt;
+extends AbstractObservableWithUpstream&lt;T, U&gt; {
+    final Callable&lt;? extends ObservableSource&lt;B&gt;&gt; boundarySupplier;
+    final Callable&lt;U&gt; bufferSupplier;
+
+    public ObservableBufferBoundarySupplier(ObservableSource&lt;T&gt; source, Callable&lt;? extends ObservableSource&lt;B&gt;&gt; boundarySupplier, Callable&lt;U&gt; bufferSupplier) {
+<span class="fc" id="L37">        super(source);</span>
+<span class="fc" id="L38">        this.boundarySupplier = boundarySupplier;</span>
+<span class="fc" id="L39">        this.bufferSupplier = bufferSupplier;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super U&gt; t) {
+<span class="fc" id="L44">        source.subscribe(new BufferBoundarySupplierObserver&lt;T, U, B&gt;(new SerializedObserver&lt;U&gt;(t), bufferSupplier, boundarySupplier));</span>
+<span class="fc" id="L45">    }</span>
+
+    static final class BufferBoundarySupplierObserver&lt;T, U extends Collection&lt;? super T&gt;, B&gt;
+    extends QueueDrainObserver&lt;T, U, U&gt; implements Observer&lt;T&gt;, Disposable {
+
+        final Callable&lt;U&gt; bufferSupplier;
+        final Callable&lt;? extends ObservableSource&lt;B&gt;&gt; boundarySupplier;
+
+        Disposable upstream;
+
+<span class="fc" id="L55">        final AtomicReference&lt;Disposable&gt; other = new AtomicReference&lt;Disposable&gt;();</span>
+
+        U buffer;
+
+        BufferBoundarySupplierObserver(Observer&lt;? super U&gt; actual, Callable&lt;U&gt; bufferSupplier,
+                                                Callable&lt;? extends ObservableSource&lt;B&gt;&gt; boundarySupplier) {
+<span class="fc" id="L61">            super(actual, new MpscLinkedQueue&lt;U&gt;());</span>
+<span class="fc" id="L62">            this.bufferSupplier = bufferSupplier;</span>
+<span class="fc" id="L63">            this.boundarySupplier = boundarySupplier;</span>
+<span class="fc" id="L64">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (DisposableHelper.validate(this.upstream, d)) {</span>
+<span class="fc" id="L69">                this.upstream = d;</span>
+
+<span class="fc" id="L71">                Observer&lt;? super U&gt; actual = this.downstream;</span>
+
+                U b;
+
+                try {
+<span class="fc" id="L76">                    b = ObjectHelper.requireNonNull(bufferSupplier.call(), &quot;The buffer supplied is null&quot;);</span>
+<span class="fc" id="L77">                } catch (Throwable e) {</span>
+<span class="fc" id="L78">                    Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L79">                    cancelled = true;</span>
+<span class="fc" id="L80">                    d.dispose();</span>
+<span class="fc" id="L81">                    EmptyDisposable.error(e, actual);</span>
+<span class="fc" id="L82">                    return;</span>
+<span class="fc" id="L83">                }</span>
+
+<span class="fc" id="L85">                buffer = b;</span>
+
+                ObservableSource&lt;B&gt; boundary;
+
+                try {
+<span class="fc" id="L90">                    boundary = ObjectHelper.requireNonNull(boundarySupplier.call(), &quot;The boundary ObservableSource supplied is null&quot;);</span>
+<span class="fc" id="L91">                } catch (Throwable ex) {</span>
+<span class="fc" id="L92">                    Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L93">                    cancelled = true;</span>
+<span class="fc" id="L94">                    d.dispose();</span>
+<span class="fc" id="L95">                    EmptyDisposable.error(ex, actual);</span>
+<span class="fc" id="L96">                    return;</span>
+<span class="fc" id="L97">                }</span>
+
+<span class="fc" id="L99">                BufferBoundaryObserver&lt;T, U, B&gt; bs = new BufferBoundaryObserver&lt;T, U, B&gt;(this);</span>
+<span class="fc" id="L100">                other.set(bs);</span>
+
+<span class="fc" id="L102">                actual.onSubscribe(this);</span>
+
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                if (!cancelled) {</span>
+<span class="fc" id="L105">                    boundary.subscribe(bs);</span>
+                }
+            }
+<span class="fc" id="L108">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L112">            synchronized (this) {</span>
+<span class="fc" id="L113">                U b = buffer;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                if (b == null) {</span>
+<span class="fc" id="L115">                    return;</span>
+                }
+<span class="fc" id="L117">                b.add(t);</span>
+<span class="fc" id="L118">            }</span>
+<span class="fc" id="L119">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L123">            dispose();</span>
+<span class="fc" id="L124">            downstream.onError(t);</span>
+<span class="fc" id="L125">        }</span>
+
+        @Override
+        public void onComplete() {
+            U b;
+<span class="fc" id="L130">            synchronized (this) {</span>
+<span class="fc" id="L131">                b = buffer;</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (b == null) {</span>
+<span class="fc" id="L133">                    return;</span>
+                }
+<span class="fc" id="L135">                buffer = null;</span>
+<span class="fc" id="L136">            }</span>
+<span class="fc" id="L137">            queue.offer(b);</span>
+<span class="fc" id="L138">            done = true;</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L140">                QueueDrainHelper.drainLoop(queue, downstream, false, this, this);</span>
+            }
+<span class="fc" id="L142">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L147">                cancelled = true;</span>
+<span class="fc" id="L148">                upstream.dispose();</span>
+<span class="fc" id="L149">                disposeOther();</span>
+
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                if (enter()) {</span>
+<span class="fc" id="L152">                    queue.clear();</span>
+                }
+            }
+<span class="fc" id="L155">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L159">            return cancelled;</span>
+        }
+
+        void disposeOther() {
+<span class="fc" id="L163">            DisposableHelper.dispose(other);</span>
+<span class="fc" id="L164">        }</span>
+
+        void next() {
+
+            U next;
+
+            try {
+<span class="fc" id="L171">                next = ObjectHelper.requireNonNull(bufferSupplier.call(), &quot;The buffer supplied is null&quot;);</span>
+<span class="fc" id="L172">            } catch (Throwable e) {</span>
+<span class="fc" id="L173">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L174">                dispose();</span>
+<span class="fc" id="L175">                downstream.onError(e);</span>
+<span class="fc" id="L176">                return;</span>
+<span class="fc" id="L177">            }</span>
+
+            ObservableSource&lt;B&gt; boundary;
+
+            try {
+<span class="fc" id="L182">                boundary = ObjectHelper.requireNonNull(boundarySupplier.call(), &quot;The boundary ObservableSource supplied is null&quot;);</span>
+<span class="fc" id="L183">            } catch (Throwable ex) {</span>
+<span class="fc" id="L184">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L185">                cancelled = true;</span>
+<span class="fc" id="L186">                upstream.dispose();</span>
+<span class="fc" id="L187">                downstream.onError(ex);</span>
+<span class="fc" id="L188">                return;</span>
+<span class="fc" id="L189">            }</span>
+
+<span class="fc" id="L191">            BufferBoundaryObserver&lt;T, U, B&gt; bs = new BufferBoundaryObserver&lt;T, U, B&gt;(this);</span>
+
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            if (DisposableHelper.replace(other, bs)) {</span>
+                U b;
+<span class="fc" id="L195">                synchronized (this) {</span>
+<span class="fc" id="L196">                    b = buffer;</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                    if (b == null) {</span>
+<span class="fc" id="L198">                        return;</span>
+                    }
+<span class="fc" id="L200">                    buffer = next;</span>
+<span class="fc" id="L201">                }</span>
+
+<span class="fc" id="L203">                boundary.subscribe(bs);</span>
+
+<span class="fc" id="L205">                fastPathEmit(b, false, this);</span>
+            }
+<span class="fc" id="L207">        }</span>
+
+        @Override
+        public void accept(Observer&lt;? super U&gt; a, U v) {
+<span class="fc" id="L211">            downstream.onNext(v);</span>
+<span class="fc" id="L212">        }</span>
+
+    }
+
+    static final class BufferBoundaryObserver&lt;T, U extends Collection&lt;? super T&gt;, B&gt;
+    extends DisposableObserver&lt;B&gt; {
+        final BufferBoundarySupplierObserver&lt;T, U, B&gt; parent;
+
+        boolean once;
+
+<span class="fc" id="L222">        BufferBoundaryObserver(BufferBoundarySupplierObserver&lt;T, U, B&gt; parent) {</span>
+<span class="fc" id="L223">            this.parent = parent;</span>
+<span class="fc" id="L224">        }</span>
+
+        @Override
+        public void onNext(B t) {
+<span class="fc bfc" id="L228" title="All 2 branches covered.">            if (once) {</span>
+<span class="fc" id="L229">                return;</span>
+            }
+<span class="fc" id="L231">            once = true;</span>
+<span class="fc" id="L232">            dispose();</span>
+<span class="fc" id="L233">            parent.next();</span>
+<span class="fc" id="L234">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">            if (once) {</span>
+<span class="fc" id="L239">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L240">                return;</span>
+            }
+<span class="fc" id="L242">            once = true;</span>
+<span class="fc" id="L243">            parent.onError(t);</span>
+<span class="fc" id="L244">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (once) {</span>
+<span class="fc" id="L249">                return;</span>
+            }
+<span class="fc" id="L251">            once = true;</span>
+<span class="fc" id="L252">            parent.next();</span>
+<span class="fc" id="L253">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

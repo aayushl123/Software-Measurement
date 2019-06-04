@@ -1,0 +1,544 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowablePublishFunctionTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowablePublishFunctionTest.java</span></div><h1>FlowablePublishFunctionTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L36">public class FlowablePublishFunctionTest {</span>
+    @Test
+    public void concatTakeFirstLastCompletes() {
+<span class="fc" id="L39">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L41">        Flowable.range(1, 3).publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L44">                return Flowable.concat(f.take(5), f.takeLast(5));</span>
+            }
+<span class="fc" id="L46">        }).subscribe(ts);</span>
+
+<span class="fc" id="L48">        ts.assertValues(1, 2, 3);</span>
+<span class="fc" id="L49">        ts.assertNoErrors();</span>
+<span class="fc" id="L50">        ts.assertComplete();</span>
+<span class="fc" id="L51">    }</span>
+
+    @Test
+    public void concatTakeFirstLastBackpressureCompletes() {
+<span class="fc" id="L55">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create(0L);</span>
+
+<span class="fc" id="L57">        Flowable.range(1, 6).publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L60">                return Flowable.concat(f.take(5), f.takeLast(5));</span>
+            }
+<span class="fc" id="L62">        }).subscribe(ts);</span>
+
+<span class="fc" id="L64">        ts.assertNoValues();</span>
+<span class="fc" id="L65">        ts.assertNoErrors();</span>
+<span class="fc" id="L66">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L68">        ts.request(1); // make sure take() doesn't go unbounded</span>
+<span class="fc" id="L69">        ts.request(4);</span>
+
+<span class="fc" id="L71">        ts.assertValues(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L72">        ts.assertNoErrors();</span>
+<span class="fc" id="L73">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L75">        ts.request(5);</span>
+
+<span class="fc" id="L77">        ts.assertValues(1, 2, 3, 4, 5, 6);</span>
+<span class="fc" id="L78">        ts.assertNoErrors();</span>
+<span class="fc" id="L79">        ts.assertComplete();</span>
+<span class="fc" id="L80">    }</span>
+
+    @Test
+    public void canBeCancelled() {
+<span class="fc" id="L84">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L86">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L88">        pp.publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L91">                return Flowable.concat(f.take(5), f.takeLast(5));</span>
+            }
+<span class="fc" id="L93">        }).subscribe(ts);</span>
+
+<span class="fc" id="L95">        pp.onNext(1);</span>
+<span class="fc" id="L96">        pp.onNext(2);</span>
+
+<span class="fc" id="L98">        ts.assertValues(1, 2);</span>
+<span class="fc" id="L99">        ts.assertNoErrors();</span>
+<span class="fc" id="L100">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L102">        ts.cancel();</span>
+
+<span class="fc" id="L104">        Assert.assertFalse(&quot;Source has subscribers?&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L105">    }</span>
+
+    @Test
+    public void invalidPrefetch() {
+        try {
+<span class="pc" id="L110">            Flowable.&lt;Integer&gt;never().publish(</span>
+<span class="fc" id="L111">                    Functions.&lt;Flowable&lt;Integer&gt;&gt;identity(), -99);</span>
+<span class="nc" id="L112">            fail(&quot;Didn't throw IllegalArgumentException&quot;);</span>
+<span class="fc" id="L113">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L114">            Assert.assertEquals(&quot;prefetch &gt; 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L115">        }</span>
+<span class="fc" id="L116">    }</span>
+
+    @Test
+    public void takeCompletes() {
+<span class="fc" id="L120">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L122">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L124">        pp.publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L127">                return f.take(1);</span>
+            }
+<span class="fc" id="L129">        }).subscribe(ts);</span>
+
+<span class="fc" id="L131">        pp.onNext(1);</span>
+
+<span class="fc" id="L133">        ts.assertValues(1);</span>
+<span class="fc" id="L134">        ts.assertNoErrors();</span>
+<span class="fc" id="L135">        ts.assertComplete();</span>
+
+<span class="fc" id="L137">        Assert.assertFalse(&quot;Source has subscribers?&quot;, pp.hasSubscribers());</span>
+
+<span class="fc" id="L139">    }</span>
+
+    @Test
+    public void oneStartOnly() {
+
+<span class="fc" id="L144">        final AtomicInteger startCount = new AtomicInteger();</span>
+
+<span class="fc" id="L146">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onStart() {
+<span class="fc" id="L149">                startCount.incrementAndGet();</span>
+<span class="fc" id="L150">            }</span>
+        };
+
+<span class="fc" id="L153">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L155">        pp.publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L158">                return f.take(1);</span>
+            }
+<span class="fc" id="L160">        }).subscribe(ts);</span>
+
+<span class="fc" id="L162">        Assert.assertEquals(1, startCount.get());</span>
+<span class="fc" id="L163">    }</span>
+
+    @Test
+    public void takeCompletesUnsafe() {
+<span class="fc" id="L167">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L169">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L171">        pp.publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L174">                return f.take(1);</span>
+            }
+<span class="fc" id="L176">        }).subscribe(ts);</span>
+
+<span class="fc" id="L178">        pp.onNext(1);</span>
+
+<span class="fc" id="L180">        ts.assertValues(1);</span>
+<span class="fc" id="L181">        ts.assertNoErrors();</span>
+<span class="fc" id="L182">        ts.assertComplete();</span>
+
+<span class="fc" id="L184">        Assert.assertFalse(&quot;Source has subscribers?&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L185">    }</span>
+
+    @Test
+    public void directCompletesUnsafe() {
+<span class="fc" id="L189">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L191">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L193">        pp.publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L196">                return f;</span>
+            }
+<span class="fc" id="L198">        }).subscribe(ts);</span>
+
+<span class="fc" id="L200">        pp.onNext(1);</span>
+<span class="fc" id="L201">        pp.onComplete();</span>
+
+<span class="fc" id="L203">        ts.assertValues(1);</span>
+<span class="fc" id="L204">        ts.assertNoErrors();</span>
+<span class="fc" id="L205">        ts.assertComplete();</span>
+
+<span class="fc" id="L207">        Assert.assertFalse(&quot;Source has subscribers?&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L208">    }</span>
+
+    @Test
+    public void overflowMissingBackpressureException() {
+<span class="fc" id="L212">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create(0);</span>
+
+<span class="fc" id="L214">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L216">        pp.publish(new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L219">                return f;</span>
+            }
+<span class="fc" id="L221">        }).subscribe(ts);</span>
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        for (int i = 0; i &lt; Flowable.bufferSize() * 2; i++) {</span>
+<span class="fc" id="L224">            pp.onNext(i);</span>
+        }
+
+<span class="fc" id="L227">        ts.assertNoValues();</span>
+<span class="fc" id="L228">        ts.assertError(MissingBackpressureException.class);</span>
+<span class="fc" id="L229">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L231">        Assert.assertEquals(&quot;Could not emit value due to lack of requests&quot;,</span>
+<span class="fc" id="L232">                ts.errors().get(0).getMessage());</span>
+<span class="fc" id="L233">        Assert.assertFalse(&quot;Source has subscribers?&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L234">    }</span>
+
+    @Test
+    public void overflowMissingBackpressureExceptionDelayed() {
+<span class="fc" id="L238">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create(0);</span>
+
+<span class="fc" id="L240">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L242">        new FlowablePublishMulticast&lt;Integer, Integer&gt;(pp, new Function&lt;Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) {
+<span class="fc" id="L245">                return f;</span>
+            }
+<span class="fc" id="L247">        }, Flowable.bufferSize(), true).subscribe(ts);</span>
+
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        for (int i = 0; i &lt; Flowable.bufferSize() * 2; i++) {</span>
+<span class="fc" id="L250">            pp.onNext(i);</span>
+        }
+
+<span class="fc" id="L253">        ts.request(Flowable.bufferSize());</span>
+
+<span class="fc" id="L255">        ts.assertValueCount(Flowable.bufferSize());</span>
+<span class="fc" id="L256">        ts.assertError(MissingBackpressureException.class);</span>
+<span class="fc" id="L257">        ts.assertNotComplete();</span>
+
+<span class="fc" id="L259">        Assert.assertEquals(&quot;Could not emit value due to lack of requests&quot;, ts.errors().get(0).getMessage());</span>
+<span class="fc" id="L260">        Assert.assertFalse(&quot;Source has subscribers?&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L261">    }</span>
+
+    @Test
+    public void emptyIdentityMapped() {
+<span class="fc" id="L265">        Flowable.empty()</span>
+<span class="fc" id="L266">        .publish(Functions.&lt;Flowable&lt;Object&gt;&gt;identity())</span>
+<span class="fc" id="L267">        .test()</span>
+<span class="fc" id="L268">        .assertResult()</span>
+        ;
+<span class="fc" id="L270">    }</span>
+
+    @Test
+    public void independentlyMapped() {
+<span class="fc" id="L274">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L276">        TestSubscriber&lt;Integer&gt; ts = pp.publish(new Function&lt;Flowable&lt;Integer&gt;, Publisher&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Integer&gt; apply(Flowable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L279">                return Flowable.range(1, 5);</span>
+            }
+<span class="fc" id="L281">        }).test(0);</span>
+
+<span class="fc" id="L283">        assertTrue(&quot;pp has no Subscribers?!&quot;, pp.hasSubscribers());</span>
+
+<span class="fc" id="L285">        ts.assertNoValues()</span>
+<span class="fc" id="L286">        .assertNoErrors()</span>
+<span class="fc" id="L287">        .assertNotComplete();</span>
+
+<span class="fc" id="L289">        ts.request(5);</span>
+
+<span class="fc" id="L291">        ts.assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="fc" id="L293">        assertFalse(&quot;pp has Subscribers?!&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L294">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L298">        TestHelper.checkBadSourceFlowable(new Function&lt;Flowable&lt;Integer&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Flowable&lt;Integer&gt; f) throws Exception {
+<span class="fc" id="L301">                return f.publish(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity());</span>
+            }
+<span class="fc" id="L303">        }, false, 1, 1, 1);</span>
+<span class="fc" id="L304">    }</span>
+
+    @Test
+    public void frontOverflow() {
+<span class="fc" id="L308">        new Flowable&lt;Integer&gt;() {</span>
+            @Override
+            protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L311">                s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">                for (int i = 0; i &lt; 9; i++) {</span>
+<span class="fc" id="L313">                    s.onNext(i);</span>
+                }
+<span class="fc" id="L315">            }</span>
+        }
+<span class="fc" id="L317">        .publish(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity(), 8)</span>
+<span class="fc" id="L318">        .test(0)</span>
+<span class="fc" id="L319">        .assertFailure(MissingBackpressureException.class);</span>
+<span class="fc" id="L320">    }</span>
+
+    @Test
+    public void errorResubscribe() {
+<span class="fc" id="L324">        Flowable.error(new TestException())</span>
+<span class="fc" id="L325">        .publish(new Function&lt;Flowable&lt;Object&gt;, Publisher&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L328">                return f.onErrorResumeNext(f);</span>
+            }
+        })
+<span class="fc" id="L331">        .test()</span>
+<span class="fc" id="L332">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L333">    }</span>
+
+    @Test
+    public void fusedInputCrash() {
+<span class="fc" id="L337">        Flowable.just(1)</span>
+<span class="fc" id="L338">        .map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer v) throws Exception {
+<span class="fc" id="L341">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L344">        .publish(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L345">        .test()</span>
+<span class="fc" id="L346">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L347">    }</span>
+
+    @Test
+    public void error() {
+<span class="fc" id="L351">        new FlowablePublishMulticast&lt;Integer, Integer&gt;(Flowable.just(1).concatWith(Flowable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L352">                Functions.&lt;Flowable&lt;Integer&gt;&gt;identity(), 16, true)</span>
+<span class="fc" id="L353">        .test()</span>
+<span class="fc" id="L354">        .assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L355">    }</span>
+
+    @Test
+    public void backpressuredEmpty() {
+<span class="fc" id="L359">        Flowable.&lt;Integer&gt;empty()</span>
+<span class="fc" id="L360">        .publish(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L361">        .test(0L)</span>
+<span class="fc" id="L362">        .assertResult();</span>
+<span class="fc" id="L363">    }</span>
+
+    @Test
+    public void oneByOne() {
+<span class="fc" id="L367">        Flowable.range(1, 10)</span>
+<span class="fc" id="L368">        .publish(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L369">        .rebatchRequests(1)</span>
+<span class="fc" id="L370">        .test()</span>
+<span class="fc" id="L371">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L372">    }</span>
+
+    @Test
+    public void completeCancelRaceNoRequest() {
+<span class="fc" id="L376">        final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L378">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(1L) {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L381">                super.onNext(t);</span>
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">                if (t == 1) {</span>
+<span class="fc" id="L383">                    cancel();</span>
+<span class="fc" id="L384">                    onComplete();</span>
+                }
+<span class="fc" id="L386">            }</span>
+        };
+
+<span class="fc" id="L389">        pp.publish(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity()).subscribe(ts);</span>
+
+<span class="fc" id="L391">        pp.onNext(1);</span>
+
+<span class="fc" id="L393">        assertFalse(pp.hasSubscribers());</span>
+
+<span class="fc" id="L395">        ts.assertResult(1);</span>
+<span class="fc" id="L396">    }</span>
+
+    @Test
+    public void inputOutputSubscribeRace() {
+<span class="fc" id="L400">        Flowable&lt;Integer&gt; source = Flowable.just(1)</span>
+<span class="fc" id="L401">                .publish(new Function&lt;Flowable&lt;Integer&gt;, Publisher&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Publisher&lt;Integer&gt; apply(Flowable&lt;Integer&gt; f) throws Exception {
+<span class="fc" id="L404">                        return f.subscribeOn(Schedulers.single());</span>
+                    }
+                });
+
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L409">            source.test()</span>
+<span class="fc" id="L410">            .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L411">            .assertResult(1);</span>
+        }
+<span class="fc" id="L413">    }</span>
+
+    @Test
+    public void inputOutputSubscribeRace2() {
+<span class="fc" id="L417">        Flowable&lt;Integer&gt; source = Flowable.just(1).subscribeOn(Schedulers.single())</span>
+<span class="fc" id="L418">                .publish(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity());</span>
+
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L421">            source.test()</span>
+<span class="fc" id="L422">            .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L423">            .assertResult(1);</span>
+        }
+<span class="fc" id="L425">    }</span>
+
+    @Test
+    public void sourceSubscriptionDelayed() {
+<span class="fc bfc" id="L429" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L430">            final TestSubscriber&lt;Integer&gt; ts1 = new TestSubscriber&lt;Integer&gt;(0L);</span>
+
+<span class="fc" id="L432">            Flowable.just(1)</span>
+<span class="fc" id="L433">            .publish(new Function&lt;Flowable&lt;Integer&gt;, Publisher&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Publisher&lt;Integer&gt; apply(final Flowable&lt;Integer&gt; f) throws Exception {
+<span class="fc" id="L436">                    Runnable r1 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L439">                            f.subscribe(ts1);</span>
+<span class="fc" id="L440">                        }</span>
+                    };
+
+<span class="fc" id="L443">                    Runnable r2 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc bfc" id="L446" title="All 2 branches covered.">                            for (int j = 0; j &lt; 100; j++) {</span>
+<span class="fc" id="L447">                                ts1.request(1);</span>
+                            }
+<span class="fc" id="L449">                        }</span>
+                    };
+
+<span class="fc" id="L452">                    TestHelper.race(r1, r2);</span>
+<span class="fc" id="L453">                    return f;</span>
+                }
+<span class="fc" id="L455">            }).test()</span>
+<span class="fc" id="L456">            .assertResult(1);</span>
+
+<span class="fc" id="L458">            ts1.assertResult(1);</span>
+        }
+<span class="fc" id="L460">    }</span>
+
+    @Test
+    public void longFlow() {
+<span class="fc" id="L464">        Flowable.range(1, 1000000)</span>
+<span class="fc" id="L465">        .publish(new Function&lt;Flowable&lt;Integer&gt;, Publisher&lt;Integer&gt;&gt;() {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public Publisher&lt;Integer&gt; apply(Flowable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L469">                return Flowable.mergeArray(</span>
+<span class="fc" id="L470">                        v.filter(new Predicate&lt;Integer&gt;() {</span>
+                            @Override
+                            public boolean test(Integer w) throws Exception {
+<span class="fc bfc" id="L473" title="All 2 branches covered.">                                return w % 2 == 0;</span>
+                            }
+                        }),
+<span class="fc" id="L476">                        v.filter(new Predicate&lt;Integer&gt;() {</span>
+                            @Override
+                            public boolean test(Integer w) throws Exception {
+<span class="fc bfc" id="L479" title="All 2 branches covered.">                                return w % 2 != 0;</span>
+                            }
+                        }));
+            }
+        })
+<span class="fc" id="L484">        .takeLast(1)</span>
+<span class="fc" id="L485">        .test()</span>
+<span class="fc" id="L486">        .assertResult(1000000);</span>
+<span class="fc" id="L487">    }</span>
+
+    @Test
+    public void longFlow2() {
+<span class="fc" id="L491">        Flowable.range(1, 100000)</span>
+<span class="fc" id="L492">        .publish(new Function&lt;Flowable&lt;Integer&gt;, Publisher&lt;Integer&gt;&gt;() {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public Publisher&lt;Integer&gt; apply(Flowable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L496">                return Flowable.mergeArray(</span>
+<span class="fc" id="L497">                        v.filter(new Predicate&lt;Integer&gt;() {</span>
+                            @Override
+                            public boolean test(Integer w) throws Exception {
+<span class="fc bfc" id="L500" title="All 2 branches covered.">                                return w % 2 == 0;</span>
+                            }
+                        }),
+<span class="fc" id="L503">                        v.filter(new Predicate&lt;Integer&gt;() {</span>
+                            @Override
+                            public boolean test(Integer w) throws Exception {
+<span class="fc bfc" id="L506" title="All 2 branches covered.">                                return w % 2 != 0;</span>
+                            }
+                        }));
+            }
+        })
+<span class="fc" id="L511">        .test()</span>
+<span class="fc" id="L512">        .assertValueCount(100000)</span>
+<span class="fc" id="L513">        .assertNoErrors()</span>
+<span class="fc" id="L514">        .assertComplete();</span>
+<span class="fc" id="L515">    }</span>
+
+    @Test
+    public void longFlowHidden() {
+<span class="fc" id="L519">        Flowable.range(1, 1000000).hide()</span>
+<span class="fc" id="L520">        .publish(new Function&lt;Flowable&lt;Integer&gt;, Publisher&lt;Integer&gt;&gt;() {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public Publisher&lt;Integer&gt; apply(Flowable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L524">                return Flowable.mergeArray(</span>
+<span class="fc" id="L525">                        v.filter(new Predicate&lt;Integer&gt;() {</span>
+                            @Override
+                            public boolean test(Integer w) throws Exception {
+<span class="fc bfc" id="L528" title="All 2 branches covered.">                                return w % 2 == 0;</span>
+                            }
+                        }),
+<span class="fc" id="L531">                        v.filter(new Predicate&lt;Integer&gt;() {</span>
+                            @Override
+                            public boolean test(Integer w) throws Exception {
+<span class="fc bfc" id="L534" title="All 2 branches covered.">                                return w % 2 != 0;</span>
+                            }
+                        }));
+            }
+        })
+<span class="fc" id="L539">        .takeLast(1)</span>
+<span class="fc" id="L540">        .test()</span>
+<span class="fc" id="L541">        .assertResult(1000000);</span>
+<span class="fc" id="L542">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

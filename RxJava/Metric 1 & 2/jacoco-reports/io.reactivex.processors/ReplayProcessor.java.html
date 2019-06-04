@@ -1,0 +1,1334 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReplayProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.processors</a> &gt; <span class="el_source">ReplayProcessor.java</span></div><h1>ReplayProcessor.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.processors;
+
+import java.lang.reflect.Array;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.Scheduler;
+import io.reactivex.annotations.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Replays events to Subscribers.
+ * &lt;p&gt;
+ * The {@code ReplayProcessor} supports the following item retainment strategies:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #create()} and {@link #create(int)}: retains and replays all events to current and
+ * future {@code Subscriber}s.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;269&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/ReplayProcessor.u.png&quot; alt=&quot;&quot;&gt;
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;345&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/ReplayProcessor.ue.png&quot; alt=&quot;&quot;&gt;
+ * &lt;/li&gt;
+ * &lt;li&gt;{@link #createWithSize(int)}: retains at most the given number of items and replays only these
+ * latest items to new {@code Subscriber}s.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;332&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/ReplayProcessor.n.png&quot; alt=&quot;&quot;&gt;
+ * &lt;/li&gt;
+ * &lt;li&gt;{@link #createWithTime(long, TimeUnit, Scheduler)}: retains items no older than the specified time
+ * and replays them to new {@code Subscriber}s (which could mean all items age out).
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;415&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/ReplayProcessor.t.png&quot; alt=&quot;&quot;&gt;
+ * &lt;/li&gt;
+ * &lt;li&gt;{@link #createWithTimeAndSize(long, TimeUnit, Scheduler, int)}: retains no more than the given number of items
+ * which are also no older than the specified time and replays them to new {@code Subscriber}s (which could mean all items age out).
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;404&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/ReplayProcessor.nt.png&quot; alt=&quot;&quot;&gt;
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * The {@code ReplayProcessor} can be created in bounded and unbounded mode. It can be bounded by
+ * size (maximum number of elements retained at most) and/or time (maximum age of elements replayed).
+ * &lt;p&gt;
+ * Since a {@code ReplayProcessor} is a Reactive Streams {@code Processor},
+ * {@code null}s are not allowed (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.13&quot;&gt;Rule 2.13&lt;/a&gt;) as
+ * parameters to {@link #onNext(Object)} and {@link #onError(Throwable)}. Such calls will result in a
+ * {@link NullPointerException} being thrown and the processor's state is not changed.
+ * &lt;p&gt;
+ * This {@code ReplayProcessor} respects the individual backpressure behavior of its {@code Subscriber}s but
+ * does not coordinate their request amounts towards the upstream (because there might not be any) and
+ * consumes the upstream in an unbounded manner (requesting {@code Long.MAX_VALUE}).
+ * Note that {@code Subscriber}s receive a continuous sequence of values after they subscribed even
+ * if an individual item gets delayed due to backpressure.
+ * Due to concurrency requirements, a size-bounded {@code ReplayProcessor} may hold strong references to more source
+ * emissions than specified.
+ * &lt;p&gt;
+ * When this {@code ReplayProcessor} is terminated via {@link #onError(Throwable)} or {@link #onComplete()},
+ * late {@link Subscriber}s will receive the retained/cached items first (if any) followed by the respective
+ * terminal event. If the {@code ReplayProcessor} has a time-bound, the age of the retained/cached items are still considered
+ * when replaying and thus it may result in no items being emitted before the terminal event.
+ * &lt;p&gt;
+ * Once an {@code Subscriber} has subscribed, it will receive items continuously from that point on. Bounds only affect how
+ * many past items a new {@code Subscriber} will receive before it catches up with the live event feed.
+ * &lt;p&gt;
+ * Even though {@code ReplayProcessor} implements the {@code Subscriber} interface, calling
+ * {@code onSubscribe} is not required (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.12&quot;&gt;Rule 2.12&lt;/a&gt;)
+ * if the processor is used as a standalone source. However, calling {@code onSubscribe}
+ * after the {@code ReplayProcessor} reached its terminal state will result in the
+ * given {@code Subscription} being canceled immediately.
+ * &lt;p&gt;
+ * Calling {@link #onNext(Object)}, {@link #onError(Throwable)} and {@link #onComplete()}
+ * is required to be serialized (called from the same thread or called non-overlappingly from different threads
+ * through external means of serialization). The {@link #toSerialized()} method available to all {@code FlowableProcessor}s
+ * provides such serialization and also protects against reentrance (i.e., when a downstream {@code Subscriber}
+ * consuming this processor also wants to call {@link #onNext(Object)} on this processor recursively).
+ * &lt;p&gt;
+ * This {@code ReplayProcessor} supports the standard state-peeking methods {@link #hasComplete()}, {@link #hasThrowable()},
+ * {@link #getThrowable()} and {@link #hasSubscribers()} as well as means to read the retained/cached items
+ * in a non-blocking and thread-safe manner via {@link #hasValue()}, {@link #getValue()},
+ * {@link #getValues()} or {@link #getValues(Object[])}.
+ * &lt;p&gt;
+ * Note that due to concurrency requirements, a size- and time-bounded {@code ReplayProcessor} may hold strong references to more
+ * source emissions than specified while it isn't terminated yet. Use the {@link #cleanupBuffer()} to allow
+ * such inaccessible items to be cleaned up by GC once no consumer references them anymore.
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Backpressure:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;This {@code ReplayProcessor} respects the individual backpressure behavior of its {@code Subscriber}s but
+ *  does not coordinate their request amounts towards the upstream (because there might not be any) and
+ *  consumes the upstream in an unbounded manner (requesting {@code Long.MAX_VALUE}).
+ *  Note that {@code Subscriber}s receive a continuous sequence of values after they subscribed even
+ *  if an individual item gets delayed due to backpressure.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;{@code ReplayProcessor} does not operate by default on a particular {@link io.reactivex.Scheduler} and
+ *  the {@code Subscriber}s get notified on the thread the respective {@code onXXX} methods were invoked.
+ *  Time-bound {@code ReplayProcessor}s use the given {@code Scheduler} in their {@code create} methods
+ *  as time source to timestamp of items received for the age checks.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Error handling:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;When the {@link #onError(Throwable)} is called, the {@code ReplayProcessor} enters into a terminal state
+ *  and emits the same {@code Throwable} instance to the last set of {@code Subscriber}s. During this emission,
+ *  if one or more {@code Subscriber}s cancel their respective {@code Subscription}s, the
+ *  {@code Throwable} is delivered to the global error handler via
+ *  {@link io.reactivex.plugins.RxJavaPlugins#onError(Throwable)} (multiple times if multiple {@code Subscriber}s
+ *  cancel at once).
+ *  If there were no {@code Subscriber}s subscribed to this {@code ReplayProcessor} when the {@code onError()}
+ *  was called, the global error handler is not invoked.
+ *  &lt;/dd&gt;
+ * &lt;/dl&gt;
+ * &lt;p&gt;
+ * Example usage:
+ * &lt;pre&gt; {@code
+
+  ReplayProcessor&lt;Object&gt; processor = new ReplayProcessor&lt;T&gt;();
+  processor.onNext(&quot;one&quot;);
+  processor.onNext(&quot;two&quot;);
+  processor.onNext(&quot;three&quot;);
+  processor.onComplete();
+
+  // both of the following will get the onNext/onComplete calls from above
+  processor.subscribe(subscriber1);
+  processor.subscribe(subscriber2);
+
+  } &lt;/pre&gt;
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class ReplayProcessor&lt;T&gt; extends FlowableProcessor&lt;T&gt; {
+    /** An empty array to avoid allocation in getValues(). */
+<span class="fc" id="L146">    private static final Object[] EMPTY_ARRAY = new Object[0];</span>
+
+    final ReplayBuffer&lt;T&gt; buffer;
+
+    boolean done;
+
+    final AtomicReference&lt;ReplaySubscription&lt;T&gt;[]&gt; subscribers;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L155">    static final ReplaySubscription[] EMPTY = new ReplaySubscription[0];</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L158">    static final ReplaySubscription[] TERMINATED = new ReplaySubscription[0];</span>
+
+    /**
+     * Creates an unbounded ReplayProcessor.
+     * &lt;p&gt;
+     * The internal buffer is backed by an {@link ArrayList} and starts with an initial capacity of 16. Once the
+     * number of items reaches this capacity, it will grow as necessary (usually by 50%). However, as the
+     * number of items grows, this causes frequent array reallocation and copying, and may hurt performance
+     * and latency. This can be avoided with the {@link #create(int)} overload which takes an initial capacity
+     * parameter and can be tuned to reduce the array reallocation frequency as needed.
+     *
+     * @param &lt;T&gt;
+     *          the type of items observed and emitted by the ReplayProcessor
+     * @return the created ReplayProcessor
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; ReplayProcessor&lt;T&gt; create() {
+<span class="fc" id="L176">        return new ReplayProcessor&lt;T&gt;(new UnboundedReplayBuffer&lt;T&gt;(16));</span>
+    }
+
+    /**
+     * Creates an unbounded ReplayProcessor with the specified initial buffer capacity.
+     * &lt;p&gt;
+     * Use this method to avoid excessive array reallocation while the internal buffer grows to accommodate new
+     * items. For example, if you know that the buffer will hold 32k items, you can ask the
+     * {@code ReplayProcessor} to preallocate its internal array with a capacity to hold that many items. Once
+     * the items start to arrive, the internal array won't need to grow, creating less garbage and no overhead
+     * due to frequent array-copying.
+     *
+     * @param &lt;T&gt;
+     *          the type of items observed and emitted by this type of processor
+     * @param capacityHint
+     *          the initial buffer capacity
+     * @return the created processor
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; ReplayProcessor&lt;T&gt; create(int capacityHint) {
+<span class="fc" id="L197">        return new ReplayProcessor&lt;T&gt;(new UnboundedReplayBuffer&lt;T&gt;(capacityHint));</span>
+    }
+
+    /**
+     * Creates a size-bounded ReplayProcessor.
+     * &lt;p&gt;
+     * In this setting, the {@code ReplayProcessor} holds at most {@code size} items in its internal buffer and
+     * discards the oldest item.
+     * &lt;p&gt;
+     * When {@code Subscriber}s subscribe to a terminated {@code ReplayProcessor}, they are guaranteed to see at most
+     * {@code size} {@code onNext} events followed by a termination event.
+     * &lt;p&gt;
+     * If a {@code Subscriber} subscribes while the {@code ReplayProcessor} is active, it will observe all items in the
+     * buffer at that point in time and each item observed afterwards, even if the buffer evicts items due to
+     * the size constraint in the mean time. In other words, once a {@code Subscriber} subscribes, it will receive items
+     * without gaps in the sequence.
+     *
+     * @param &lt;T&gt;
+     *          the type of items observed and emitted by this type of processor
+     * @param maxSize
+     *          the maximum number of buffered items
+     * @return the created processor
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; ReplayProcessor&lt;T&gt; createWithSize(int maxSize) {
+<span class="fc" id="L223">        return new ReplayProcessor&lt;T&gt;(new SizeBoundReplayBuffer&lt;T&gt;(maxSize));</span>
+    }
+
+    /**
+     * Creates an unbounded ReplayProcessor with the bounded-implementation for testing purposes.
+     * &lt;p&gt;
+     * This variant behaves like the regular unbounded {@code ReplayProcessor} created via {@link #create()} but
+     * uses the structures of the bounded-implementation. This is by no means intended for the replacement of
+     * the original, array-backed and unbounded {@code ReplayProcessor} due to the additional overhead of the
+     * linked-list based internal buffer. The sole purpose is to allow testing and reasoning about the behavior
+     * of the bounded implementations without the interference of the eviction policies.
+     *
+     * @param &lt;T&gt;
+     *          the type of items observed and emitted by this type of processor
+     * @return the created processor
+     */
+    /* test */ static &lt;T&gt; ReplayProcessor&lt;T&gt; createUnbounded() {
+<span class="fc" id="L240">        return new ReplayProcessor&lt;T&gt;(new SizeBoundReplayBuffer&lt;T&gt;(Integer.MAX_VALUE));</span>
+    }
+
+    /**
+     * Creates a time-bounded ReplayProcessor.
+     * &lt;p&gt;
+     * In this setting, the {@code ReplayProcessor} internally tags each observed item with a timestamp value
+     * supplied by the {@link Scheduler} and keeps only those whose age is less than the supplied time value
+     * converted to milliseconds. For example, an item arrives at T=0 and the max age is set to 5; at T&amp;gt;=5
+     * this first item is then evicted by any subsequent item or termination event, leaving the buffer empty.
+     * &lt;p&gt;
+     * Once the processor is terminated, {@code Subscriber}s subscribing to it will receive items that remained in the
+     * buffer after the terminal event, regardless of their age.
+     * &lt;p&gt;
+     * If a {@code Subscriber} subscribes while the {@code ReplayProcessor} is active, it will observe only those items
+     * from within the buffer that have an age less than the specified time, and each item observed thereafter,
+     * even if the buffer evicts items due to the time constraint in the mean time. In other words, once a
+     * {@code Subscriber} subscribes, it observes items without gaps in the sequence except for any outdated items at the
+     * beginning of the sequence.
+     * &lt;p&gt;
+     * Note that terminal notifications ({@code onError} and {@code onComplete}) trigger eviction as well. For
+     * example, with a max age of 5, the first item is observed at T=0, then an {@code onComplete} notification
+     * arrives at T=10. If a {@code Subscriber} subscribes at T=11, it will find an empty {@code ReplayProcessor} with just
+     * an {@code onComplete} notification.
+     *
+     * @param &lt;T&gt;
+     *          the type of items observed and emitted by this type of processor
+     * @param maxAge
+     *          the maximum age of the contained items
+     * @param unit
+     *          the time unit of {@code time}
+     * @param scheduler
+     *          the {@link Scheduler} that provides the current time
+     * @return the created processor
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; ReplayProcessor&lt;T&gt; createWithTime(long maxAge, TimeUnit unit, Scheduler scheduler) {
+<span class="fc" id="L278">        return new ReplayProcessor&lt;T&gt;(new SizeAndTimeBoundReplayBuffer&lt;T&gt;(Integer.MAX_VALUE, maxAge, unit, scheduler));</span>
+    }
+
+    /**
+     * Creates a time- and size-bounded ReplayProcessor.
+     * &lt;p&gt;
+     * In this setting, the {@code ReplayProcessor} internally tags each received item with a timestamp value
+     * supplied by the {@link Scheduler} and holds at most {@code size} items in its internal buffer. It evicts
+     * items from the start of the buffer if their age becomes less-than or equal to the supplied age in
+     * milliseconds or the buffer reaches its {@code size} limit.
+     * &lt;p&gt;
+     * When {@code Subscriber}s subscribe to a terminated {@code ReplayProcessor}, they observe the items that remained in
+     * the buffer after the terminal notification, regardless of their age, but at most {@code size} items.
+     * &lt;p&gt;
+     * If a {@code Subscriber} subscribes while the {@code ReplayProcessor} is active, it will observe only those items
+     * from within the buffer that have age less than the specified time and each subsequent item, even if the
+     * buffer evicts items due to the time constraint in the mean time. In other words, once a {@code Subscriber}
+     * subscribes, it observes items without gaps in the sequence except for the outdated items at the beginning
+     * of the sequence.
+     * &lt;p&gt;
+     * Note that terminal notifications ({@code onError} and {@code onComplete}) trigger eviction as well. For
+     * example, with a max age of 5, the first item is observed at T=0, then an {@code onComplete} notification
+     * arrives at T=10. If a {@code Subscriber} subscribes at T=11, it will find an empty {@code ReplayProcessor} with just
+     * an {@code onComplete} notification.
+     *
+     * @param &lt;T&gt;
+     *          the type of items observed and emitted by this type of processor
+     * @param maxAge
+     *          the maximum age of the contained items
+     * @param unit
+     *          the time unit of {@code time}
+     * @param maxSize
+     *          the maximum number of buffered items
+     * @param scheduler
+     *          the {@link Scheduler} that provides the current time
+     * @return the created processor
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; ReplayProcessor&lt;T&gt; createWithTimeAndSize(long maxAge, TimeUnit unit, Scheduler scheduler, int maxSize) {
+<span class="fc" id="L318">        return new ReplayProcessor&lt;T&gt;(new SizeAndTimeBoundReplayBuffer&lt;T&gt;(maxSize, maxAge, unit, scheduler));</span>
+    }
+
+    /**
+     * Constructs a ReplayProcessor with the given custom ReplayBuffer instance.
+     * @param buffer the ReplayBuffer instance, not null (not verified)
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L326">    ReplayProcessor(ReplayBuffer&lt;T&gt; buffer) {</span>
+<span class="fc" id="L327">        this.buffer = buffer;</span>
+<span class="fc" id="L328">        this.subscribers = new AtomicReference&lt;ReplaySubscription&lt;T&gt;[]&gt;(EMPTY);</span>
+<span class="fc" id="L329">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L333">        ReplaySubscription&lt;T&gt; rs = new ReplaySubscription&lt;T&gt;(s, this);</span>
+<span class="fc" id="L334">        s.onSubscribe(rs);</span>
+
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        if (add(rs)) {</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            if (rs.cancelled) {</span>
+<span class="fc" id="L338">                remove(rs);</span>
+<span class="fc" id="L339">                return;</span>
+            }
+        }
+<span class="fc" id="L342">        buffer.replay(rs);</span>
+<span class="fc" id="L343">    }</span>
+
+    @Override
+    public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L348">            s.cancel();</span>
+<span class="fc" id="L349">            return;</span>
+        }
+<span class="fc" id="L351">        s.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L352">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc" id="L356">        ObjectHelper.requireNonNull(t, &quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+
+<span class="fc bfc" id="L358" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L359">            return;</span>
+        }
+
+<span class="fc" id="L362">        ReplayBuffer&lt;T&gt; b = buffer;</span>
+<span class="fc" id="L363">        b.next(t);</span>
+
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        for (ReplaySubscription&lt;T&gt; rs : subscribers.get()) {</span>
+<span class="fc" id="L366">            b.replay(rs);</span>
+        }
+<span class="fc" id="L368">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onError(Throwable t) {
+<span class="fc" id="L373">        ObjectHelper.requireNonNull(t, &quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+
+<span class="fc bfc" id="L375" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L376">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L377">            return;</span>
+        }
+<span class="fc" id="L379">        done = true;</span>
+
+<span class="fc" id="L381">        ReplayBuffer&lt;T&gt; b = buffer;</span>
+<span class="fc" id="L382">        b.error(t);</span>
+
+<span class="fc bfc" id="L384" title="All 2 branches covered.">        for (ReplaySubscription&lt;T&gt; rs : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L385">            b.replay(rs);</span>
+        }
+<span class="fc" id="L387">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        if (done) {</span>
+<span class="fc" id="L393">            return;</span>
+        }
+<span class="fc" id="L395">        done = true;</span>
+
+<span class="fc" id="L397">        ReplayBuffer&lt;T&gt; b = buffer;</span>
+
+<span class="fc" id="L399">        b.complete();</span>
+
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        for (ReplaySubscription&lt;T&gt; rs : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L402">            b.replay(rs);</span>
+        }
+<span class="fc" id="L404">    }</span>
+
+    @Override
+    public boolean hasSubscribers() {
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        return subscribers.get().length != 0;</span>
+    }
+
+    /* test */ int subscriberCount() {
+<span class="fc" id="L412">        return subscribers.get().length;</span>
+    }
+
+    @Override
+    @Nullable
+    public Throwable getThrowable() {
+<span class="fc" id="L418">        ReplayBuffer&lt;T&gt; b = buffer;</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        if (b.isDone()) {</span>
+<span class="fc" id="L420">            return b.getError();</span>
+        }
+<span class="fc" id="L422">        return null;</span>
+    }
+
+    /**
+     * Makes sure the item cached by the head node in a bounded
+     * ReplayProcessor is released (as it is never part of a replay).
+     * &lt;p&gt;
+     * By default, live bounded buffers will remember one item before
+     * the currently receivable one to ensure subscribers can always
+     * receive a continuous sequence of items. A terminated ReplayProcessor
+     * automatically releases this inaccessible item.
+     * &lt;p&gt;
+     * The method must be called sequentially, similar to the standard
+     * {@code onXXX} methods.
+     * &lt;p&gt;History: 2.1.11 - experimental
+     * @since 2.2
+     */
+    public void cleanupBuffer() {
+<span class="fc" id="L440">        buffer.trimHead();</span>
+<span class="fc" id="L441">    }</span>
+
+    /**
+     * Returns the latest value this processor has or null if no such value exists.
+     * &lt;p&gt;The method is thread-safe.
+     * @return the latest value this processor currently has or null if no such value exists
+     */
+    public T getValue() {
+<span class="fc" id="L449">        return buffer.getValue();</span>
+    }
+
+    /**
+     * Returns an Object array containing snapshot all values of this processor.
+     * &lt;p&gt;The method is thread-safe.
+     * @return the array containing the snapshot of all values of this processor
+     */
+    public Object[] getValues() {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L459">        T[] a = (T[])EMPTY_ARRAY;</span>
+<span class="fc" id="L460">        T[] b = getValues(a);</span>
+<span class="fc bfc" id="L461" title="All 2 branches covered.">        if (b == EMPTY_ARRAY) {</span>
+<span class="fc" id="L462">            return new Object[0];</span>
+        }
+<span class="fc" id="L464">        return b;</span>
+
+    }
+
+    /**
+     * Returns a typed array containing a snapshot of all values of this processor.
+     * &lt;p&gt;The method follows the conventions of Collection.toArray by setting the array element
+     * after the last value to null (if the capacity permits).
+     * &lt;p&gt;The method is thread-safe.
+     * @param array the target array to copy values into if it fits
+     * @return the given array if the values fit into it or a new array containing all values
+     */
+    public T[] getValues(T[] array) {
+<span class="fc" id="L477">        return buffer.getValues(array);</span>
+    }
+
+    @Override
+    public boolean hasComplete() {
+<span class="fc" id="L482">        ReplayBuffer&lt;T&gt; b = buffer;</span>
+<span class="fc bfc" id="L483" title="All 4 branches covered.">        return b.isDone() &amp;&amp; b.getError() == null;</span>
+    }
+
+    @Override
+    public boolean hasThrowable() {
+<span class="fc" id="L488">        ReplayBuffer&lt;T&gt; b = buffer;</span>
+<span class="fc bfc" id="L489" title="All 4 branches covered.">        return b.isDone() &amp;&amp; b.getError() != null;</span>
+    }
+
+    /**
+     * Returns true if this processor has any value.
+     * &lt;p&gt;The method is thread-safe.
+     * @return true if the processor has any value
+     */
+    public boolean hasValue() {
+<span class="fc bfc" id="L498" title="All 2 branches covered.">        return buffer.size() != 0; // NOPMD</span>
+    }
+
+    /* test*/ int size() {
+<span class="fc" id="L502">        return buffer.size();</span>
+    }
+
+    boolean add(ReplaySubscription&lt;T&gt; rs) {
+        for (;;) {
+<span class="fc" id="L507">            ReplaySubscription&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">            if (a == TERMINATED) {</span>
+<span class="fc" id="L509">                return false;</span>
+            }
+<span class="fc" id="L511">            int len = a.length;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L513">            ReplaySubscription&lt;T&gt;[] b = new ReplaySubscription[len + 1];</span>
+<span class="fc" id="L514">            System.arraycopy(a, 0, b, 0, len);</span>
+<span class="fc" id="L515">            b[len] = rs;</span>
+<span class="fc bfc" id="L516" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L517">                return true;</span>
+            }
+<span class="fc" id="L519">        }</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    void remove(ReplaySubscription&lt;T&gt; rs) {
+        for (;;) {
+<span class="fc" id="L525">            ReplaySubscription&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L526" title="All 4 branches covered.">            if (a == TERMINATED || a == EMPTY) {</span>
+<span class="fc" id="L527">                return;</span>
+            }
+<span class="fc" id="L529">            int len = a.length;</span>
+<span class="fc" id="L530">            int j = -1;</span>
+<span class="fc bfc" id="L531" title="All 2 branches covered.">            for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L532" title="All 2 branches covered.">                if (a[i] == rs) {</span>
+<span class="fc" id="L533">                    j = i;</span>
+<span class="fc" id="L534">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L538" title="All 2 branches covered.">            if (j &lt; 0) {</span>
+<span class="fc" id="L539">                return;</span>
+            }
+            ReplaySubscription&lt;T&gt;[] b;
+<span class="fc bfc" id="L542" title="All 2 branches covered.">            if (len == 1) {</span>
+<span class="fc" id="L543">                b = EMPTY;</span>
+            } else {
+<span class="fc" id="L545">                b = new ReplaySubscription[len - 1];</span>
+<span class="fc" id="L546">                System.arraycopy(a, 0, b, 0, j);</span>
+<span class="fc" id="L547">                System.arraycopy(a, j + 1, b, j, len - j - 1);</span>
+            }
+<span class="fc bfc" id="L549" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L550">                return;</span>
+            }
+<span class="fc" id="L552">        }</span>
+    }
+
+    /**
+     * Abstraction over a buffer that receives events and replays them to
+     * individual Subscribers.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    interface ReplayBuffer&lt;T&gt; {
+
+        void next(T value);
+
+        void error(Throwable ex);
+
+        void complete();
+
+        void replay(ReplaySubscription&lt;T&gt; rs);
+
+        int size();
+
+        @Nullable
+        T getValue();
+
+        T[] getValues(T[] array);
+
+        boolean isDone();
+
+        Throwable getError();
+
+        /**
+         * Make sure an old inaccessible head value is released
+         * in a bounded buffer.
+         */
+        void trimHead();
+    }
+
+    static final class ReplaySubscription&lt;T&gt; extends AtomicInteger implements Subscription {
+
+        private static final long serialVersionUID = 466549804534799122L;
+        final Subscriber&lt;? super T&gt; downstream;
+        final ReplayProcessor&lt;T&gt; state;
+
+        Object index;
+
+        final AtomicLong requested;
+
+        volatile boolean cancelled;
+
+        long emitted;
+
+<span class="fc" id="L603">        ReplaySubscription(Subscriber&lt;? super T&gt; actual, ReplayProcessor&lt;T&gt; state) {</span>
+<span class="fc" id="L604">            this.downstream = actual;</span>
+<span class="fc" id="L605">            this.state = state;</span>
+<span class="fc" id="L606">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L607">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L611" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L612">                BackpressureHelper.add(requested, n);</span>
+<span class="fc" id="L613">                state.buffer.replay(this);</span>
+            }
+<span class="fc" id="L615">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L619" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L620">                cancelled = true;</span>
+<span class="fc" id="L621">                state.remove(this);</span>
+            }
+<span class="fc" id="L623">        }</span>
+    }
+
+    static final class UnboundedReplayBuffer&lt;T&gt;
+    implements ReplayBuffer&lt;T&gt; {
+
+        final List&lt;T&gt; buffer;
+
+        Throwable error;
+        volatile boolean done;
+
+        volatile int size;
+
+<span class="fc" id="L636">        UnboundedReplayBuffer(int capacityHint) {</span>
+<span class="fc" id="L637">            this.buffer = new ArrayList&lt;T&gt;(ObjectHelper.verifyPositive(capacityHint, &quot;capacityHint&quot;));</span>
+<span class="fc" id="L638">        }</span>
+
+        @Override
+        public void next(T value) {
+<span class="fc" id="L642">            buffer.add(value);</span>
+<span class="fc" id="L643">            size++;</span>
+<span class="fc" id="L644">        }</span>
+
+        @Override
+        public void error(Throwable ex) {
+<span class="fc" id="L648">            error = ex;</span>
+<span class="fc" id="L649">            done = true;</span>
+<span class="fc" id="L650">        }</span>
+
+        @Override
+        public void complete() {
+<span class="fc" id="L654">            done = true;</span>
+<span class="fc" id="L655">        }</span>
+
+        @Override
+        public void trimHead() {
+            // not applicable for an unbounded buffer
+<span class="fc" id="L660">        }</span>
+
+        @Override
+        @Nullable
+        public T getValue() {
+<span class="fc" id="L665">            int s = size;</span>
+<span class="fc bfc" id="L666" title="All 2 branches covered.">            if (s == 0) {</span>
+<span class="fc" id="L667">                return null;</span>
+            }
+<span class="fc" id="L669">            return buffer.get(s - 1);</span>
+        }
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public T[] getValues(T[] array) {
+<span class="fc" id="L675">            int s = size;</span>
+<span class="fc bfc" id="L676" title="All 2 branches covered.">            if (s == 0) {</span>
+<span class="fc bfc" id="L677" title="All 2 branches covered.">                if (array.length != 0) {</span>
+<span class="fc" id="L678">                    array[0] = null;</span>
+                }
+<span class="fc" id="L680">                return array;</span>
+            }
+<span class="fc" id="L682">            List&lt;T&gt; b = buffer;</span>
+
+<span class="fc bfc" id="L684" title="All 2 branches covered.">            if (array.length &lt; s) {</span>
+<span class="fc" id="L685">                array = (T[])Array.newInstance(array.getClass().getComponentType(), s);</span>
+            }
+<span class="fc bfc" id="L687" title="All 2 branches covered.">            for (int i = 0; i &lt; s; i++) {</span>
+<span class="fc" id="L688">                array[i] = b.get(i);</span>
+            }
+<span class="fc bfc" id="L690" title="All 2 branches covered.">            if (array.length &gt; s) {</span>
+<span class="fc" id="L691">                array[s] = null;</span>
+            }
+
+<span class="fc" id="L694">            return array;</span>
+        }
+
+        @Override
+        public void replay(ReplaySubscription&lt;T&gt; rs) {
+<span class="fc bfc" id="L699" title="All 2 branches covered.">            if (rs.getAndIncrement() != 0) {</span>
+<span class="fc" id="L700">                return;</span>
+            }
+
+<span class="fc" id="L703">            int missed = 1;</span>
+<span class="fc" id="L704">            final List&lt;T&gt; b = buffer;</span>
+<span class="fc" id="L705">            final Subscriber&lt;? super T&gt; a = rs.downstream;</span>
+
+<span class="fc" id="L707">            Integer indexObject = (Integer)rs.index;</span>
+            int index;
+<span class="fc bfc" id="L709" title="All 2 branches covered.">            if (indexObject != null) {</span>
+<span class="fc" id="L710">                index = indexObject;</span>
+            } else {
+<span class="fc" id="L712">                index = 0;</span>
+<span class="fc" id="L713">                rs.index = 0;</span>
+            }
+<span class="fc" id="L715">            long e = rs.emitted;</span>
+
+            for (;;) {
+
+<span class="fc" id="L719">                long r = rs.requested.get();</span>
+
+<span class="fc bfc" id="L721" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L722" title="All 2 branches covered.">                    if (rs.cancelled) {</span>
+<span class="fc" id="L723">                        rs.index = null;</span>
+<span class="fc" id="L724">                        return;</span>
+                    }
+
+<span class="fc" id="L727">                    boolean d = done;</span>
+<span class="fc" id="L728">                    int s = size;</span>
+
+<span class="fc bfc" id="L730" title="All 4 branches covered.">                    if (d &amp;&amp; index == s) {</span>
+<span class="fc" id="L731">                        rs.index = null;</span>
+<span class="fc" id="L732">                        rs.cancelled = true;</span>
+<span class="fc" id="L733">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L734" title="All 2 branches covered.">                        if (ex == null) {</span>
+<span class="fc" id="L735">                            a.onComplete();</span>
+                        } else {
+<span class="fc" id="L737">                            a.onError(ex);</span>
+                        }
+<span class="fc" id="L739">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L742" title="All 2 branches covered.">                    if (index == s) {</span>
+<span class="fc" id="L743">                        break;</span>
+                    }
+
+<span class="fc" id="L746">                    a.onNext(b.get(index));</span>
+
+<span class="fc" id="L748">                    index++;</span>
+<span class="fc" id="L749">                    e++;</span>
+<span class="fc" id="L750">                }</span>
+
+<span class="fc bfc" id="L752" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc bfc" id="L753" title="All 2 branches covered.">                    if (rs.cancelled) {</span>
+<span class="fc" id="L754">                        rs.index = null;</span>
+<span class="fc" id="L755">                        return;</span>
+                    }
+
+<span class="fc" id="L758">                    boolean d = done;</span>
+<span class="fc" id="L759">                    int s = size;</span>
+
+<span class="fc bfc" id="L761" title="All 4 branches covered.">                    if (d &amp;&amp; index == s) {</span>
+<span class="fc" id="L762">                        rs.index = null;</span>
+<span class="fc" id="L763">                        rs.cancelled = true;</span>
+<span class="fc" id="L764">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L765" title="All 2 branches covered.">                        if (ex == null) {</span>
+<span class="fc" id="L766">                            a.onComplete();</span>
+                        } else {
+<span class="fc" id="L768">                            a.onError(ex);</span>
+                        }
+<span class="fc" id="L770">                        return;</span>
+                    }
+                }
+
+<span class="fc" id="L774">                rs.index = index;</span>
+<span class="fc" id="L775">                rs.emitted = e;</span>
+<span class="fc" id="L776">                missed = rs.addAndGet(-missed);</span>
+<span class="fc bfc" id="L777" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L778">                    break;</span>
+                }
+<span class="fc" id="L780">            }</span>
+<span class="fc" id="L781">        }</span>
+
+        @Override
+        public int size() {
+<span class="fc" id="L785">            return size;</span>
+        }
+
+        @Override
+        public boolean isDone() {
+<span class="fc" id="L790">            return done;</span>
+        }
+
+        @Override
+        public Throwable getError() {
+<span class="fc" id="L795">            return error;</span>
+        }
+    }
+
+    static final class Node&lt;T&gt; extends AtomicReference&lt;Node&lt;T&gt;&gt; {
+
+        private static final long serialVersionUID = 6404226426336033100L;
+
+        final T value;
+
+<span class="fc" id="L805">        Node(T value) {</span>
+<span class="fc" id="L806">            this.value = value;</span>
+<span class="fc" id="L807">        }</span>
+    }
+
+    static final class TimedNode&lt;T&gt; extends AtomicReference&lt;TimedNode&lt;T&gt;&gt; {
+
+        private static final long serialVersionUID = 6404226426336033100L;
+
+        final T value;
+        final long time;
+
+<span class="fc" id="L817">        TimedNode(T value, long time) {</span>
+<span class="fc" id="L818">            this.value = value;</span>
+<span class="fc" id="L819">            this.time = time;</span>
+<span class="fc" id="L820">        }</span>
+    }
+
+    static final class SizeBoundReplayBuffer&lt;T&gt;
+    implements ReplayBuffer&lt;T&gt; {
+
+        final int maxSize;
+        int size;
+
+        volatile Node&lt;T&gt; head;
+
+        Node&lt;T&gt; tail;
+
+        Throwable error;
+        volatile boolean done;
+
+<span class="fc" id="L836">        SizeBoundReplayBuffer(int maxSize) {</span>
+<span class="fc" id="L837">            this.maxSize = ObjectHelper.verifyPositive(maxSize, &quot;maxSize&quot;);</span>
+<span class="fc" id="L838">            Node&lt;T&gt; h = new Node&lt;T&gt;(null);</span>
+<span class="fc" id="L839">            this.tail = h;</span>
+<span class="fc" id="L840">            this.head = h;</span>
+<span class="fc" id="L841">        }</span>
+
+        void trim() {
+<span class="fc bfc" id="L844" title="All 2 branches covered.">            if (size &gt; maxSize) {</span>
+<span class="fc" id="L845">                size--;</span>
+<span class="fc" id="L846">                Node&lt;T&gt; h = head;</span>
+<span class="fc" id="L847">                head = h.get();</span>
+            }
+<span class="fc" id="L849">        }</span>
+
+        @Override
+        public void next(T value) {
+<span class="fc" id="L853">            Node&lt;T&gt; n = new Node&lt;T&gt;(value);</span>
+<span class="fc" id="L854">            Node&lt;T&gt; t = tail;</span>
+
+<span class="fc" id="L856">            tail = n;</span>
+<span class="fc" id="L857">            size++;</span>
+<span class="fc" id="L858">            t.set(n); // releases both the tail and size</span>
+
+<span class="fc" id="L860">            trim();</span>
+<span class="fc" id="L861">        }</span>
+
+        @Override
+        public void error(Throwable ex) {
+<span class="fc" id="L865">            error = ex;</span>
+<span class="fc" id="L866">            trimHead();</span>
+<span class="fc" id="L867">            done = true;</span>
+<span class="fc" id="L868">        }</span>
+
+        @Override
+        public void complete() {
+<span class="fc" id="L872">            trimHead();</span>
+<span class="fc" id="L873">            done = true;</span>
+<span class="fc" id="L874">        }</span>
+
+        @Override
+        public void trimHead() {
+<span class="fc bfc" id="L878" title="All 2 branches covered.">            if (head.value != null) {</span>
+<span class="fc" id="L879">                Node&lt;T&gt; n = new Node&lt;T&gt;(null);</span>
+<span class="fc" id="L880">                n.lazySet(head.get());</span>
+<span class="fc" id="L881">                head = n;</span>
+            }
+<span class="fc" id="L883">        }</span>
+
+        @Override
+        public boolean isDone() {
+<span class="fc" id="L887">            return done;</span>
+        }
+
+        @Override
+        public Throwable getError() {
+<span class="fc" id="L892">            return error;</span>
+        }
+
+        @Override
+        public T getValue() {
+<span class="fc" id="L897">            Node&lt;T&gt; h = head;</span>
+            for (;;) {
+<span class="fc" id="L899">                Node&lt;T&gt; n = h.get();</span>
+<span class="fc bfc" id="L900" title="All 2 branches covered.">                if (n == null) {</span>
+<span class="fc" id="L901">                    return h.value;</span>
+                }
+<span class="fc" id="L903">                h = n;</span>
+<span class="fc" id="L904">            }</span>
+        }
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public T[] getValues(T[] array) {
+<span class="fc" id="L910">            int s = 0;</span>
+<span class="fc" id="L911">            Node&lt;T&gt; h = head;</span>
+<span class="fc" id="L912">            Node&lt;T&gt; h0 = h;</span>
+            for (;;) {
+<span class="fc" id="L914">                Node&lt;T&gt; next = h0.get();</span>
+<span class="fc bfc" id="L915" title="All 2 branches covered.">                if (next == null) {</span>
+<span class="fc" id="L916">                    break;</span>
+                }
+<span class="fc" id="L918">                s++;</span>
+<span class="fc" id="L919">                h0 = next;</span>
+<span class="fc" id="L920">            }</span>
+<span class="fc bfc" id="L921" title="All 2 branches covered.">            if (array.length &lt; s) {</span>
+<span class="fc" id="L922">                array = (T[])Array.newInstance(array.getClass().getComponentType(), s);</span>
+            }
+
+<span class="fc bfc" id="L925" title="All 2 branches covered.">            for (int j = 0; j &lt; s; j++) {</span>
+<span class="fc" id="L926">                h = h.get();</span>
+<span class="fc" id="L927">                array[j] = h.value;</span>
+            }
+
+<span class="fc bfc" id="L930" title="All 2 branches covered.">            if (array.length &gt; s) {</span>
+<span class="fc" id="L931">                array[s] = null;</span>
+            }
+<span class="fc" id="L933">            return array;</span>
+        }
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public void replay(ReplaySubscription&lt;T&gt; rs) {
+<span class="fc bfc" id="L939" title="All 2 branches covered.">            if (rs.getAndIncrement() != 0) {</span>
+<span class="fc" id="L940">                return;</span>
+            }
+
+<span class="fc" id="L943">            int missed = 1;</span>
+<span class="fc" id="L944">            final Subscriber&lt;? super T&gt; a = rs.downstream;</span>
+
+<span class="fc" id="L946">            Node&lt;T&gt; index = (Node&lt;T&gt;)rs.index;</span>
+<span class="fc bfc" id="L947" title="All 2 branches covered.">            if (index == null) {</span>
+<span class="fc" id="L948">                index = head;</span>
+            }
+
+<span class="fc" id="L951">            long e = rs.emitted;</span>
+
+            for (;;) {
+
+<span class="fc" id="L955">                long r = rs.requested.get();</span>
+
+<span class="fc bfc" id="L957" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L958" title="All 2 branches covered.">                    if (rs.cancelled) {</span>
+<span class="fc" id="L959">                        rs.index = null;</span>
+<span class="fc" id="L960">                        return;</span>
+                    }
+
+<span class="fc" id="L963">                    boolean d = done;</span>
+<span class="fc" id="L964">                    Node&lt;T&gt; next = index.get();</span>
+<span class="fc bfc" id="L965" title="All 2 branches covered.">                    boolean empty = next == null;</span>
+
+<span class="fc bfc" id="L967" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L968">                        rs.index = null;</span>
+<span class="fc" id="L969">                        rs.cancelled = true;</span>
+<span class="fc" id="L970">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L971" title="All 2 branches covered.">                        if (ex == null) {</span>
+<span class="fc" id="L972">                            a.onComplete();</span>
+                        } else {
+<span class="fc" id="L974">                            a.onError(ex);</span>
+                        }
+<span class="fc" id="L976">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L979" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L980">                        break;</span>
+                    }
+
+<span class="fc" id="L983">                    a.onNext(next.value);</span>
+<span class="fc" id="L984">                    e++;</span>
+<span class="fc" id="L985">                    index = next;</span>
+<span class="fc" id="L986">                }</span>
+
+<span class="fc bfc" id="L988" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc bfc" id="L989" title="All 2 branches covered.">                    if (rs.cancelled) {</span>
+<span class="fc" id="L990">                        rs.index = null;</span>
+<span class="fc" id="L991">                        return;</span>
+                    }
+
+<span class="fc" id="L994">                    boolean d = done;</span>
+
+<span class="fc bfc" id="L996" title="All 4 branches covered.">                    if (d &amp;&amp; index.get() == null) {</span>
+<span class="fc" id="L997">                        rs.index = null;</span>
+<span class="fc" id="L998">                        rs.cancelled = true;</span>
+<span class="fc" id="L999">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L1000" title="All 2 branches covered.">                        if (ex == null) {</span>
+<span class="fc" id="L1001">                            a.onComplete();</span>
+                        } else {
+<span class="fc" id="L1003">                            a.onError(ex);</span>
+                        }
+<span class="fc" id="L1005">                        return;</span>
+                    }
+                }
+
+<span class="fc" id="L1009">                rs.index = index;</span>
+<span class="fc" id="L1010">                rs.emitted = e;</span>
+
+<span class="fc" id="L1012">                missed = rs.addAndGet(-missed);</span>
+<span class="fc bfc" id="L1013" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L1014">                    break;</span>
+                }
+<span class="fc" id="L1016">            }</span>
+<span class="fc" id="L1017">        }</span>
+
+        @Override
+        public int size() {
+<span class="fc" id="L1021">            int s = 0;</span>
+<span class="fc" id="L1022">            Node&lt;T&gt; h = head;</span>
+<span class="pc bpc" id="L1023" title="1 of 2 branches missed.">            while (s != Integer.MAX_VALUE) {</span>
+<span class="fc" id="L1024">                Node&lt;T&gt; next = h.get();</span>
+<span class="fc bfc" id="L1025" title="All 2 branches covered.">                if (next == null) {</span>
+<span class="fc" id="L1026">                    break;</span>
+                }
+<span class="fc" id="L1028">                s++;</span>
+<span class="fc" id="L1029">                h = next;</span>
+<span class="fc" id="L1030">            }</span>
+
+<span class="fc" id="L1032">            return s;</span>
+        }
+    }
+
+    static final class SizeAndTimeBoundReplayBuffer&lt;T&gt;
+    implements ReplayBuffer&lt;T&gt; {
+
+        final int maxSize;
+        final long maxAge;
+        final TimeUnit unit;
+        final Scheduler scheduler;
+        int size;
+
+        volatile TimedNode&lt;T&gt; head;
+
+        TimedNode&lt;T&gt; tail;
+
+        Throwable error;
+        volatile boolean done;
+
+<span class="fc" id="L1052">        SizeAndTimeBoundReplayBuffer(int maxSize, long maxAge, TimeUnit unit, Scheduler scheduler) {</span>
+<span class="fc" id="L1053">            this.maxSize = ObjectHelper.verifyPositive(maxSize, &quot;maxSize&quot;);</span>
+<span class="fc" id="L1054">            this.maxAge = ObjectHelper.verifyPositive(maxAge, &quot;maxAge&quot;);</span>
+<span class="fc" id="L1055">            this.unit = ObjectHelper.requireNonNull(unit, &quot;unit is null&quot;);</span>
+<span class="fc" id="L1056">            this.scheduler = ObjectHelper.requireNonNull(scheduler, &quot;scheduler is null&quot;);</span>
+<span class="fc" id="L1057">            TimedNode&lt;T&gt; h = new TimedNode&lt;T&gt;(null, 0L);</span>
+<span class="fc" id="L1058">            this.tail = h;</span>
+<span class="fc" id="L1059">            this.head = h;</span>
+<span class="fc" id="L1060">        }</span>
+
+        void trim() {
+<span class="fc bfc" id="L1063" title="All 2 branches covered.">            if (size &gt; maxSize) {</span>
+<span class="fc" id="L1064">                size--;</span>
+<span class="fc" id="L1065">                TimedNode&lt;T&gt; h = head;</span>
+<span class="fc" id="L1066">                head = h.get();</span>
+            }
+<span class="fc" id="L1068">            long limit = scheduler.now(unit) - maxAge;</span>
+
+<span class="fc" id="L1070">            TimedNode&lt;T&gt; h = head;</span>
+
+            for (;;) {
+<span class="fc" id="L1073">                TimedNode&lt;T&gt; next = h.get();</span>
+<span class="fc bfc" id="L1074" title="All 2 branches covered.">                if (next == null) {</span>
+<span class="fc" id="L1075">                    head = h;</span>
+<span class="fc" id="L1076">                    break;</span>
+                }
+
+<span class="fc bfc" id="L1079" title="All 2 branches covered.">                if (next.time &gt; limit) {</span>
+<span class="fc" id="L1080">                    head = h;</span>
+<span class="fc" id="L1081">                    break;</span>
+                }
+
+<span class="fc" id="L1084">                h = next;</span>
+<span class="fc" id="L1085">            }</span>
+
+<span class="fc" id="L1087">        }</span>
+
+        void trimFinal() {
+<span class="fc" id="L1090">            long limit = scheduler.now(unit) - maxAge;</span>
+
+<span class="fc" id="L1092">            TimedNode&lt;T&gt; h = head;</span>
+
+            for (;;) {
+<span class="fc" id="L1095">                TimedNode&lt;T&gt; next = h.get();</span>
+<span class="fc bfc" id="L1096" title="All 2 branches covered.">                if (next == null) {</span>
+<span class="fc bfc" id="L1097" title="All 2 branches covered.">                    if (h.value != null) {</span>
+<span class="fc" id="L1098">                        head = new TimedNode&lt;T&gt;(null, 0L);</span>
+                    } else {
+<span class="fc" id="L1100">                        head = h;</span>
+                    }
+<span class="fc" id="L1102">                    break;</span>
+                }
+
+<span class="fc bfc" id="L1105" title="All 2 branches covered.">                if (next.time &gt; limit) {</span>
+<span class="fc bfc" id="L1106" title="All 2 branches covered.">                    if (h.value != null) {</span>
+<span class="fc" id="L1107">                        TimedNode&lt;T&gt; n = new TimedNode&lt;T&gt;(null, 0L);</span>
+<span class="fc" id="L1108">                        n.lazySet(h.get());</span>
+<span class="fc" id="L1109">                        head = n;</span>
+<span class="fc" id="L1110">                    } else {</span>
+<span class="fc" id="L1111">                        head = h;</span>
+                    }
+<span class="fc" id="L1113">                    break;</span>
+                }
+
+<span class="fc" id="L1116">                h = next;</span>
+<span class="fc" id="L1117">            }</span>
+<span class="fc" id="L1118">        }</span>
+
+        @Override
+        public void trimHead() {
+<span class="fc bfc" id="L1122" title="All 2 branches covered.">            if (head.value != null) {</span>
+<span class="fc" id="L1123">                TimedNode&lt;T&gt; n = new TimedNode&lt;T&gt;(null, 0L);</span>
+<span class="fc" id="L1124">                n.lazySet(head.get());</span>
+<span class="fc" id="L1125">                head = n;</span>
+            }
+<span class="fc" id="L1127">        }</span>
+
+        @Override
+        public void next(T value) {
+<span class="fc" id="L1131">            TimedNode&lt;T&gt; n = new TimedNode&lt;T&gt;(value, scheduler.now(unit));</span>
+<span class="fc" id="L1132">            TimedNode&lt;T&gt; t = tail;</span>
+
+<span class="fc" id="L1134">            tail = n;</span>
+<span class="fc" id="L1135">            size++;</span>
+<span class="fc" id="L1136">            t.set(n); // releases both the tail and size</span>
+
+<span class="fc" id="L1138">            trim();</span>
+<span class="fc" id="L1139">        }</span>
+
+        @Override
+        public void error(Throwable ex) {
+<span class="fc" id="L1143">            trimFinal();</span>
+<span class="fc" id="L1144">            error = ex;</span>
+<span class="fc" id="L1145">            done = true;</span>
+<span class="fc" id="L1146">        }</span>
+
+        @Override
+        public void complete() {
+<span class="fc" id="L1150">            trimFinal();</span>
+<span class="fc" id="L1151">            done = true;</span>
+<span class="fc" id="L1152">        }</span>
+
+        @Override
+        @Nullable
+        public T getValue() {
+<span class="fc" id="L1157">            TimedNode&lt;T&gt; h = head;</span>
+
+            for (;;) {
+<span class="fc" id="L1160">                TimedNode&lt;T&gt; next = h.get();</span>
+<span class="fc bfc" id="L1161" title="All 2 branches covered.">                if (next == null) {</span>
+<span class="fc" id="L1162">                    break;</span>
+                }
+<span class="fc" id="L1164">                h = next;</span>
+<span class="fc" id="L1165">            }</span>
+
+<span class="fc" id="L1167">            long limit = scheduler.now(unit) - maxAge;</span>
+<span class="fc bfc" id="L1168" title="All 2 branches covered.">            if (h.time &lt; limit) {</span>
+<span class="fc" id="L1169">                return null;</span>
+            }
+
+<span class="fc" id="L1172">            return h.value;</span>
+        }
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public T[] getValues(T[] array) {
+<span class="fc" id="L1178">            TimedNode&lt;T&gt; h = getHead();</span>
+<span class="fc" id="L1179">            int s = size(h);</span>
+
+<span class="fc bfc" id="L1181" title="All 2 branches covered.">            if (s == 0) {</span>
+<span class="fc bfc" id="L1182" title="All 2 branches covered.">                if (array.length != 0) {</span>
+<span class="fc" id="L1183">                    array[0] = null;</span>
+                }
+            } else {
+<span class="fc bfc" id="L1186" title="All 2 branches covered.">                if (array.length &lt; s) {</span>
+<span class="fc" id="L1187">                    array = (T[])Array.newInstance(array.getClass().getComponentType(), s);</span>
+                }
+
+<span class="fc" id="L1190">                int i = 0;</span>
+<span class="fc bfc" id="L1191" title="All 2 branches covered.">                while (i != s) {</span>
+<span class="fc" id="L1192">                    TimedNode&lt;T&gt; next = h.get();</span>
+<span class="fc" id="L1193">                    array[i] = next.value;</span>
+<span class="fc" id="L1194">                    i++;</span>
+<span class="fc" id="L1195">                    h = next;</span>
+<span class="fc" id="L1196">                }</span>
+<span class="fc bfc" id="L1197" title="All 2 branches covered.">                if (array.length &gt; s) {</span>
+<span class="fc" id="L1198">                    array[s] = null;</span>
+                }
+            }
+
+<span class="fc" id="L1202">            return array;</span>
+        }
+
+        TimedNode&lt;T&gt; getHead() {
+<span class="fc" id="L1206">            TimedNode&lt;T&gt; index = head;</span>
+            // skip old entries
+<span class="fc" id="L1208">            long limit = scheduler.now(unit) - maxAge;</span>
+<span class="fc" id="L1209">            TimedNode&lt;T&gt; next = index.get();</span>
+<span class="fc bfc" id="L1210" title="All 2 branches covered.">            while (next != null) {</span>
+<span class="fc" id="L1211">                long ts = next.time;</span>
+<span class="fc bfc" id="L1212" title="All 2 branches covered.">                if (ts &gt; limit) {</span>
+<span class="fc" id="L1213">                    break;</span>
+                }
+<span class="fc" id="L1215">                index = next;</span>
+<span class="fc" id="L1216">                next = index.get();</span>
+<span class="fc" id="L1217">            }</span>
+<span class="fc" id="L1218">            return index;</span>
+        }
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public void replay(ReplaySubscription&lt;T&gt; rs) {
+<span class="fc bfc" id="L1224" title="All 2 branches covered.">            if (rs.getAndIncrement() != 0) {</span>
+<span class="fc" id="L1225">                return;</span>
+            }
+
+<span class="fc" id="L1228">            int missed = 1;</span>
+<span class="fc" id="L1229">            final Subscriber&lt;? super T&gt; a = rs.downstream;</span>
+
+<span class="fc" id="L1231">            TimedNode&lt;T&gt; index = (TimedNode&lt;T&gt;)rs.index;</span>
+<span class="fc bfc" id="L1232" title="All 2 branches covered.">            if (index == null) {</span>
+<span class="fc" id="L1233">                index = getHead();</span>
+            }
+
+<span class="fc" id="L1236">            long e = rs.emitted;</span>
+
+            for (;;) {
+
+<span class="fc" id="L1240">                long r = rs.requested.get();</span>
+
+<span class="fc bfc" id="L1242" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L1243" title="All 2 branches covered.">                    if (rs.cancelled) {</span>
+<span class="fc" id="L1244">                        rs.index = null;</span>
+<span class="fc" id="L1245">                        return;</span>
+                    }
+
+<span class="fc" id="L1248">                    boolean d = done;</span>
+<span class="fc" id="L1249">                    TimedNode&lt;T&gt; next = index.get();</span>
+<span class="fc bfc" id="L1250" title="All 2 branches covered.">                    boolean empty = next == null;</span>
+
+<span class="fc bfc" id="L1252" title="All 4 branches covered.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L1253">                        rs.index = null;</span>
+<span class="fc" id="L1254">                        rs.cancelled = true;</span>
+<span class="fc" id="L1255">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L1256" title="All 2 branches covered.">                        if (ex == null) {</span>
+<span class="fc" id="L1257">                            a.onComplete();</span>
+                        } else {
+<span class="fc" id="L1259">                            a.onError(ex);</span>
+                        }
+<span class="fc" id="L1261">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L1264" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L1265">                        break;</span>
+                    }
+
+<span class="fc" id="L1268">                    a.onNext(next.value);</span>
+<span class="fc" id="L1269">                    e++;</span>
+<span class="fc" id="L1270">                    index = next;</span>
+<span class="fc" id="L1271">                }</span>
+
+<span class="fc bfc" id="L1273" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc bfc" id="L1274" title="All 2 branches covered.">                    if (rs.cancelled) {</span>
+<span class="fc" id="L1275">                        rs.index = null;</span>
+<span class="fc" id="L1276">                        return;</span>
+                    }
+
+<span class="fc" id="L1279">                    boolean d = done;</span>
+
+<span class="fc bfc" id="L1281" title="All 4 branches covered.">                    if (d &amp;&amp; index.get() == null) {</span>
+<span class="fc" id="L1282">                        rs.index = null;</span>
+<span class="fc" id="L1283">                        rs.cancelled = true;</span>
+<span class="fc" id="L1284">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L1285" title="All 2 branches covered.">                        if (ex == null) {</span>
+<span class="fc" id="L1286">                            a.onComplete();</span>
+                        } else {
+<span class="fc" id="L1288">                            a.onError(ex);</span>
+                        }
+<span class="fc" id="L1290">                        return;</span>
+                    }
+                }
+
+<span class="fc" id="L1294">                rs.index = index;</span>
+<span class="fc" id="L1295">                rs.emitted = e;</span>
+
+<span class="fc" id="L1297">                missed = rs.addAndGet(-missed);</span>
+<span class="fc bfc" id="L1298" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L1299">                    break;</span>
+                }
+<span class="fc" id="L1301">            }</span>
+<span class="fc" id="L1302">        }</span>
+
+        @Override
+        public int size() {
+<span class="fc" id="L1306">            return size(getHead());</span>
+        }
+
+        int size(TimedNode&lt;T&gt; h) {
+<span class="fc" id="L1310">            int s = 0;</span>
+<span class="pc bpc" id="L1311" title="1 of 2 branches missed.">            while (s != Integer.MAX_VALUE) {</span>
+<span class="fc" id="L1312">                TimedNode&lt;T&gt; next = h.get();</span>
+<span class="fc bfc" id="L1313" title="All 2 branches covered.">                if (next == null) {</span>
+<span class="fc" id="L1314">                    break;</span>
+                }
+<span class="fc" id="L1316">                s++;</span>
+<span class="fc" id="L1317">                h = next;</span>
+<span class="fc" id="L1318">            }</span>
+
+<span class="fc" id="L1320">            return s;</span>
+        }
+
+        @Override
+        public Throwable getError() {
+<span class="fc" id="L1325">            return error;</span>
+        }
+
+        @Override
+        public boolean isDone() {
+<span class="fc" id="L1330">            return done;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

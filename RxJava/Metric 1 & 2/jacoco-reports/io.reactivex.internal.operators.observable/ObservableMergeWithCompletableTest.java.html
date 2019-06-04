@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableMergeWithCompletableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableMergeWithCompletableTest.java</span></div><h1>ObservableMergeWithCompletableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Action;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L27">public class ObservableMergeWithCompletableTest {</span>
+
+    @Test
+    public void normal() {
+<span class="fc" id="L31">        final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L33">        Observable.range(1, 5).mergeWith(</span>
+<span class="fc" id="L34">                Completable.fromAction(new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="fc" id="L37">                        to.onNext(100);</span>
+<span class="fc" id="L38">                    }</span>
+                })
+        )
+<span class="fc" id="L41">        .subscribe(to);</span>
+
+<span class="fc" id="L43">        to.assertResult(1, 2, 3, 4, 5, 100);</span>
+<span class="fc" id="L44">    }</span>
+
+    @Test
+    public void take() {
+<span class="fc" id="L48">        final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L50">        Observable.range(1, 5).mergeWith(</span>
+<span class="fc" id="L51">                Completable.complete()</span>
+        )
+<span class="fc" id="L53">        .take(3)</span>
+<span class="fc" id="L54">        .subscribe(to);</span>
+
+<span class="fc" id="L56">        to.assertResult(1, 2, 3);</span>
+<span class="fc" id="L57">    }</span>
+
+    @Test
+    public void cancel() {
+<span class="fc" id="L61">        final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+<span class="fc" id="L62">        final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L64">        TestObserver&lt;Integer&gt; to = ps.mergeWith(cs).test();</span>
+
+<span class="fc" id="L66">        assertTrue(ps.hasObservers());</span>
+<span class="fc" id="L67">        assertTrue(cs.hasObservers());</span>
+
+<span class="fc" id="L69">        to.cancel();</span>
+
+<span class="fc" id="L71">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L72">        assertFalse(cs.hasObservers());</span>
+<span class="fc" id="L73">    }</span>
+
+    @Test
+    public void mainError() {
+<span class="fc" id="L77">        Observable.error(new TestException())</span>
+<span class="fc" id="L78">        .mergeWith(Completable.complete())</span>
+<span class="fc" id="L79">        .test()</span>
+<span class="fc" id="L80">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L81">    }</span>
+
+    @Test
+    public void otherError() {
+<span class="fc" id="L85">        Observable.never()</span>
+<span class="fc" id="L86">        .mergeWith(Completable.error(new TestException()))</span>
+<span class="fc" id="L87">        .test()</span>
+<span class="fc" id="L88">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L89">    }</span>
+
+    @Test
+    public void completeRace() {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L94">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+<span class="fc" id="L95">            final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L97">            TestObserver&lt;Integer&gt; to = ps.mergeWith(cs).test();</span>
+
+<span class="fc" id="L99">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L102">                    ps.onNext(1);</span>
+<span class="fc" id="L103">                    ps.onComplete();</span>
+<span class="fc" id="L104">                }</span>
+            };
+
+<span class="fc" id="L107">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L110">                    cs.onComplete();</span>
+<span class="fc" id="L111">                }</span>
+            };
+
+<span class="fc" id="L114">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L116">            to.assertResult(1);</span>
+        }
+<span class="fc" id="L118">    }</span>
+
+    @Test
+    public void isDisposed() {
+<span class="fc" id="L122">        new Observable&lt;Integer&gt;() {</span>
+            @Override
+            protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L125">                observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L127">                assertFalse(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L129">                observer.onNext(1);</span>
+
+<span class="fc" id="L131">                assertTrue(((Disposable)observer).isDisposed());</span>
+<span class="fc" id="L132">            }</span>
+<span class="fc" id="L133">        }.mergeWith(Completable.complete())</span>
+<span class="fc" id="L134">        .take(1)</span>
+<span class="fc" id="L135">        .test()</span>
+<span class="fc" id="L136">        .assertResult(1);</span>
+<span class="fc" id="L137">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

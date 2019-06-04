@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableTakeTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableTakeTest.java</span></div><h1>ObservableTakeTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.*;
+
+import org.junit.*;
+import org.mockito.InOrder;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L38">public class ObservableTakeTest {</span>
+
+    @Test
+    public void testTake1() {
+<span class="fc" id="L42">        Observable&lt;String&gt; w = Observable.fromIterable(Arrays.asList(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L43">        Observable&lt;String&gt; take = w.take(2);</span>
+
+<span class="fc" id="L45">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L46">        take.subscribe(observer);</span>
+<span class="fc" id="L47">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L48">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L49">        verify(observer, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L50">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L51">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L52">    }</span>
+
+    @Test
+    public void testTake2() {
+<span class="fc" id="L56">        Observable&lt;String&gt; w = Observable.fromIterable(Arrays.asList(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L57">        Observable&lt;String&gt; take = w.take(1);</span>
+
+<span class="fc" id="L59">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L60">        take.subscribe(observer);</span>
+<span class="fc" id="L61">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L62">        verify(observer, never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L63">        verify(observer, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L64">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L65">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L66">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testTakeWithError() {
+<span class="fc" id="L70">        Observable.fromIterable(Arrays.asList(1, 2, 3)).take(1)</span>
+<span class="fc" id="L71">        .map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1) {
+<span class="fc" id="L74">                throw new IllegalArgumentException(&quot;some error&quot;);</span>
+            }
+<span class="nc" id="L76">        }).blockingSingle();</span>
+<span class="nc" id="L77">    }</span>
+
+    @Test
+    public void testTakeWithErrorHappeningInOnNext() {
+<span class="fc" id="L81">        Observable&lt;Integer&gt; w = Observable.fromIterable(Arrays.asList(1, 2, 3))</span>
+<span class="fc" id="L82">                .take(2).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1) {
+<span class="fc" id="L85">                throw new IllegalArgumentException(&quot;some error&quot;);</span>
+            }
+        });
+
+<span class="fc" id="L89">        Observer&lt;Integer&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L90">        w.subscribe(observer);</span>
+<span class="fc" id="L91">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L92">        inOrder.verify(observer, times(1)).onError(any(IllegalArgumentException.class));</span>
+<span class="fc" id="L93">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L94">    }</span>
+
+    @Test
+    public void testTakeWithErrorHappeningInTheLastOnNext() {
+<span class="fc" id="L98">        Observable&lt;Integer&gt; w = Observable.fromIterable(Arrays.asList(1, 2, 3)).take(1).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1) {
+<span class="fc" id="L101">                throw new IllegalArgumentException(&quot;some error&quot;);</span>
+            }
+        });
+
+<span class="fc" id="L105">        Observer&lt;Integer&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L106">        w.subscribe(observer);</span>
+<span class="fc" id="L107">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L108">        inOrder.verify(observer, times(1)).onError(any(IllegalArgumentException.class));</span>
+<span class="fc" id="L109">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L110">    }</span>
+
+    @Test
+    public void testTakeDoesntLeakErrors() {
+<span class="fc" id="L114">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L117">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L118">                observer.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L119">                observer.onError(new Throwable(&quot;test failed&quot;));</span>
+<span class="fc" id="L120">            }</span>
+        });
+
+<span class="fc" id="L123">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L125">        source.take(1).subscribe(observer);</span>
+
+<span class="fc" id="L127">        verify(observer).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L128">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+        // even though onError is called we take(1) so shouldn't see it
+<span class="fc" id="L130">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L131">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L132">        verifyNoMoreInteractions(observer);</span>
+<span class="fc" id="L133">    }</span>
+
+    @Test
+    @Ignore(&quot;take(0) is now empty() and doesn't even subscribe to the original source&quot;)
+    public void testTakeZeroDoesntLeakError() {
+<span class="nc" id="L138">        final AtomicBoolean subscribed = new AtomicBoolean(false);</span>
+<span class="nc" id="L139">        final Disposable bs = Disposables.empty();</span>
+<span class="nc" id="L140">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="nc" id="L143">                subscribed.set(true);</span>
+<span class="nc" id="L144">                observer.onSubscribe(bs);</span>
+<span class="nc" id="L145">                observer.onError(new Throwable(&quot;test failed&quot;));</span>
+<span class="nc" id="L146">            }</span>
+        });
+
+<span class="nc" id="L149">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="nc" id="L151">        source.take(0).subscribe(observer);</span>
+<span class="nc" id="L152">        assertTrue(&quot;source subscribed&quot;, subscribed.get());</span>
+<span class="nc" id="L153">        assertTrue(&quot;source unsubscribed&quot;, bs.isDisposed());</span>
+
+<span class="nc" id="L155">        verify(observer, never()).onNext(anyString());</span>
+        // even though onError is called we take(0) so shouldn't see it
+<span class="nc" id="L157">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="nc" id="L158">        verify(observer, times(1)).onComplete();</span>
+<span class="nc" id="L159">        verifyNoMoreInteractions(observer);</span>
+<span class="nc" id="L160">    }</span>
+
+    @Test
+    public void testUnsubscribeAfterTake() {
+<span class="fc" id="L164">        TestObservableFunc f = new TestObservableFunc(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L165">        Observable&lt;String&gt; w = Observable.unsafeCreate(f);</span>
+
+<span class="fc" id="L167">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L169">        Observable&lt;String&gt; take = w.take(1);</span>
+<span class="fc" id="L170">        take.subscribe(observer);</span>
+
+        // wait for the Observable to complete
+        try {
+<span class="fc" id="L174">            f.t.join();</span>
+<span class="nc" id="L175">        } catch (Throwable e) {</span>
+<span class="nc" id="L176">            e.printStackTrace();</span>
+<span class="nc" id="L177">            fail(e.getMessage());</span>
+<span class="fc" id="L178">        }</span>
+
+<span class="fc" id="L180">        System.out.println(&quot;TestObservable thread finished&quot;);</span>
+<span class="fc" id="L181">        verify(observer).onSubscribe((Disposable)notNull());</span>
+<span class="fc" id="L182">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L183">        verify(observer, never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L184">        verify(observer, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L185">        verify(observer, times(1)).onComplete();</span>
+        // FIXME no longer assertable
+//        verify(s, times(1)).unsubscribe();
+<span class="fc" id="L188">        verifyNoMoreInteractions(observer);</span>
+<span class="fc" id="L189">    }</span>
+
+    @Test(timeout = 2000)
+    public void testUnsubscribeFromSynchronousInfiniteObservable() {
+<span class="fc" id="L193">        final AtomicLong count = new AtomicLong();</span>
+<span class="fc" id="L194">        INFINITE_OBSERVABLE.take(10).subscribe(new Consumer&lt;Long&gt;() {</span>
+
+            @Override
+            public void accept(Long l) {
+<span class="fc" id="L198">                count.set(l);</span>
+<span class="fc" id="L199">            }</span>
+
+        });
+<span class="fc" id="L202">        assertEquals(10, count.get());</span>
+<span class="fc" id="L203">    }</span>
+
+    @Test(timeout = 2000)
+    public void testMultiTake() {
+<span class="fc" id="L207">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc" id="L208">        Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L212">                Disposable bs = Disposables.empty();</span>
+<span class="fc" id="L213">                observer.onSubscribe(bs);</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                for (int i = 0; !bs.isDisposed(); i++) {</span>
+<span class="fc" id="L215">                    System.out.println(&quot;Emit: &quot; + i);</span>
+<span class="fc" id="L216">                    count.incrementAndGet();</span>
+<span class="fc" id="L217">                    observer.onNext(i);</span>
+                }
+<span class="fc" id="L219">            }</span>
+
+<span class="fc" id="L221">        }).take(100).take(1).blockingForEach(new Consumer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void accept(Integer t1) {
+<span class="fc" id="L225">                System.out.println(&quot;Receive: &quot; + t1);</span>
+
+<span class="fc" id="L227">            }</span>
+
+        });
+
+<span class="fc" id="L231">        assertEquals(1, count.get());</span>
+<span class="fc" id="L232">    }</span>
+
+    static class TestObservableFunc implements ObservableSource&lt;String&gt; {
+
+        final String[] values;
+        Thread t;
+
+<span class="fc" id="L239">        TestObservableFunc(String... values) {</span>
+<span class="fc" id="L240">            this.values = values;</span>
+<span class="fc" id="L241">        }</span>
+
+        @Override
+        public void subscribe(final Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L245">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L246">            System.out.println(&quot;TestObservable subscribed to ...&quot;);</span>
+<span class="fc" id="L247">            t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+                    try {
+<span class="fc" id="L252">                        System.out.println(&quot;running TestObservable thread&quot;);</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                        for (String s : values) {</span>
+<span class="fc" id="L254">                            System.out.println(&quot;TestObservable onNext: &quot; + s);</span>
+<span class="fc" id="L255">                            observer.onNext(s);</span>
+                        }
+<span class="fc" id="L257">                        observer.onComplete();</span>
+<span class="nc" id="L258">                    } catch (Throwable e) {</span>
+<span class="nc" id="L259">                        throw new RuntimeException(e);</span>
+<span class="fc" id="L260">                    }</span>
+<span class="fc" id="L261">                }</span>
+
+            });
+<span class="fc" id="L264">            System.out.println(&quot;starting TestObservable thread&quot;);</span>
+<span class="fc" id="L265">            t.start();</span>
+<span class="fc" id="L266">            System.out.println(&quot;done starting TestObservable thread&quot;);</span>
+<span class="fc" id="L267">        }</span>
+    }
+
+<span class="fc" id="L270">    private static Observable&lt;Long&gt; INFINITE_OBSERVABLE = Observable.unsafeCreate(new ObservableSource&lt;Long&gt;() {</span>
+
+        @Override
+        public void subscribe(Observer&lt;? super Long&gt; op) {
+<span class="fc" id="L274">            Disposable d = Disposables.empty();</span>
+<span class="fc" id="L275">            op.onSubscribe(d);</span>
+<span class="fc" id="L276">            long l = 1;</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">            while (!d.isDisposed()) {</span>
+<span class="fc" id="L278">                op.onNext(l++);</span>
+            }
+<span class="fc" id="L280">            op.onComplete();</span>
+<span class="fc" id="L281">        }</span>
+
+    });
+
+    @Test(timeout = 2000)
+    public void testTakeObserveOn() {
+<span class="fc" id="L287">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L288">        TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;(o);</span>
+
+<span class="fc" id="L290">        INFINITE_OBSERVABLE</span>
+<span class="fc" id="L291">        .observeOn(Schedulers.newThread()).take(1).subscribe(to);</span>
+<span class="fc" id="L292">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L293">        to.assertNoErrors();</span>
+
+<span class="fc" id="L295">        verify(o).onNext(1L);</span>
+<span class="fc" id="L296">        verify(o, never()).onNext(2L);</span>
+<span class="fc" id="L297">        verify(o).onComplete();</span>
+<span class="fc" id="L298">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L299">    }</span>
+
+    @Test
+    public void testInterrupt() throws InterruptedException {
+<span class="fc" id="L303">        final AtomicReference&lt;Object&gt; exception = new AtomicReference&lt;Object&gt;();</span>
+<span class="fc" id="L304">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L305">        Observable.just(1).subscribeOn(Schedulers.computation()).take(1)</span>
+<span class="fc" id="L306">        .subscribe(new Consumer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void accept(Integer t1) {
+                try {
+<span class="fc" id="L311">                    Thread.sleep(100);</span>
+<span class="nc" id="L312">                } catch (Exception e) {</span>
+<span class="nc" id="L313">                    exception.set(e);</span>
+<span class="nc" id="L314">                    e.printStackTrace();</span>
+                } finally {
+<span class="fc" id="L316">                    latch.countDown();</span>
+                }
+<span class="fc" id="L318">            }</span>
+
+        });
+
+<span class="fc" id="L322">        latch.await();</span>
+<span class="fc" id="L323">        assertNull(exception.get());</span>
+<span class="fc" id="L324">    }</span>
+
+    @Test
+    public void takeFinalValueThrows() {
+<span class="fc" id="L328">        Observable&lt;Integer&gt; source = Observable.just(1).take(1);</span>
+
+<span class="fc" id="L330">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L333">                throw new TestException();</span>
+            }
+        };
+
+<span class="fc" id="L337">        source.safeSubscribe(to);</span>
+
+<span class="fc" id="L339">        to.assertNoValues();</span>
+<span class="fc" id="L340">        to.assertError(TestException.class);</span>
+<span class="fc" id="L341">        to.assertNotComplete();</span>
+<span class="fc" id="L342">    }</span>
+
+    @Test
+    public void testReentrantTake() {
+<span class="fc" id="L346">        final PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L348">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L350">        source.take(1).doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) {
+<span class="fc" id="L353">                source.onNext(2);</span>
+<span class="fc" id="L354">            }</span>
+<span class="fc" id="L355">        }).subscribe(to);</span>
+
+<span class="fc" id="L357">        source.onNext(1);</span>
+
+<span class="fc" id="L359">        to.assertValue(1);</span>
+<span class="fc" id="L360">        to.assertNoErrors();</span>
+<span class="fc" id="L361">        to.assertComplete();</span>
+<span class="fc" id="L362">    }</span>
+
+    @Test
+    public void takeNegative() {
+        try {
+<span class="nc" id="L367">            Observable.just(1).take(-99);</span>
+<span class="nc" id="L368">            fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L369">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L370">            assertEquals(&quot;count &gt;= 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L371">        }</span>
+<span class="fc" id="L372">    }</span>
+
+    @Test
+    public void takeZero() {
+<span class="fc" id="L376">        Observable.just(1)</span>
+<span class="fc" id="L377">        .take(0)</span>
+<span class="fc" id="L378">        .test()</span>
+<span class="fc" id="L379">        .assertResult();</span>
+<span class="fc" id="L380">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L384">        TestHelper.checkDisposed(PublishSubject.create().take(2));</span>
+<span class="fc" id="L385">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L389">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; apply(Observable&lt;Object&gt; o) throws Exception {
+<span class="fc" id="L392">                return o.take(2);</span>
+            }
+        });
+<span class="fc" id="L395">    }</span>
+
+    @Test
+    public void errorAfterLimitReached() {
+<span class="fc" id="L399">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L401">            Observable.error(new TestException())</span>
+<span class="fc" id="L402">            .take(0)</span>
+<span class="fc" id="L403">            .test()</span>
+<span class="fc" id="L404">            .assertResult();</span>
+
+<span class="fc" id="L406">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L408">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L410">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,510 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableFlatMapSingleTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableFlatMapSingleTest.java</span></div><h1>FlowableFlatMapSingleTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+import org.junit.Test;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L35">public class FlowableFlatMapSingleTest {</span>
+
+    @Test
+    public void normal() {
+<span class="fc" id="L39">        Flowable.range(1, 10)</span>
+<span class="fc" id="L40">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L43">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L46">        .test()</span>
+<span class="fc" id="L47">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L48">    }</span>
+
+    @Test
+    public void normalDelayError() {
+<span class="fc" id="L52">        Flowable.range(1, 10)</span>
+<span class="fc" id="L53">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L56">                return Single.just(v);</span>
+            }
+        }, true, Integer.MAX_VALUE)
+<span class="fc" id="L59">        .test()</span>
+<span class="fc" id="L60">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L61">    }</span>
+
+    @Test
+    public void normalAsync() {
+<span class="fc" id="L65">        Flowable.range(1, 10)</span>
+<span class="fc" id="L66">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L69">                return Single.just(v).subscribeOn(Schedulers.computation());</span>
+            }
+        })
+<span class="fc" id="L72">        .test()</span>
+<span class="fc" id="L73">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L74">        .assertSubscribed()</span>
+<span class="fc" id="L75">        .assertValueSet(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))</span>
+<span class="fc" id="L76">        .assertNoErrors()</span>
+<span class="fc" id="L77">        .assertComplete();</span>
+<span class="fc" id="L78">    }</span>
+
+    @Test
+    public void normalAsyncMaxConcurrency() {
+<span class="fc" id="L82">        Flowable.range(1, 10)</span>
+<span class="fc" id="L83">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L86">                return Single.just(v).subscribeOn(Schedulers.computation());</span>
+            }
+        }, false, 3)
+<span class="fc" id="L89">        .test()</span>
+<span class="fc" id="L90">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L91">        .assertSubscribed()</span>
+<span class="fc" id="L92">        .assertValueSet(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))</span>
+<span class="fc" id="L93">        .assertNoErrors()</span>
+<span class="fc" id="L94">        .assertComplete();</span>
+<span class="fc" id="L95">     }</span>
+
+    @Test
+    public void normalAsyncMaxConcurrency1() {
+<span class="fc" id="L99">        Flowable.range(1, 10)</span>
+<span class="fc" id="L100">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L103">                return Single.just(v).subscribeOn(Schedulers.computation());</span>
+            }
+        }, false, 1)
+<span class="fc" id="L106">        .test()</span>
+<span class="fc" id="L107">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L108">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L109">    }</span>
+
+    @Test
+    public void mapperThrowsFlowable() {
+<span class="fc" id="L113">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L115">        TestSubscriber&lt;Integer&gt; ts = pp</span>
+<span class="fc" id="L116">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L119">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L122">        .test();</span>
+
+<span class="fc" id="L124">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L126">        pp.onNext(1);</span>
+
+<span class="fc" id="L128">        ts.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L130">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L131">    }</span>
+
+    @Test
+    public void mapperReturnsNullFlowable() {
+<span class="fc" id="L135">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L137">        TestSubscriber&lt;Integer&gt; ts = pp</span>
+<span class="fc" id="L138">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L141">                return null;</span>
+            }
+        })
+<span class="fc" id="L144">        .test();</span>
+
+<span class="fc" id="L146">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L148">        pp.onNext(1);</span>
+
+<span class="fc" id="L150">        ts.assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L152">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L153">    }</span>
+
+    @Test
+    public void normalDelayErrorAll() {
+<span class="fc" id="L157">        TestSubscriber&lt;Integer&gt; ts = Flowable.range(1, 10).concatWith(Flowable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L158">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L161">                return Single.error(new TestException());</span>
+            }
+        }, true, Integer.MAX_VALUE)
+<span class="fc" id="L164">        .test()</span>
+<span class="fc" id="L165">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L167">        List&lt;Throwable&gt; errors = TestHelper.compositeList(ts.errors().get(0));</span>
+
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        for (int i = 0; i &lt; 11; i++) {</span>
+<span class="fc" id="L170">            TestHelper.assertError(errors, i, TestException.class);</span>
+        }
+<span class="fc" id="L172">    }</span>
+
+    @Test
+    public void normalBackpressured() {
+<span class="fc" id="L176">        Flowable.range(1, 10)</span>
+<span class="fc" id="L177">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L180">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L183">        .rebatchRequests(1)</span>
+<span class="fc" id="L184">        .test()</span>
+<span class="fc" id="L185">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L186">    }</span>
+
+    @Test
+    public void normalMaxConcurrent1Backpressured() {
+<span class="fc" id="L190">        Flowable.range(1, 10)</span>
+<span class="fc" id="L191">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L194">                return Single.just(v);</span>
+            }
+        }, false, 1)
+<span class="fc" id="L197">        .rebatchRequests(1)</span>
+<span class="fc" id="L198">        .test()</span>
+<span class="fc" id="L199">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L200">    }</span>
+
+    @Test
+    public void normalMaxConcurrent2Backpressured() {
+<span class="fc" id="L204">        Flowable.range(1, 10)</span>
+<span class="fc" id="L205">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L208">                return Single.just(v);</span>
+            }
+        }, false, 2)
+<span class="fc" id="L211">        .rebatchRequests(1)</span>
+<span class="fc" id="L212">        .test()</span>
+<span class="fc" id="L213">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L214">    }</span>
+
+    @Test
+    public void takeAsync() {
+<span class="fc" id="L218">        Flowable.range(1, 10)</span>
+<span class="fc" id="L219">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L222">                return Single.just(v).subscribeOn(Schedulers.computation());</span>
+            }
+        })
+<span class="fc" id="L225">        .take(2)</span>
+<span class="fc" id="L226">        .test()</span>
+<span class="fc" id="L227">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L228">        .assertSubscribed()</span>
+<span class="fc" id="L229">        .assertValueCount(2)</span>
+<span class="fc" id="L230">        .assertValueSet(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))</span>
+<span class="fc" id="L231">        .assertNoErrors()</span>
+<span class="fc" id="L232">        .assertComplete();</span>
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void take() {
+<span class="fc" id="L237">        Flowable.range(1, 10)</span>
+<span class="fc" id="L238">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L241">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L244">        .take(2)</span>
+<span class="fc" id="L245">        .test()</span>
+<span class="fc" id="L246">        .assertResult(1, 2);</span>
+<span class="fc" id="L247">    }</span>
+
+    @Test
+    public void middleError() {
+<span class="fc" id="L251">        Flowable.fromArray(new String[]{&quot;1&quot;, &quot;a&quot;, &quot;2&quot;})</span>
+<span class="fc" id="L252">        .flatMapSingle(new Function&lt;String, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(final String s) throws NumberFormatException {
+                //return Single.just(Integer.valueOf(s)); //This works
+<span class="fc" id="L256">                return Single.fromCallable(new Callable&lt;Integer&gt;() {</span>
+                    @Override
+                    public Integer call() throws NumberFormatException {
+<span class="fc" id="L259">                        return Integer.valueOf(s);</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L264">        .test()</span>
+<span class="fc" id="L265">        .assertFailure(NumberFormatException.class, 1);</span>
+<span class="fc" id="L266">    }</span>
+
+    @Test
+    public void asyncFlatten() {
+<span class="fc" id="L270">        Flowable.range(1, 1000)</span>
+<span class="fc" id="L271">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L274">                return Single.just(1).subscribeOn(Schedulers.computation());</span>
+            }
+        })
+<span class="fc" id="L277">        .take(500)</span>
+<span class="fc" id="L278">        .test()</span>
+<span class="fc" id="L279">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L280">        .assertSubscribed()</span>
+<span class="fc" id="L281">        .assertValueCount(500)</span>
+<span class="fc" id="L282">        .assertNoErrors()</span>
+<span class="fc" id="L283">        .assertComplete();</span>
+<span class="fc" id="L284">    }</span>
+
+    @Test
+    public void successError() {
+<span class="fc" id="L288">        final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L290">        TestSubscriber&lt;Integer&gt; ts = Flowable.range(1, 2)</span>
+<span class="fc" id="L291">        .flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc bfc" id="L294" title="All 2 branches covered.">                if (v == 2) {</span>
+<span class="fc" id="L295">                    return pp.singleOrError();</span>
+                }
+<span class="fc" id="L297">                return Single.error(new TestException());</span>
+            }
+        }, true, Integer.MAX_VALUE)
+<span class="fc" id="L300">        .test();</span>
+
+<span class="fc" id="L302">        pp.onNext(1);</span>
+<span class="fc" id="L303">        pp.onComplete();</span>
+
+<span class="fc" id="L305">        ts</span>
+<span class="fc" id="L306">        .assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L307">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L311">        TestHelper.checkDisposed(PublishProcessor.&lt;Integer&gt;create().flatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L314">                return Single.&lt;Integer&gt;just(1);</span>
+            }
+        }));
+<span class="fc" id="L317">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L321">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L324">                return f.flatMapSingle(Functions.justFunction(Single.just(2)));</span>
+            }
+        });
+<span class="fc" id="L327">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L331">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L333">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L336">                    subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L337">                    subscriber.onError(new TestException(&quot;First&quot;));</span>
+<span class="fc" id="L338">                    subscriber.onError(new TestException(&quot;Second&quot;));</span>
+<span class="fc" id="L339">                }</span>
+            }
+<span class="fc" id="L341">            .flatMapSingle(Functions.justFunction(Single.just(2)))</span>
+<span class="fc" id="L342">            .test()</span>
+<span class="fc" id="L343">            .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+
+<span class="fc" id="L345">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Second&quot;);</span>
+        } finally {
+<span class="fc" id="L347">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L349">    }</span>
+
+    @Test
+    public void badInnerSource() {
+<span class="fc" id="L353">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L355">            Flowable.just(1)</span>
+<span class="fc" id="L356">            .flatMapSingle(Functions.justFunction(new Single&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(SingleObserver&lt;? super Integer&gt; observer) {
+<span class="fc" id="L359">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L360">                    observer.onError(new TestException(&quot;First&quot;));</span>
+<span class="fc" id="L361">                    observer.onError(new TestException(&quot;Second&quot;));</span>
+<span class="fc" id="L362">                }</span>
+            }))
+<span class="fc" id="L364">            .test()</span>
+<span class="fc" id="L365">            .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+
+<span class="fc" id="L367">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Second&quot;);</span>
+        } finally {
+<span class="fc" id="L369">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L371">    }</span>
+
+    @Test
+    public void emissionQueueTrigger() {
+<span class="fc" id="L375">        final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L376">        final PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L378">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L381">                super.onNext(t);</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L383">                    pp2.onNext(2);</span>
+<span class="fc" id="L384">                    pp2.onComplete();</span>
+                }
+<span class="fc" id="L386">            }</span>
+        };
+
+<span class="fc" id="L389">        Flowable.just(pp1, pp2)</span>
+<span class="fc" id="L390">                .flatMapSingle(new Function&lt;PublishProcessor&lt;Integer&gt;, SingleSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public SingleSource&lt;Integer&gt; apply(PublishProcessor&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L393">                        return v.singleOrError();</span>
+                    }
+                })
+<span class="fc" id="L396">        .subscribe(ts);</span>
+
+<span class="fc" id="L398">        pp1.onNext(1);</span>
+<span class="fc" id="L399">        pp1.onComplete();</span>
+
+<span class="fc" id="L401">        ts.assertResult(1, 2);</span>
+<span class="fc" id="L402">    }</span>
+
+    @Test
+    public void disposeInner() {
+<span class="fc" id="L406">        final TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+
+<span class="fc" id="L408">        Flowable.just(1).flatMapSingle(new Function&lt;Integer, SingleSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Object&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L411">                return new Single&lt;Object&gt;() {</span>
+                    @Override
+                    protected void subscribeActual(SingleObserver&lt;? super Object&gt; observer) {
+<span class="fc" id="L414">                        observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L416">                        assertFalse(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L418">                        ts.dispose();</span>
+
+<span class="fc" id="L420">                        assertTrue(((Disposable)observer).isDisposed());</span>
+<span class="fc" id="L421">                    }</span>
+                };
+            }
+        })
+<span class="fc" id="L425">        .subscribe(ts);</span>
+
+<span class="fc" id="L427">        ts</span>
+<span class="fc" id="L428">        .assertEmpty();</span>
+<span class="fc" id="L429">    }</span>
+
+    @Test
+    public void innerSuccessCompletesAfterMain() {
+<span class="fc" id="L433">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L435">        TestSubscriber&lt;Integer&gt; ts = Flowable.just(1).flatMapSingle(Functions.justFunction(pp.singleOrError()))</span>
+<span class="fc" id="L436">        .test();</span>
+
+<span class="fc" id="L438">        pp.onNext(2);</span>
+<span class="fc" id="L439">        pp.onComplete();</span>
+
+<span class="fc" id="L441">        ts</span>
+<span class="fc" id="L442">        .assertResult(2);</span>
+<span class="fc" id="L443">    }</span>
+
+    @Test
+    public void backpressure() {
+<span class="fc" id="L447">        TestSubscriber&lt;Integer&gt; ts = Flowable.just(1)</span>
+<span class="fc" id="L448">        .flatMapSingle(Functions.justFunction(Single.just(2)))</span>
+<span class="fc" id="L449">        .test(0L)</span>
+<span class="fc" id="L450">        .assertEmpty();</span>
+
+<span class="fc" id="L452">        ts.request(1);</span>
+<span class="fc" id="L453">        ts.assertResult(2);</span>
+<span class="fc" id="L454">    }</span>
+
+    @Test
+    public void error() {
+<span class="fc" id="L458">        Flowable.just(1)</span>
+<span class="fc" id="L459">        .flatMapSingle(Functions.justFunction(Single.&lt;Integer&gt;error(new TestException())))</span>
+<span class="fc" id="L460">        .test(0L)</span>
+<span class="fc" id="L461">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L462">    }</span>
+
+    @Test
+    public void errorDelayed() {
+<span class="fc" id="L466">        Flowable.just(1)</span>
+<span class="fc" id="L467">        .flatMapSingle(Functions.justFunction(Single.&lt;Integer&gt;error(new TestException())), true, 16)</span>
+<span class="fc" id="L468">        .test(0L)</span>
+<span class="fc" id="L469">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L470">    }</span>
+
+    @Test
+    public void requestCancelRace() {
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L475">            final TestSubscriber&lt;Integer&gt; ts = Flowable.just(1).concatWith(Flowable.&lt;Integer&gt;never())</span>
+<span class="fc" id="L476">            .flatMapSingle(Functions.justFunction(Single.just(2))).test(0);</span>
+
+<span class="fc" id="L478">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L481">                    ts.request(1);</span>
+<span class="fc" id="L482">                }</span>
+            };
+<span class="fc" id="L484">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L487">                    ts.cancel();</span>
+<span class="fc" id="L488">                }</span>
+            };
+
+<span class="fc" id="L491">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L493">    }</span>
+
+    @Test
+    public void asyncFlattenErrorMaxConcurrency() {
+<span class="fc" id="L497">        Flowable.range(1, 1000)</span>
+<span class="fc" id="L498">        .flatMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L501">                return Maybe.&lt;Integer&gt;error(new TestException()).subscribeOn(Schedulers.computation());</span>
+            }
+        }, true, 128)
+<span class="fc" id="L504">        .take(500)</span>
+<span class="fc" id="L505">        .test()</span>
+<span class="fc" id="L506">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L507">        .assertFailure(CompositeException.class);</span>
+<span class="fc" id="L508">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

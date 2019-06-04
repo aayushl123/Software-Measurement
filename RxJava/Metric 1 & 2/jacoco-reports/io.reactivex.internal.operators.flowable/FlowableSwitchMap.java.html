@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSwitchMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableSwitchMap.java</span></div><h1>FlowableSwitchMap.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.queue.SpscArrayQueue;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableSwitchMap&lt;T, R&gt; extends AbstractFlowableWithUpstream&lt;T, R&gt; {
+    final Function&lt;? super T, ? extends Publisher&lt;? extends R&gt;&gt; mapper;
+    final int bufferSize;
+    final boolean delayErrors;
+
+    public FlowableSwitchMap(Flowable&lt;T&gt; source,
+            Function&lt;? super T, ? extends Publisher&lt;? extends R&gt;&gt; mapper, int bufferSize,
+                    boolean delayErrors) {
+<span class="fc" id="L38">        super(source);</span>
+<span class="fc" id="L39">        this.mapper = mapper;</span>
+<span class="fc" id="L40">        this.bufferSize = bufferSize;</span>
+<span class="fc" id="L41">        this.delayErrors = delayErrors;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super R&gt; s) {
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (FlowableScalarXMap.tryScalarXMapSubscribe(source, s, mapper)) {</span>
+<span class="fc" id="L47">            return;</span>
+        }
+<span class="fc" id="L49">        source.subscribe(new SwitchMapSubscriber&lt;T, R&gt;(s, mapper, bufferSize, delayErrors));</span>
+<span class="fc" id="L50">    }</span>
+
+    static final class SwitchMapSubscriber&lt;T, R&gt; extends AtomicInteger implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = -3491074160481096299L;
+        final Subscriber&lt;? super R&gt; downstream;
+        final Function&lt;? super T, ? extends Publisher&lt;? extends R&gt;&gt; mapper;
+        final int bufferSize;
+        final boolean delayErrors;
+
+        volatile boolean done;
+        final AtomicThrowable error;
+
+        volatile boolean cancelled;
+
+        Subscription upstream;
+
+<span class="fc" id="L67">        final AtomicReference&lt;SwitchMapInnerSubscriber&lt;T, R&gt;&gt; active = new AtomicReference&lt;SwitchMapInnerSubscriber&lt;T, R&gt;&gt;();</span>
+
+<span class="fc" id="L69">        final AtomicLong requested = new AtomicLong();</span>
+
+        static final SwitchMapInnerSubscriber&lt;Object, Object&gt; CANCELLED;
+        static {
+<span class="fc" id="L73">            CANCELLED = new SwitchMapInnerSubscriber&lt;Object, Object&gt;(null, -1L, 1);</span>
+<span class="fc" id="L74">            CANCELLED.cancel();</span>
+<span class="fc" id="L75">        }</span>
+
+        volatile long unique;
+
+        SwitchMapSubscriber(Subscriber&lt;? super R&gt; actual,
+                Function&lt;? super T, ? extends Publisher&lt;? extends R&gt;&gt; mapper, int bufferSize,
+<span class="fc" id="L81">                        boolean delayErrors) {</span>
+<span class="fc" id="L82">            this.downstream = actual;</span>
+<span class="fc" id="L83">            this.mapper = mapper;</span>
+<span class="fc" id="L84">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L85">            this.delayErrors = delayErrors;</span>
+<span class="fc" id="L86">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L87">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L92">                this.upstream = s;</span>
+<span class="fc" id="L93">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L95">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L100">                return;</span>
+            }
+
+<span class="fc" id="L103">            long c = unique + 1;</span>
+<span class="fc" id="L104">            unique = c;</span>
+
+<span class="fc" id="L106">            SwitchMapInnerSubscriber&lt;T, R&gt; inner = active.get();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (inner != null) {</span>
+<span class="fc" id="L108">                inner.cancel();</span>
+            }
+
+            Publisher&lt;? extends R&gt; p;
+            try {
+<span class="fc" id="L113">                p = ObjectHelper.requireNonNull(mapper.apply(t), &quot;The publisher returned is null&quot;);</span>
+<span class="fc" id="L114">            } catch (Throwable e) {</span>
+<span class="fc" id="L115">                Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L116">                upstream.cancel();</span>
+<span class="fc" id="L117">                onError(e);</span>
+<span class="fc" id="L118">                return;</span>
+<span class="fc" id="L119">            }</span>
+
+<span class="fc" id="L121">            SwitchMapInnerSubscriber&lt;T, R&gt; nextInner = new SwitchMapInnerSubscriber&lt;T, R&gt;(this, c, bufferSize);</span>
+
+            for (;;) {
+<span class="fc" id="L124">                inner = active.get();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                if (inner == CANCELLED) {</span>
+<span class="fc" id="L126">                    break;</span>
+                }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                if (active.compareAndSet(inner, nextInner)) {</span>
+<span class="fc" id="L129">                    p.subscribe(nextInner);</span>
+<span class="fc" id="L130">                    break;</span>
+                }
+            }
+<span class="fc" id="L133">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="pc bpc" id="L137" title="1 of 4 branches missed.">            if (!done &amp;&amp; error.addThrowable(t)) {</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                if (!delayErrors) {</span>
+<span class="fc" id="L139">                    disposeInner();</span>
+                }
+<span class="fc" id="L141">                done = true;</span>
+<span class="fc" id="L142">                drain();</span>
+            } else {
+<span class="fc" id="L144">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L146">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L151">                return;</span>
+            }
+<span class="fc" id="L153">            done = true;</span>
+<span class="fc" id="L154">            drain();</span>
+<span class="fc" id="L155">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L160">                BackpressureHelper.add(requested, n);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                if (unique == 0L) {</span>
+<span class="fc" id="L162">                    upstream.request(Long.MAX_VALUE);</span>
+                } else {
+<span class="fc" id="L164">                    drain();</span>
+                }
+            }
+<span class="fc" id="L167">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L172">                cancelled = true;</span>
+<span class="fc" id="L173">                upstream.cancel();</span>
+
+<span class="fc" id="L175">                disposeInner();</span>
+            }
+<span class="fc" id="L177">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        void disposeInner() {
+<span class="fc" id="L181">            SwitchMapInnerSubscriber&lt;T, R&gt; a = active.get();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            if (a != CANCELLED) {</span>
+<span class="fc" id="L183">                a = active.getAndSet((SwitchMapInnerSubscriber&lt;T, R&gt;)CANCELLED);</span>
+<span class="pc bpc" id="L184" title="1 of 4 branches missed.">                if (a != CANCELLED &amp;&amp; a != null) {</span>
+<span class="fc" id="L185">                    a.cancel();</span>
+                }
+            }
+<span class="fc" id="L188">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L192">                return;</span>
+            }
+
+<span class="fc" id="L195">            final Subscriber&lt;? super R&gt; a = downstream;</span>
+
+<span class="fc" id="L197">            int missing = 1;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L202">                    active.lazySet(null);</span>
+<span class="fc" id="L203">                    return;</span>
+                }
+
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                if (done) {</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                    if (delayErrors) {</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                        if (active.get() == null) {</span>
+<span class="fc" id="L209">                            Throwable err = error.get();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                            if (err != null) {</span>
+<span class="fc" id="L211">                                a.onError(error.terminate());</span>
+                            } else {
+<span class="fc" id="L213">                                a.onComplete();</span>
+                            }
+<span class="fc" id="L215">                            return;</span>
+                        }
+                    } else {
+<span class="fc" id="L218">                        Throwable err = error.get();</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                        if (err != null) {</span>
+<span class="fc" id="L220">                            disposeInner();</span>
+<span class="fc" id="L221">                            a.onError(error.terminate());</span>
+<span class="fc" id="L222">                            return;</span>
+                        } else
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                        if (active.get() == null) {</span>
+<span class="fc" id="L225">                            a.onComplete();</span>
+<span class="fc" id="L226">                            return;</span>
+                        }
+                    }
+                }
+
+<span class="fc" id="L231">                SwitchMapInnerSubscriber&lt;T, R&gt; inner = active.get();</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                SimpleQueue&lt;R&gt; q = inner != null ? inner.queue : null;</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">                if (q != null) {</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                    if (inner.done) {</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                        if (!delayErrors) {</span>
+<span class="fc" id="L236">                            Throwable err = error.get();</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                            if (err != null) {</span>
+<span class="fc" id="L238">                                disposeInner();</span>
+<span class="fc" id="L239">                                a.onError(error.terminate());</span>
+<span class="fc" id="L240">                                return;</span>
+                            } else
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                            if (q.isEmpty()) {</span>
+<span class="fc" id="L243">                                active.compareAndSet(inner, null);</span>
+<span class="fc" id="L244">                                continue;</span>
+                            }
+<span class="fc" id="L246">                        } else {</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">                            if (q.isEmpty()) {</span>
+<span class="fc" id="L248">                                active.compareAndSet(inner, null);</span>
+<span class="fc" id="L249">                                continue;</span>
+                            }
+                        }
+                    }
+
+<span class="fc" id="L254">                    long r = requested.get();</span>
+<span class="fc" id="L255">                    long e = 0L;</span>
+<span class="fc" id="L256">                    boolean retry = false;</span>
+
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                    while (e != r) {</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                        if (cancelled) {</span>
+<span class="fc" id="L260">                            return;</span>
+                        }
+
+<span class="fc" id="L263">                        boolean d = inner.done;</span>
+                        R v;
+
+                        try {
+<span class="fc" id="L267">                            v = q.poll();</span>
+<span class="fc" id="L268">                        } catch (Throwable ex) {</span>
+<span class="fc" id="L269">                            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L270">                            inner.cancel();</span>
+<span class="fc" id="L271">                            error.addThrowable(ex);</span>
+<span class="fc" id="L272">                            d = true;</span>
+<span class="fc" id="L273">                            v = null;</span>
+<span class="fc" id="L274">                        }</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">                        boolean empty = v == null;</span>
+
+<span class="fc bfc" id="L277" title="All 2 branches covered.">                        if (inner != active.get()) {</span>
+<span class="fc" id="L278">                            retry = true;</span>
+<span class="fc" id="L279">                            break;</span>
+                        }
+
+<span class="fc bfc" id="L282" title="All 2 branches covered.">                        if (d) {</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">                            if (!delayErrors) {</span>
+<span class="fc" id="L284">                                Throwable err = error.get();</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                                if (err != null) {</span>
+<span class="fc" id="L286">                                    a.onError(error.terminate());</span>
+<span class="fc" id="L287">                                    return;</span>
+                                } else
+<span class="fc bfc" id="L289" title="All 2 branches covered.">                                if (empty) {</span>
+<span class="fc" id="L290">                                    active.compareAndSet(inner, null);</span>
+<span class="fc" id="L291">                                    retry = true;</span>
+<span class="fc" id="L292">                                    break;</span>
+                                }
+<span class="fc" id="L294">                            } else {</span>
+<span class="fc bfc" id="L295" title="All 2 branches covered.">                                if (empty) {</span>
+<span class="fc" id="L296">                                    active.compareAndSet(inner, null);</span>
+<span class="fc" id="L297">                                    retry = true;</span>
+<span class="fc" id="L298">                                    break;</span>
+                                }
+                            }
+                        }
+
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                        if (empty) {</span>
+<span class="fc" id="L304">                            break;</span>
+                        }
+
+<span class="fc" id="L307">                        a.onNext(v);</span>
+
+<span class="fc" id="L309">                        e++;</span>
+<span class="fc" id="L310">                    }</span>
+
+<span class="fc bfc" id="L312" title="All 2 branches covered.">                    if (e != 0L) {</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                        if (!cancelled) {</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                            if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L315">                                requested.addAndGet(-e);</span>
+                            }
+<span class="fc" id="L317">                            inner.get().request(e);</span>
+                        }
+                    }
+
+<span class="fc bfc" id="L321" title="All 2 branches covered.">                    if (retry) {</span>
+<span class="fc" id="L322">                        continue;</span>
+                    }
+                }
+
+<span class="fc" id="L326">                missing = addAndGet(-missing);</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">                if (missing == 0) {</span>
+<span class="fc" id="L328">                    break;</span>
+                }
+<span class="fc" id="L330">            }</span>
+<span class="fc" id="L331">        }</span>
+    }
+
+    static final class SwitchMapInnerSubscriber&lt;T, R&gt;
+    extends AtomicReference&lt;Subscription&gt; implements FlowableSubscriber&lt;R&gt; {
+
+        private static final long serialVersionUID = 3837284832786408377L;
+        final SwitchMapSubscriber&lt;T, R&gt; parent;
+        final long index;
+        final int bufferSize;
+
+        volatile SimpleQueue&lt;R&gt; queue;
+
+        volatile boolean done;
+
+        int fusionMode;
+
+<span class="fc" id="L348">        SwitchMapInnerSubscriber(SwitchMapSubscriber&lt;T, R&gt; parent, long index, int bufferSize) {</span>
+<span class="fc" id="L349">            this.parent = parent;</span>
+<span class="fc" id="L350">            this.index = index;</span>
+<span class="fc" id="L351">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L352">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L356" title="All 2 branches covered.">            if (SubscriptionHelper.setOnce(this, s)) {</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">                if (s instanceof QueueSubscription) {</span>
+                    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L359">                    QueueSubscription&lt;R&gt; qs = (QueueSubscription&lt;R&gt;) s;</span>
+
+<span class="fc" id="L361">                    int m = qs.requestFusion(QueueSubscription.ANY | QueueSubscription.BOUNDARY);</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                    if (m == QueueSubscription.SYNC) {</span>
+<span class="fc" id="L363">                        fusionMode = m;</span>
+<span class="fc" id="L364">                        queue = qs;</span>
+<span class="fc" id="L365">                        done = true;</span>
+<span class="fc" id="L366">                        parent.drain();</span>
+<span class="fc" id="L367">                        return;</span>
+                    }
+<span class="fc bfc" id="L369" title="All 2 branches covered.">                    if (m == QueueSubscription.ASYNC) {</span>
+<span class="fc" id="L370">                        fusionMode = m;</span>
+<span class="fc" id="L371">                        queue = qs;</span>
+<span class="fc" id="L372">                        s.request(bufferSize);</span>
+<span class="fc" id="L373">                        return;</span>
+                    }
+                }
+
+<span class="fc" id="L377">                queue = new SpscArrayQueue&lt;R&gt;(bufferSize);</span>
+
+<span class="fc" id="L379">                s.request(bufferSize);</span>
+            }
+<span class="fc" id="L381">        }</span>
+
+        @Override
+        public void onNext(R t) {
+<span class="fc" id="L385">            SwitchMapSubscriber&lt;T, R&gt; p = parent;</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">            if (index == p.unique) {</span>
+<span class="pc bpc" id="L387" title="1 of 4 branches missed.">                if (fusionMode == QueueSubscription.NONE &amp;&amp; !queue.offer(t)) {</span>
+<span class="fc" id="L388">                    onError(new MissingBackpressureException(&quot;Queue full?!&quot;));</span>
+<span class="fc" id="L389">                    return;</span>
+                }
+<span class="fc" id="L391">                p.drain();</span>
+            }
+<span class="fc" id="L393">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L397">            SwitchMapSubscriber&lt;T, R&gt; p = parent;</span>
+<span class="pc bpc" id="L398" title="1 of 4 branches missed.">            if (index == p.unique &amp;&amp; p.error.addThrowable(t)) {</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">                if (!p.delayErrors) {</span>
+<span class="fc" id="L400">                    p.upstream.cancel();</span>
+                }
+<span class="fc" id="L402">                done = true;</span>
+<span class="fc" id="L403">                p.drain();</span>
+            } else {
+<span class="fc" id="L405">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L407">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L411">            SwitchMapSubscriber&lt;T, R&gt; p = parent;</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">            if (index == p.unique) {</span>
+<span class="fc" id="L413">                done = true;</span>
+<span class="fc" id="L414">                p.drain();</span>
+            }
+<span class="fc" id="L416">        }</span>
+
+        public void cancel() {
+<span class="fc" id="L419">            SubscriptionHelper.cancel(this);</span>
+<span class="fc" id="L420">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

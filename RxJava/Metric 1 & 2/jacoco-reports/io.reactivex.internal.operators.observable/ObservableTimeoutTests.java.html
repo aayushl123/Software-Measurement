@@ -1,0 +1,591 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableTimeoutTests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableTimeoutTests.java</span></div><h1>ObservableTimeoutTests.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static io.reactivex.internal.util.ExceptionHelper.timeoutMessage;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.*;
+
+import org.junit.*;
+import org.mockito.InOrder;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.TestScheduler;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L36">public class ObservableTimeoutTests {</span>
+    private PublishSubject&lt;String&gt; underlyingSubject;
+    private TestScheduler testScheduler;
+    private Observable&lt;String&gt; withTimeout;
+    private static final long TIMEOUT = 3;
+<span class="fc" id="L41">    private static final TimeUnit TIME_UNIT = TimeUnit.SECONDS;</span>
+
+    @Before
+    public void setUp() {
+
+<span class="fc" id="L46">        underlyingSubject = PublishSubject.create();</span>
+<span class="fc" id="L47">        testScheduler = new TestScheduler();</span>
+<span class="fc" id="L48">        withTimeout = underlyingSubject.timeout(TIMEOUT, TIME_UNIT, testScheduler);</span>
+<span class="fc" id="L49">    }</span>
+
+    @Test
+    public void shouldNotTimeoutIfOnNextWithinTimeout() {
+<span class="fc" id="L53">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L54">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+
+<span class="fc" id="L56">        withTimeout.subscribe(to);</span>
+
+<span class="fc" id="L58">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L59">        underlyingSubject.onNext(&quot;One&quot;);</span>
+<span class="fc" id="L60">        verify(observer).onNext(&quot;One&quot;);</span>
+<span class="fc" id="L61">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L62">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L63">        to.dispose();</span>
+<span class="fc" id="L64">    }</span>
+
+    @Test
+    public void shouldNotTimeoutIfSecondOnNextWithinTimeout() {
+<span class="fc" id="L68">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L69">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+
+<span class="fc" id="L71">        withTimeout.subscribe(to);</span>
+
+<span class="fc" id="L73">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L74">        underlyingSubject.onNext(&quot;One&quot;);</span>
+<span class="fc" id="L75">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L76">        underlyingSubject.onNext(&quot;Two&quot;);</span>
+<span class="fc" id="L77">        verify(observer).onNext(&quot;Two&quot;);</span>
+<span class="fc" id="L78">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L79">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L80">        to.dispose();</span>
+<span class="fc" id="L81">    }</span>
+
+    @Test
+    public void shouldTimeoutIfOnNextNotWithinTimeout() {
+<span class="fc" id="L85">        TestObserver&lt;String&gt; observer = new TestObserver&lt;String&gt;();</span>
+
+<span class="fc" id="L87">        withTimeout.subscribe(observer);</span>
+
+<span class="fc" id="L89">        testScheduler.advanceTimeBy(TIMEOUT + 1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L90">        observer.assertFailureAndMessage(TimeoutException.class, timeoutMessage(TIMEOUT, TIME_UNIT));</span>
+<span class="fc" id="L91">    }</span>
+
+    @Test
+    public void shouldTimeoutIfSecondOnNextNotWithinTimeout() {
+<span class="fc" id="L95">        TestObserver&lt;String&gt; observer = new TestObserver&lt;String&gt;();</span>
+<span class="fc" id="L96">        withTimeout.subscribe(observer);</span>
+<span class="fc" id="L97">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L98">        underlyingSubject.onNext(&quot;One&quot;);</span>
+<span class="fc" id="L99">        observer.assertValue(&quot;One&quot;);</span>
+<span class="fc" id="L100">        testScheduler.advanceTimeBy(TIMEOUT + 1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L101">        observer.assertFailureAndMessage(TimeoutException.class, timeoutMessage(TIMEOUT, TIME_UNIT), &quot;One&quot;);</span>
+<span class="fc" id="L102">    }</span>
+
+    @Test
+    public void shouldCompleteIfUnderlyingComletes() {
+<span class="fc" id="L106">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L107">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L108">        withTimeout.subscribe(observer);</span>
+<span class="fc" id="L109">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L110">        underlyingSubject.onComplete();</span>
+<span class="fc" id="L111">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L112">        verify(observer).onComplete();</span>
+<span class="fc" id="L113">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L114">        to.dispose();</span>
+<span class="fc" id="L115">    }</span>
+
+    @Test
+    public void shouldErrorIfUnderlyingErrors() {
+<span class="fc" id="L119">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L120">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L121">        withTimeout.subscribe(observer);</span>
+<span class="fc" id="L122">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L123">        underlyingSubject.onError(new UnsupportedOperationException());</span>
+<span class="fc" id="L124">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L125">        verify(observer).onError(any(UnsupportedOperationException.class));</span>
+<span class="fc" id="L126">        to.dispose();</span>
+<span class="fc" id="L127">    }</span>
+
+    @Test
+    public void shouldSwitchToOtherIfOnNextNotWithinTimeout() {
+<span class="fc" id="L131">        Observable&lt;String&gt; other = Observable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;);</span>
+<span class="fc" id="L132">        Observable&lt;String&gt; source = underlyingSubject.timeout(TIMEOUT, TIME_UNIT, testScheduler, other);</span>
+
+<span class="fc" id="L134">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L135">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L136">        source.subscribe(to);</span>
+
+<span class="fc" id="L138">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L139">        underlyingSubject.onNext(&quot;One&quot;);</span>
+<span class="fc" id="L140">        testScheduler.advanceTimeBy(4, TimeUnit.SECONDS);</span>
+<span class="fc" id="L141">        underlyingSubject.onNext(&quot;Two&quot;);</span>
+<span class="fc" id="L142">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L143">        inOrder.verify(observer, times(1)).onNext(&quot;One&quot;);</span>
+<span class="fc" id="L144">        inOrder.verify(observer, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L145">        inOrder.verify(observer, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L146">        inOrder.verify(observer, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L147">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L148">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L149">        to.dispose();</span>
+<span class="fc" id="L150">    }</span>
+
+    @Test
+    public void shouldSwitchToOtherIfOnErrorNotWithinTimeout() {
+<span class="fc" id="L154">        Observable&lt;String&gt; other = Observable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;);</span>
+<span class="fc" id="L155">        Observable&lt;String&gt; source = underlyingSubject.timeout(TIMEOUT, TIME_UNIT, testScheduler, other);</span>
+
+<span class="fc" id="L157">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L158">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L159">        source.subscribe(to);</span>
+
+<span class="fc" id="L161">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L162">        underlyingSubject.onNext(&quot;One&quot;);</span>
+<span class="fc" id="L163">        testScheduler.advanceTimeBy(4, TimeUnit.SECONDS);</span>
+<span class="fc" id="L164">        underlyingSubject.onError(new UnsupportedOperationException());</span>
+<span class="fc" id="L165">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L166">        inOrder.verify(observer, times(1)).onNext(&quot;One&quot;);</span>
+<span class="fc" id="L167">        inOrder.verify(observer, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L168">        inOrder.verify(observer, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L169">        inOrder.verify(observer, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L170">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L171">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L172">        to.dispose();</span>
+<span class="fc" id="L173">    }</span>
+
+    @Test
+    public void shouldSwitchToOtherIfOnCompletedNotWithinTimeout() {
+<span class="fc" id="L177">        Observable&lt;String&gt; other = Observable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;);</span>
+<span class="fc" id="L178">        Observable&lt;String&gt; source = underlyingSubject.timeout(TIMEOUT, TIME_UNIT, testScheduler, other);</span>
+
+<span class="fc" id="L180">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L181">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L182">        source.subscribe(to);</span>
+
+<span class="fc" id="L184">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L185">        underlyingSubject.onNext(&quot;One&quot;);</span>
+<span class="fc" id="L186">        testScheduler.advanceTimeBy(4, TimeUnit.SECONDS);</span>
+<span class="fc" id="L187">        underlyingSubject.onComplete();</span>
+<span class="fc" id="L188">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L189">        inOrder.verify(observer, times(1)).onNext(&quot;One&quot;);</span>
+<span class="fc" id="L190">        inOrder.verify(observer, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L191">        inOrder.verify(observer, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L192">        inOrder.verify(observer, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L193">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L194">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L195">        to.dispose();</span>
+<span class="fc" id="L196">    }</span>
+
+    @Test
+    public void shouldSwitchToOtherAndCanBeUnsubscribedIfOnNextNotWithinTimeout() {
+<span class="fc" id="L200">        PublishSubject&lt;String&gt; other = PublishSubject.create();</span>
+<span class="fc" id="L201">        Observable&lt;String&gt; source = underlyingSubject.timeout(TIMEOUT, TIME_UNIT, testScheduler, other);</span>
+
+<span class="fc" id="L203">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L204">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L205">        source.subscribe(to);</span>
+
+<span class="fc" id="L207">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L208">        underlyingSubject.onNext(&quot;One&quot;);</span>
+<span class="fc" id="L209">        testScheduler.advanceTimeBy(4, TimeUnit.SECONDS);</span>
+<span class="fc" id="L210">        underlyingSubject.onNext(&quot;Two&quot;);</span>
+
+<span class="fc" id="L212">        other.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L213">        other.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L214">        to.dispose();</span>
+
+        // The following messages should not be delivered.
+<span class="fc" id="L217">        other.onNext(&quot;c&quot;);</span>
+<span class="fc" id="L218">        other.onNext(&quot;d&quot;);</span>
+<span class="fc" id="L219">        other.onComplete();</span>
+
+<span class="fc" id="L221">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L222">        inOrder.verify(observer, times(1)).onNext(&quot;One&quot;);</span>
+<span class="fc" id="L223">        inOrder.verify(observer, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L224">        inOrder.verify(observer, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L225">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L226">    }</span>
+
+    @Test
+    public void shouldTimeoutIfSynchronizedObservableEmitFirstOnNextNotWithinTimeout()
+            throws InterruptedException {
+<span class="fc" id="L231">        final CountDownLatch exit = new CountDownLatch(1);</span>
+<span class="fc" id="L232">        final CountDownLatch timeoutSetuped = new CountDownLatch(1);</span>
+
+<span class="fc" id="L234">        final TestObserver&lt;String&gt; observer = new TestObserver&lt;String&gt;();</span>
+
+<span class="fc" id="L236">        new Thread(new Runnable() {</span>
+
+            @Override
+            public void run() {
+<span class="fc" id="L240">                Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+
+                    @Override
+                    public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L244">                        observer.onSubscribe(Disposables.empty());</span>
+                        try {
+<span class="fc" id="L246">                            timeoutSetuped.countDown();</span>
+<span class="fc" id="L247">                            exit.await();</span>
+<span class="nc" id="L248">                        } catch (InterruptedException e) {</span>
+<span class="nc" id="L249">                            e.printStackTrace();</span>
+<span class="fc" id="L250">                        }</span>
+<span class="fc" id="L251">                        observer.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L252">                        observer.onComplete();</span>
+<span class="fc" id="L253">                    }</span>
+
+<span class="fc" id="L255">                }).timeout(1, TimeUnit.SECONDS, testScheduler)</span>
+<span class="fc" id="L256">                        .subscribe(observer);</span>
+<span class="fc" id="L257">            }</span>
+<span class="fc" id="L258">        }).start();</span>
+
+<span class="fc" id="L260">        timeoutSetuped.await();</span>
+<span class="fc" id="L261">        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L263">        observer.assertFailureAndMessage(TimeoutException.class, timeoutMessage(1, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L265">        exit.countDown(); // exit the thread</span>
+<span class="fc" id="L266">    }</span>
+
+    @Test
+    public void shouldUnsubscribeFromUnderlyingSubscriptionOnTimeout() throws InterruptedException {
+        // From https://github.com/ReactiveX/RxJava/pull/951
+<span class="fc" id="L271">        final Disposable upstream = mock(Disposable.class);</span>
+
+<span class="fc" id="L273">        Observable&lt;String&gt; never = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L276">                observer.onSubscribe(upstream);</span>
+<span class="fc" id="L277">            }</span>
+        });
+
+<span class="fc" id="L280">        TestScheduler testScheduler = new TestScheduler();</span>
+<span class="fc" id="L281">        Observable&lt;String&gt; observableWithTimeout = never.timeout(1000, TimeUnit.MILLISECONDS, testScheduler);</span>
+
+<span class="fc" id="L283">        TestObserver&lt;String&gt; observer = new TestObserver&lt;String&gt;();</span>
+<span class="fc" id="L284">        observableWithTimeout.subscribe(observer);</span>
+
+<span class="fc" id="L286">        testScheduler.advanceTimeBy(2000, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L288">        observer.assertFailureAndMessage(TimeoutException.class, timeoutMessage(1000, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L290">        verify(upstream, times(1)).dispose();</span>
+<span class="fc" id="L291">    }</span>
+
+    @Test
+    @Ignore(&quot;s should be considered cancelled upon executing onComplete and not expect downstream to call cancel&quot;)
+    public void shouldUnsubscribeFromUnderlyingSubscriptionOnImmediatelyComplete() {
+        // From https://github.com/ReactiveX/RxJava/pull/951
+<span class="nc" id="L297">        final Disposable upstream = mock(Disposable.class);</span>
+
+<span class="nc" id="L299">        Observable&lt;String&gt; immediatelyComplete = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="nc" id="L302">                observer.onSubscribe(upstream);</span>
+<span class="nc" id="L303">                observer.onComplete();</span>
+<span class="nc" id="L304">            }</span>
+        });
+
+<span class="nc" id="L307">        TestScheduler testScheduler = new TestScheduler();</span>
+<span class="nc" id="L308">        Observable&lt;String&gt; observableWithTimeout = immediatelyComplete.timeout(1000, TimeUnit.MILLISECONDS,</span>
+                testScheduler);
+
+<span class="nc" id="L311">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="nc" id="L312">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="nc" id="L313">        observableWithTimeout.subscribe(to);</span>
+
+<span class="nc" id="L315">        testScheduler.advanceTimeBy(2000, TimeUnit.MILLISECONDS);</span>
+
+<span class="nc" id="L317">        InOrder inOrder = inOrder(observer);</span>
+<span class="nc" id="L318">        inOrder.verify(observer).onComplete();</span>
+<span class="nc" id="L319">        inOrder.verifyNoMoreInteractions();</span>
+
+<span class="nc" id="L321">        verify(upstream, times(1)).dispose();</span>
+<span class="nc" id="L322">    }</span>
+
+    @Test
+    @Ignore(&quot;s should be considered cancelled upon executing onError and not expect downstream to call cancel&quot;)
+    public void shouldUnsubscribeFromUnderlyingSubscriptionOnImmediatelyErrored() throws InterruptedException {
+        // From https://github.com/ReactiveX/RxJava/pull/951
+<span class="nc" id="L328">        final Disposable upstream = mock(Disposable.class);</span>
+
+<span class="nc" id="L330">        Observable&lt;String&gt; immediatelyError = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="nc" id="L333">                observer.onSubscribe(upstream);</span>
+<span class="nc" id="L334">                observer.onError(new IOException(&quot;Error&quot;));</span>
+<span class="nc" id="L335">            }</span>
+        });
+
+<span class="nc" id="L338">        TestScheduler testScheduler = new TestScheduler();</span>
+<span class="nc" id="L339">        Observable&lt;String&gt; observableWithTimeout = immediatelyError.timeout(1000, TimeUnit.MILLISECONDS,</span>
+                testScheduler);
+
+<span class="nc" id="L342">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="nc" id="L343">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="nc" id="L344">        observableWithTimeout.subscribe(to);</span>
+
+<span class="nc" id="L346">        testScheduler.advanceTimeBy(2000, TimeUnit.MILLISECONDS);</span>
+
+<span class="nc" id="L348">        InOrder inOrder = inOrder(observer);</span>
+<span class="nc" id="L349">        inOrder.verify(observer).onError(isA(IOException.class));</span>
+<span class="nc" id="L350">        inOrder.verifyNoMoreInteractions();</span>
+
+<span class="nc" id="L352">        verify(upstream, times(1)).dispose();</span>
+<span class="nc" id="L353">    }</span>
+
+    @Test
+    public void shouldUnsubscribeFromUnderlyingSubscriptionOnDispose() {
+<span class="fc" id="L357">        final PublishSubject&lt;String&gt; subject = PublishSubject.create();</span>
+<span class="fc" id="L358">        final TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L360">        final TestObserver&lt;String&gt; observer = subject</span>
+<span class="fc" id="L361">                .timeout(100, TimeUnit.MILLISECONDS, scheduler)</span>
+<span class="fc" id="L362">                .test();</span>
+
+<span class="fc" id="L364">        assertTrue(subject.hasObservers());</span>
+
+<span class="fc" id="L366">        observer.dispose();</span>
+
+<span class="fc" id="L368">        assertFalse(subject.hasObservers());</span>
+<span class="fc" id="L369">    }</span>
+
+    @Test
+    public void timedAndOther() {
+<span class="fc" id="L373">        Observable.never().timeout(100, TimeUnit.MILLISECONDS, Observable.just(1))</span>
+<span class="fc" id="L374">        .test()</span>
+<span class="fc" id="L375">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L376">        .assertResult(1);</span>
+<span class="fc" id="L377">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L381">        TestHelper.checkDisposed(PublishSubject.create().timeout(1, TimeUnit.DAYS));</span>
+
+<span class="fc" id="L383">        TestHelper.checkDisposed(PublishSubject.create().timeout(1, TimeUnit.DAYS, Observable.just(1)));</span>
+<span class="fc" id="L384">    }</span>
+
+    @Test
+    public void timedErrorOther() {
+<span class="fc" id="L388">        Observable.error(new TestException())</span>
+<span class="fc" id="L389">        .timeout(1, TimeUnit.DAYS, Observable.just(1))</span>
+<span class="fc" id="L390">        .test()</span>
+<span class="fc" id="L391">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L392">    }</span>
+
+    @Test
+    public void timedError() {
+<span class="fc" id="L396">        Observable.error(new TestException())</span>
+<span class="fc" id="L397">        .timeout(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L398">        .test()</span>
+<span class="fc" id="L399">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L400">    }</span>
+
+    @Test
+    public void timedEmptyOther() {
+<span class="fc" id="L404">        Observable.empty()</span>
+<span class="fc" id="L405">        .timeout(1, TimeUnit.DAYS, Observable.just(1))</span>
+<span class="fc" id="L406">        .test()</span>
+<span class="fc" id="L407">        .assertResult();</span>
+<span class="fc" id="L408">    }</span>
+
+    @Test
+    public void timedEmpty() {
+<span class="fc" id="L412">        Observable.empty()</span>
+<span class="fc" id="L413">        .timeout(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L414">        .test()</span>
+<span class="fc" id="L415">        .assertResult();</span>
+<span class="fc" id="L416">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L420">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L422">            new Observable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L425">                    observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L427">                    observer.onNext(1);</span>
+<span class="fc" id="L428">                    observer.onComplete();</span>
+<span class="fc" id="L429">                    observer.onNext(2);</span>
+<span class="fc" id="L430">                    observer.onError(new TestException());</span>
+<span class="fc" id="L431">                    observer.onComplete();</span>
+<span class="fc" id="L432">                }</span>
+            }
+<span class="fc" id="L434">            .timeout(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L435">            .test()</span>
+<span class="fc" id="L436">            .assertResult(1);</span>
+
+<span class="fc" id="L438">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L440">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L442">    }</span>
+
+    @Test
+    public void badSourceOther() {
+<span class="fc" id="L446">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L448">            new Observable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L451">                    observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L453">                    observer.onNext(1);</span>
+<span class="fc" id="L454">                    observer.onComplete();</span>
+<span class="fc" id="L455">                    observer.onNext(2);</span>
+<span class="fc" id="L456">                    observer.onError(new TestException());</span>
+<span class="fc" id="L457">                    observer.onComplete();</span>
+<span class="fc" id="L458">                }</span>
+            }
+<span class="fc" id="L460">            .timeout(1, TimeUnit.DAYS, Observable.just(3))</span>
+<span class="fc" id="L461">            .test()</span>
+<span class="fc" id="L462">            .assertResult(1);</span>
+
+<span class="fc" id="L464">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L466">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L468">    }</span>
+
+    @Test
+    public void timedTake() {
+<span class="fc" id="L472">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L474">        TestObserver&lt;Integer&gt; to = ps.timeout(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L475">        .take(1)</span>
+<span class="fc" id="L476">        .test();</span>
+
+<span class="fc" id="L478">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L480">        ps.onNext(1);</span>
+
+<span class="fc" id="L482">        assertFalse(ps.hasObservers());</span>
+
+<span class="fc" id="L484">        to.assertResult(1);</span>
+<span class="fc" id="L485">    }</span>
+
+    @Test
+    public void timedFallbackTake() {
+<span class="fc" id="L489">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L491">        TestObserver&lt;Integer&gt; to = ps.timeout(1, TimeUnit.DAYS, Observable.just(2))</span>
+<span class="fc" id="L492">        .take(1)</span>
+<span class="fc" id="L493">        .test();</span>
+
+<span class="fc" id="L495">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L497">        ps.onNext(1);</span>
+
+<span class="fc" id="L499">        assertFalse(ps.hasObservers());</span>
+
+<span class="fc" id="L501">        to.assertResult(1);</span>
+<span class="fc" id="L502">    }</span>
+
+    @Test
+    public void fallbackErrors() {
+<span class="fc" id="L506">        Observable.never()</span>
+<span class="fc" id="L507">        .timeout(1, TimeUnit.MILLISECONDS, Observable.error(new TestException()))</span>
+<span class="fc" id="L508">        .test()</span>
+<span class="fc" id="L509">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L510">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L511">    }</span>
+
+    @Test
+    public void onNextOnTimeoutRace() {
+<span class="fc bfc" id="L515" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L516">            final TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L518">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L520">            TestObserver&lt;Integer&gt; to = ps.timeout(1, TimeUnit.SECONDS, sch).test();</span>
+
+<span class="fc" id="L522">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L525">                    ps.onNext(1);</span>
+<span class="fc" id="L526">                }</span>
+            };
+
+<span class="fc" id="L529">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L532">                    sch.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L533">                }</span>
+            };
+
+<span class="fc" id="L536">            TestHelper.race(r1, r2);</span>
+
+<span class="fc bfc" id="L538" title="All 2 branches covered.">            if (to.valueCount() != 0) {</span>
+<span class="fc bfc" id="L539" title="All 2 branches covered.">                if (to.errorCount() != 0) {</span>
+<span class="fc" id="L540">                    to.assertFailure(TimeoutException.class, 1);</span>
+<span class="fc" id="L541">                    to.assertErrorMessage(timeoutMessage(1, TimeUnit.SECONDS));</span>
+                } else {
+<span class="fc" id="L543">                    to.assertValuesOnly(1);</span>
+                }
+            } else {
+<span class="fc" id="L546">                to.assertFailure(TimeoutException.class);</span>
+<span class="fc" id="L547">                to.assertErrorMessage(timeoutMessage(1, TimeUnit.SECONDS));</span>
+            }
+        }
+<span class="fc" id="L550">    }</span>
+
+    @Test
+    public void onNextOnTimeoutRaceFallback() {
+<span class="fc bfc" id="L554" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L555">            final TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L557">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L559">            TestObserver&lt;Integer&gt; to = ps.timeout(1, TimeUnit.SECONDS, sch, Observable.just(2)).test();</span>
+
+<span class="fc" id="L561">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L564">                    ps.onNext(1);</span>
+<span class="fc" id="L565">                }</span>
+            };
+
+<span class="fc" id="L568">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L571">                    sch.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L572">                }</span>
+            };
+
+<span class="fc" id="L575">            TestHelper.race(r1, r2);</span>
+
+<span class="fc bfc" id="L577" title="All 2 branches covered.">            if (to.isTerminated()) {</span>
+<span class="fc" id="L578">                int c = to.valueCount();</span>
+<span class="fc bfc" id="L579" title="All 2 branches covered.">                if (c == 1) {</span>
+<span class="fc" id="L580">                    int v = to.values().get(0);</span>
+<span class="pc bpc" id="L581" title="2 of 4 branches missed.">                    assertTrue(&quot;&quot; + v, v == 1 || v == 2);</span>
+<span class="fc" id="L582">                } else {</span>
+<span class="fc" id="L583">                    to.assertResult(1, 2);</span>
+                }
+<span class="fc" id="L585">            } else {</span>
+<span class="fc" id="L586">                to.assertValuesOnly(1);</span>
+            }
+        }
+<span class="fc" id="L589">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

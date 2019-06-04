@@ -1,0 +1,735 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableGroupJoinTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableGroupJoinTest.java</span></div><h1>FlowableGroupJoinTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+
+import org.junit.*;
+import org.mockito.MockitoAnnotations;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.operators.flowable.FlowableGroupJoin.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L37">public class FlowableGroupJoinTest {</span>
+
+<span class="fc" id="L39">    Subscriber&lt;Object&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L41">    BiFunction&lt;Integer, Integer, Integer&gt; add = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+        @Override
+        public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L44">            return t1 + t2;</span>
+        }
+    };
+
+    &lt;T&gt; Function&lt;Integer, Flowable&lt;T&gt;&gt; just(final Flowable&lt;T&gt; flowable) {
+<span class="fc" id="L49">        return new Function&lt;Integer, Flowable&lt;T&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;T&gt; apply(Integer t1) {
+<span class="fc" id="L52">                return flowable;</span>
+            }
+        };
+    }
+
+    &lt;T, R&gt; Function&lt;T, Flowable&lt;R&gt;&gt; just2(final Flowable&lt;R&gt; flowable) {
+<span class="fc" id="L58">        return new Function&lt;T, Flowable&lt;R&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;R&gt; apply(T t1) {
+<span class="fc" id="L61">                return flowable;</span>
+            }
+        };
+    }
+
+<span class="fc" id="L66">    BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt; add2 = new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+        @Override
+        public Flowable&lt;Integer&gt; apply(final Integer leftValue, Flowable&lt;Integer&gt; rightValues) {
+<span class="fc" id="L69">            return rightValues.map(new Function&lt;Integer, Integer&gt;() {</span>
+                @Override
+                public Integer apply(Integer rightValue) throws Exception {
+<span class="fc" id="L72">                    return add.apply(leftValue, rightValue);</span>
+                }
+            });
+        }
+
+    };
+
+    @Before
+    public void before() {
+<span class="fc" id="L81">        MockitoAnnotations.initMocks(this);</span>
+<span class="fc" id="L82">    }</span>
+
+    @Test
+    public void behaveAsJoin() {
+<span class="fc" id="L86">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L87">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L89">        Flowable&lt;Integer&gt; m = Flowable.merge(source1.groupJoin(source2,</span>
+<span class="fc" id="L90">                just(Flowable.never()),</span>
+<span class="fc" id="L91">                just(Flowable.never()), add2));</span>
+
+<span class="fc" id="L93">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L95">        source1.onNext(1);</span>
+<span class="fc" id="L96">        source1.onNext(2);</span>
+<span class="fc" id="L97">        source1.onNext(4);</span>
+
+<span class="fc" id="L99">        source2.onNext(16);</span>
+<span class="fc" id="L100">        source2.onNext(32);</span>
+<span class="fc" id="L101">        source2.onNext(64);</span>
+
+<span class="fc" id="L103">        source1.onComplete();</span>
+<span class="fc" id="L104">        source2.onComplete();</span>
+
+<span class="fc" id="L106">        verify(subscriber, times(1)).onNext(17);</span>
+<span class="fc" id="L107">        verify(subscriber, times(1)).onNext(18);</span>
+<span class="fc" id="L108">        verify(subscriber, times(1)).onNext(20);</span>
+<span class="fc" id="L109">        verify(subscriber, times(1)).onNext(33);</span>
+<span class="fc" id="L110">        verify(subscriber, times(1)).onNext(34);</span>
+<span class="fc" id="L111">        verify(subscriber, times(1)).onNext(36);</span>
+<span class="fc" id="L112">        verify(subscriber, times(1)).onNext(65);</span>
+<span class="fc" id="L113">        verify(subscriber, times(1)).onNext(66);</span>
+<span class="fc" id="L114">        verify(subscriber, times(1)).onNext(68);</span>
+
+<span class="fc" id="L116">        verify(subscriber, times(1)).onComplete(); //Never emitted?</span>
+<span class="fc" id="L117">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L118">    }</span>
+
+    class Person {
+        final int id;
+        final String name;
+
+<span class="fc" id="L124">        Person(int id, String name) {</span>
+<span class="fc" id="L125">            this.id = id;</span>
+<span class="fc" id="L126">            this.name = name;</span>
+<span class="fc" id="L127">        }</span>
+    }
+
+    class PersonFruit {
+        final int personId;
+        final String fruit;
+
+<span class="fc" id="L134">        PersonFruit(int personId, String fruit) {</span>
+<span class="fc" id="L135">            this.personId = personId;</span>
+<span class="fc" id="L136">            this.fruit = fruit;</span>
+<span class="fc" id="L137">        }</span>
+    }
+
+    class PPF {
+        final Person person;
+        final Flowable&lt;PersonFruit&gt; fruits;
+
+<span class="fc" id="L144">        PPF(Person person, Flowable&lt;PersonFruit&gt; fruits) {</span>
+<span class="fc" id="L145">            this.person = person;</span>
+<span class="fc" id="L146">            this.fruits = fruits;</span>
+<span class="fc" id="L147">        }</span>
+    }
+
+    @Test
+    public void normal1() {
+<span class="fc" id="L152">        Flowable&lt;Person&gt; source1 = Flowable.fromIterable(Arrays.asList(</span>
+                new Person(1, &quot;Joe&quot;),
+                new Person(2, &quot;Mike&quot;),
+                new Person(3, &quot;Charlie&quot;)
+                ));
+
+<span class="fc" id="L158">        Flowable&lt;PersonFruit&gt; source2 = Flowable.fromIterable(Arrays.asList(</span>
+                new PersonFruit(1, &quot;Strawberry&quot;),
+                new PersonFruit(1, &quot;Apple&quot;),
+                new PersonFruit(3, &quot;Peach&quot;)
+                ));
+
+<span class="fc" id="L164">        Flowable&lt;PPF&gt; q = source1.groupJoin(</span>
+                source2,
+<span class="fc" id="L166">                just2(Flowable.&lt;Object&gt; never()),</span>
+<span class="fc" id="L167">                just2(Flowable.&lt;Object&gt; never()),</span>
+<span class="fc" id="L168">                new BiFunction&lt;Person, Flowable&lt;PersonFruit&gt;, PPF&gt;() {</span>
+                    @Override
+                    public PPF apply(Person t1, Flowable&lt;PersonFruit&gt; t2) {
+<span class="fc" id="L171">                        return new PPF(t1, t2);</span>
+                    }
+                });
+
+<span class="fc" id="L175">        q.subscribe(</span>
+<span class="fc" id="L176">                new FlowableSubscriber&lt;PPF&gt;() {</span>
+                    @Override
+                    public void onNext(final PPF ppf) {
+<span class="fc" id="L179">                        ppf.fruits.filter(new Predicate&lt;PersonFruit&gt;() {</span>
+                            @Override
+                            public boolean test(PersonFruit t1) {
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                                return ppf.person.id == t1.personId;</span>
+                            }
+<span class="fc" id="L184">                        }).subscribe(new Consumer&lt;PersonFruit&gt;() {</span>
+                            @Override
+                            public void accept(PersonFruit t1) {
+<span class="fc" id="L187">                                subscriber.onNext(Arrays.asList(ppf.person.name, t1.fruit));</span>
+<span class="fc" id="L188">                            }</span>
+                        });
+<span class="fc" id="L190">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L194">                        subscriber.onError(e);</span>
+<span class="nc" id="L195">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L199">                        subscriber.onComplete();</span>
+<span class="fc" id="L200">                    }</span>
+
+                    @Override
+                    public void onSubscribe(Subscription s) {
+<span class="fc" id="L204">                        s.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L205">                    }</span>
+
+                }
+                );
+
+<span class="fc" id="L210">        verify(subscriber, times(1)).onNext(Arrays.asList(&quot;Joe&quot;, &quot;Strawberry&quot;));</span>
+<span class="fc" id="L211">        verify(subscriber, times(1)).onNext(Arrays.asList(&quot;Joe&quot;, &quot;Apple&quot;));</span>
+<span class="fc" id="L212">        verify(subscriber, times(1)).onNext(Arrays.asList(&quot;Charlie&quot;, &quot;Peach&quot;));</span>
+
+<span class="fc" id="L214">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L215">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L216">    }</span>
+
+    @Test
+    public void leftThrows() {
+<span class="fc" id="L220">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L221">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L223">        Flowable&lt;Flowable&lt;Integer&gt;&gt; m = source1.groupJoin(source2,</span>
+<span class="fc" id="L224">                just(Flowable.never()),</span>
+<span class="fc" id="L225">                just(Flowable.never()), add2);</span>
+
+<span class="fc" id="L227">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L229">        source2.onNext(1);</span>
+<span class="fc" id="L230">        source1.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L232">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L233">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L234">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L235">    }</span>
+
+    @Test
+    public void rightThrows() {
+<span class="fc" id="L239">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L240">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L242">        Flowable&lt;Flowable&lt;Integer&gt;&gt; m = source1.groupJoin(source2,</span>
+<span class="fc" id="L243">                just(Flowable.never()),</span>
+<span class="fc" id="L244">                just(Flowable.never()), add2);</span>
+
+<span class="fc" id="L246">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L248">        source1.onNext(1);</span>
+<span class="fc" id="L249">        source2.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L251">        verify(subscriber, times(1)).onNext(any(Flowable.class));</span>
+<span class="fc" id="L252">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L253">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L254">    }</span>
+
+    @Test
+    public void leftDurationThrows() {
+<span class="fc" id="L258">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L259">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L261">        Flowable&lt;Integer&gt; duration1 = Flowable.&lt;Integer&gt; error(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L263">        Flowable&lt;Flowable&lt;Integer&gt;&gt; m = source1.groupJoin(source2,</span>
+<span class="fc" id="L264">                just(duration1),</span>
+<span class="fc" id="L265">                just(Flowable.never()), add2);</span>
+<span class="fc" id="L266">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L268">        source1.onNext(1);</span>
+
+<span class="fc" id="L270">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L271">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L272">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L273">    }</span>
+
+    @Test
+    public void rightDurationThrows() {
+<span class="fc" id="L277">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L278">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L280">        Flowable&lt;Integer&gt; duration1 = Flowable.&lt;Integer&gt; error(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L282">        Flowable&lt;Flowable&lt;Integer&gt;&gt; m = source1.groupJoin(source2,</span>
+<span class="fc" id="L283">                just(Flowable.never()),</span>
+<span class="fc" id="L284">                just(duration1), add2);</span>
+<span class="fc" id="L285">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L287">        source2.onNext(1);</span>
+
+<span class="fc" id="L289">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L290">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L291">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L292">    }</span>
+
+    @Test
+    public void leftDurationSelectorThrows() {
+<span class="fc" id="L296">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L297">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L299">        Function&lt;Integer, Flowable&lt;Integer&gt;&gt; fail = new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L302">                throw new RuntimeException(&quot;Forced failure&quot;);</span>
+            }
+        };
+
+<span class="fc" id="L306">        Flowable&lt;Flowable&lt;Integer&gt;&gt; m = source1.groupJoin(source2,</span>
+                fail,
+<span class="fc" id="L308">                just(Flowable.never()), add2);</span>
+<span class="fc" id="L309">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L311">        source1.onNext(1);</span>
+
+<span class="fc" id="L313">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L314">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L315">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L316">    }</span>
+
+    @Test
+    public void rightDurationSelectorThrows() {
+<span class="fc" id="L320">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L321">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L323">        Function&lt;Integer, Flowable&lt;Integer&gt;&gt; fail = new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L326">                throw new RuntimeException(&quot;Forced failure&quot;);</span>
+            }
+        };
+
+<span class="fc" id="L330">        Flowable&lt;Flowable&lt;Integer&gt;&gt; m = source1.groupJoin(source2,</span>
+<span class="fc" id="L331">                just(Flowable.never()),</span>
+                fail, add2);
+<span class="fc" id="L333">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L335">        source2.onNext(1);</span>
+
+<span class="fc" id="L337">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L338">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L339">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L340">    }</span>
+
+    @Test
+    public void resultSelectorThrows() {
+<span class="fc" id="L344">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L345">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L347">        BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Integer&gt; fail = new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1, Flowable&lt;Integer&gt; t2) {
+<span class="fc" id="L350">                throw new RuntimeException(&quot;Forced failure&quot;);</span>
+            }
+        };
+
+<span class="fc" id="L354">        Flowable&lt;Integer&gt; m = source1.groupJoin(source2,</span>
+<span class="fc" id="L355">                just(Flowable.never()),</span>
+<span class="fc" id="L356">                just(Flowable.never()), fail);</span>
+<span class="fc" id="L357">        m.subscribe(subscriber);</span>
+
+<span class="fc" id="L359">        source1.onNext(1);</span>
+<span class="fc" id="L360">        source2.onNext(2);</span>
+
+<span class="fc" id="L362">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L363">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L364">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L365">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L369">        TestHelper.checkDisposed(Flowable.just(1).groupJoin(</span>
+<span class="fc" id="L370">            Flowable.just(2),</span>
+<span class="fc" id="L371">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer left) throws Exception {
+<span class="nc" id="L374">                    return Flowable.never();</span>
+                }
+            },
+<span class="fc" id="L377">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer right) throws Exception {
+<span class="nc" id="L380">                    return Flowable.never();</span>
+                }
+            },
+<span class="fc" id="L383">            new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer r, Flowable&lt;Integer&gt; l) throws Exception {
+<span class="nc" id="L386">                    return l;</span>
+                }
+            }
+        ));
+<span class="fc" id="L390">    }</span>
+
+    @Test
+    public void innerCompleteLeft() {
+<span class="fc" id="L394">        Flowable.just(1)</span>
+<span class="fc" id="L395">        .groupJoin(</span>
+<span class="fc" id="L396">            Flowable.just(2),</span>
+<span class="fc" id="L397">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer left) throws Exception {
+<span class="fc" id="L400">                    return Flowable.empty();</span>
+                }
+            },
+<span class="fc" id="L403">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer right) throws Exception {
+<span class="fc" id="L406">                    return Flowable.never();</span>
+                }
+            },
+<span class="fc" id="L409">            new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Integer&gt; apply(Integer r, Flowable&lt;Integer&gt; l) throws Exception {
+<span class="fc" id="L412">                    return l;</span>
+                }
+            }
+        )
+<span class="fc" id="L416">        .flatMap(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L417">        .test()</span>
+<span class="fc" id="L418">        .assertResult();</span>
+<span class="fc" id="L419">    }</span>
+
+    @Test
+    public void innerErrorLeft() {
+<span class="fc" id="L423">        Flowable.just(1)</span>
+<span class="fc" id="L424">        .groupJoin(</span>
+<span class="fc" id="L425">            Flowable.just(2),</span>
+<span class="fc" id="L426">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer left) throws Exception {
+<span class="fc" id="L429">                    return Flowable.error(new TestException());</span>
+                }
+            },
+<span class="fc" id="L432">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer right) throws Exception {
+<span class="nc" id="L435">                    return Flowable.never();</span>
+                }
+            },
+<span class="fc" id="L438">            new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Integer&gt; apply(Integer r, Flowable&lt;Integer&gt; l) throws Exception {
+<span class="nc" id="L441">                    return l;</span>
+                }
+            }
+        )
+<span class="fc" id="L445">        .flatMap(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L446">        .test()</span>
+<span class="fc" id="L447">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L448">    }</span>
+
+    @Test
+    public void innerCompleteRight() {
+<span class="fc" id="L452">        Flowable.just(1)</span>
+<span class="fc" id="L453">        .groupJoin(</span>
+<span class="fc" id="L454">            Flowable.just(2),</span>
+<span class="fc" id="L455">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer left) throws Exception {
+<span class="fc" id="L458">                    return Flowable.never();</span>
+                }
+            },
+<span class="fc" id="L461">            new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Integer right) throws Exception {
+<span class="fc" id="L464">                    return Flowable.empty();</span>
+                }
+            },
+<span class="fc" id="L467">            new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Integer&gt; apply(Integer r, Flowable&lt;Integer&gt; l) throws Exception {
+<span class="fc" id="L470">                    return l;</span>
+                }
+            }
+        )
+<span class="fc" id="L474">        .flatMap(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L475">        .test()</span>
+<span class="fc" id="L476">        .assertResult(2);</span>
+<span class="fc" id="L477">    }</span>
+
+    @Test
+    public void innerErrorRight() {
+<span class="fc" id="L481">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L483">            Flowable.just(1)</span>
+<span class="fc" id="L484">            .groupJoin(</span>
+<span class="fc" id="L485">                Flowable.just(2),</span>
+<span class="fc" id="L486">                new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Object&gt; apply(Integer left) throws Exception {
+<span class="fc" id="L489">                        return Flowable.never();</span>
+                    }
+                },
+<span class="fc" id="L492">                new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Object&gt; apply(Integer right) throws Exception {
+<span class="fc" id="L495">                        return Flowable.error(new TestException());</span>
+                    }
+                },
+<span class="fc" id="L498">                new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Integer&gt; apply(Integer r, Flowable&lt;Integer&gt; l) throws Exception {
+<span class="fc" id="L501">                        return l;</span>
+                    }
+                }
+            )
+<span class="fc" id="L505">            .flatMap(Functions.&lt;Flowable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L506">            .test()</span>
+<span class="fc" id="L507">            .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L509">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L511">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L513">    }</span>
+
+    @Test
+    public void innerErrorRace() {
+<span class="fc bfc" id="L517" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L518">            final PublishProcessor&lt;Object&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L519">            final PublishProcessor&lt;Object&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L521">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+            try {
+<span class="fc" id="L524">                TestSubscriber&lt;Flowable&lt;Integer&gt;&gt; ts = Flowable.just(1)</span>
+<span class="fc" id="L525">                .groupJoin(</span>
+<span class="fc" id="L526">                    Flowable.just(2).concatWith(Flowable.&lt;Integer&gt;never()),</span>
+<span class="fc" id="L527">                    new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public Flowable&lt;Object&gt; apply(Integer left) throws Exception {
+<span class="fc" id="L530">                            return pp1;</span>
+                        }
+                    },
+<span class="fc" id="L533">                    new Function&lt;Integer, Flowable&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public Flowable&lt;Object&gt; apply(Integer right) throws Exception {
+<span class="fc" id="L536">                            return pp2;</span>
+                        }
+                    },
+<span class="fc" id="L539">                    new BiFunction&lt;Integer, Flowable&lt;Integer&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+                        @Override
+                        public Flowable&lt;Integer&gt; apply(Integer r, Flowable&lt;Integer&gt; l) throws Exception {
+<span class="fc" id="L542">                            return l;</span>
+                        }
+                    }
+                )
+<span class="fc" id="L546">                .test();</span>
+
+<span class="fc" id="L548">                final TestException ex1 = new TestException();</span>
+<span class="fc" id="L549">                final TestException ex2 = new TestException();</span>
+
+<span class="fc" id="L551">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L554">                        pp1.onError(ex1);</span>
+<span class="fc" id="L555">                    }</span>
+                };
+<span class="fc" id="L557">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L560">                        pp2.onError(ex2);</span>
+<span class="fc" id="L561">                    }</span>
+                };
+
+<span class="fc" id="L564">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L566">                ts.assertError(Throwable.class).assertSubscribed().assertNotComplete().assertValueCount(1);</span>
+
+<span class="fc" id="L568">                Throwable exc = ts.errors().get(0);</span>
+
+<span class="fc bfc" id="L570" title="All 2 branches covered.">                if (exc instanceof CompositeException) {</span>
+<span class="fc" id="L571">                    List&lt;Throwable&gt; es = TestHelper.compositeList(exc);</span>
+<span class="fc" id="L572">                    TestHelper.assertError(es, 0, TestException.class);</span>
+<span class="fc" id="L573">                    TestHelper.assertError(es, 1, TestException.class);</span>
+<span class="fc" id="L574">                } else {</span>
+<span class="fc" id="L575">                    ts.assertError(TestException.class);</span>
+                }
+
+<span class="fc bfc" id="L578" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L579">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L582">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L585">    }</span>
+
+    @Test
+    public void outerErrorRace() {
+<span class="fc bfc" id="L589" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L590">            final PublishProcessor&lt;Object&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L591">            final PublishProcessor&lt;Object&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L593">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+            try {
+<span class="fc" id="L596">                TestSubscriber&lt;Object&gt; ts = pp1</span>
+<span class="fc" id="L597">                .groupJoin(</span>
+                    pp2,
+<span class="fc" id="L599">                    new Function&lt;Object, Flowable&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public Flowable&lt;Object&gt; apply(Object left) throws Exception {
+<span class="nc" id="L602">                            return Flowable.never();</span>
+                        }
+                    },
+<span class="fc" id="L605">                    new Function&lt;Object, Flowable&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public Flowable&lt;Object&gt; apply(Object right) throws Exception {
+<span class="nc" id="L608">                            return Flowable.never();</span>
+                        }
+                    },
+<span class="fc" id="L611">                    new BiFunction&lt;Object, Flowable&lt;Object&gt;, Flowable&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public Flowable&lt;Object&gt; apply(Object r, Flowable&lt;Object&gt; l) throws Exception {
+<span class="nc" id="L614">                            return l;</span>
+                        }
+                    }
+                )
+<span class="fc" id="L618">                .flatMap(Functions.&lt;Flowable&lt;Object&gt;&gt;identity())</span>
+<span class="fc" id="L619">                .test();</span>
+
+<span class="fc" id="L621">                final TestException ex1 = new TestException();</span>
+<span class="fc" id="L622">                final TestException ex2 = new TestException();</span>
+
+<span class="fc" id="L624">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L627">                        pp1.onError(ex1);</span>
+<span class="fc" id="L628">                    }</span>
+                };
+<span class="fc" id="L630">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L633">                        pp2.onError(ex2);</span>
+<span class="fc" id="L634">                    }</span>
+                };
+
+<span class="fc" id="L637">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L639">                ts.assertError(Throwable.class).assertSubscribed().assertNotComplete().assertNoValues();</span>
+
+<span class="fc" id="L641">                Throwable exc = ts.errors().get(0);</span>
+
+<span class="fc bfc" id="L643" title="All 2 branches covered.">                if (exc instanceof CompositeException) {</span>
+<span class="fc" id="L644">                    List&lt;Throwable&gt; es = TestHelper.compositeList(exc);</span>
+<span class="fc" id="L645">                    TestHelper.assertError(es, 0, TestException.class);</span>
+<span class="fc" id="L646">                    TestHelper.assertError(es, 1, TestException.class);</span>
+<span class="fc" id="L647">                } else {</span>
+<span class="fc" id="L648">                    ts.assertError(TestException.class);</span>
+                }
+
+<span class="fc bfc" id="L651" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L652">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L655">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L658">    }</span>
+
+    @Test
+    public void rightEmission() {
+<span class="fc" id="L662">        final PublishProcessor&lt;Object&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L663">        final PublishProcessor&lt;Object&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L665">        TestSubscriber&lt;Object&gt; ts = pp1</span>
+<span class="fc" id="L666">        .groupJoin(</span>
+            pp2,
+<span class="fc" id="L668">            new Function&lt;Object, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Object left) throws Exception {
+<span class="fc" id="L671">                    return Flowable.never();</span>
+                }
+            },
+<span class="fc" id="L674">            new Function&lt;Object, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Object right) throws Exception {
+<span class="fc" id="L677">                    return Flowable.never();</span>
+                }
+            },
+<span class="fc" id="L680">            new BiFunction&lt;Object, Flowable&lt;Object&gt;, Flowable&lt;Object&gt;&gt;() {</span>
+                @Override
+                public Flowable&lt;Object&gt; apply(Object r, Flowable&lt;Object&gt; l) throws Exception {
+<span class="fc" id="L683">                    return l;</span>
+                }
+            }
+        )
+<span class="fc" id="L687">        .flatMap(Functions.&lt;Flowable&lt;Object&gt;&gt;identity())</span>
+<span class="fc" id="L688">        .test();</span>
+
+<span class="fc" id="L690">        pp2.onNext(2);</span>
+
+<span class="fc" id="L692">        pp1.onNext(1);</span>
+<span class="fc" id="L693">        pp1.onComplete();</span>
+
+<span class="fc" id="L695">        pp2.onComplete();</span>
+
+<span class="fc" id="L697">        ts.assertResult(2);</span>
+<span class="fc" id="L698">    }</span>
+
+    @Test
+    public void leftRightState() {
+<span class="fc" id="L702">        JoinSupport js = mock(JoinSupport.class);</span>
+
+<span class="fc" id="L704">        LeftRightSubscriber o = new LeftRightSubscriber(js, false);</span>
+
+<span class="fc" id="L706">        assertFalse(o.isDisposed());</span>
+
+<span class="fc" id="L708">        o.onNext(1);</span>
+<span class="fc" id="L709">        o.onNext(2);</span>
+
+<span class="fc" id="L711">        o.dispose();</span>
+
+<span class="fc" id="L713">        assertTrue(o.isDisposed());</span>
+
+<span class="fc" id="L715">        verify(js).innerValue(false, 1);</span>
+<span class="fc" id="L716">        verify(js).innerValue(false, 2);</span>
+<span class="fc" id="L717">    }</span>
+
+    @Test
+    public void leftRightEndState() {
+<span class="fc" id="L721">        JoinSupport js = mock(JoinSupport.class);</span>
+
+<span class="fc" id="L723">        LeftRightEndSubscriber o = new LeftRightEndSubscriber(js, false, 0);</span>
+
+<span class="fc" id="L725">        assertFalse(o.isDisposed());</span>
+
+<span class="fc" id="L727">        o.onNext(1);</span>
+<span class="fc" id="L728">        o.onNext(2);</span>
+
+<span class="fc" id="L730">        assertTrue(o.isDisposed());</span>
+
+<span class="fc" id="L732">        verify(js).innerClose(false, o);</span>
+<span class="fc" id="L733">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

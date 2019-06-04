@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResourceMaybeObserverTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.observers</a> &gt; <span class="el_source">ResourceMaybeObserverTest.java</span></div><h1>ResourceMaybeObserverTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.observers;
+
+import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import io.reactivex.Maybe;
+import io.reactivex.TestHelper;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.internal.util.EndConsumerHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+<span class="fc" id="L34">public class ResourceMaybeObserverTest {</span>
+<span class="fc" id="L35">    static final class TestResourceMaybeObserver&lt;T&gt; extends ResourceMaybeObserver&lt;T&gt; {</span>
+        T value;
+
+<span class="fc" id="L38">        final List&lt;Throwable&gt; errors = new ArrayList&lt;Throwable&gt;();</span>
+
+        int complete;
+
+        int start;
+
+        @Override
+        protected void onStart() {
+<span class="fc" id="L46">            super.onStart();</span>
+
+<span class="fc" id="L48">            start++;</span>
+<span class="fc" id="L49">        }</span>
+
+        @Override
+        public void onSuccess(final T value) {
+<span class="fc" id="L53">            this.value = value;</span>
+
+<span class="fc" id="L55">            dispose();</span>
+<span class="fc" id="L56">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L60">            complete++;</span>
+
+<span class="fc" id="L62">            dispose();</span>
+<span class="fc" id="L63">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L67">            errors.add(e);</span>
+
+<span class="fc" id="L69">            dispose();</span>
+<span class="fc" id="L70">        }</span>
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void nullResource() {
+<span class="fc" id="L75">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+<span class="nc" id="L76">        rmo.add(null);</span>
+<span class="nc" id="L77">    }</span>
+
+    @Test
+    public void addResources() {
+<span class="fc" id="L81">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L83">        assertFalse(rmo.isDisposed());</span>
+
+<span class="fc" id="L85">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L87">        rmo.add(d);</span>
+
+<span class="fc" id="L89">        assertFalse(d.isDisposed());</span>
+
+<span class="fc" id="L91">        rmo.dispose();</span>
+
+<span class="fc" id="L93">        assertTrue(rmo.isDisposed());</span>
+
+<span class="fc" id="L95">        assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L97">        rmo.dispose();</span>
+
+<span class="fc" id="L99">        assertTrue(rmo.isDisposed());</span>
+
+<span class="fc" id="L101">        assertTrue(d.isDisposed());</span>
+<span class="fc" id="L102">    }</span>
+
+    @Test
+    public void onCompleteCleansUp() {
+<span class="fc" id="L106">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L108">        assertFalse(rmo.isDisposed());</span>
+
+<span class="fc" id="L110">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L112">        rmo.add(d);</span>
+
+<span class="fc" id="L114">        assertFalse(d.isDisposed());</span>
+
+<span class="fc" id="L116">        rmo.onComplete();</span>
+
+<span class="fc" id="L118">        assertTrue(rmo.isDisposed());</span>
+
+<span class="fc" id="L120">        assertTrue(d.isDisposed());</span>
+<span class="fc" id="L121">    }</span>
+
+    @Test
+    public void onSuccessCleansUp() {
+<span class="fc" id="L125">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L127">        assertFalse(rmo.isDisposed());</span>
+
+<span class="fc" id="L129">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L131">        rmo.add(d);</span>
+
+<span class="fc" id="L133">        assertFalse(d.isDisposed());</span>
+
+<span class="fc" id="L135">        rmo.onSuccess(1);</span>
+
+<span class="fc" id="L137">        assertTrue(rmo.isDisposed());</span>
+
+<span class="fc" id="L139">        assertTrue(d.isDisposed());</span>
+<span class="fc" id="L140">    }</span>
+
+    @Test
+    public void onErrorCleansUp() {
+<span class="fc" id="L144">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L146">        assertFalse(rmo.isDisposed());</span>
+
+<span class="fc" id="L148">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L150">        rmo.add(d);</span>
+
+<span class="fc" id="L152">        assertFalse(d.isDisposed());</span>
+
+<span class="fc" id="L154">        rmo.onError(new TestException());</span>
+
+<span class="fc" id="L156">        assertTrue(rmo.isDisposed());</span>
+
+<span class="fc" id="L158">        assertTrue(d.isDisposed());</span>
+<span class="fc" id="L159">    }</span>
+
+    @Test
+    public void normal() {
+<span class="fc" id="L163">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L165">        assertFalse(rmo.isDisposed());</span>
+<span class="fc" id="L166">        assertEquals(0, rmo.start);</span>
+<span class="fc" id="L167">        assertNull(rmo.value);</span>
+<span class="fc" id="L168">        assertTrue(rmo.errors.isEmpty());</span>
+
+<span class="fc" id="L170">        Maybe.just(1).subscribe(rmo);</span>
+
+<span class="fc" id="L172">        assertTrue(rmo.isDisposed());</span>
+<span class="fc" id="L173">        assertEquals(1, rmo.start);</span>
+<span class="fc" id="L174">        assertEquals(Integer.valueOf(1), rmo.value);</span>
+<span class="fc" id="L175">        assertEquals(0, rmo.complete);</span>
+<span class="fc" id="L176">        assertTrue(rmo.errors.isEmpty());</span>
+<span class="fc" id="L177">    }</span>
+
+    @Test
+    public void empty() {
+<span class="fc" id="L181">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L183">        assertFalse(rmo.isDisposed());</span>
+<span class="fc" id="L184">        assertEquals(0, rmo.start);</span>
+<span class="fc" id="L185">        assertNull(rmo.value);</span>
+<span class="fc" id="L186">        assertTrue(rmo.errors.isEmpty());</span>
+
+<span class="fc" id="L188">        Maybe.&lt;Integer&gt;empty().subscribe(rmo);</span>
+
+<span class="fc" id="L190">        assertTrue(rmo.isDisposed());</span>
+<span class="fc" id="L191">        assertEquals(1, rmo.start);</span>
+<span class="fc" id="L192">        assertNull(rmo.value);</span>
+<span class="fc" id="L193">        assertEquals(1, rmo.complete);</span>
+<span class="fc" id="L194">        assertTrue(rmo.errors.isEmpty());</span>
+<span class="fc" id="L195">    }</span>
+
+    @Test
+    public void error() {
+<span class="fc" id="L199">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L201">        assertFalse(rmo.isDisposed());</span>
+<span class="fc" id="L202">        assertEquals(0, rmo.start);</span>
+<span class="fc" id="L203">        assertNull(rmo.value);</span>
+<span class="fc" id="L204">        assertTrue(rmo.errors.isEmpty());</span>
+
+<span class="fc" id="L206">        final RuntimeException error = new RuntimeException(&quot;error&quot;);</span>
+<span class="fc" id="L207">        Maybe.&lt;Integer&gt;error(error).subscribe(rmo);</span>
+
+<span class="fc" id="L209">        assertTrue(rmo.isDisposed());</span>
+<span class="fc" id="L210">        assertEquals(1, rmo.start);</span>
+<span class="fc" id="L211">        assertNull(rmo.value);</span>
+<span class="fc" id="L212">        assertEquals(0, rmo.complete);</span>
+<span class="fc" id="L213">        assertEquals(1, rmo.errors.size());</span>
+<span class="fc" id="L214">        assertTrue(rmo.errors.contains(error));</span>
+<span class="fc" id="L215">    }</span>
+
+    @Test
+    public void startOnce() {
+
+<span class="fc" id="L220">        List&lt;Throwable&gt; error = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L223">            TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L225">            rmo.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L227">            Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L229">            rmo.onSubscribe(d);</span>
+
+<span class="fc" id="L231">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L233">            assertEquals(1, rmo.start);</span>
+
+<span class="fc" id="L235">            TestHelper.assertError(error, 0, IllegalStateException.class, EndConsumerHelper.composeMessage(rmo.getClass().getName()));</span>
+        } finally {
+<span class="fc" id="L237">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L239">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L243">        TestResourceMaybeObserver&lt;Integer&gt; rmo = new TestResourceMaybeObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L244">        rmo.dispose();</span>
+
+<span class="fc" id="L246">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L248">        rmo.onSubscribe(d);</span>
+
+<span class="fc" id="L250">        assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L252">        assertEquals(0, rmo.start);</span>
+<span class="fc" id="L253">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

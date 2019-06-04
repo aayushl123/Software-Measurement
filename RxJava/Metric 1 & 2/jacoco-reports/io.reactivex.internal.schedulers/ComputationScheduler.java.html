@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComputationScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.schedulers</a> &gt; <span class="el_source">ComputationScheduler.java</span></div><h1>ComputationScheduler.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.reactivex.internal.schedulers;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.Scheduler;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.disposables.*;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
+
+/**
+ * Holds a fixed pool of worker threads and assigns them
+ * to requested Scheduler.Workers in a round-robin fashion.
+ */
+public final class ComputationScheduler extends Scheduler implements SchedulerMultiWorkerSupport {
+    /** This will indicate no pool is active. */
+    static final FixedSchedulerPool NONE;
+    /** Manages a fixed number of workers. */
+    private static final String THREAD_NAME_PREFIX = &quot;RxComputationThreadPool&quot;;
+    static final RxThreadFactory THREAD_FACTORY;
+    /**
+     * Key to setting the maximum number of computation scheduler threads.
+     * Zero or less is interpreted as use available. Capped by available.
+     */
+    static final String KEY_MAX_THREADS = &quot;rx2.computation-threads&quot;;
+    /** The maximum number of computation scheduler threads. */
+    static final int MAX_THREADS;
+
+    static final PoolWorker SHUTDOWN_WORKER;
+
+    final ThreadFactory threadFactory;
+    final AtomicReference&lt;FixedSchedulerPool&gt; pool;
+    /** The name of the system property for setting the thread priority for this Scheduler. */
+    private static final String KEY_COMPUTATION_PRIORITY = &quot;rx2.computation-priority&quot;;
+
+    static {
+<span class="fc" id="L53">        MAX_THREADS = cap(Runtime.getRuntime().availableProcessors(), Integer.getInteger(KEY_MAX_THREADS, 0));</span>
+
+<span class="fc" id="L55">        SHUTDOWN_WORKER = new PoolWorker(new RxThreadFactory(&quot;RxComputationShutdown&quot;));</span>
+<span class="fc" id="L56">        SHUTDOWN_WORKER.dispose();</span>
+
+<span class="fc" id="L58">        int priority = Math.max(Thread.MIN_PRIORITY, Math.min(Thread.MAX_PRIORITY,</span>
+<span class="fc" id="L59">                Integer.getInteger(KEY_COMPUTATION_PRIORITY, Thread.NORM_PRIORITY)));</span>
+
+<span class="fc" id="L61">        THREAD_FACTORY = new RxThreadFactory(THREAD_NAME_PREFIX, priority, true);</span>
+
+<span class="fc" id="L63">        NONE = new FixedSchedulerPool(0, THREAD_FACTORY);</span>
+<span class="fc" id="L64">        NONE.shutdown();</span>
+<span class="fc" id="L65">    }</span>
+
+    static int cap(int cpuCount, int paramThreads) {
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        return paramThreads &lt;= 0 || paramThreads &gt; cpuCount ? cpuCount : paramThreads;</span>
+    }
+
+    static final class FixedSchedulerPool implements SchedulerMultiWorkerSupport {
+        final int cores;
+
+        final PoolWorker[] eventLoops;
+        long n;
+
+<span class="fc" id="L77">        FixedSchedulerPool(int maxThreads, ThreadFactory threadFactory) {</span>
+            // initialize event loops
+<span class="fc" id="L79">            this.cores = maxThreads;</span>
+<span class="fc" id="L80">            this.eventLoops = new PoolWorker[maxThreads];</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            for (int i = 0; i &lt; maxThreads; i++) {</span>
+<span class="fc" id="L82">                this.eventLoops[i] = new PoolWorker(threadFactory);</span>
+            }
+<span class="fc" id="L84">        }</span>
+
+        public PoolWorker getEventLoop() {
+<span class="fc" id="L87">            int c = cores;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (c == 0) {</span>
+<span class="fc" id="L89">                return SHUTDOWN_WORKER;</span>
+            }
+            // simple round robin, improvements to come
+<span class="fc" id="L92">            return eventLoops[(int)(n++ % c)];</span>
+        }
+
+        public void shutdown() {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            for (PoolWorker w : eventLoops) {</span>
+<span class="fc" id="L97">                w.dispose();</span>
+            }
+<span class="fc" id="L99">        }</span>
+
+        @Override
+        public void createWorkers(int number, WorkerCallback callback) {
+<span class="fc" id="L103">            int c = cores;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (c == 0) {</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                for (int i = 0; i &lt; number; i++) {</span>
+<span class="fc" id="L106">                    callback.onWorker(i, SHUTDOWN_WORKER);</span>
+                }
+            } else {
+<span class="fc" id="L109">                int index = (int)n % c;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                for (int i = 0; i &lt; number; i++) {</span>
+<span class="fc" id="L111">                    callback.onWorker(i, new EventLoopWorker(eventLoops[index]));</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                    if (++index == c) {</span>
+<span class="fc" id="L113">                        index = 0;</span>
+                    }
+                }
+<span class="fc" id="L116">                n = index;</span>
+            }
+<span class="fc" id="L118">        }</span>
+    }
+
+    /**
+     * Create a scheduler with pool size equal to the available processor
+     * count and using least-recent worker selection policy.
+     */
+    public ComputationScheduler() {
+<span class="fc" id="L126">        this(THREAD_FACTORY);</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Create a scheduler with pool size equal to the available processor
+     * count and using least-recent worker selection policy.
+     *
+     * @param threadFactory thread factory to use for creating worker threads. Note that this takes precedence over any
+     *                      system properties for configuring new thread creation. Cannot be null.
+     */
+<span class="fc" id="L136">    public ComputationScheduler(ThreadFactory threadFactory) {</span>
+<span class="fc" id="L137">        this.threadFactory = threadFactory;</span>
+<span class="fc" id="L138">        this.pool = new AtomicReference&lt;FixedSchedulerPool&gt;(NONE);</span>
+<span class="fc" id="L139">        start();</span>
+<span class="fc" id="L140">    }</span>
+
+    @NonNull
+    @Override
+    public Worker createWorker() {
+<span class="fc" id="L145">        return new EventLoopWorker(pool.get().getEventLoop());</span>
+    }
+
+    @Override
+    public void createWorkers(int number, WorkerCallback callback) {
+<span class="fc" id="L150">        ObjectHelper.verifyPositive(number, &quot;number &gt; 0 required&quot;);</span>
+<span class="fc" id="L151">        pool.get().createWorkers(number, callback);</span>
+<span class="fc" id="L152">    }</span>
+
+    @NonNull
+    @Override
+    public Disposable scheduleDirect(@NonNull Runnable run, long delay, TimeUnit unit) {
+<span class="fc" id="L157">        PoolWorker w = pool.get().getEventLoop();</span>
+<span class="fc" id="L158">        return w.scheduleDirect(run, delay, unit);</span>
+    }
+
+    @NonNull
+    @Override
+    public Disposable schedulePeriodicallyDirect(@NonNull Runnable run, long initialDelay, long period, TimeUnit unit) {
+<span class="fc" id="L164">        PoolWorker w = pool.get().getEventLoop();</span>
+<span class="fc" id="L165">        return w.schedulePeriodicallyDirect(run, initialDelay, period, unit);</span>
+    }
+
+    @Override
+    public void start() {
+<span class="fc" id="L170">        FixedSchedulerPool update = new FixedSchedulerPool(MAX_THREADS, threadFactory);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (!pool.compareAndSet(NONE, update)) {</span>
+<span class="fc" id="L172">            update.shutdown();</span>
+        }
+<span class="fc" id="L174">    }</span>
+
+    @Override
+    public void shutdown() {
+        for (;;) {
+<span class="fc" id="L179">            FixedSchedulerPool curr = pool.get();</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (curr == NONE) {</span>
+<span class="fc" id="L181">                return;</span>
+            }
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (pool.compareAndSet(curr, NONE)) {</span>
+<span class="fc" id="L184">                curr.shutdown();</span>
+<span class="fc" id="L185">                return;</span>
+            }
+<span class="nc" id="L187">        }</span>
+    }
+
+    static final class EventLoopWorker extends Scheduler.Worker {
+        private final ListCompositeDisposable serial;
+        private final CompositeDisposable timed;
+        private final ListCompositeDisposable both;
+        private final PoolWorker poolWorker;
+
+        volatile boolean disposed;
+
+<span class="fc" id="L198">        EventLoopWorker(PoolWorker poolWorker) {</span>
+<span class="fc" id="L199">            this.poolWorker = poolWorker;</span>
+<span class="fc" id="L200">            this.serial = new ListCompositeDisposable();</span>
+<span class="fc" id="L201">            this.timed = new CompositeDisposable();</span>
+<span class="fc" id="L202">            this.both = new ListCompositeDisposable();</span>
+<span class="fc" id="L203">            this.both.add(serial);</span>
+<span class="fc" id="L204">            this.both.add(timed);</span>
+<span class="fc" id="L205">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (!disposed) {</span>
+<span class="fc" id="L210">                disposed = true;</span>
+<span class="fc" id="L211">                both.dispose();</span>
+            }
+<span class="fc" id="L213">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L217">            return disposed;</span>
+        }
+
+        @NonNull
+        @Override
+        public Disposable schedule(@NonNull Runnable action) {
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (disposed) {</span>
+<span class="fc" id="L224">                return EmptyDisposable.INSTANCE;</span>
+            }
+
+<span class="fc" id="L227">            return poolWorker.scheduleActual(action, 0, TimeUnit.MILLISECONDS, serial);</span>
+        }
+
+        @NonNull
+        @Override
+        public Disposable schedule(@NonNull Runnable action, long delayTime, @NonNull TimeUnit unit) {
+<span class="fc bfc" id="L233" title="All 2 branches covered.">            if (disposed) {</span>
+<span class="fc" id="L234">                return EmptyDisposable.INSTANCE;</span>
+            }
+
+<span class="fc" id="L237">            return poolWorker.scheduleActual(action, delayTime, unit, timed);</span>
+        }
+    }
+
+    static final class PoolWorker extends NewThreadWorker {
+        PoolWorker(ThreadFactory threadFactory) {
+<span class="fc" id="L243">            super(threadFactory);</span>
+<span class="fc" id="L244">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

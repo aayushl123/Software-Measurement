@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParallelPerf.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.parallel</a> &gt; <span class="el_source">ParallelPerf.java</span></div><h1>ParallelPerf.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.parallel;
+
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.infra.Blackhole;
+import org.reactivestreams.Publisher;
+
+import io.reactivex.*;
+import io.reactivex.flowables.GroupedFlowable;
+import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
+
+@BenchmarkMode(Mode.Throughput)
+@Warmup(iterations = 5)
+@Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
+@Fork(value = 1, jvmArgsAppend = { &quot;-XX:MaxInlineLevel=20&quot; })
+@OutputTimeUnit(TimeUnit.SECONDS)
+@State(Scope.Thread)
+<span class="nc" id="L34">public class ParallelPerf implements Function&lt;Integer, Integer&gt; {</span>
+
+    @Param({&quot;10000&quot;})
+    public int count;
+
+    @Param({&quot;1&quot;, &quot;10&quot;, &quot;100&quot;, &quot;1000&quot;, &quot;10000&quot;})
+    public int compute;
+
+    @Param({&quot;1&quot;, &quot;2&quot;, &quot;3&quot;, &quot;4&quot;})
+    public int parallelism;
+
+    Flowable&lt;Integer&gt; flatMap;
+
+    Flowable&lt;Integer&gt; groupBy;
+
+    Flowable&lt;Integer&gt; parallel;
+
+    @Override
+    public Integer apply(Integer t) throws Exception {
+<span class="nc" id="L53">        Blackhole.consumeCPU(compute);</span>
+<span class="nc" id="L54">        return t;</span>
+    }
+
+    @Setup
+    public void setup() {
+
+<span class="nc" id="L60">        final int cpu = parallelism;</span>
+
+<span class="nc" id="L62">        Integer[] ints = new Integer[count];</span>
+<span class="nc" id="L63">        Arrays.fill(ints, 777);</span>
+
+<span class="nc" id="L65">        Flowable&lt;Integer&gt; source = Flowable.fromArray(ints);</span>
+
+<span class="nc" id="L67">        flatMap = source.flatMap(new Function&lt;Integer, Publisher&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L70">                return Flowable.just(v).subscribeOn(Schedulers.computation())</span>
+<span class="nc" id="L71">                        .map(ParallelPerf.this);</span>
+            }
+        }, cpu);
+
+<span class="nc" id="L75">        groupBy = source.groupBy(new Function&lt;Integer, Integer&gt;() {</span>
+            int i;
+            @Override
+            public Integer apply(Integer v) throws Exception {
+<span class="nc" id="L79">                return (i++) % cpu;</span>
+            }
+        })
+<span class="nc" id="L82">        .flatMap(new Function&lt;GroupedFlowable&lt;Integer, Integer&gt;, Publisher&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Integer&gt; apply(GroupedFlowable&lt;Integer, Integer&gt; g) throws Exception {
+<span class="nc" id="L85">                return g.observeOn(Schedulers.computation()).map(ParallelPerf.this);</span>
+            }
+        });
+
+<span class="nc" id="L89">        parallel = source.parallel(cpu).runOn(Schedulers.computation()).map(this).sequential();</span>
+<span class="nc" id="L90">    }</span>
+
+    void subscribe(Flowable&lt;Integer&gt; f, Blackhole bh) {
+<span class="nc" id="L93">        PerfAsyncConsumer consumer = new PerfAsyncConsumer(bh);</span>
+<span class="nc" id="L94">        f.subscribe(consumer);</span>
+<span class="nc" id="L95">        consumer.await(count);</span>
+<span class="nc" id="L96">    }</span>
+
+    @Benchmark
+    public void flatMap(Blackhole bh) {
+<span class="nc" id="L100">        subscribe(flatMap, bh);</span>
+<span class="nc" id="L101">    }</span>
+
+    @Benchmark
+    public void groupBy(Blackhole bh) {
+<span class="nc" id="L105">        subscribe(groupBy, bh);</span>
+<span class="nc" id="L106">    }</span>
+
+    @Benchmark
+    public void parallel(Blackhole bh) {
+<span class="nc" id="L110">        subscribe(parallel, bh);</span>
+<span class="nc" id="L111">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

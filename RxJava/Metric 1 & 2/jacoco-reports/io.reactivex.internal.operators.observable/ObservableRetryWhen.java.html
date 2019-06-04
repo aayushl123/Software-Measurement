@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableRetryWhen.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableRetryWhen.java</span></div><h1>ObservableRetryWhen.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.subjects.*;
+
+/**
+ * Repeatedly subscribe to a source if a handler ObservableSource signals an item.
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class ObservableRetryWhen&lt;T&gt; extends AbstractObservableWithUpstream&lt;T, T&gt; {
+
+    final Function&lt;? super Observable&lt;Throwable&gt;, ? extends ObservableSource&lt;?&gt;&gt; handler;
+
+    public ObservableRetryWhen(ObservableSource&lt;T&gt; source, Function&lt;? super Observable&lt;Throwable&gt;, ? extends ObservableSource&lt;?&gt;&gt; handler) {
+<span class="fc" id="L37">        super(source);</span>
+<span class="fc" id="L38">        this.handler = handler;</span>
+<span class="fc" id="L39">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L43">        Subject&lt;Throwable&gt; signaller = PublishSubject.&lt;Throwable&gt;create().toSerialized();</span>
+
+        ObservableSource&lt;?&gt; other;
+
+        try {
+<span class="fc" id="L48">            other = ObjectHelper.requireNonNull(handler.apply(signaller), &quot;The handler returned a null ObservableSource&quot;);</span>
+<span class="fc" id="L49">        } catch (Throwable ex) {</span>
+<span class="fc" id="L50">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L51">            EmptyDisposable.error(ex, observer);</span>
+<span class="fc" id="L52">            return;</span>
+<span class="fc" id="L53">        }</span>
+
+<span class="fc" id="L55">        RepeatWhenObserver&lt;T&gt; parent = new RepeatWhenObserver&lt;T&gt;(observer, signaller, source);</span>
+<span class="fc" id="L56">        observer.onSubscribe(parent);</span>
+
+<span class="fc" id="L58">        other.subscribe(parent.inner);</span>
+
+<span class="fc" id="L60">        parent.subscribeNext();</span>
+<span class="fc" id="L61">    }</span>
+
+    static final class RepeatWhenObserver&lt;T&gt; extends AtomicInteger implements Observer&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = 802743776666017014L;
+
+        final Observer&lt;? super T&gt; downstream;
+
+        final AtomicInteger wip;
+
+        final AtomicThrowable error;
+
+        final Subject&lt;Throwable&gt; signaller;
+
+        final InnerRepeatObserver inner;
+
+        final AtomicReference&lt;Disposable&gt; upstream;
+
+        final ObservableSource&lt;T&gt; source;
+
+        volatile boolean active;
+
+<span class="fc" id="L83">        RepeatWhenObserver(Observer&lt;? super T&gt; actual, Subject&lt;Throwable&gt; signaller, ObservableSource&lt;T&gt; source) {</span>
+<span class="fc" id="L84">            this.downstream = actual;</span>
+<span class="fc" id="L85">            this.signaller = signaller;</span>
+<span class="fc" id="L86">            this.source = source;</span>
+<span class="fc" id="L87">            this.wip = new AtomicInteger();</span>
+<span class="fc" id="L88">            this.error = new AtomicThrowable();</span>
+<span class="fc" id="L89">            this.inner = new InnerRepeatObserver();</span>
+<span class="fc" id="L90">            this.upstream = new AtomicReference&lt;Disposable&gt;();</span>
+<span class="fc" id="L91">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L95">            DisposableHelper.replace(this.upstream, d);</span>
+<span class="fc" id="L96">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L100">            HalfSerializer.onNext(downstream, t, this, error);</span>
+<span class="fc" id="L101">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L105">            DisposableHelper.replace(upstream, null);</span>
+<span class="fc" id="L106">            active = false;</span>
+<span class="fc" id="L107">            signaller.onNext(e);</span>
+<span class="fc" id="L108">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L112">            DisposableHelper.dispose(inner);</span>
+<span class="fc" id="L113">            HalfSerializer.onComplete(downstream, this, error);</span>
+<span class="fc" id="L114">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L118">            return DisposableHelper.isDisposed(upstream.get());</span>
+        }
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L123">            DisposableHelper.dispose(upstream);</span>
+<span class="fc" id="L124">            DisposableHelper.dispose(inner);</span>
+<span class="fc" id="L125">        }</span>
+
+        void innerNext() {
+<span class="fc" id="L128">            subscribeNext();</span>
+<span class="fc" id="L129">        }</span>
+
+        void innerError(Throwable ex) {
+<span class="fc" id="L132">            DisposableHelper.dispose(upstream);</span>
+<span class="fc" id="L133">            HalfSerializer.onError(downstream, ex, this, error);</span>
+<span class="fc" id="L134">        }</span>
+
+        void innerComplete() {
+<span class="fc" id="L137">            DisposableHelper.dispose(upstream);</span>
+<span class="fc" id="L138">            HalfSerializer.onComplete(downstream, this, error);</span>
+<span class="fc" id="L139">        }</span>
+
+        void subscribeNext() {
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (wip.getAndIncrement() == 0) {</span>
+
+                do {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                    if (isDisposed()) {</span>
+<span class="fc" id="L146">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                    if (!active) {</span>
+<span class="fc" id="L150">                        active = true;</span>
+<span class="fc" id="L151">                        source.subscribe(this);</span>
+                    }
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                } while (wip.decrementAndGet() != 0);</span>
+            }
+<span class="fc" id="L155">        }</span>
+
+<span class="fc" id="L157">        final class InnerRepeatObserver extends AtomicReference&lt;Disposable&gt; implements Observer&lt;Object&gt; {</span>
+
+            private static final long serialVersionUID = 3254781284376480842L;
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L163">                DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L164">            }</span>
+
+            @Override
+            public void onNext(Object t) {
+<span class="fc" id="L168">                innerNext();</span>
+<span class="fc" id="L169">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L173">                innerError(e);</span>
+<span class="fc" id="L174">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L178">                innerComplete();</span>
+<span class="fc" id="L179">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,512 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeferredScalarObserverTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.observers</a> &gt; <span class="el_source">DeferredScalarObserverTest.java</span></div><h1>DeferredScalarObserverTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.observers;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L29">public class DeferredScalarObserverTest {</span>
+
+    static final class TakeFirst extends DeferredScalarObserver&lt;Integer, Integer&gt; {
+
+        private static final long serialVersionUID = -2793723002312330530L;
+
+        TakeFirst(Observer&lt;? super Integer&gt; downstream) {
+<span class="fc" id="L36">            super(downstream);</span>
+<span class="fc" id="L37">        }</span>
+
+        @Override
+        public void onNext(Integer value) {
+<span class="fc" id="L41">            upstream.dispose();</span>
+<span class="fc" id="L42">            complete(value);</span>
+<span class="fc" id="L43">            complete(value);</span>
+<span class="fc" id="L44">        }</span>
+
+    }
+
+    @Test
+    public void normal() {
+<span class="fc" id="L50">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L52">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L54">            TakeFirst source = new TakeFirst(to);</span>
+
+<span class="fc" id="L56">            source.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L58">            Disposable d = Disposables.empty();</span>
+<span class="fc" id="L59">            source.onSubscribe(d);</span>
+
+<span class="fc" id="L61">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L63">            source.onNext(1);</span>
+
+<span class="fc" id="L65">            to.assertResult(1);</span>
+
+<span class="fc" id="L67">            TestHelper.assertError(errors, 0, ProtocolViolationException.class);</span>
+        } finally {
+<span class="fc" id="L69">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L71">    }</span>
+
+    @Test
+    public void error() {
+<span class="fc" id="L75">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L77">        TakeFirst source = new TakeFirst(to);</span>
+
+<span class="fc" id="L79">        source.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L80">        source.onError(new TestException());</span>
+
+<span class="fc" id="L82">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L83">    }</span>
+
+    @Test
+    public void complete() {
+<span class="fc" id="L87">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L89">        TakeFirst source = new TakeFirst(to);</span>
+
+<span class="fc" id="L91">        source.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L92">        source.onComplete();</span>
+
+<span class="fc" id="L94">        to.assertResult();</span>
+<span class="fc" id="L95">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L99">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L101">        TakeFirst source = new TakeFirst(to);</span>
+
+<span class="fc" id="L103">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L105">        source.onSubscribe(d);</span>
+
+<span class="fc" id="L107">        assertFalse(d.isDisposed());</span>
+
+<span class="fc" id="L109">        to.cancel();</span>
+
+<span class="fc" id="L111">        assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L113">        assertTrue(source.isDisposed());</span>
+<span class="fc" id="L114">    }</span>
+
+    @Test
+    public void fused() {
+<span class="fc" id="L118">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L120">            TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L122">            TakeFirst source = new TakeFirst(to);</span>
+
+<span class="fc" id="L124">            Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L126">            source.onSubscribe(d);</span>
+
+<span class="fc" id="L128">            to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable());</span>
+<span class="fc" id="L129">            to.assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC));</span>
+
+<span class="fc" id="L131">            source.onNext(1);</span>
+<span class="fc" id="L132">            source.onNext(1);</span>
+<span class="fc" id="L133">            source.onError(new TestException());</span>
+<span class="fc" id="L134">            source.onComplete();</span>
+
+<span class="fc" id="L136">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L138">            to.assertResult(1);</span>
+
+<span class="fc" id="L140">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L142">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L144">    }</span>
+
+    @Test
+    public void fusedReject() {
+<span class="fc" id="L148">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L150">            TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L152">            TakeFirst source = new TakeFirst(to);</span>
+
+<span class="fc" id="L154">            Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L156">            source.onSubscribe(d);</span>
+
+<span class="fc" id="L158">            to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable());</span>
+<span class="fc" id="L159">            to.assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.NONE));</span>
+
+<span class="fc" id="L161">            source.onNext(1);</span>
+<span class="fc" id="L162">            source.onNext(1);</span>
+<span class="fc" id="L163">            source.onError(new TestException());</span>
+<span class="fc" id="L164">            source.onComplete();</span>
+
+<span class="fc" id="L166">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L168">            to.assertResult(1);</span>
+
+<span class="fc" id="L170">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L172">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L174">    }</span>
+
+    static final class TakeLast extends DeferredScalarObserver&lt;Integer, Integer&gt; {
+
+        private static final long serialVersionUID = -2793723002312330530L;
+
+        TakeLast(Observer&lt;? super Integer&gt; downstream) {
+<span class="fc" id="L181">            super(downstream);</span>
+<span class="fc" id="L182">        }</span>
+
+        @Override
+        public void onNext(Integer value) {
+<span class="fc" id="L186">            this.value = value;</span>
+<span class="fc" id="L187">        }</span>
+
+    }
+
+    @Test
+    public void nonfusedTerminateMore() {
+<span class="fc" id="L193">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L195">            TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.NONE);</span>
+
+<span class="fc" id="L197">            TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L199">            Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L201">            source.onSubscribe(d);</span>
+
+<span class="fc" id="L203">            source.onNext(1);</span>
+<span class="fc" id="L204">            source.onComplete();</span>
+<span class="fc" id="L205">            source.onComplete();</span>
+<span class="fc" id="L206">            source.onError(new TestException());</span>
+
+<span class="fc" id="L208">            to.assertResult(1);</span>
+
+<span class="fc" id="L210">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L212">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L214">    }</span>
+
+    @Test
+    public void nonfusedError() {
+<span class="fc" id="L218">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L220">            TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.NONE);</span>
+
+<span class="fc" id="L222">            TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L224">            Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L226">            source.onSubscribe(d);</span>
+
+<span class="fc" id="L228">            source.onNext(1);</span>
+<span class="fc" id="L229">            source.onError(new TestException());</span>
+<span class="fc" id="L230">            source.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L231">            source.onComplete();</span>
+
+<span class="fc" id="L233">            to.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L235">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L237">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L239">    }</span>
+
+    @Test
+    public void fusedTerminateMore() {
+<span class="fc" id="L243">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L245">            TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L247">            TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L249">            Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L251">            source.onSubscribe(d);</span>
+
+<span class="fc" id="L253">            source.onNext(1);</span>
+<span class="fc" id="L254">            source.onComplete();</span>
+<span class="fc" id="L255">            source.onComplete();</span>
+<span class="fc" id="L256">            source.onError(new TestException());</span>
+
+<span class="fc" id="L258">            to.assertResult(1);</span>
+
+<span class="fc" id="L260">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L262">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L264">    }</span>
+
+    @Test
+    public void fusedError() {
+<span class="fc" id="L268">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L270">            TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L272">            TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L274">            Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L276">            source.onSubscribe(d);</span>
+
+<span class="fc" id="L278">            source.onNext(1);</span>
+<span class="fc" id="L279">            source.onError(new TestException());</span>
+<span class="fc" id="L280">            source.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L281">            source.onComplete();</span>
+
+<span class="fc" id="L283">            to.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L285">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L287">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L289">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L293">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.NONE);</span>
+
+<span class="fc" id="L295">        TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L297">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L299">        source.onSubscribe(d);</span>
+
+<span class="fc" id="L301">        to.cancel();</span>
+
+<span class="fc" id="L303">        source.onNext(1);</span>
+<span class="fc" id="L304">        source.onComplete();</span>
+
+<span class="fc" id="L306">        to.assertNoValues().assertNoErrors().assertNotComplete();</span>
+<span class="fc" id="L307">    }</span>
+
+    @Test
+    public void disposedAfterOnNext() {
+<span class="fc" id="L311">        final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L313">        TakeLast source = new TakeLast(new Observer&lt;Integer&gt;() {</span>
+            Disposable upstream;
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L318">                this.upstream = d;</span>
+<span class="fc" id="L319">                to.onSubscribe(d);</span>
+<span class="fc" id="L320">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="fc" id="L324">                to.onNext(value);</span>
+<span class="fc" id="L325">                upstream.dispose();</span>
+<span class="fc" id="L326">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L330">                to.onError(e);</span>
+<span class="nc" id="L331">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L335">                to.onComplete();</span>
+<span class="nc" id="L336">            }</span>
+        });
+
+<span class="fc" id="L339">        source.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L340">        source.onNext(1);</span>
+<span class="fc" id="L341">        source.onComplete();</span>
+
+<span class="fc" id="L343">        to.assertValue(1).assertNoErrors().assertNotComplete();</span>
+<span class="fc" id="L344">    }</span>
+
+    @Test
+    public void fusedEmpty() {
+<span class="fc" id="L348">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L350">        TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L352">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L354">        source.onSubscribe(d);</span>
+
+<span class="fc" id="L356">        source.onComplete();</span>
+
+<span class="fc" id="L358">        to.assertResult();</span>
+<span class="fc" id="L359">    }</span>
+
+    @Test
+    public void nonfusedEmpty() {
+<span class="fc" id="L363">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.NONE);</span>
+
+<span class="fc" id="L365">        TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L367">        Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L369">        source.onSubscribe(d);</span>
+
+<span class="fc" id="L371">        source.onComplete();</span>
+
+<span class="fc" id="L373">        to.assertResult();</span>
+<span class="fc" id="L374">    }</span>
+
+    @Test
+    public void customFusion() {
+<span class="fc" id="L378">        final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L380">        TakeLast source = new TakeLast(new Observer&lt;Integer&gt;() {</span>
+            QueueDisposable&lt;Integer&gt; d;
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L386">                this.d = (QueueDisposable&lt;Integer&gt;)d;</span>
+<span class="fc" id="L387">                to.onSubscribe(d);</span>
+<span class="fc" id="L388">                this.d.requestFusion(QueueFuseable.ANY);</span>
+<span class="fc" id="L389">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">                if (!d.isEmpty()) {</span>
+<span class="fc" id="L394">                    Integer v = null;</span>
+                    try {
+<span class="fc" id="L396">                        to.onNext(d.poll());</span>
+
+<span class="fc" id="L398">                        v = d.poll();</span>
+<span class="nc" id="L399">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L400">                        to.onError(ex);</span>
+<span class="fc" id="L401">                    }</span>
+
+<span class="fc" id="L403">                    assertNull(v);</span>
+<span class="fc" id="L404">                    assertTrue(d.isEmpty());</span>
+                }
+<span class="fc" id="L406">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L410">                to.onError(e);</span>
+<span class="nc" id="L411">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L415">                to.onComplete();</span>
+<span class="fc" id="L416">            }</span>
+        });
+
+<span class="fc" id="L419">        source.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L420">        source.onNext(1);</span>
+<span class="fc" id="L421">        source.onComplete();</span>
+
+<span class="fc" id="L423">        to.assertResult(1);</span>
+<span class="fc" id="L424">    }</span>
+
+    @Test
+    public void customFusionClear() {
+<span class="fc" id="L428">        final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L430">        TakeLast source = new TakeLast(new Observer&lt;Integer&gt;() {</span>
+            QueueDisposable&lt;Integer&gt; d;
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L436">                this.d = (QueueDisposable&lt;Integer&gt;)d;</span>
+<span class="fc" id="L437">                to.onSubscribe(d);</span>
+<span class="fc" id="L438">                this.d.requestFusion(QueueFuseable.ANY);</span>
+<span class="fc" id="L439">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="fc" id="L443">                d.clear();</span>
+<span class="fc" id="L444">                assertTrue(d.isEmpty());</span>
+<span class="fc" id="L445">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L449">                to.onError(e);</span>
+<span class="nc" id="L450">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L454">                to.onComplete();</span>
+<span class="fc" id="L455">            }</span>
+        });
+
+<span class="fc" id="L458">        source.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L459">        source.onNext(1);</span>
+<span class="fc" id="L460">        source.onComplete();</span>
+
+<span class="fc" id="L462">        to.assertNoValues().assertNoErrors().assertComplete();</span>
+<span class="fc" id="L463">    }</span>
+
+    @Test
+    public void offerThrow() {
+<span class="fc" id="L467">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.NONE);</span>
+
+<span class="fc" id="L469">        TakeLast source = new TakeLast(to);</span>
+
+<span class="fc" id="L471">        TestHelper.assertNoOffer(source);</span>
+<span class="fc" id="L472">    }</span>
+
+    @Test
+    public void customFusionDontConsume() {
+<span class="fc" id="L476">        final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L478">        TakeFirst source = new TakeFirst(new Observer&lt;Integer&gt;() {</span>
+            QueueDisposable&lt;Integer&gt; d;
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L484">                this.d = (QueueDisposable&lt;Integer&gt;)d;</span>
+<span class="fc" id="L485">                to.onSubscribe(d);</span>
+<span class="fc" id="L486">                this.d.requestFusion(QueueFuseable.ANY);</span>
+<span class="fc" id="L487">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+                // not consuming
+<span class="fc" id="L492">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L496">                to.onError(e);</span>
+<span class="nc" id="L497">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L501">                to.onComplete();</span>
+<span class="fc" id="L502">            }</span>
+        });
+
+<span class="fc" id="L505">        source.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L506">        source.onNext(1);</span>
+
+<span class="fc" id="L508">        to.assertNoValues().assertNoErrors().assertComplete();</span>
+<span class="fc" id="L509">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

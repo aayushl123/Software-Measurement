@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableZip.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableZip.java</span></div><h1>ObservableZip.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import io.reactivex.internal.functions.ObjectHelper;
+import java.util.Arrays;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.queue.SpscLinkedArrayQueue;
+
+public final class ObservableZip&lt;T, R&gt; extends Observable&lt;R&gt; {
+
+    final ObservableSource&lt;? extends T&gt;[] sources;
+    final Iterable&lt;? extends ObservableSource&lt;? extends T&gt;&gt; sourcesIterable;
+    final Function&lt;? super Object[], ? extends R&gt; zipper;
+    final int bufferSize;
+    final boolean delayError;
+
+    public ObservableZip(ObservableSource&lt;? extends T&gt;[] sources,
+            Iterable&lt;? extends ObservableSource&lt;? extends T&gt;&gt; sourcesIterable,
+            Function&lt;? super Object[], ? extends R&gt; zipper,
+            int bufferSize,
+<span class="fc" id="L39">            boolean delayError) {</span>
+<span class="fc" id="L40">        this.sources = sources;</span>
+<span class="fc" id="L41">        this.sourcesIterable = sourcesIterable;</span>
+<span class="fc" id="L42">        this.zipper = zipper;</span>
+<span class="fc" id="L43">        this.bufferSize = bufferSize;</span>
+<span class="fc" id="L44">        this.delayError = delayError;</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void subscribeActual(Observer&lt;? super R&gt; observer) {
+<span class="fc" id="L50">        ObservableSource&lt;? extends T&gt;[] sources = this.sources;</span>
+<span class="fc" id="L51">        int count = 0;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (sources == null) {</span>
+<span class="fc" id="L53">            sources = new Observable[8];</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            for (ObservableSource&lt;? extends T&gt; p : sourcesIterable) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                if (count == sources.length) {</span>
+<span class="fc" id="L56">                    ObservableSource&lt;? extends T&gt;[] b = new ObservableSource[count + (count &gt;&gt; 2)];</span>
+<span class="fc" id="L57">                    System.arraycopy(sources, 0, b, 0, count);</span>
+<span class="fc" id="L58">                    sources = b;</span>
+                }
+<span class="fc" id="L60">                sources[count++] = p;</span>
+<span class="fc" id="L61">            }</span>
+        } else {
+<span class="fc" id="L63">            count = sources.length;</span>
+        }
+
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (count == 0) {</span>
+<span class="fc" id="L67">            EmptyDisposable.complete(observer);</span>
+<span class="fc" id="L68">            return;</span>
+        }
+
+<span class="fc" id="L71">        ZipCoordinator&lt;T, R&gt; zc = new ZipCoordinator&lt;T, R&gt;(observer, zipper, count, delayError);</span>
+<span class="fc" id="L72">        zc.subscribe(sources, bufferSize);</span>
+<span class="fc" id="L73">    }</span>
+
+    static final class ZipCoordinator&lt;T, R&gt; extends AtomicInteger implements Disposable {
+
+        private static final long serialVersionUID = 2983708048395377667L;
+        final Observer&lt;? super R&gt; downstream;
+        final Function&lt;? super Object[], ? extends R&gt; zipper;
+        final ZipObserver&lt;T, R&gt;[] observers;
+        final T[] row;
+        final boolean delayError;
+
+        volatile boolean cancelled;
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        ZipCoordinator(Observer&lt;? super R&gt; actual,
+                Function&lt;? super Object[], ? extends R&gt; zipper,
+<span class="fc" id="L89">                int count, boolean delayError) {</span>
+<span class="fc" id="L90">            this.downstream = actual;</span>
+<span class="fc" id="L91">            this.zipper = zipper;</span>
+<span class="fc" id="L92">            this.observers = new ZipObserver[count];</span>
+<span class="fc" id="L93">            this.row = (T[])new Object[count];</span>
+<span class="fc" id="L94">            this.delayError = delayError;</span>
+<span class="fc" id="L95">        }</span>
+
+        public void subscribe(ObservableSource&lt;? extends T&gt;[] sources, int bufferSize) {
+<span class="fc" id="L98">            ZipObserver&lt;T, R&gt;[] s = observers;</span>
+<span class="fc" id="L99">            int len = s.length;</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc" id="L101">                s[i] = new ZipObserver&lt;T, R&gt;(this, bufferSize);</span>
+            }
+            // this makes sure the contents of the observers array is visible
+<span class="fc" id="L104">            this.lazySet(0);</span>
+<span class="fc" id="L105">            downstream.onSubscribe(this);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L108">                    return;</span>
+                }
+<span class="fc" id="L110">                sources[i].subscribe(s[i]);</span>
+            }
+<span class="fc" id="L112">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L117">                cancelled = true;</span>
+<span class="fc" id="L118">                cancelSources();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L120">                    clear();</span>
+                }
+            }
+<span class="fc" id="L123">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L127">            return cancelled;</span>
+        }
+
+        void cancel() {
+<span class="fc" id="L131">            clear();</span>
+<span class="fc" id="L132">            cancelSources();</span>
+<span class="fc" id="L133">        }</span>
+
+        void cancelSources() {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            for (ZipObserver&lt;?, ?&gt; zs : observers) {</span>
+<span class="fc" id="L137">                zs.dispose();</span>
+            }
+<span class="fc" id="L139">        }</span>
+
+        void clear() {
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            for (ZipObserver&lt;?, ?&gt; zs : observers) {</span>
+<span class="fc" id="L143">                zs.queue.clear();</span>
+            }
+<span class="fc" id="L145">        }</span>
+
+        public void drain() {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L149">                return;</span>
+            }
+
+<span class="fc" id="L152">            int missing = 1;</span>
+
+<span class="fc" id="L154">            final ZipObserver&lt;T, R&gt;[] zs = observers;</span>
+<span class="fc" id="L155">            final Observer&lt;? super R&gt; a = downstream;</span>
+<span class="fc" id="L156">            final T[] os = row;</span>
+<span class="fc" id="L157">            final boolean delayError = this.delayError;</span>
+
+            for (;;) {
+
+                for (;;) {
+<span class="fc" id="L162">                    int i = 0;</span>
+<span class="fc" id="L163">                    int emptyCount = 0;</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                    for (ZipObserver&lt;T, R&gt; z : zs) {</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                        if (os[i] == null) {</span>
+<span class="fc" id="L166">                            boolean d = z.done;</span>
+<span class="fc" id="L167">                            T v = z.queue.poll();</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                            boolean empty = v == null;</span>
+
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                            if (checkTerminated(d, empty, a, delayError, z)) {</span>
+<span class="fc" id="L171">                                return;</span>
+                            }
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                            if (!empty) {</span>
+<span class="fc" id="L174">                                os[i] = v;</span>
+                            } else {
+<span class="fc" id="L176">                                emptyCount++;</span>
+                            }
+<span class="fc" id="L178">                        } else {</span>
+<span class="fc bfc" id="L179" title="All 4 branches covered.">                            if (z.done &amp;&amp; !delayError) {</span>
+<span class="fc" id="L180">                                Throwable ex = z.error;</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                                if (ex != null) {</span>
+<span class="fc" id="L182">                                    cancel();</span>
+<span class="fc" id="L183">                                    a.onError(ex);</span>
+<span class="fc" id="L184">                                    return;</span>
+                                }
+                            }
+                        }
+<span class="fc" id="L188">                        i++;</span>
+                    }
+
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                    if (emptyCount != 0) {</span>
+<span class="fc" id="L192">                        break;</span>
+                    }
+
+                    R v;
+                    try {
+<span class="fc" id="L197">                        v = ObjectHelper.requireNonNull(zipper.apply(os.clone()), &quot;The zipper returned a null value&quot;);</span>
+<span class="fc" id="L198">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L199">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L200">                        cancel();</span>
+<span class="fc" id="L201">                        a.onError(ex);</span>
+<span class="fc" id="L202">                        return;</span>
+<span class="fc" id="L203">                    }</span>
+
+<span class="fc" id="L205">                    a.onNext(v);</span>
+
+<span class="fc" id="L207">                    Arrays.fill(os, null);</span>
+<span class="fc" id="L208">                }</span>
+
+<span class="fc" id="L210">                missing = addAndGet(-missing);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                if (missing == 0) {</span>
+<span class="fc" id="L212">                    return;</span>
+                }
+            }
+        }
+
+        boolean checkTerminated(boolean d, boolean empty, Observer&lt;? super R&gt; a, boolean delayError, ZipObserver&lt;?, ?&gt; source) {
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L219">                cancel();</span>
+<span class="fc" id="L220">                return true;</span>
+            }
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (d) {</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                if (delayError) {</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L226">                        Throwable e = source.error;</span>
+<span class="fc" id="L227">                        cancel();</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                        if (e != null) {</span>
+<span class="fc" id="L229">                            a.onError(e);</span>
+                        } else {
+<span class="fc" id="L231">                            a.onComplete();</span>
+                        }
+<span class="fc" id="L233">                        return true;</span>
+                    }
+                } else {
+<span class="fc" id="L236">                    Throwable e = source.error;</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                    if (e != null) {</span>
+<span class="fc" id="L238">                        cancel();</span>
+<span class="fc" id="L239">                        a.onError(e);</span>
+<span class="fc" id="L240">                        return true;</span>
+                    } else
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L243">                        cancel();</span>
+<span class="fc" id="L244">                        a.onComplete();</span>
+<span class="fc" id="L245">                        return true;</span>
+                    }
+                }
+            }
+
+<span class="fc" id="L250">            return false;</span>
+        }
+    }
+
+    static final class ZipObserver&lt;T, R&gt; implements Observer&lt;T&gt; {
+
+        final ZipCoordinator&lt;T, R&gt; parent;
+        final SpscLinkedArrayQueue&lt;T&gt; queue;
+
+        volatile boolean done;
+        Throwable error;
+
+<span class="fc" id="L262">        final AtomicReference&lt;Disposable&gt; upstream = new AtomicReference&lt;Disposable&gt;();</span>
+
+<span class="fc" id="L264">        ZipObserver(ZipCoordinator&lt;T, R&gt; parent, int bufferSize) {</span>
+<span class="fc" id="L265">            this.parent = parent;</span>
+<span class="fc" id="L266">            this.queue = new SpscLinkedArrayQueue&lt;T&gt;(bufferSize);</span>
+<span class="fc" id="L267">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L271">            DisposableHelper.setOnce(this.upstream, d);</span>
+<span class="fc" id="L272">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L276">            queue.offer(t);</span>
+<span class="fc" id="L277">            parent.drain();</span>
+<span class="fc" id="L278">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L282">            error = t;</span>
+<span class="fc" id="L283">            done = true;</span>
+<span class="fc" id="L284">            parent.drain();</span>
+<span class="fc" id="L285">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L289">            done = true;</span>
+<span class="fc" id="L290">            parent.drain();</span>
+<span class="fc" id="L291">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L294">            DisposableHelper.dispose(upstream);</span>
+<span class="fc" id="L295">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

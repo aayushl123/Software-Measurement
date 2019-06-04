@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableScanSeed.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableScanSeed.java</span></div><h1>FlowableScanSeed.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.SimplePlainQueue;
+import io.reactivex.internal.queue.SpscArrayQueue;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.BackpressureHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableScanSeed&lt;T, R&gt; extends AbstractFlowableWithUpstream&lt;T, R&gt; {
+    final BiFunction&lt;R, ? super T, R&gt; accumulator;
+    final Callable&lt;R&gt; seedSupplier;
+
+    public FlowableScanSeed(Flowable&lt;T&gt; source, Callable&lt;R&gt; seedSupplier, BiFunction&lt;R, ? super T, R&gt; accumulator) {
+<span class="fc" id="L35">        super(source);</span>
+<span class="fc" id="L36">        this.accumulator = accumulator;</span>
+<span class="fc" id="L37">        this.seedSupplier = seedSupplier;</span>
+<span class="fc" id="L38">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super R&gt; s) {
+        R r;
+
+        try {
+<span class="fc" id="L45">            r = ObjectHelper.requireNonNull(seedSupplier.call(), &quot;The seed supplied is null&quot;);</span>
+<span class="fc" id="L46">        } catch (Throwable e) {</span>
+<span class="fc" id="L47">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L48">            EmptySubscription.error(e, s);</span>
+<span class="fc" id="L49">            return;</span>
+<span class="fc" id="L50">        }</span>
+
+<span class="fc" id="L52">        source.subscribe(new ScanSeedSubscriber&lt;T, R&gt;(s, accumulator, r, bufferSize()));</span>
+<span class="fc" id="L53">    }</span>
+
+    static final class ScanSeedSubscriber&lt;T, R&gt;
+    extends AtomicInteger
+    implements FlowableSubscriber&lt;T&gt;, Subscription {
+        private static final long serialVersionUID = -1776795561228106469L;
+
+        final Subscriber&lt;? super R&gt; downstream;
+
+        final BiFunction&lt;R, ? super T, R&gt; accumulator;
+
+        final SimplePlainQueue&lt;R&gt; queue;
+
+        final AtomicLong requested;
+
+        final int prefetch;
+
+        final int limit;
+
+        volatile boolean cancelled;
+
+        volatile boolean done;
+        Throwable error;
+
+        Subscription upstream;
+
+        R value;
+
+        int consumed;
+
+<span class="fc" id="L83">        ScanSeedSubscriber(Subscriber&lt;? super R&gt; actual, BiFunction&lt;R, ? super T, R&gt; accumulator, R value, int prefetch) {</span>
+<span class="fc" id="L84">            this.downstream = actual;</span>
+<span class="fc" id="L85">            this.accumulator = accumulator;</span>
+<span class="fc" id="L86">            this.value = value;</span>
+<span class="fc" id="L87">            this.prefetch = prefetch;</span>
+<span class="fc" id="L88">            this.limit = prefetch - (prefetch &gt;&gt; 2);</span>
+<span class="fc" id="L89">            this.queue = new SpscArrayQueue&lt;R&gt;(prefetch);</span>
+<span class="fc" id="L90">            this.queue.offer(value);</span>
+<span class="fc" id="L91">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L92">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L97">                this.upstream = s;</span>
+
+<span class="fc" id="L99">                downstream.onSubscribe(this);</span>
+
+<span class="fc" id="L101">                s.request(prefetch - 1);</span>
+            }
+<span class="fc" id="L103">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L108">                return;</span>
+            }
+
+<span class="fc" id="L111">            R v = value;</span>
+            try {
+<span class="fc" id="L113">                v = ObjectHelper.requireNonNull(accumulator.apply(v, t), &quot;The accumulator returned a null value&quot;);</span>
+<span class="fc" id="L114">            } catch (Throwable ex) {</span>
+<span class="fc" id="L115">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L116">                upstream.cancel();</span>
+<span class="fc" id="L117">                onError(ex);</span>
+<span class="fc" id="L118">                return;</span>
+<span class="fc" id="L119">            }</span>
+
+<span class="fc" id="L121">            value = v;</span>
+<span class="fc" id="L122">            queue.offer(v);</span>
+<span class="fc" id="L123">            drain();</span>
+<span class="fc" id="L124">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L129">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L130">                return;</span>
+            }
+<span class="fc" id="L132">            error = t;</span>
+<span class="fc" id="L133">            done = true;</span>
+<span class="fc" id="L134">            drain();</span>
+<span class="fc" id="L135">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L140">                return;</span>
+            }
+<span class="fc" id="L142">            done = true;</span>
+<span class="fc" id="L143">            drain();</span>
+<span class="fc" id="L144">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L148">            cancelled = true;</span>
+<span class="fc" id="L149">            upstream.cancel();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L151">                queue.clear();</span>
+            }
+<span class="fc" id="L153">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L158">                BackpressureHelper.add(requested, n);</span>
+<span class="fc" id="L159">                drain();</span>
+            }
+<span class="fc" id="L161">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L165">                return;</span>
+            }
+
+<span class="fc" id="L168">            int missed = 1;</span>
+<span class="fc" id="L169">            Subscriber&lt;? super R&gt; a = downstream;</span>
+<span class="fc" id="L170">            SimplePlainQueue&lt;R&gt; q = queue;</span>
+<span class="fc" id="L171">            int lim = limit;</span>
+<span class="fc" id="L172">            int c = consumed;</span>
+
+            for (;;) {
+
+<span class="fc" id="L176">                long r = requested.get();</span>
+<span class="fc" id="L177">                long e = 0L;</span>
+
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                while (e != r) {</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L181">                        q.clear();</span>
+<span class="fc" id="L182">                        return;</span>
+                    }
+<span class="fc" id="L184">                    boolean d = done;</span>
+
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                    if (d) {</span>
+<span class="fc" id="L187">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L189">                            q.clear();</span>
+<span class="fc" id="L190">                            a.onError(ex);</span>
+<span class="fc" id="L191">                            return;</span>
+                        }
+                    }
+
+<span class="fc" id="L195">                    R v = q.poll();</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                    boolean empty = v == null;</span>
+
+<span class="pc bpc" id="L198" title="1 of 4 branches missed.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L199">                        a.onComplete();</span>
+<span class="fc" id="L200">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L203" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L204">                        break;</span>
+                    }
+
+<span class="fc" id="L207">                    a.onNext(v);</span>
+
+<span class="fc" id="L209">                    e++;</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                    if (++c == lim) {</span>
+<span class="fc" id="L211">                        c = 0;</span>
+<span class="fc" id="L212">                        upstream.request(lim);</span>
+                    }
+<span class="fc" id="L214">                }</span>
+
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                    if (done) {</span>
+<span class="fc" id="L218">                        Throwable ex = error;</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L220">                            q.clear();</span>
+<span class="fc" id="L221">                            a.onError(ex);</span>
+<span class="fc" id="L222">                            return;</span>
+                        }
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                        if (q.isEmpty()) {</span>
+<span class="fc" id="L225">                            a.onComplete();</span>
+<span class="fc" id="L226">                            return;</span>
+                        }
+                    }
+                }
+
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                if (e != 0L) {</span>
+<span class="fc" id="L232">                    BackpressureHelper.produced(requested, e);</span>
+                }
+
+<span class="fc" id="L235">                consumed = c;</span>
+<span class="fc" id="L236">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L238">                    break;</span>
+                }
+<span class="fc" id="L240">            }</span>
+<span class="fc" id="L241">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

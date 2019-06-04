@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompletableCreate.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.completable</a> &gt; <span class="el_source">CompletableCreate.java</span></div><h1>CompletableCreate.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.completable;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Cancellable;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class CompletableCreate extends Completable {
+
+    final CompletableOnSubscribe source;
+
+<span class="fc" id="L29">    public CompletableCreate(CompletableOnSubscribe source) {</span>
+<span class="fc" id="L30">        this.source = source;</span>
+<span class="fc" id="L31">    }</span>
+
+    @Override
+    protected void subscribeActual(CompletableObserver observer) {
+<span class="fc" id="L35">        Emitter parent = new Emitter(observer);</span>
+<span class="fc" id="L36">        observer.onSubscribe(parent);</span>
+
+        try {
+<span class="fc" id="L39">            source.subscribe(parent);</span>
+<span class="fc" id="L40">        } catch (Throwable ex) {</span>
+<span class="fc" id="L41">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L42">            parent.onError(ex);</span>
+<span class="fc" id="L43">        }</span>
+<span class="fc" id="L44">    }</span>
+
+    static final class Emitter
+    extends AtomicReference&lt;Disposable&gt;
+    implements CompletableEmitter, Disposable {
+
+        private static final long serialVersionUID = -2467358622224974244L;
+
+        final CompletableObserver downstream;
+
+<span class="fc" id="L54">        Emitter(CompletableObserver downstream) {</span>
+<span class="fc" id="L55">            this.downstream = downstream;</span>
+<span class="fc" id="L56">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (get() != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L61">                Disposable d = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                if (d != DisposableHelper.DISPOSED) {</span>
+                    try {
+<span class="fc" id="L64">                        downstream.onComplete();</span>
+                    } finally {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                        if (d != null) {</span>
+<span class="fc" id="L67">                            d.dispose();</span>
+                        }
+                    }
+                }
+            }
+<span class="fc" id="L72">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (!tryOnError(t)) {</span>
+<span class="fc" id="L77">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L79">        }</span>
+
+        @Override
+        public boolean tryOnError(Throwable t) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (t == null) {</span>
+<span class="fc" id="L84">                t = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+            }
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (get() != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L87">                Disposable d = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                if (d != DisposableHelper.DISPOSED) {</span>
+                    try {
+<span class="fc" id="L90">                        downstream.onError(t);</span>
+                    } finally {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                        if (d != null) {</span>
+<span class="fc" id="L93">                            d.dispose();</span>
+                        }
+                    }
+<span class="fc" id="L96">                    return true;</span>
+                }
+            }
+<span class="fc" id="L99">            return false;</span>
+        }
+
+        @Override
+        public void setDisposable(Disposable d) {
+<span class="fc" id="L104">            DisposableHelper.set(this, d);</span>
+<span class="fc" id="L105">        }</span>
+
+        @Override
+        public void setCancellable(Cancellable c) {
+<span class="fc" id="L109">            setDisposable(new CancellableDisposable(c));</span>
+<span class="fc" id="L110">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L114">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L115">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L119">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="fc" id="L124">            return String.format(&quot;%s{%s}&quot;, getClass().getSimpleName(), super.toString());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

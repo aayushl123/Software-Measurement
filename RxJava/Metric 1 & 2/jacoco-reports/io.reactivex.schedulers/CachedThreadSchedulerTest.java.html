@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CachedThreadSchedulerTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.schedulers</a> &gt; <span class="el_source">CachedThreadSchedulerTest.java</span></div><h1>CachedThreadSchedulerTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.schedulers;
+
+import static org.junit.Assert.*;
+
+import java.util.concurrent.TimeUnit;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.Scheduler.Worker;
+import io.reactivex.disposables.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.schedulers.IoScheduler;
+
+<span class="fc" id="L28">public class CachedThreadSchedulerTest extends AbstractSchedulerConcurrencyTests {</span>
+
+    @Override
+    protected Scheduler getScheduler() {
+<span class="fc" id="L32">        return Schedulers.io();</span>
+    }
+
+    /**
+     * IO scheduler defaults to using CachedThreadScheduler.
+     */
+    @Test
+    public final void testIOScheduler() {
+
+<span class="fc" id="L41">        Flowable&lt;Integer&gt; f1 = Flowable.just(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L42">        Flowable&lt;Integer&gt; f2 = Flowable.just(6, 7, 8, 9, 10);</span>
+<span class="fc" id="L43">        Flowable&lt;String&gt; f = Flowable.merge(f1, f2).map(new Function&lt;Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t) {
+<span class="fc" id="L47">                assertTrue(Thread.currentThread().getName().startsWith(&quot;RxCachedThreadScheduler&quot;));</span>
+<span class="fc" id="L48">                return &quot;Value_&quot; + t + &quot;_Thread_&quot; + Thread.currentThread().getName();</span>
+            }
+        });
+
+<span class="fc" id="L52">        f.subscribeOn(Schedulers.io()).blockingForEach(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String t) {
+<span class="fc" id="L56">                System.out.println(&quot;t: &quot; + t);</span>
+<span class="fc" id="L57">            }</span>
+        });
+<span class="fc" id="L59">    }</span>
+
+    @Test
+    @Ignore(&quot;Unhandled errors are no longer thrown&quot;)
+    public final void testUnhandledErrorIsDeliveredToThreadHandler() throws InterruptedException {
+<span class="nc" id="L64">        SchedulerTestHelper.testUnhandledErrorIsDeliveredToThreadHandler(getScheduler());</span>
+<span class="nc" id="L65">    }</span>
+
+    @Test
+    public final void testHandledErrorIsNotDeliveredToThreadHandler() throws InterruptedException {
+<span class="fc" id="L69">        SchedulerTestHelper.testHandledErrorIsNotDeliveredToThreadHandler(getScheduler());</span>
+<span class="fc" id="L70">    }</span>
+
+    @Test(timeout = 60000)
+    public void testCancelledTaskRetention() throws InterruptedException {
+<span class="fc" id="L74">        Worker w = Schedulers.io().createWorker();</span>
+        try {
+<span class="fc" id="L76">            ExecutorSchedulerTest.testCancelledRetention(w, false);</span>
+        } finally {
+<span class="fc" id="L78">            w.dispose();</span>
+        }
+<span class="fc" id="L80">        w = Schedulers.io().createWorker();</span>
+        try {
+<span class="fc" id="L82">            ExecutorSchedulerTest.testCancelledRetention(w, true);</span>
+        } finally {
+<span class="fc" id="L84">            w.dispose();</span>
+        }
+<span class="fc" id="L86">    }</span>
+
+    @Test
+    public void workerDisposed() {
+<span class="fc" id="L90">        Worker w = Schedulers.io().createWorker();</span>
+
+<span class="fc" id="L92">        assertFalse(((Disposable)w).isDisposed());</span>
+
+<span class="fc" id="L94">        w.dispose();</span>
+
+<span class="fc" id="L96">        assertTrue(((Disposable)w).isDisposed());</span>
+<span class="fc" id="L97">    }</span>
+
+    @Test
+    public void shutdownRejects() {
+<span class="fc" id="L101">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L103">        Runnable r = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="nc" id="L106">                calls[0]++;</span>
+<span class="nc" id="L107">            }</span>
+        };
+
+<span class="fc" id="L110">        IoScheduler s = new IoScheduler();</span>
+<span class="fc" id="L111">        s.shutdown();</span>
+<span class="fc" id="L112">        s.shutdown();</span>
+
+<span class="fc" id="L114">        s.scheduleDirect(r);</span>
+
+<span class="fc" id="L116">        s.scheduleDirect(r, 1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L118">        s.schedulePeriodicallyDirect(r, 1, 1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L120">        Worker w = s.createWorker();</span>
+<span class="fc" id="L121">        w.dispose();</span>
+
+<span class="fc" id="L123">        assertEquals(Disposables.disposed(), w.schedule(r));</span>
+
+<span class="fc" id="L125">        assertEquals(Disposables.disposed(), w.schedule(r, 1, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L127">        assertEquals(Disposables.disposed(), w.schedulePeriodically(r, 1, 1, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L129">        assertEquals(0, calls[0]);</span>
+<span class="fc" id="L130">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

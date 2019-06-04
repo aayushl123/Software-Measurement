@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FutureObserverTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.observers</a> &gt; <span class="el_source">FutureObserverTest.java</span></div><h1>FutureObserverTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.observers;
+
+import static io.reactivex.internal.util.ExceptionHelper.timeoutMessage;
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+import org.junit.*;
+
+import io.reactivex.TestHelper;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscribers.FutureSubscriber;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="fc" id="L33">public class FutureObserverTest {</span>
+    FutureObserver&lt;Integer&gt; fo;
+
+    @Before
+    public void before() {
+<span class="fc" id="L38">        fo = new FutureObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L39">    }</span>
+
+    @Test
+    public void cancel2() {
+
+<span class="fc" id="L44">        fo.dispose();</span>
+
+<span class="fc" id="L46">        assertFalse(fo.isCancelled());</span>
+<span class="fc" id="L47">        assertFalse(fo.isDisposed());</span>
+<span class="fc" id="L48">        assertFalse(fo.isDone());</span>
+
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (int i = 0; i &lt; 2; i++) {</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            fo.cancel(i == 0);</span>
+
+<span class="fc" id="L53">            assertTrue(fo.isCancelled());</span>
+<span class="fc" id="L54">            assertTrue(fo.isDisposed());</span>
+<span class="fc" id="L55">            assertTrue(fo.isDone());</span>
+        }
+
+<span class="fc" id="L58">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L60">            fo.onNext(1);</span>
+<span class="fc" id="L61">            fo.onError(new TestException(&quot;First&quot;));</span>
+<span class="fc" id="L62">            fo.onError(new TestException(&quot;Second&quot;));</span>
+<span class="fc" id="L63">            fo.onComplete();</span>
+
+<span class="fc" id="L65">            assertTrue(fo.isCancelled());</span>
+<span class="fc" id="L66">            assertTrue(fo.isDisposed());</span>
+<span class="fc" id="L67">            assertTrue(fo.isDone());</span>
+
+<span class="fc" id="L69">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+<span class="fc" id="L70">            TestHelper.assertUndeliverable(errors, 1, TestException.class);</span>
+        } finally {
+<span class="fc" id="L72">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L74">    }</span>
+
+    @Test
+    public void cancel() throws Exception {
+<span class="fc" id="L78">        assertFalse(fo.isDone());</span>
+
+<span class="fc" id="L80">        assertFalse(fo.isCancelled());</span>
+
+<span class="fc" id="L82">        fo.cancel(false);</span>
+
+<span class="fc" id="L84">        assertTrue(fo.isDone());</span>
+
+<span class="fc" id="L86">        assertTrue(fo.isCancelled());</span>
+
+        try {
+<span class="nc" id="L89">            fo.get();</span>
+<span class="nc" id="L90">            fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L91">        } catch (CancellationException ex) {</span>
+            // expected
+<span class="nc" id="L93">        }</span>
+
+        try {
+<span class="nc" id="L96">            fo.get(1, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L97">            fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L98">        } catch (CancellationException ex) {</span>
+            // expected
+<span class="nc" id="L100">        }</span>
+<span class="fc" id="L101">    }</span>
+
+    @Test
+    public void onError() throws Exception {
+<span class="fc" id="L105">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L108">            fo.onError(new TestException(&quot;One&quot;));</span>
+
+<span class="fc" id="L110">            fo.onError(new TestException(&quot;Two&quot;));</span>
+
+            try {
+<span class="nc" id="L113">                fo.get(5, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L114">            } catch (ExecutionException ex) {</span>
+<span class="fc" id="L115">                assertTrue(ex.toString(), ex.getCause() instanceof TestException);</span>
+<span class="fc" id="L116">                assertEquals(&quot;One&quot;, ex.getCause().getMessage());</span>
+<span class="nc" id="L117">            }</span>
+
+<span class="fc" id="L119">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Two&quot;);</span>
+        } finally {
+<span class="fc" id="L121">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L123">    }</span>
+
+    @Test
+    public void onNext() throws Exception {
+<span class="fc" id="L127">        fo.onNext(1);</span>
+<span class="fc" id="L128">        fo.onComplete();</span>
+
+<span class="fc" id="L130">        assertEquals(1, fo.get(5, TimeUnit.MILLISECONDS).intValue());</span>
+<span class="fc" id="L131">    }</span>
+
+    @Test
+    public void onSubscribe() throws Exception {
+<span class="fc" id="L135">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+
+<span class="fc" id="L139">            Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L141">            fo.onSubscribe(d1);</span>
+
+<span class="fc" id="L143">            Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L145">            fo.onSubscribe(d2);</span>
+
+<span class="fc" id="L147">            assertFalse(d1.isDisposed());</span>
+<span class="fc" id="L148">            assertTrue(d2.isDisposed());</span>
+
+<span class="fc" id="L150">            TestHelper.assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+        } finally {
+<span class="fc" id="L152">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L154">    }</span>
+
+    @Test
+    public void cancelRace() {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L159">            final FutureSubscriber&lt;Integer&gt; fo = new FutureSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L161">            Runnable r = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L164">                    fo.cancel(false);</span>
+<span class="fc" id="L165">                }</span>
+            };
+
+<span class="fc" id="L168">            TestHelper.race(r, r);</span>
+        }
+<span class="fc" id="L170">    }</span>
+
+    @Test
+    public void await() throws Exception {
+<span class="fc" id="L174">        Schedulers.single().scheduleDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L177">                fo.onNext(1);</span>
+<span class="fc" id="L178">                fo.onComplete();</span>
+<span class="fc" id="L179">            }</span>
+        }, 100, TimeUnit.MILLISECONDS);
+
+<span class="fc" id="L182">        assertEquals(1, fo.get(5, TimeUnit.SECONDS).intValue());</span>
+<span class="fc" id="L183">    }</span>
+
+    @Test
+    public void onErrorCancelRace() {
+<span class="fc" id="L187">        RxJavaPlugins.setErrorHandler(Functions.emptyConsumer());</span>
+        try {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L190">                final FutureSubscriber&lt;Integer&gt; fo = new FutureSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L192">                final TestException ex = new TestException();</span>
+
+<span class="fc" id="L194">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L197">                        fo.cancel(false);</span>
+<span class="fc" id="L198">                    }</span>
+                };
+
+<span class="fc" id="L201">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L204">                        fo.onError(ex);</span>
+<span class="fc" id="L205">                    }</span>
+                };
+
+<span class="fc" id="L208">                TestHelper.race(r1, r2);</span>
+            }
+        } finally {
+<span class="fc" id="L211">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L213">    }</span>
+
+    @Test
+    public void onCompleteCancelRace() {
+<span class="fc" id="L217">        RxJavaPlugins.setErrorHandler(Functions.emptyConsumer());</span>
+        try {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L220">                final FutureSubscriber&lt;Integer&gt; fo = new FutureSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                if (i % 3 == 0) {</span>
+<span class="fc" id="L223">                    fo.onSubscribe(new BooleanSubscription());</span>
+                }
+
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                if (i % 2 == 0) {</span>
+<span class="fc" id="L227">                    fo.onNext(1);</span>
+                }
+
+<span class="fc" id="L230">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L233">                        fo.cancel(false);</span>
+<span class="fc" id="L234">                    }</span>
+                };
+
+<span class="fc" id="L237">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L240">                        fo.onComplete();</span>
+<span class="fc" id="L241">                    }</span>
+                };
+
+<span class="fc" id="L244">                TestHelper.race(r1, r2);</span>
+            }
+        } finally {
+<span class="fc" id="L247">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L249">    }</span>
+
+    @Test
+    public void onErrorOnComplete() throws Exception {
+<span class="fc" id="L253">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L255">            fo.onError(new TestException(&quot;One&quot;));</span>
+<span class="fc" id="L256">            fo.onComplete();</span>
+
+            try {
+<span class="nc" id="L259">                fo.get(5, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L260">            } catch (ExecutionException ex) {</span>
+<span class="fc" id="L261">                assertTrue(ex.toString(), ex.getCause() instanceof TestException);</span>
+<span class="fc" id="L262">                assertEquals(&quot;One&quot;, ex.getCause().getMessage());</span>
+<span class="nc" id="L263">            }</span>
+
+<span class="fc" id="L265">            TestHelper.assertUndeliverable(errors, 0, NoSuchElementException.class);</span>
+        } finally {
+<span class="fc" id="L267">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L269">    }</span>
+
+    @Test
+    public void onCompleteOnError() throws Exception {
+<span class="fc" id="L273">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L275">            fo.onComplete();</span>
+<span class="fc" id="L276">            fo.onError(new TestException(&quot;One&quot;));</span>
+
+            try {
+<span class="nc" id="L279">                assertNull(fo.get(5, TimeUnit.MILLISECONDS));</span>
+<span class="fc" id="L280">            } catch (ExecutionException ex) {</span>
+<span class="fc" id="L281">                assertTrue(ex.toString(), ex.getCause() instanceof NoSuchElementException);</span>
+<span class="nc" id="L282">            }</span>
+
+<span class="fc" id="L284">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L286">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L288">    }</span>
+
+    @Test
+    public void cancelOnError() throws Exception {
+<span class="fc" id="L292">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L294">            fo.cancel(true);</span>
+<span class="fc" id="L295">            fo.onError(new TestException(&quot;One&quot;));</span>
+
+            try {
+<span class="nc" id="L298">                fo.get(5, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L299">                fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L300">            } catch (CancellationException ex) {</span>
+                // expected
+<span class="nc" id="L302">            }</span>
+<span class="fc" id="L303">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L305">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L307">    }</span>
+
+    @Test
+    public void cancelOnComplete() throws Exception {
+<span class="fc" id="L311">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L313">            fo.cancel(true);</span>
+<span class="fc" id="L314">            fo.onComplete();</span>
+
+            try {
+<span class="nc" id="L317">                fo.get(5, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L318">                fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L319">            } catch (CancellationException ex) {</span>
+                // expected
+<span class="nc" id="L321">            }</span>
+
+<span class="fc" id="L323">            TestHelper.assertUndeliverable(errors, 0, NoSuchElementException.class);</span>
+        } finally {
+<span class="fc" id="L325">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L327">    }</span>
+
+    @Test
+    public void onNextThenOnCompleteTwice() throws Exception {
+<span class="fc" id="L331">        fo.onNext(1);</span>
+<span class="fc" id="L332">        fo.onComplete();</span>
+<span class="fc" id="L333">        fo.onComplete();</span>
+
+<span class="fc" id="L335">        assertEquals(1, fo.get(5, TimeUnit.MILLISECONDS).intValue());</span>
+<span class="fc" id="L336">    }</span>
+
+    @Test(expected = InterruptedException.class)
+    public void getInterrupted() throws Exception {
+<span class="fc" id="L340">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L341">        fo.get();</span>
+<span class="nc" id="L342">    }</span>
+
+    @Test
+    public void completeAsync() throws Exception {
+<span class="fc" id="L346">        Schedulers.single().scheduleDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L349">                fo.onNext(1);</span>
+<span class="fc" id="L350">                fo.onComplete();</span>
+<span class="fc" id="L351">            }</span>
+        }, 500, TimeUnit.MILLISECONDS);
+
+<span class="fc" id="L354">        assertEquals(1, fo.get().intValue());</span>
+<span class="fc" id="L355">    }</span>
+
+    @Test
+    public void getTimedOut() throws Exception {
+        try {
+<span class="nc" id="L360">            fo.get(1, TimeUnit.NANOSECONDS);</span>
+<span class="nc" id="L361">            fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L362">        } catch (TimeoutException expected) {</span>
+<span class="fc" id="L363">            assertEquals(timeoutMessage(1, TimeUnit.NANOSECONDS), expected.getMessage());</span>
+<span class="nc" id="L364">        }</span>
+<span class="fc" id="L365">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

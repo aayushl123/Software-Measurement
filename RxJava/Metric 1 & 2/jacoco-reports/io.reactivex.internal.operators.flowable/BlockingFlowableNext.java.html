@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BlockingFlowableNext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">BlockingFlowableNext.java</span></div><h1>BlockingFlowableNext.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.reactivestreams.Publisher;
+
+import io.reactivex.*;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subscribers.DisposableSubscriber;
+
+/**
+ * Returns an Iterable that blocks until the Observable emits another item, then returns that item.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;490&quot; src=&quot;https://github.com/ReactiveX/RxJava/wiki/images/rx-operators/B.next.png&quot; alt=&quot;&quot;&gt;
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class BlockingFlowableNext&lt;T&gt; implements Iterable&lt;T&gt; {
+
+    final Publisher&lt;? extends T&gt; source;
+
+<span class="fc" id="L38">    public BlockingFlowableNext(Publisher&lt;? extends T&gt; source) {</span>
+<span class="fc" id="L39">        this.source = source;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    public Iterator&lt;T&gt; iterator() {
+<span class="fc" id="L44">        NextSubscriber&lt;T&gt; nextSubscriber = new NextSubscriber&lt;T&gt;();</span>
+<span class="fc" id="L45">        return new NextIterator&lt;T&gt;(source, nextSubscriber);</span>
+    }
+
+    // test needs to access the observer.waiting flag
+    static final class NextIterator&lt;T&gt; implements Iterator&lt;T&gt; {
+
+        private final NextSubscriber&lt;T&gt; subscriber;
+        private final Publisher&lt;? extends T&gt; items;
+        private T next;
+<span class="fc" id="L54">        private boolean hasNext = true;</span>
+<span class="fc" id="L55">        private boolean isNextConsumed = true;</span>
+        private Throwable error;
+        private boolean started;
+
+<span class="fc" id="L59">        NextIterator(Publisher&lt;? extends T&gt; items, NextSubscriber&lt;T&gt; subscriber) {</span>
+<span class="fc" id="L60">            this.items = items;</span>
+<span class="fc" id="L61">            this.subscriber = subscriber;</span>
+<span class="fc" id="L62">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (error != null) {</span>
+                // If any error has already been thrown, throw it again.
+<span class="fc" id="L68">                throw ExceptionHelper.wrapOrThrow(error);</span>
+            }
+            // Since an iterator should not be used in different thread,
+            // so we do not need any synchronization.
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (!hasNext) {</span>
+                // the iterator has reached the end.
+<span class="fc" id="L74">                return false;</span>
+            }
+            // next has not been used yet.
+<span class="fc bfc" id="L77" title="All 4 branches covered.">            return !isNextConsumed || moveToNext();</span>
+        }
+
+        private boolean moveToNext() {
+            try {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                if (!started) {</span>
+<span class="fc" id="L83">                    started = true;</span>
+                    // if not started, start now
+<span class="fc" id="L85">                    subscriber.setWaiting();</span>
+<span class="fc" id="L86">                    Flowable.&lt;T&gt;fromPublisher(items)</span>
+<span class="fc" id="L87">                    .materialize().subscribe(subscriber);</span>
+                }
+
+<span class="fc" id="L90">                Notification&lt;T&gt; nextNotification = subscriber.takeNext();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                if (nextNotification.isOnNext()) {</span>
+<span class="fc" id="L92">                    isNextConsumed = false;</span>
+<span class="fc" id="L93">                    next = nextNotification.getValue();</span>
+<span class="fc" id="L94">                    return true;</span>
+                }
+                // If an observable is completed or fails,
+                // hasNext() always return false.
+<span class="fc" id="L98">                hasNext = false;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                if (nextNotification.isOnComplete()) {</span>
+<span class="fc" id="L100">                    return false;</span>
+                }
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                if (nextNotification.isOnError()) {</span>
+<span class="fc" id="L103">                    error = nextNotification.getError();</span>
+<span class="fc" id="L104">                    throw ExceptionHelper.wrapOrThrow(error);</span>
+                }
+<span class="nc" id="L106">                throw new IllegalStateException(&quot;Should not reach here&quot;);</span>
+<span class="fc" id="L107">            } catch (InterruptedException e) {</span>
+<span class="fc" id="L108">                subscriber.dispose();</span>
+<span class="fc" id="L109">                error = e;</span>
+<span class="fc" id="L110">                throw ExceptionHelper.wrapOrThrow(e);</span>
+            }
+        }
+
+        @Override
+        public T next() {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (error != null) {</span>
+                // If any error has already been thrown, throw it again.
+<span class="fc" id="L118">                throw ExceptionHelper.wrapOrThrow(error);</span>
+            }
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            if (hasNext()) {</span>
+<span class="fc" id="L121">                isNextConsumed = true;</span>
+<span class="fc" id="L122">                return next;</span>
+            }
+            else {
+<span class="fc" id="L125">                throw new NoSuchElementException(&quot;No more elements&quot;);</span>
+            }
+        }
+
+        @Override
+        public void remove() {
+<span class="fc" id="L131">            throw new UnsupportedOperationException(&quot;Read only iterator&quot;);</span>
+        }
+    }
+
+<span class="fc" id="L135">    static final class NextSubscriber&lt;T&gt; extends DisposableSubscriber&lt;Notification&lt;T&gt;&gt; {</span>
+<span class="fc" id="L136">        private final BlockingQueue&lt;Notification&lt;T&gt;&gt; buf = new ArrayBlockingQueue&lt;Notification&lt;T&gt;&gt;(1);</span>
+<span class="fc" id="L137">        final AtomicInteger waiting = new AtomicInteger();</span>
+
+        @Override
+        public void onComplete() {
+            // ignore
+<span class="fc" id="L142">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L146">            RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L147">        }</span>
+
+        @Override
+        public void onNext(Notification&lt;T&gt; args) {
+
+<span class="fc bfc" id="L152" title="All 4 branches covered.">            if (waiting.getAndSet(0) == 1 || !args.isOnNext()) {</span>
+<span class="fc" id="L153">                Notification&lt;T&gt; toOffer = args;</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                while (!buf.offer(toOffer)) {</span>
+<span class="fc" id="L155">                    Notification&lt;T&gt; concurrentItem = buf.poll();</span>
+
+                    // in case if we won race condition with onComplete/onError method
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">                    if (concurrentItem != null &amp;&amp; !concurrentItem.isOnNext()) {</span>
+<span class="fc" id="L159">                        toOffer = concurrentItem;</span>
+                    }
+<span class="fc" id="L161">                }</span>
+            }
+
+<span class="fc" id="L164">        }</span>
+
+        public Notification&lt;T&gt; takeNext() throws InterruptedException {
+<span class="fc" id="L167">            setWaiting();</span>
+<span class="fc" id="L168">            BlockingHelper.verifyNonBlocking();</span>
+<span class="fc" id="L169">            return buf.take();</span>
+        }
+        void setWaiting() {
+<span class="fc" id="L172">            waiting.set(1);</span>
+<span class="fc" id="L173">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

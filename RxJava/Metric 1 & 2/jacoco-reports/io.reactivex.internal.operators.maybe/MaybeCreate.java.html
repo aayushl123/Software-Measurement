@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeCreate.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeCreate.java</span></div><h1>MaybeCreate.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Cancellable;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Provides an API over MaybeObserver that serializes calls to onXXX and manages cancellation
+ * in a safe manner.
+ *
+ * @param &lt;T&gt; the value type emitted
+ */
+public final class MaybeCreate&lt;T&gt; extends Maybe&lt;T&gt; {
+
+    final MaybeOnSubscribe&lt;T&gt; source;
+
+<span class="fc" id="L35">    public MaybeCreate(MaybeOnSubscribe&lt;T&gt; source) {</span>
+<span class="fc" id="L36">        this.source = source;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L41">        Emitter&lt;T&gt; parent = new Emitter&lt;T&gt;(observer);</span>
+<span class="fc" id="L42">        observer.onSubscribe(parent);</span>
+
+        try {
+<span class="fc" id="L45">            source.subscribe(parent);</span>
+<span class="fc" id="L46">        } catch (Throwable ex) {</span>
+<span class="fc" id="L47">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L48">            parent.onError(ex);</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">    }</span>
+
+    static final class Emitter&lt;T&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements MaybeEmitter&lt;T&gt;, Disposable {
+
+        final MaybeObserver&lt;? super T&gt; downstream;
+
+<span class="fc" id="L58">        Emitter(MaybeObserver&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L59">            this.downstream = downstream;</span>
+<span class="fc" id="L60">        }</span>
+
+        private static final long serialVersionUID = -2467358622224974244L;
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (get() != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L67">                Disposable d = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                if (d != DisposableHelper.DISPOSED) {</span>
+                    try {
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                        if (value == null) {</span>
+<span class="fc" id="L71">                            downstream.onError(new NullPointerException(&quot;onSuccess called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+                        } else {
+<span class="fc" id="L73">                            downstream.onSuccess(value);</span>
+                        }
+                    } finally {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                        if (d != null) {</span>
+<span class="fc" id="L77">                            d.dispose();</span>
+                        }
+                    }
+                }
+            }
+<span class="fc" id="L82">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (!tryOnError(t)) {</span>
+<span class="fc" id="L87">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L89">        }</span>
+
+        @Override
+        public boolean tryOnError(Throwable t) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (t == null) {</span>
+<span class="fc" id="L94">                t = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+            }
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (get() != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L97">                Disposable d = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                if (d != DisposableHelper.DISPOSED) {</span>
+                    try {
+<span class="fc" id="L100">                        downstream.onError(t);</span>
+                    } finally {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                        if (d != null) {</span>
+<span class="fc" id="L103">                            d.dispose();</span>
+                        }
+                    }
+<span class="fc" id="L106">                    return true;</span>
+                }
+            }
+<span class="fc" id="L109">            return false;</span>
+        }
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (get() != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L115">                Disposable d = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                if (d != DisposableHelper.DISPOSED) {</span>
+                    try {
+<span class="fc" id="L118">                        downstream.onComplete();</span>
+                    } finally {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                        if (d != null) {</span>
+<span class="fc" id="L121">                            d.dispose();</span>
+                        }
+                    }
+                }
+            }
+<span class="fc" id="L126">        }</span>
+
+        @Override
+        public void setDisposable(Disposable d) {
+<span class="fc" id="L130">            DisposableHelper.set(this, d);</span>
+<span class="fc" id="L131">        }</span>
+
+        @Override
+        public void setCancellable(Cancellable c) {
+<span class="fc" id="L135">            setDisposable(new CancellableDisposable(c));</span>
+<span class="fc" id="L136">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L140">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L145">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="fc" id="L150">            return String.format(&quot;%s{%s}&quot;, getClass().getSimpleName(), super.toString());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

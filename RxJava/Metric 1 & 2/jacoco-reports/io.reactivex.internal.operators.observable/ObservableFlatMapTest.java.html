@@ -1,0 +1,1089 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableFlatMapTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableFlatMapTest.java</span></div><h1>ObservableFlatMapTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L38">public class ObservableFlatMapTest {</span>
+    @Test
+    public void testNormal() {
+<span class="fc" id="L41">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L43">        final List&lt;Integer&gt; list = Arrays.asList(1, 2, 3);</span>
+
+<span class="fc" id="L45">        Function&lt;Integer, List&lt;Integer&gt;&gt; func = new Function&lt;Integer, List&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public List&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L48">                return list;</span>
+            }
+        };
+<span class="fc" id="L51">        BiFunction&lt;Integer, Integer, Integer&gt; resFunc = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L55">                return t1 | t2;</span>
+            }
+        };
+
+<span class="fc" id="L59">        List&lt;Integer&gt; source = Arrays.asList(16, 32, 64);</span>
+
+<span class="fc" id="L61">        Observable.fromIterable(source).flatMapIterable(func, resFunc).subscribe(o);</span>
+
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (Integer s : source) {</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            for (Integer v : list) {</span>
+<span class="fc" id="L65">                verify(o).onNext(s | v);</span>
+<span class="fc" id="L66">            }</span>
+<span class="fc" id="L67">        }</span>
+<span class="fc" id="L68">        verify(o).onComplete();</span>
+<span class="fc" id="L69">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L70">    }</span>
+
+    @Test
+    public void testCollectionFunctionThrows() {
+<span class="fc" id="L74">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L76">        Function&lt;Integer, List&lt;Integer&gt;&gt; func = new Function&lt;Integer, List&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public List&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L79">                throw new TestException();</span>
+            }
+        };
+<span class="fc" id="L82">        BiFunction&lt;Integer, Integer, Integer&gt; resFunc = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="nc" id="L86">                return t1 | t2;</span>
+            }
+        };
+
+<span class="fc" id="L90">        List&lt;Integer&gt; source = Arrays.asList(16, 32, 64);</span>
+
+<span class="fc" id="L92">        Observable.fromIterable(source).flatMapIterable(func, resFunc).subscribe(o);</span>
+
+<span class="fc" id="L94">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L95">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L96">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L97">    }</span>
+
+    @Test
+    public void testResultFunctionThrows() {
+<span class="fc" id="L101">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L103">        final List&lt;Integer&gt; list = Arrays.asList(1, 2, 3);</span>
+
+<span class="fc" id="L105">        Function&lt;Integer, List&lt;Integer&gt;&gt; func = new Function&lt;Integer, List&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public List&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L108">                return list;</span>
+            }
+        };
+<span class="fc" id="L111">        BiFunction&lt;Integer, Integer, Integer&gt; resFunc = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L115">                throw new TestException();</span>
+            }
+        };
+
+<span class="fc" id="L119">        List&lt;Integer&gt; source = Arrays.asList(16, 32, 64);</span>
+
+<span class="fc" id="L121">        Observable.fromIterable(source).flatMapIterable(func, resFunc).subscribe(o);</span>
+
+<span class="fc" id="L123">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L124">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L125">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L126">    }</span>
+
+    @Test
+    public void testMergeError() {
+<span class="fc" id="L130">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L132">        Function&lt;Integer, Observable&lt;Integer&gt;&gt; func = new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L135">                return Observable.error(new TestException());</span>
+            }
+        };
+<span class="fc" id="L138">        BiFunction&lt;Integer, Integer, Integer&gt; resFunc = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="nc" id="L142">                return t1 | t2;</span>
+            }
+        };
+
+<span class="fc" id="L146">        List&lt;Integer&gt; source = Arrays.asList(16, 32, 64);</span>
+
+<span class="fc" id="L148">        Observable.fromIterable(source).flatMap(func, resFunc).subscribe(o);</span>
+
+<span class="fc" id="L150">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L151">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L152">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L153">    }</span>
+
+    &lt;T, R&gt; Function&lt;T, R&gt; just(final R value) {
+<span class="fc" id="L156">        return new Function&lt;T, R&gt;() {</span>
+
+            @Override
+            public R apply(T t1) {
+<span class="fc" id="L160">                return value;</span>
+            }
+        };
+    }
+
+    &lt;R&gt; Callable&lt;R&gt; just0(final R value) {
+<span class="fc" id="L166">        return new Callable&lt;R&gt;() {</span>
+
+            @Override
+            public R call() {
+<span class="fc" id="L170">                return value;</span>
+            }
+        };
+    }
+
+    @Test
+    public void testFlatMapTransformsNormal() {
+<span class="fc" id="L177">        Observable&lt;Integer&gt; onNext = Observable.fromIterable(Arrays.asList(1, 2, 3));</span>
+<span class="fc" id="L178">        Observable&lt;Integer&gt; onComplete = Observable.fromIterable(Arrays.asList(4));</span>
+<span class="fc" id="L179">        Observable&lt;Integer&gt; onError = Observable.fromIterable(Arrays.asList(5));</span>
+
+<span class="fc" id="L181">        Observable&lt;Integer&gt; source = Observable.fromIterable(Arrays.asList(10, 20, 30));</span>
+
+<span class="fc" id="L183">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L185">        source.flatMap(just(onNext), just(onError), just0(onComplete)).subscribe(o);</span>
+
+<span class="fc" id="L187">        verify(o, times(3)).onNext(1);</span>
+<span class="fc" id="L188">        verify(o, times(3)).onNext(2);</span>
+<span class="fc" id="L189">        verify(o, times(3)).onNext(3);</span>
+<span class="fc" id="L190">        verify(o).onNext(4);</span>
+<span class="fc" id="L191">        verify(o).onComplete();</span>
+
+<span class="fc" id="L193">        verify(o, never()).onNext(5);</span>
+<span class="fc" id="L194">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L195">    }</span>
+
+    @Test
+    public void testFlatMapTransformsException() {
+<span class="fc" id="L199">        Observable&lt;Integer&gt; onNext = Observable.fromIterable(Arrays.asList(1, 2, 3));</span>
+<span class="fc" id="L200">        Observable&lt;Integer&gt; onComplete = Observable.fromIterable(Arrays.asList(4));</span>
+<span class="fc" id="L201">        Observable&lt;Integer&gt; onError = Observable.fromIterable(Arrays.asList(5));</span>
+
+<span class="fc" id="L203">        Observable&lt;Integer&gt; source = Observable.concat(</span>
+<span class="fc" id="L204">                Observable.fromIterable(Arrays.asList(10, 20, 30)),</span>
+<span class="fc" id="L205">                Observable.&lt;Integer&gt; error(new RuntimeException(&quot;Forced failure!&quot;))</span>
+                );
+
+<span class="fc" id="L208">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L210">        source.flatMap(just(onNext), just(onError), just0(onComplete)).subscribe(o);</span>
+
+<span class="fc" id="L212">        verify(o, times(3)).onNext(1);</span>
+<span class="fc" id="L213">        verify(o, times(3)).onNext(2);</span>
+<span class="fc" id="L214">        verify(o, times(3)).onNext(3);</span>
+<span class="fc" id="L215">        verify(o).onNext(5);</span>
+<span class="fc" id="L216">        verify(o).onComplete();</span>
+<span class="fc" id="L217">        verify(o, never()).onNext(4);</span>
+
+<span class="fc" id="L219">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L220">    }</span>
+
+    &lt;R&gt; Callable&lt;R&gt; funcThrow0(R r) {
+<span class="fc" id="L223">        return new Callable&lt;R&gt;() {</span>
+            @Override
+            public R call() {
+<span class="fc" id="L226">                throw new TestException();</span>
+            }
+        };
+    }
+
+    &lt;T, R&gt; Function&lt;T, R&gt; funcThrow(T t, R r) {
+<span class="fc" id="L232">        return new Function&lt;T, R&gt;() {</span>
+            @Override
+            public R apply(T t) {
+<span class="fc" id="L235">                throw new TestException();</span>
+            }
+        };
+    }
+
+    @Test
+    public void testFlatMapTransformsOnNextFuncThrows() {
+<span class="fc" id="L242">        Observable&lt;Integer&gt; onComplete = Observable.fromIterable(Arrays.asList(4));</span>
+<span class="fc" id="L243">        Observable&lt;Integer&gt; onError = Observable.fromIterable(Arrays.asList(5));</span>
+
+<span class="fc" id="L245">        Observable&lt;Integer&gt; source = Observable.fromIterable(Arrays.asList(10, 20, 30));</span>
+
+<span class="fc" id="L247">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L249">        source.flatMap(funcThrow(1, onError), just(onError), just0(onComplete)).subscribe(o);</span>
+
+<span class="fc" id="L251">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L252">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L253">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L254">    }</span>
+
+    @Test
+    public void testFlatMapTransformsOnErrorFuncThrows() {
+<span class="fc" id="L258">        Observable&lt;Integer&gt; onNext = Observable.fromIterable(Arrays.asList(1, 2, 3));</span>
+<span class="fc" id="L259">        Observable&lt;Integer&gt; onComplete = Observable.fromIterable(Arrays.asList(4));</span>
+<span class="fc" id="L260">        Observable&lt;Integer&gt; onError = Observable.fromIterable(Arrays.asList(5));</span>
+
+<span class="fc" id="L262">        Observable&lt;Integer&gt; source = Observable.error(new TestException());</span>
+
+<span class="fc" id="L264">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L266">        source.flatMap(just(onNext), funcThrow((Throwable) null, onError), just0(onComplete)).subscribe(o);</span>
+
+<span class="fc" id="L268">        verify(o).onError(any(CompositeException.class));</span>
+<span class="fc" id="L269">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L270">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L271">    }</span>
+
+    @Test
+    public void testFlatMapTransformsOnCompletedFuncThrows() {
+<span class="fc" id="L275">        Observable&lt;Integer&gt; onNext = Observable.fromIterable(Arrays.asList(1, 2, 3));</span>
+<span class="fc" id="L276">        Observable&lt;Integer&gt; onComplete = Observable.fromIterable(Arrays.asList(4));</span>
+<span class="fc" id="L277">        Observable&lt;Integer&gt; onError = Observable.fromIterable(Arrays.asList(5));</span>
+
+<span class="fc" id="L279">        Observable&lt;Integer&gt; source = Observable.fromIterable(Arrays.&lt;Integer&gt; asList());</span>
+
+<span class="fc" id="L281">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L283">        source.flatMap(just(onNext), just(onError), funcThrow0(onComplete)).subscribe(o);</span>
+
+<span class="fc" id="L285">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L286">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L287">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L288">    }</span>
+
+    @Test
+    public void testFlatMapTransformsMergeException() {
+<span class="fc" id="L292">        Observable&lt;Integer&gt; onNext = Observable.error(new TestException());</span>
+<span class="fc" id="L293">        Observable&lt;Integer&gt; onComplete = Observable.fromIterable(Arrays.asList(4));</span>
+<span class="fc" id="L294">        Observable&lt;Integer&gt; onError = Observable.fromIterable(Arrays.asList(5));</span>
+
+<span class="fc" id="L296">        Observable&lt;Integer&gt; source = Observable.fromIterable(Arrays.asList(10, 20, 30));</span>
+
+<span class="fc" id="L298">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L300">        source.flatMap(just(onNext), just(onError), funcThrow0(onComplete)).subscribe(o);</span>
+
+<span class="fc" id="L302">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L303">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L304">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L305">    }</span>
+
+    private static &lt;T&gt; Observable&lt;T&gt; composer(Observable&lt;T&gt; source, final AtomicInteger subscriptionCount, final int m) {
+<span class="fc" id="L308">        return source.doOnSubscribe(new Consumer&lt;Disposable&gt;() {</span>
+            @Override
+            public void accept(Disposable d) {
+<span class="fc" id="L311">                    int n = subscriptionCount.getAndIncrement();</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">                    if (n &gt;= m) {</span>
+<span class="nc" id="L313">                        Assert.fail(&quot;Too many subscriptions! &quot; + (n + 1));</span>
+                    }
+<span class="fc" id="L315">            }</span>
+<span class="fc" id="L316">        }).doOnComplete(new Action() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L319">                    int n = subscriptionCount.decrementAndGet();</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">                    if (n &lt; 0) {</span>
+<span class="nc" id="L321">                        Assert.fail(&quot;Too many unsubscriptions! &quot; + (n - 1));</span>
+                    }
+<span class="fc" id="L323">            }</span>
+        });
+    }
+
+    @Test
+    public void testFlatMapMaxConcurrent() {
+<span class="fc" id="L329">        final int m = 4;</span>
+<span class="fc" id="L330">        final AtomicInteger subscriptionCount = new AtomicInteger();</span>
+<span class="fc" id="L331">        Observable&lt;Integer&gt; source = Observable.range(1, 10)</span>
+<span class="fc" id="L332">        .flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L335">                return composer(Observable.range(t1 * 10, 2), subscriptionCount, m)</span>
+<span class="fc" id="L336">                        .subscribeOn(Schedulers.computation());</span>
+            }
+        }, m);
+
+<span class="fc" id="L340">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L342">        source.subscribe(to);</span>
+
+<span class="fc" id="L344">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L345">        to.assertNoErrors();</span>
+<span class="fc" id="L346">        Set&lt;Integer&gt; expected = new HashSet&lt;Integer&gt;(Arrays.asList(</span>
+<span class="fc" id="L347">                10, 11, 20, 21, 30, 31, 40, 41, 50, 51, 60, 61, 70, 71, 80, 81, 90, 91, 100, 101</span>
+        ));
+<span class="fc" id="L349">        Assert.assertEquals(expected.size(), to.valueCount());</span>
+<span class="fc" id="L350">        Assert.assertTrue(expected.containsAll(to.values()));</span>
+<span class="fc" id="L351">    }</span>
+
+    @Test
+    public void testFlatMapSelectorMaxConcurrent() {
+<span class="fc" id="L355">        final int m = 4;</span>
+<span class="fc" id="L356">        final AtomicInteger subscriptionCount = new AtomicInteger();</span>
+<span class="fc" id="L357">        Observable&lt;Integer&gt; source = Observable.range(1, 10)</span>
+<span class="fc" id="L358">            .flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L361">                return composer(Observable.range(t1 * 10, 2), subscriptionCount, m)</span>
+<span class="fc" id="L362">                        .subscribeOn(Schedulers.computation());</span>
+            }
+<span class="fc" id="L364">        }, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L367">                return t1 * 1000 + t2;</span>
+            }
+        }, m);
+
+<span class="fc" id="L371">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L373">        source.subscribe(to);</span>
+
+<span class="fc" id="L375">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L376">        to.assertNoErrors();</span>
+<span class="fc" id="L377">        Set&lt;Integer&gt; expected = new HashSet&lt;Integer&gt;(Arrays.asList(</span>
+<span class="fc" id="L378">                1010, 1011, 2020, 2021, 3030, 3031, 4040, 4041, 5050, 5051,</span>
+<span class="fc" id="L379">                6060, 6061, 7070, 7071, 8080, 8081, 9090, 9091, 10100, 10101</span>
+        ));
+<span class="fc" id="L381">        Assert.assertEquals(expected.size(), to.valueCount());</span>
+<span class="fc" id="L382">        System.out.println(&quot;--&gt; testFlatMapSelectorMaxConcurrent: &quot; + to.values());</span>
+<span class="fc" id="L383">        Assert.assertTrue(expected.containsAll(to.values()));</span>
+<span class="fc" id="L384">    }</span>
+
+    @Test
+    public void testFlatMapTransformsMaxConcurrentNormalLoop() {
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">            if (i % 100 == 0) {</span>
+<span class="fc" id="L390">                System.out.println(&quot;testFlatMapTransformsMaxConcurrentNormalLoop =&gt; &quot; + i);</span>
+            }
+<span class="fc" id="L392">            testFlatMapTransformsMaxConcurrentNormal();</span>
+        }
+<span class="fc" id="L394">    }</span>
+
+    @Test
+    public void testFlatMapTransformsMaxConcurrentNormal() {
+<span class="fc" id="L398">        final int m = 2;</span>
+<span class="fc" id="L399">        final AtomicInteger subscriptionCount = new AtomicInteger();</span>
+<span class="fc" id="L400">        Observable&lt;Integer&gt; onNext =</span>
+<span class="fc" id="L401">                composer(</span>
+<span class="fc" id="L402">                        Observable.fromIterable(Arrays.asList(1, 2, 3))</span>
+<span class="fc" id="L403">                        .observeOn(Schedulers.computation())</span>
+                        ,
+                subscriptionCount, m)
+<span class="fc" id="L406">                .subscribeOn(Schedulers.computation())</span>
+                ;
+
+<span class="fc" id="L409">        Observable&lt;Integer&gt; onComplete = composer(Observable.fromIterable(Arrays.asList(4)), subscriptionCount, m)</span>
+<span class="fc" id="L410">                .subscribeOn(Schedulers.computation());</span>
+
+<span class="fc" id="L412">        Observable&lt;Integer&gt; onError = Observable.fromIterable(Arrays.asList(5));</span>
+
+<span class="fc" id="L414">        Observable&lt;Integer&gt; source = Observable.fromIterable(Arrays.asList(10, 20, 30));</span>
+
+<span class="fc" id="L416">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L417">        TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;(o);</span>
+
+<span class="fc" id="L419">        Function&lt;Throwable, Observable&lt;Integer&gt;&gt; just = just(onError);</span>
+<span class="fc" id="L420">        source.flatMap(just(onNext), just, just0(onComplete), m).subscribe(to);</span>
+
+<span class="fc" id="L422">        to.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L423">        to.assertNoErrors();</span>
+<span class="fc" id="L424">        to.assertTerminated();</span>
+
+<span class="fc" id="L426">        verify(o, times(3)).onNext(1);</span>
+<span class="fc" id="L427">        verify(o, times(3)).onNext(2);</span>
+<span class="fc" id="L428">        verify(o, times(3)).onNext(3);</span>
+<span class="fc" id="L429">        verify(o).onNext(4);</span>
+<span class="fc" id="L430">        verify(o).onComplete();</span>
+
+<span class="fc" id="L432">        verify(o, never()).onNext(5);</span>
+<span class="fc" id="L433">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L434">    }</span>
+
+    @Ignore(&quot;Don't care for any reordering&quot;)
+    @Test(timeout = 10000)
+    public void flatMapRangeAsyncLoop() {
+<span class="nc bnc" id="L439" title="All 2 branches missed.">        for (int i = 0; i &lt; 2000; i++) {</span>
+<span class="nc bnc" id="L440" title="All 2 branches missed.">            if (i % 10 == 0) {</span>
+<span class="nc" id="L441">                System.out.println(&quot;flatMapRangeAsyncLoop &gt; &quot; + i);</span>
+            }
+<span class="nc" id="L443">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="nc" id="L444">            Observable.range(0, 1000)</span>
+<span class="nc" id="L445">            .flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Observable&lt;Integer&gt; apply(Integer t) {
+<span class="nc" id="L448">                    return Observable.just(t);</span>
+                }
+            })
+<span class="nc" id="L451">            .observeOn(Schedulers.computation())</span>
+<span class="nc" id="L452">            .subscribe(to);</span>
+
+<span class="nc" id="L454">            to.awaitTerminalEvent(2500, TimeUnit.MILLISECONDS);</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">            if (to.completions() == 0) {</span>
+<span class="nc" id="L456">                System.out.println(to.valueCount());</span>
+            }
+<span class="nc" id="L458">            to.assertTerminated();</span>
+<span class="nc" id="L459">            to.assertNoErrors();</span>
+<span class="nc" id="L460">            List&lt;Integer&gt; list = to.values();</span>
+<span class="nc" id="L461">            assertEquals(1000, list.size());</span>
+<span class="nc" id="L462">            boolean f = false;</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">            for (int j = 0; j &lt; list.size(); j++) {</span>
+<span class="nc bnc" id="L464" title="All 2 branches missed.">                if (list.get(j) != j) {</span>
+<span class="nc" id="L465">                    System.out.println(j + &quot; &quot; + list.get(j));</span>
+<span class="nc" id="L466">                    f = true;</span>
+                }
+            }
+<span class="nc bnc" id="L469" title="All 2 branches missed.">            if (f) {</span>
+<span class="nc" id="L470">                Assert.fail(&quot;Results are out of order!&quot;);</span>
+            }
+        }
+<span class="nc" id="L473">    }</span>
+
+    @Test(timeout = 30000)
+    public void flatMapRangeMixedAsyncLoop() {
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        for (int i = 0; i &lt; 2000; i++) {</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">            if (i % 10 == 0) {</span>
+<span class="fc" id="L479">                System.out.println(&quot;flatMapRangeAsyncLoop &gt; &quot; + i);</span>
+            }
+<span class="fc" id="L481">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L482">            Observable.range(0, 1000)</span>
+<span class="fc" id="L483">            .flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+<span class="fc" id="L484">                final Random rnd = new Random();</span>
+                @Override
+                public Observable&lt;Integer&gt; apply(Integer t) {
+<span class="fc" id="L487">                    Observable&lt;Integer&gt; r = Observable.just(t);</span>
+<span class="fc bfc" id="L488" title="All 2 branches covered.">                    if (rnd.nextBoolean()) {</span>
+<span class="fc" id="L489">                        r = r.hide();</span>
+                    }
+<span class="fc" id="L491">                    return r;</span>
+                }
+            })
+<span class="fc" id="L494">            .observeOn(Schedulers.computation())</span>
+<span class="fc" id="L495">            .subscribe(to);</span>
+
+<span class="fc" id="L497">            to.awaitTerminalEvent(2500, TimeUnit.MILLISECONDS);</span>
+<span class="pc bpc" id="L498" title="1 of 2 branches missed.">            if (to.completions() == 0) {</span>
+<span class="nc" id="L499">                System.out.println(to.valueCount());</span>
+            }
+<span class="fc" id="L501">            to.assertTerminated();</span>
+<span class="fc" id="L502">            to.assertNoErrors();</span>
+<span class="fc" id="L503">            List&lt;Integer&gt; list = to.values();</span>
+<span class="pc bpc" id="L504" title="1 of 2 branches missed.">            if (list.size() &lt; 1000) {</span>
+<span class="nc" id="L505">                Set&lt;Integer&gt; set = new HashSet&lt;Integer&gt;(list);</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">                for (int j = 0; j &lt; 1000; j++) {</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">                    if (!set.contains(j)) {</span>
+<span class="nc" id="L508">                        System.out.println(j + &quot; missing&quot;);</span>
+                    }
+                }
+            }
+<span class="fc" id="L512">            assertEquals(1000, list.size());</span>
+        }
+<span class="fc" id="L514">    }</span>
+
+    @Test
+    public void flatMapIntPassthruAsync() {
+<span class="fc bfc" id="L518" title="All 2 branches covered.">        for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L519">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L521">            Observable.range(1, 1000).flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Observable&lt;Integer&gt; apply(Integer t) {
+<span class="fc" id="L524">                    return Observable.just(1).subscribeOn(Schedulers.computation());</span>
+                }
+<span class="fc" id="L526">            }).subscribe(to);</span>
+
+<span class="fc" id="L528">            to.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L529">            to.assertNoErrors();</span>
+<span class="fc" id="L530">            to.assertComplete();</span>
+<span class="fc" id="L531">            to.assertValueCount(1000);</span>
+        }
+<span class="fc" id="L533">    }</span>
+
+    @Test
+    public void flatMapTwoNestedSync() {
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        for (final int n : new int[] { 1, 1000, 1000000 }) {</span>
+<span class="fc" id="L538">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L540">            Observable.just(1, 2).flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Observable&lt;Integer&gt; apply(Integer t) {
+<span class="fc" id="L543">                    return Observable.range(1, n);</span>
+                }
+<span class="fc" id="L545">            }).subscribe(to);</span>
+
+<span class="fc" id="L547">            System.out.println(&quot;flatMapTwoNestedSync &gt;&gt; @ &quot; + n);</span>
+<span class="fc" id="L548">            to.assertNoErrors();</span>
+<span class="fc" id="L549">            to.assertComplete();</span>
+<span class="fc" id="L550">            to.assertValueCount(n * 2);</span>
+        }
+<span class="fc" id="L552">    }</span>
+
+    @Test
+    public void flatMapBiMapper() {
+<span class="fc" id="L556">        Observable.just(1)</span>
+<span class="fc" id="L557">        .flatMap(new Function&lt;Integer, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L560">                return Observable.just(v * 10);</span>
+            }
+<span class="fc" id="L562">        }, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L565">                return a + b;</span>
+            }
+        }, true)
+<span class="fc" id="L568">        .test()</span>
+<span class="fc" id="L569">        .assertResult(11);</span>
+<span class="fc" id="L570">    }</span>
+
+    @Test
+    public void flatMapBiMapperWithError() {
+<span class="fc" id="L574">        Observable.just(1)</span>
+<span class="fc" id="L575">        .flatMap(new Function&lt;Integer, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L578">                return Observable.just(v * 10).concatWith(Observable.&lt;Integer&gt;error(new TestException()));</span>
+            }
+<span class="fc" id="L580">        }, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L583">                return a + b;</span>
+            }
+        }, true)
+<span class="fc" id="L586">        .test()</span>
+<span class="fc" id="L587">        .assertFailure(TestException.class, 11);</span>
+<span class="fc" id="L588">    }</span>
+
+    @Test
+    public void flatMapBiMapperMaxConcurrency() {
+<span class="fc" id="L592">        Observable.just(1, 2)</span>
+<span class="fc" id="L593">        .flatMap(new Function&lt;Integer, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L596">                return Observable.just(v * 10);</span>
+            }
+<span class="fc" id="L598">        }, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L601">                return a + b;</span>
+            }
+        }, true, 1)
+<span class="fc" id="L604">        .test()</span>
+<span class="fc" id="L605">        .assertResult(11, 22);</span>
+<span class="fc" id="L606">    }</span>
+
+    @Test
+    public void flatMapEmpty() {
+<span class="fc" id="L610">        assertSame(Observable.empty(), Observable.empty().flatMap(new Function&lt;Object, ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; apply(Object v) throws Exception {
+<span class="nc" id="L613">                return Observable.just(v);</span>
+            }
+        }));
+<span class="fc" id="L616">    }</span>
+
+    @Test
+    public void mergeScalar() {
+<span class="fc" id="L620">        Observable.merge(Observable.just(Observable.just(1)))</span>
+<span class="fc" id="L621">        .test()</span>
+<span class="fc" id="L622">        .assertResult(1);</span>
+<span class="fc" id="L623">    }</span>
+
+    @Test
+    public void mergeScalar2() {
+<span class="fc" id="L627">        Observable.merge(Observable.just(Observable.just(1)).hide())</span>
+<span class="fc" id="L628">        .test()</span>
+<span class="fc" id="L629">        .assertResult(1);</span>
+<span class="fc" id="L630">    }</span>
+
+    @Test
+    public void mergeScalarEmpty() {
+<span class="fc" id="L634">        Observable.merge(Observable.just(Observable.empty()).hide())</span>
+<span class="fc" id="L635">        .test()</span>
+<span class="fc" id="L636">        .assertResult();</span>
+<span class="fc" id="L637">    }</span>
+
+    @Test
+    public void mergeScalarError() {
+<span class="fc" id="L641">        Observable.merge(Observable.just(Observable.fromCallable(new Callable&lt;Object&gt;() {</span>
+            @Override
+            public Object call() throws Exception {
+<span class="fc" id="L644">                throw new TestException();</span>
+            }
+<span class="fc" id="L646">        })).hide())</span>
+<span class="fc" id="L647">        .test()</span>
+<span class="fc" id="L648">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L649">    }</span>
+
+    @Test
+    public void scalarReentrant() {
+<span class="fc" id="L653">        final PublishSubject&lt;Observable&lt;Integer&gt;&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L655">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L658">                super.onNext(t);</span>
+<span class="fc bfc" id="L659" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L660">                    ps.onNext(Observable.just(2));</span>
+                }
+<span class="fc" id="L662">            }</span>
+        };
+
+<span class="fc" id="L665">        Observable.merge(ps)</span>
+<span class="fc" id="L666">        .subscribe(to);</span>
+
+<span class="fc" id="L668">        ps.onNext(Observable.just(1));</span>
+<span class="fc" id="L669">        ps.onComplete();</span>
+
+<span class="fc" id="L671">        to.assertResult(1, 2);</span>
+<span class="fc" id="L672">    }</span>
+
+    @Test
+    public void scalarReentrant2() {
+<span class="fc" id="L676">        final PublishSubject&lt;Observable&lt;Integer&gt;&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L678">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L681">                super.onNext(t);</span>
+<span class="fc bfc" id="L682" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L683">                    ps.onNext(Observable.just(2));</span>
+                }
+<span class="fc" id="L685">            }</span>
+        };
+
+<span class="fc" id="L688">        Observable.merge(ps, 2)</span>
+<span class="fc" id="L689">        .subscribe(to);</span>
+
+<span class="fc" id="L691">        ps.onNext(Observable.just(1));</span>
+<span class="fc" id="L692">        ps.onComplete();</span>
+
+<span class="fc" id="L694">        to.assertResult(1, 2);</span>
+<span class="fc" id="L695">    }</span>
+
+    @Test
+    public void innerCompleteCancelRace() {
+<span class="fc bfc" id="L699" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L700">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L702">            final TestObserver&lt;Integer&gt; to = Observable.merge(Observable.just(ps)).test();</span>
+
+<span class="fc" id="L704">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L707">                    ps.onComplete();</span>
+<span class="fc" id="L708">                }</span>
+            };
+
+<span class="fc" id="L711">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L714">                    to.cancel();</span>
+<span class="fc" id="L715">                }</span>
+            };
+
+<span class="fc" id="L718">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L720">    }</span>
+
+    @Test
+    public void fusedInnerThrows() {
+<span class="fc" id="L724">        Observable.just(1).hide()</span>
+<span class="fc" id="L725">        .flatMap(new Function&lt;Integer, ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L728">                return Observable.range(1, 2).map(new Function&lt;Integer, Object&gt;() {</span>
+                    @Override
+                    public Object apply(Integer w) throws Exception {
+<span class="fc" id="L731">                        throw new TestException();</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L736">        .test()</span>
+<span class="fc" id="L737">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L738">    }</span>
+
+    @Test
+    public void fusedInnerThrows2() {
+<span class="fc" id="L742">        TestObserver&lt;Integer&gt; to = Observable.range(1, 2).hide()</span>
+<span class="fc" id="L743">        .flatMap(new Function&lt;Integer, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L746">                return Observable.range(1, 2).map(new Function&lt;Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer w) throws Exception {
+<span class="fc" id="L749">                        throw new TestException();</span>
+                    }
+                });
+            }
+        }, true)
+<span class="fc" id="L754">        .test()</span>
+<span class="fc" id="L755">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L757">        List&lt;Throwable&gt; errors = TestHelper.errorList(to);</span>
+
+<span class="fc" id="L759">        TestHelper.assertError(errors, 0, TestException.class);</span>
+
+<span class="fc" id="L761">        TestHelper.assertError(errors, 1, TestException.class);</span>
+<span class="fc" id="L762">    }</span>
+
+    @Test
+    public void noCrossBoundaryFusion() {
+<span class="fc bfc" id="L766" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L767">            TestObserver&lt;Object&gt; to = Observable.merge(</span>
+<span class="fc" id="L768">                    Observable.just(1).observeOn(Schedulers.single()).map(new Function&lt;Integer, Object&gt;() {</span>
+                        @Override
+                        public Object apply(Integer v) throws Exception {
+<span class="fc" id="L771">                            return Thread.currentThread().getName().substring(0, 4);</span>
+                        }
+                    }),
+<span class="fc" id="L774">                    Observable.just(1).observeOn(Schedulers.computation()).map(new Function&lt;Integer, Object&gt;() {</span>
+                        @Override
+                        public Object apply(Integer v) throws Exception {
+<span class="fc" id="L777">                            return Thread.currentThread().getName().substring(0, 4);</span>
+                        }
+                    })
+            )
+<span class="fc" id="L781">            .test()</span>
+<span class="fc" id="L782">            .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L783">            .assertValueCount(2);</span>
+
+<span class="fc" id="L785">            List&lt;Object&gt; list = to.values();</span>
+
+<span class="fc" id="L787">            assertTrue(list.toString(), list.contains(&quot;RxSi&quot;));</span>
+<span class="fc" id="L788">            assertTrue(list.toString(), list.contains(&quot;RxCo&quot;));</span>
+        }
+<span class="fc" id="L790">    }</span>
+
+    @Test
+    public void cancelScalarDrainRace() {
+<span class="fc bfc" id="L794" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L795">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+
+<span class="fc" id="L798">                final PublishSubject&lt;Observable&lt;Integer&gt;&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L800">                final TestObserver&lt;Integer&gt; to = ps.flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity()).test();</span>
+
+<span class="fc" id="L802">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L805">                        to.cancel();</span>
+<span class="fc" id="L806">                    }</span>
+                };
+<span class="fc" id="L808">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L811">                        ps.onComplete();</span>
+<span class="fc" id="L812">                    }</span>
+                };
+
+<span class="fc" id="L815">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L817">                assertTrue(errors.toString(), errors.isEmpty());</span>
+            } finally {
+<span class="fc" id="L819">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L822">    }</span>
+
+    @Test
+    public void cancelDrainRace() {
+<span class="fc bfc" id="L826" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc bfc" id="L827" title="All 2 branches covered.">            for (int j = 1; j &lt; 50; j += 5) {</span>
+<span class="fc" id="L828">                List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+                try {
+
+<span class="fc" id="L831">                    final PublishSubject&lt;Observable&lt;Integer&gt;&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L833">                    final TestObserver&lt;Integer&gt; to = ps.flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity()).test();</span>
+
+<span class="fc" id="L835">                    final PublishSubject&lt;Integer&gt; just = PublishSubject.create();</span>
+<span class="fc" id="L836">                    final PublishSubject&lt;Integer&gt; just2 = PublishSubject.create();</span>
+<span class="fc" id="L837">                    ps.onNext(just);</span>
+<span class="fc" id="L838">                    ps.onNext(just2);</span>
+
+<span class="fc" id="L840">                    Runnable r1 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L843">                            just2.onNext(1);</span>
+<span class="fc" id="L844">                            to.cancel();</span>
+<span class="fc" id="L845">                        }</span>
+                    };
+<span class="fc" id="L847">                    Runnable r2 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L850">                            just.onNext(1);</span>
+<span class="fc" id="L851">                        }</span>
+                    };
+
+<span class="fc" id="L854">                    TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L856">                    assertTrue(errors.toString(), errors.isEmpty());</span>
+                } finally {
+<span class="fc" id="L858">                    RxJavaPlugins.reset();</span>
+                }
+            }
+        }
+<span class="fc" id="L862">    }</span>
+
+    @Test
+    public void iterableMapperFunctionReturnsNull() {
+<span class="fc" id="L866">        Observable.just(1)</span>
+<span class="fc" id="L867">        .flatMapIterable(new Function&lt;Integer, Iterable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Iterable&lt;Object&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L870">                return null;</span>
+            }
+<span class="fc" id="L872">        }, new BiFunction&lt;Integer, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer v, Object w) throws Exception {
+<span class="nc" id="L875">                return v;</span>
+            }
+        })
+<span class="fc" id="L878">        .test()</span>
+<span class="fc" id="L879">        .assertFailureAndMessage(NullPointerException.class, &quot;The mapper returned a null Iterable&quot;);</span>
+<span class="fc" id="L880">    }</span>
+
+    @Test
+    public void combinerMapperFunctionReturnsNull() {
+<span class="fc" id="L884">        Observable.just(1)</span>
+<span class="fc" id="L885">        .flatMap(new Function&lt;Integer, Observable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Object&gt; apply(Integer v) throws Exception {
+<span class="fc" id="L888">                return null;</span>
+            }
+<span class="fc" id="L890">        }, new BiFunction&lt;Integer, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer v, Object w) throws Exception {
+<span class="nc" id="L893">                return v;</span>
+            }
+        })
+<span class="fc" id="L896">        .test()</span>
+<span class="fc" id="L897">        .assertFailureAndMessage(NullPointerException.class, &quot;The mapper returned a null ObservableSource&quot;);</span>
+<span class="fc" id="L898">    }</span>
+
+    @Test
+    public void failingFusedInnerCancelsSource() {
+<span class="fc" id="L902">        final AtomicInteger counter = new AtomicInteger();</span>
+<span class="fc" id="L903">        Observable.range(1, 5)</span>
+<span class="fc" id="L904">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L907">                counter.getAndIncrement();</span>
+<span class="fc" id="L908">            }</span>
+        })
+<span class="fc" id="L910">        .flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L914">                return Observable.&lt;Integer&gt;fromIterable(new Iterable&lt;Integer&gt;() {</span>
+                    @Override
+                    public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L917">                        return new Iterator&lt;Integer&gt;() {</span>
+                            @Override
+                            public boolean hasNext() {
+<span class="fc" id="L920">                                return true;</span>
+                            }
+
+                            @Override
+                            public Integer next() {
+<span class="fc" id="L925">                                throw new TestException();</span>
+                            }
+
+                            @Override
+                            public void remove() {
+<span class="nc" id="L930">                                throw new UnsupportedOperationException();</span>
+                            }
+                        };
+                    }
+                });
+            }
+        })
+<span class="fc" id="L937">        .test()</span>
+<span class="fc" id="L938">        .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L940">        assertEquals(1, counter.get());</span>
+<span class="fc" id="L941">    }</span>
+
+    @Test
+    public void scalarQueueNoOverflow() {
+<span class="fc" id="L945">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L947">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L949">            TestObserver&lt;Integer&gt; to = ps.flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public Observable&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc" id="L953">                    return Observable.just(v + 1);</span>
+                }
+            }, 1)
+<span class="fc" id="L956">            .subscribeWith(new TestObserver&lt;Integer&gt;() {</span>
+                @Override
+                public void onNext(Integer t) {
+<span class="fc" id="L959">                    super.onNext(t);</span>
+<span class="fc bfc" id="L960" title="All 2 branches covered.">                    if (t == 1) {</span>
+<span class="fc bfc" id="L961" title="All 2 branches covered.">                        for (int i = 1; i &lt; 10; i++) {</span>
+<span class="fc" id="L962">                            ps.onNext(i);</span>
+                        }
+<span class="fc" id="L964">                        ps.onComplete();</span>
+                    }
+<span class="fc" id="L966">                }</span>
+            });
+
+<span class="fc" id="L969">            ps.onNext(0);</span>
+
+<span class="pc bpc" id="L971" title="1 of 2 branches missed.">            if (!errors.isEmpty()) {</span>
+<span class="nc" id="L972">                to.onError(new CompositeException(errors));</span>
+            }
+
+<span class="fc" id="L975">            to.assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+        } finally {
+<span class="fc" id="L977">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L979">    }</span>
+
+    @Test
+    public void scalarQueueNoOverflowHidden() {
+<span class="fc" id="L983">        final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L985">        TestObserver&lt;Integer&gt; to = ps.flatMap(new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L989">                return Observable.just(v + 1).hide();</span>
+            }
+        }, 1)
+<span class="fc" id="L992">        .subscribeWith(new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L995">                super.onNext(t);</span>
+<span class="fc bfc" id="L996" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc bfc" id="L997" title="All 2 branches covered.">                    for (int i = 1; i &lt; 10; i++) {</span>
+<span class="fc" id="L998">                        ps.onNext(i);</span>
+                    }
+<span class="fc" id="L1000">                    ps.onComplete();</span>
+                }
+<span class="fc" id="L1002">            }</span>
+        });
+
+<span class="fc" id="L1005">        ps.onNext(0);</span>
+
+<span class="fc" id="L1007">        to.assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L1008">    }</span>
+
+    @Test
+    public void fusedSourceCrashResumeWithNextSource() {
+<span class="fc" id="L1012">        final UnicastSubject&lt;Integer&gt; fusedSource = UnicastSubject.create();</span>
+<span class="fc" id="L1013">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L1015">        ObservableFlatMap.MergeObserver&lt;Integer, Integer&gt; merger =</span>
+<span class="fc" id="L1016">                new ObservableFlatMap.MergeObserver&lt;Integer, Integer&gt;(to, new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Observable&lt;Integer&gt; apply(Integer t)
+                            throws Exception {
+<span class="fc bfc" id="L1020" title="All 2 branches covered.">                        if (t == 0) {</span>
+<span class="fc" id="L1021">                            return fusedSource</span>
+<span class="fc" id="L1022">                                    .map(new Function&lt;Integer, Integer&gt;() {</span>
+                                        @Override
+                                        public Integer apply(Integer v)
+<span class="fc" id="L1025">                                                throws Exception { throw new TestException(); }</span>
+                                    })
+<span class="fc" id="L1027">                                    .compose(TestHelper.&lt;Integer&gt;observableStripBoundary());</span>
+                        }
+<span class="fc" id="L1029">                        return Observable.range(10 * t, 5);</span>
+                    }
+                }, true, Integer.MAX_VALUE, 128);
+
+<span class="fc" id="L1033">        merger.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L1034">        merger.getAndIncrement();</span>
+
+<span class="fc" id="L1036">        merger.onNext(0);</span>
+<span class="fc" id="L1037">        merger.onNext(1);</span>
+<span class="fc" id="L1038">        merger.onNext(2);</span>
+
+<span class="fc" id="L1040">        assertTrue(fusedSource.hasObservers());</span>
+
+<span class="fc" id="L1042">        fusedSource.onNext(-1);</span>
+
+<span class="fc" id="L1044">        merger.drainLoop();</span>
+
+<span class="fc" id="L1046">        to.assertValuesOnly(10, 11, 12, 13, 14, 20, 21, 22, 23, 24);</span>
+<span class="fc" id="L1047">    }</span>
+
+    @Test
+    public void maxConcurrencySustained() {
+<span class="fc" id="L1051">        final PublishSubject&lt;Integer&gt; ps1 = PublishSubject.create();</span>
+<span class="fc" id="L1052">        final PublishSubject&lt;Integer&gt; ps2 = PublishSubject.create();</span>
+<span class="fc" id="L1053">        PublishSubject&lt;Integer&gt; ps3 = PublishSubject.create();</span>
+<span class="fc" id="L1054">        PublishSubject&lt;Integer&gt; ps4 = PublishSubject.create();</span>
+
+<span class="fc" id="L1056">        TestObserver&lt;Integer&gt; to = Observable.just(ps1, ps2, ps3, ps4)</span>
+<span class="fc" id="L1057">        .flatMap(new Function&lt;PublishSubject&lt;Integer&gt;, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(PublishSubject&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L1060">                return v;</span>
+            }
+        }, 2)
+<span class="fc" id="L1063">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="pc bpc" id="L1066" title="1 of 2 branches missed.">                if (v == 1) {</span>
+                    // this will make sure the drain loop detects two completed
+                    // inner sources and replaces them with fresh ones
+<span class="fc" id="L1069">                    ps1.onComplete();</span>
+<span class="fc" id="L1070">                    ps2.onComplete();</span>
+                }
+<span class="fc" id="L1072">            }</span>
+        })
+<span class="fc" id="L1074">        .test();</span>
+
+<span class="fc" id="L1076">        ps1.onNext(1);</span>
+
+<span class="fc" id="L1078">        assertFalse(ps1.hasObservers());</span>
+<span class="fc" id="L1079">        assertFalse(ps2.hasObservers());</span>
+<span class="fc" id="L1080">        assertTrue(ps3.hasObservers());</span>
+<span class="fc" id="L1081">        assertTrue(ps4.hasObservers());</span>
+
+<span class="fc" id="L1083">        to.dispose();</span>
+
+<span class="fc" id="L1085">        assertFalse(ps3.hasObservers());</span>
+<span class="fc" id="L1086">        assertFalse(ps4.hasObservers());</span>
+<span class="fc" id="L1087">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

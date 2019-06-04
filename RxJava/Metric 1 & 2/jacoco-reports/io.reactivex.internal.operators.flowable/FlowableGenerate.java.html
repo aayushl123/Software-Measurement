@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableGenerate.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableGenerate.java</span></div><h1>FlowableGenerate.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.*;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.BackpressureHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableGenerate&lt;T, S&gt; extends Flowable&lt;T&gt; {
+    final Callable&lt;S&gt; stateSupplier;
+    final BiFunction&lt;S, Emitter&lt;T&gt;, S&gt; generator;
+    final Consumer&lt;? super S&gt; disposeState;
+
+    public FlowableGenerate(Callable&lt;S&gt; stateSupplier, BiFunction&lt;S, Emitter&lt;T&gt;, S&gt; generator,
+<span class="fc" id="L34">            Consumer&lt;? super S&gt; disposeState) {</span>
+<span class="fc" id="L35">        this.stateSupplier = stateSupplier;</span>
+<span class="fc" id="L36">        this.generator = generator;</span>
+<span class="fc" id="L37">        this.disposeState = disposeState;</span>
+<span class="fc" id="L38">    }</span>
+
+    @Override
+    public void subscribeActual(Subscriber&lt;? super T&gt; s) {
+        S state;
+
+        try {
+<span class="fc" id="L45">            state = stateSupplier.call();</span>
+<span class="fc" id="L46">        } catch (Throwable e) {</span>
+<span class="fc" id="L47">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L48">            EmptySubscription.error(e, s);</span>
+<span class="fc" id="L49">            return;</span>
+<span class="fc" id="L50">        }</span>
+
+<span class="fc" id="L52">        s.onSubscribe(new GeneratorSubscription&lt;T, S&gt;(s, generator, disposeState, state));</span>
+<span class="fc" id="L53">    }</span>
+
+    static final class GeneratorSubscription&lt;T, S&gt;
+    extends AtomicLong
+    implements Emitter&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = 7565982551505011832L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+        final BiFunction&lt;S, ? super Emitter&lt;T&gt;, S&gt; generator;
+        final Consumer&lt;? super S&gt; disposeState;
+
+        S state;
+
+        volatile boolean cancelled;
+
+        boolean terminate;
+
+        boolean hasNext;
+
+        GeneratorSubscription(Subscriber&lt;? super T&gt; actual,
+                BiFunction&lt;S, ? super Emitter&lt;T&gt;, S&gt; generator,
+<span class="fc" id="L75">                Consumer&lt;? super S&gt; disposeState, S initialState) {</span>
+<span class="fc" id="L76">            this.downstream = actual;</span>
+<span class="fc" id="L77">            this.generator = generator;</span>
+<span class="fc" id="L78">            this.disposeState = disposeState;</span>
+<span class="fc" id="L79">            this.state = initialState;</span>
+<span class="fc" id="L80">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (!SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L85">                return;</span>
+            }
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if (BackpressureHelper.add(this, n) != 0L) {</span>
+<span class="fc" id="L88">                return;</span>
+            }
+
+<span class="fc" id="L91">            long e = 0L;</span>
+
+<span class="fc" id="L93">            S s = state;</span>
+
+<span class="fc" id="L95">            final BiFunction&lt;S, ? super Emitter&lt;T&gt;, S&gt; f = generator;</span>
+
+            for (;;) {
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                while (e != n) {</span>
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L101">                        state = null;</span>
+<span class="fc" id="L102">                        dispose(s);</span>
+<span class="fc" id="L103">                        return;</span>
+                    }
+
+<span class="fc" id="L106">                    hasNext = false;</span>
+
+                    try {
+<span class="fc" id="L109">                        s = f.apply(s, this);</span>
+<span class="fc" id="L110">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L111">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L112">                        cancelled = true;</span>
+<span class="fc" id="L113">                        state = null;</span>
+<span class="fc" id="L114">                        onError(ex);</span>
+<span class="fc" id="L115">                        dispose(s);</span>
+<span class="fc" id="L116">                        return;</span>
+<span class="fc" id="L117">                    }</span>
+
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                    if (terminate) {</span>
+<span class="fc" id="L120">                        cancelled = true;</span>
+<span class="fc" id="L121">                        state = null;</span>
+<span class="fc" id="L122">                        dispose(s);</span>
+<span class="fc" id="L123">                        return;</span>
+                    }
+
+<span class="fc" id="L126">                    e++;</span>
+                }
+
+<span class="fc" id="L129">                n = get();</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                if (e == n) {</span>
+<span class="fc" id="L131">                    state = s;</span>
+<span class="fc" id="L132">                    n = addAndGet(-e);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                    if (n == 0L) {</span>
+<span class="fc" id="L134">                        break;</span>
+                    }
+<span class="fc" id="L136">                    e = 0L;</span>
+                }
+            }
+<span class="fc" id="L139">        }</span>
+
+        private void dispose(S s) {
+            try {
+<span class="fc" id="L143">                disposeState.accept(s);</span>
+<span class="fc" id="L144">            } catch (Throwable ex) {</span>
+<span class="fc" id="L145">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L146">                RxJavaPlugins.onError(ex);</span>
+<span class="fc" id="L147">            }</span>
+<span class="fc" id="L148">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L153">                cancelled = true;</span>
+
+                // if there are no running requests, just dispose the state
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                if (BackpressureHelper.add(this, 1) == 0) {</span>
+<span class="fc" id="L157">                    S s = state;</span>
+<span class="fc" id="L158">                    state = null;</span>
+<span class="fc" id="L159">                    dispose(s);</span>
+                }
+            }
+<span class="fc" id="L162">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">            if (!terminate) {</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                if (hasNext) {</span>
+<span class="fc" id="L168">                    onError(new IllegalStateException(&quot;onNext already called in this generate turn&quot;));</span>
+                } else {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                    if (t == null) {</span>
+<span class="fc" id="L171">                        onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+                    } else {
+<span class="fc" id="L173">                        hasNext = true;</span>
+<span class="fc" id="L174">                        downstream.onNext(t);</span>
+                    }
+                }
+            }
+<span class="fc" id="L178">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            if (terminate) {</span>
+<span class="fc" id="L183">                RxJavaPlugins.onError(t);</span>
+            } else {
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (t == null) {</span>
+<span class="fc" id="L186">                    t = new NullPointerException(&quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+                }
+<span class="fc" id="L188">                terminate = true;</span>
+<span class="fc" id="L189">                downstream.onError(t);</span>
+            }
+<span class="fc" id="L191">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            if (!terminate) {</span>
+<span class="fc" id="L196">                terminate = true;</span>
+<span class="fc" id="L197">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L199">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

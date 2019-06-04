@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeMergeArrayTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeMergeArrayTest.java</span></div><h1>MaybeMergeArrayTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+
+import org.junit.Test;
+import org.reactivestreams.Subscription;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.operators.maybe.MaybeMergeArray.MergeMaybeObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.PublishSubject;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L32">public class MaybeMergeArrayTest {</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void normal() {
+<span class="fc" id="L37">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L39">        Maybe.mergeArray(Maybe.just(1), Maybe.just(2))</span>
+<span class="fc" id="L40">        .subscribe(ts);</span>
+<span class="fc" id="L41">        ts</span>
+<span class="fc" id="L42">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L43">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.NONE))</span>
+<span class="fc" id="L44">        .assertResult(1, 2);</span>
+<span class="fc" id="L45">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void fusedPollMixed() {
+<span class="fc" id="L50">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L52">        Maybe.mergeArray(Maybe.just(1), Maybe.&lt;Integer&gt;empty(), Maybe.just(2))</span>
+<span class="fc" id="L53">        .subscribe(ts);</span>
+<span class="fc" id="L54">        ts</span>
+<span class="fc" id="L55">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L56">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L57">        .assertResult(1, 2);</span>
+<span class="fc" id="L58">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void fusedEmptyCheck() {
+<span class="fc" id="L63">        Maybe.mergeArray(Maybe.just(1), Maybe.&lt;Integer&gt;empty(), Maybe.just(2))</span>
+<span class="fc" id="L64">        .subscribe(new FlowableSubscriber&lt;Integer&gt;() {</span>
+            QueueSubscription&lt;Integer&gt; qs;
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="fc" id="L68">                qs = (QueueSubscription&lt;Integer&gt;)s;</span>
+
+<span class="fc" id="L70">                assertEquals(QueueFuseable.ASYNC, qs.requestFusion(QueueFuseable.ANY));</span>
+<span class="fc" id="L71">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="fc" id="L75">                assertFalse(qs.isEmpty());</span>
+
+<span class="fc" id="L77">                qs.clear();</span>
+
+<span class="fc" id="L79">                assertTrue(qs.isEmpty());</span>
+
+<span class="fc" id="L81">                qs.cancel();</span>
+<span class="fc" id="L82">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L86">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L90">            }</span>
+        });
+<span class="fc" id="L92">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void cancel() {
+<span class="fc" id="L97">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+
+<span class="fc" id="L99">        Maybe.mergeArray(Maybe.just(1), Maybe.&lt;Integer&gt;empty(), Maybe.just(2))</span>
+<span class="fc" id="L100">        .subscribe(ts);</span>
+
+<span class="fc" id="L102">        ts.cancel();</span>
+<span class="fc" id="L103">        ts.request(10);</span>
+
+<span class="fc" id="L105">        ts.assertEmpty();</span>
+<span class="fc" id="L106">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void firstErrors() {
+<span class="fc" id="L111">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+
+<span class="fc" id="L113">        Maybe.mergeArray(Maybe.&lt;Integer&gt;error(new TestException()), Maybe.&lt;Integer&gt;empty(), Maybe.just(2))</span>
+<span class="fc" id="L114">        .subscribe(ts);</span>
+
+<span class="fc" id="L116">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L117">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void errorFused() {
+<span class="fc" id="L122">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L124">        Maybe.mergeArray(Maybe.&lt;Integer&gt;error(new TestException()), Maybe.just(2))</span>
+<span class="fc" id="L125">        .subscribe(ts);</span>
+<span class="fc" id="L126">        ts</span>
+<span class="fc" id="L127">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L128">        .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L129">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L130">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void errorRace() {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L136">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+            try {
+<span class="fc" id="L139">                final PublishSubject&lt;Integer&gt; ps1 = PublishSubject.create();</span>
+<span class="fc" id="L140">                final PublishSubject&lt;Integer&gt; ps2 = PublishSubject.create();</span>
+
+<span class="fc" id="L142">                TestSubscriber&lt;Integer&gt; ts = Maybe.mergeArray(ps1.singleElement(), ps2.singleElement())</span>
+<span class="fc" id="L143">                .test();</span>
+
+<span class="fc" id="L145">                final TestException ex = new TestException();</span>
+
+<span class="fc" id="L147">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L150">                        ps1.onError(ex);</span>
+<span class="fc" id="L151">                    }</span>
+                };
+
+<span class="fc" id="L154">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L157">                        ps2.onError(ex);</span>
+<span class="fc" id="L158">                    }</span>
+                };
+
+<span class="fc" id="L161">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L163">                ts.assertFailure(Throwable.class);</span>
+
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L166">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L169">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L172">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void mergeBadSource() {
+<span class="fc" id="L177">        Maybe.mergeArray(new Maybe&lt;Integer&gt;() {</span>
+            @Override
+            protected void subscribeActual(MaybeObserver&lt;? super Integer&gt; observer) {
+<span class="fc" id="L180">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L181">                observer.onSuccess(1);</span>
+<span class="fc" id="L182">                observer.onSuccess(2);</span>
+<span class="fc" id="L183">                observer.onSuccess(3);</span>
+<span class="fc" id="L184">            }</span>
+<span class="fc" id="L185">        }, Maybe.never())</span>
+<span class="fc" id="L186">        .test()</span>
+<span class="fc" id="L187">        .assertResult(1, 2);</span>
+<span class="fc" id="L188">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void smallOffer2Throws() {
+<span class="fc" id="L193">        Maybe.mergeArray(Maybe.never(), Maybe.never())</span>
+<span class="fc" id="L194">        .subscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+
+            @SuppressWarnings(&quot;rawtypes&quot;)
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="fc" id="L199">                MergeMaybeObserver o = (MergeMaybeObserver)s;</span>
+
+                try {
+<span class="nc" id="L202">                    o.queue.offer(1, 2);</span>
+<span class="nc" id="L203">                    fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L204">                } catch (UnsupportedOperationException ex) {</span>
+                    // expected
+<span class="nc" id="L206">                }</span>
+<span class="fc" id="L207">            }</span>
+
+            @Override
+            public void onNext(Object t) {
+<span class="nc" id="L211">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L215">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L219">            }</span>
+        });
+<span class="fc" id="L221">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void largeOffer2Throws() {
+<span class="fc" id="L226">        Maybe&lt;Integer&gt;[] a = new Maybe[1024];</span>
+<span class="fc" id="L227">        Arrays.fill(a, Maybe.never());</span>
+<span class="fc" id="L228">        Maybe.mergeArray(a)</span>
+<span class="fc" id="L229">        .subscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+
+            @SuppressWarnings(&quot;rawtypes&quot;)
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="fc" id="L234">                MergeMaybeObserver o = (MergeMaybeObserver)s;</span>
+
+                try {
+<span class="nc" id="L237">                    o.queue.offer(1, 2);</span>
+<span class="nc" id="L238">                    fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L239">                } catch (UnsupportedOperationException ex) {</span>
+                    // expected
+<span class="nc" id="L241">                }</span>
+
+<span class="fc" id="L243">                o.queue.drop();</span>
+<span class="fc" id="L244">            }</span>
+
+            @Override
+            public void onNext(Object t) {
+<span class="nc" id="L248">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L252">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L256">            }</span>
+        });
+<span class="fc" id="L258">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

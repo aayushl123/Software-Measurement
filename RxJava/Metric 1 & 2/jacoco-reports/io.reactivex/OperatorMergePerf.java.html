@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OperatorMergePerf.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex</a> &gt; <span class="el_source">OperatorMergePerf.java</span></div><h1>OperatorMergePerf.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.infra.Blackhole;
+
+import io.reactivex.Flowable;
+import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
+
+@BenchmarkMode(Mode.Throughput)
+@OutputTimeUnit(TimeUnit.SECONDS)
+<span class="nc" id="L28">public class OperatorMergePerf {</span>
+
+    // flatMap
+    @Benchmark
+    public void oneStreamOfNthatMergesIn1(final InputMillion input) throws InterruptedException {
+<span class="nc" id="L33">        Flowable&lt;Flowable&lt;Integer&gt;&gt; os = Flowable.range(1, input.size)</span>
+<span class="nc" id="L34">                .map(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Integer&gt; apply(Integer v) {
+<span class="nc" id="L37">                        return Flowable.just(v);</span>
+                    }
+                });
+<span class="nc" id="L40">        PerfSubscriber o = input.newLatchedObserver();</span>
+<span class="nc" id="L41">        Flowable.merge(os).subscribe(o);</span>
+
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        if (input.size == 1) {</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">            while (o.latch.getCount() != 0) { }</span>
+        } else {
+<span class="nc" id="L46">            o.latch.await();</span>
+        }
+<span class="nc" id="L48">    }</span>
+
+    // flatMap
+    @Benchmark
+    public void merge1SyncStreamOfN(final InputMillion input) throws InterruptedException {
+<span class="nc" id="L53">        Flowable&lt;Flowable&lt;Integer&gt;&gt; os = Flowable.just(1).map(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer i) {
+<span class="nc" id="L56">                    return Flowable.range(0, input.size);</span>
+            }
+        });
+<span class="nc" id="L59">        PerfSubscriber o = input.newLatchedObserver();</span>
+<span class="nc" id="L60">        Flowable.merge(os).subscribe(o);</span>
+
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (input.size == 1) {</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">            while (o.latch.getCount() != 0) { }</span>
+        } else {
+<span class="nc" id="L65">            o.latch.await();</span>
+        }
+<span class="nc" id="L67">    }</span>
+
+    @Benchmark
+    public void mergeNSyncStreamsOfN(final InputThousand input) throws InterruptedException {
+<span class="nc" id="L71">        Flowable&lt;Flowable&lt;Integer&gt;&gt; os = input.flowable.map(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer i) {
+<span class="nc" id="L74">                    return Flowable.range(0, input.size);</span>
+            }
+        });
+<span class="nc" id="L77">        PerfSubscriber o = input.newLatchedObserver();</span>
+<span class="nc" id="L78">        Flowable.merge(os).subscribe(o);</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (input.size == 1) {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            while (o.latch.getCount() != 0) { }</span>
+        } else {
+<span class="nc" id="L82">            o.latch.await();</span>
+        }
+<span class="nc" id="L84">    }</span>
+
+    @Benchmark
+    public void mergeNAsyncStreamsOfN(final InputThousand input) throws InterruptedException {
+<span class="nc" id="L88">        Flowable&lt;Flowable&lt;Integer&gt;&gt; os = input.flowable.map(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer i) {
+<span class="nc" id="L91">                    return Flowable.range(0, input.size).subscribeOn(Schedulers.computation());</span>
+            }
+        });
+<span class="nc" id="L94">        PerfSubscriber o = input.newLatchedObserver();</span>
+<span class="nc" id="L95">        Flowable.merge(os).subscribe(o);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (input.size == 1) {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            while (o.latch.getCount() != 0) { }</span>
+        } else {
+<span class="nc" id="L99">            o.latch.await();</span>
+        }
+<span class="nc" id="L101">    }</span>
+
+    @Benchmark
+    public void mergeTwoAsyncStreamsOfN(final InputThousand input) throws InterruptedException {
+<span class="nc" id="L105">        PerfSubscriber o = input.newLatchedObserver();</span>
+<span class="nc" id="L106">        Flowable&lt;Integer&gt; ob = Flowable.range(0, input.size).subscribeOn(Schedulers.computation());</span>
+<span class="nc" id="L107">        Flowable.merge(ob, ob).subscribe(o);</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (input.size == 1) {</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            while (o.latch.getCount() != 0) { }</span>
+        } else {
+<span class="nc" id="L111">            o.latch.await();</span>
+        }
+<span class="nc" id="L113">    }</span>
+
+    @Benchmark
+    public void mergeNSyncStreamsOf1(final InputForMergeN input) throws InterruptedException {
+<span class="nc" id="L117">        PerfSubscriber o = input.newLatchedObserver();</span>
+<span class="nc" id="L118">        Flowable.merge(input.observables).subscribe(o);</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (input.size == 1) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            while (o.latch.getCount() != 0) { }</span>
+        } else {
+<span class="nc" id="L122">            o.latch.await();</span>
+        }
+<span class="nc" id="L124">    }</span>
+
+    @State(Scope.Thread)
+<span class="nc" id="L127">    public static class InputForMergeN {</span>
+        @Param({ &quot;1&quot;, &quot;100&quot;, &quot;1000&quot; })
+        //        @Param({ &quot;1000&quot; })
+        public int size;
+
+        private Blackhole bh;
+        List&lt;Flowable&lt;Integer&gt;&gt; observables;
+
+        @Setup
+        public void setup(final Blackhole bh) {
+<span class="nc" id="L137">            this.bh = bh;</span>
+<span class="nc" id="L138">            observables = new ArrayList&lt;Flowable&lt;Integer&gt;&gt;();</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">            for (int i = 0; i &lt; size; i++) {</span>
+<span class="nc" id="L140">                observables.add(Flowable.just(i));</span>
+            }
+<span class="nc" id="L142">        }</span>
+
+        public PerfSubscriber newLatchedObserver() {
+<span class="nc" id="L145">            return new PerfSubscriber(bh);</span>
+        }
+    }
+
+    @State(Scope.Thread)
+<span class="nc" id="L150">    public static class InputMillion extends InputWithIncrementingInteger {</span>
+
+        @Param({ &quot;1&quot;, &quot;1000&quot;, &quot;1000000&quot; })
+        //        @Param({ &quot;1000&quot; })
+        public int size;
+
+        @Override
+        public int getSize() {
+<span class="nc" id="L158">            return size;</span>
+        }
+
+    }
+
+    @State(Scope.Thread)
+<span class="nc" id="L164">    public static class InputThousand extends InputWithIncrementingInteger {</span>
+
+        @Param({ &quot;1&quot;, &quot;1000&quot; })
+        //        @Param({ &quot;1000&quot; })
+        public int size;
+
+        @Override
+        public int getSize() {
+<span class="nc" id="L172">            return size;</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

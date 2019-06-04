@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableCacheTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableCacheTest.java</span></div><h1>ObservableCacheTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L35">public class ObservableCacheTest {</span>
+    @Test
+    public void testColdReplayNoBackpressure() {
+<span class="fc" id="L38">        ObservableCache&lt;Integer&gt; source = new ObservableCache&lt;Integer&gt;(Observable.range(0, 1000), 16);</span>
+
+<span class="fc" id="L40">        assertFalse(&quot;Source is connected!&quot;, source.isConnected());</span>
+
+<span class="fc" id="L42">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L44">        source.subscribe(to);</span>
+
+<span class="fc" id="L46">        assertTrue(&quot;Source is not connected!&quot;, source.isConnected());</span>
+<span class="fc" id="L47">        assertFalse(&quot;Subscribers retained!&quot;, source.hasObservers());</span>
+
+<span class="fc" id="L49">        to.assertNoErrors();</span>
+<span class="fc" id="L50">        to.assertTerminated();</span>
+<span class="fc" id="L51">        List&lt;Integer&gt; onNextEvents = to.values();</span>
+<span class="fc" id="L52">        assertEquals(1000, onNextEvents.size());</span>
+
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L55">            assertEquals((Integer)i, onNextEvents.get(i));</span>
+        }
+<span class="fc" id="L57">    }</span>
+
+    @Test
+    public void testCache() throws InterruptedException {
+<span class="fc" id="L61">        final AtomicInteger counter = new AtomicInteger();</span>
+<span class="fc" id="L62">        Observable&lt;String&gt; o = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(final Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L66">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L67">                new Thread(new Runnable() {</span>
+
+                    @Override
+                    public void run() {
+<span class="fc" id="L71">                        counter.incrementAndGet();</span>
+<span class="fc" id="L72">                        System.out.println(&quot;published Observable being executed&quot;);</span>
+<span class="fc" id="L73">                        observer.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L74">                        observer.onComplete();</span>
+<span class="fc" id="L75">                    }</span>
+<span class="fc" id="L76">                }).start();</span>
+<span class="fc" id="L77">            }</span>
+<span class="fc" id="L78">        }).cache();</span>
+
+        // we then expect the following 2 subscriptions to get that same value
+<span class="fc" id="L81">        final CountDownLatch latch = new CountDownLatch(2);</span>
+
+        // subscribe once
+<span class="fc" id="L84">        o.subscribe(new Consumer&lt;String&gt;() {</span>
+            @Override
+            public void accept(String v) {
+<span class="fc" id="L87">                    assertEquals(&quot;one&quot;, v);</span>
+<span class="fc" id="L88">                    System.out.println(&quot;v: &quot; + v);</span>
+<span class="fc" id="L89">                    latch.countDown();</span>
+<span class="fc" id="L90">            }</span>
+        });
+
+        // subscribe again
+<span class="fc" id="L94">        o.subscribe(new Consumer&lt;String&gt;() {</span>
+            @Override
+            public void accept(String v) {
+<span class="fc" id="L97">                    assertEquals(&quot;one&quot;, v);</span>
+<span class="fc" id="L98">                    System.out.println(&quot;v: &quot; + v);</span>
+<span class="fc" id="L99">                    latch.countDown();</span>
+<span class="fc" id="L100">            }</span>
+        });
+
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (!latch.await(1000, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L104">            fail(&quot;subscriptions did not receive values&quot;);</span>
+        }
+<span class="fc" id="L106">        assertEquals(1, counter.get());</span>
+<span class="fc" id="L107">    }</span>
+
+    @Test
+    public void testUnsubscribeSource() throws Exception {
+<span class="fc" id="L111">        Action unsubscribe = mock(Action.class);</span>
+<span class="fc" id="L112">        Observable&lt;Integer&gt; o = Observable.just(1).doOnDispose(unsubscribe).cache();</span>
+<span class="fc" id="L113">        o.subscribe();</span>
+<span class="fc" id="L114">        o.subscribe();</span>
+<span class="fc" id="L115">        o.subscribe();</span>
+<span class="fc" id="L116">        verify(unsubscribe, never()).run();</span>
+<span class="fc" id="L117">    }</span>
+
+    @Test
+    public void testTake() {
+<span class="fc" id="L121">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L123">        ObservableCache&lt;Integer&gt; cached = new ObservableCache&lt;Integer&gt;(Observable.range(1, 1000), 16);</span>
+<span class="fc" id="L124">        cached.take(10).subscribe(to);</span>
+
+<span class="fc" id="L126">        to.assertNoErrors();</span>
+<span class="fc" id="L127">        to.assertComplete();</span>
+<span class="fc" id="L128">        to.assertValues(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+//        ts.assertUnsubscribed(); // FIXME no longer valid
+<span class="fc" id="L130">        assertFalse(cached.hasObservers());</span>
+<span class="fc" id="L131">    }</span>
+
+    @Test
+    public void testAsync() {
+<span class="fc" id="L135">        Observable&lt;Integer&gt; source = Observable.range(1, 10000);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L137">            TestObserver&lt;Integer&gt; to1 = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L139">            ObservableCache&lt;Integer&gt; cached = new ObservableCache&lt;Integer&gt;(source, 16);</span>
+
+<span class="fc" id="L141">            cached.observeOn(Schedulers.computation()).subscribe(to1);</span>
+
+<span class="fc" id="L143">            to1.awaitTerminalEvent(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L144">            to1.assertNoErrors();</span>
+<span class="fc" id="L145">            to1.assertComplete();</span>
+<span class="fc" id="L146">            assertEquals(10000, to1.values().size());</span>
+
+<span class="fc" id="L148">            TestObserver&lt;Integer&gt; to2 = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L149">            cached.observeOn(Schedulers.computation()).subscribe(to2);</span>
+
+<span class="fc" id="L151">            to2.awaitTerminalEvent(2, TimeUnit.SECONDS);</span>
+<span class="fc" id="L152">            to2.assertNoErrors();</span>
+<span class="fc" id="L153">            to2.assertComplete();</span>
+<span class="fc" id="L154">            assertEquals(10000, to2.values().size());</span>
+        }
+<span class="fc" id="L156">    }</span>
+
+    @Test
+    public void testAsyncComeAndGo() {
+<span class="fc" id="L160">        Observable&lt;Long&gt; source = Observable.interval(1, 1, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L161">                .take(1000)</span>
+<span class="fc" id="L162">                .subscribeOn(Schedulers.io());</span>
+<span class="fc" id="L163">        ObservableCache&lt;Long&gt; cached = new ObservableCache&lt;Long&gt;(source, 16);</span>
+
+<span class="fc" id="L165">        Observable&lt;Long&gt; output = cached.observeOn(Schedulers.computation());</span>
+
+<span class="fc" id="L167">        List&lt;TestObserver&lt;Long&gt;&gt; list = new ArrayList&lt;TestObserver&lt;Long&gt;&gt;(100);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L169">            TestObserver&lt;Long&gt; to = new TestObserver&lt;Long&gt;();</span>
+<span class="fc" id="L170">            list.add(to);</span>
+<span class="fc" id="L171">            output.skip(i * 10).take(10).subscribe(to);</span>
+        }
+
+<span class="fc" id="L174">        List&lt;Long&gt; expected = new ArrayList&lt;Long&gt;();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L176">            expected.add((long)(i - 10));</span>
+        }
+<span class="fc" id="L178">        int j = 0;</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (TestObserver&lt;Long&gt; to : list) {</span>
+<span class="fc" id="L180">            to.awaitTerminalEvent(3, TimeUnit.SECONDS);</span>
+<span class="fc" id="L181">            to.assertNoErrors();</span>
+<span class="fc" id="L182">            to.assertComplete();</span>
+
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            for (int i = j * 10; i &lt; j * 10 + 10; i++) {</span>
+<span class="fc" id="L185">                expected.set(i - j * 10, (long)i);</span>
+            }
+
+<span class="fc" id="L188">            to.assertValueSequence(expected);</span>
+
+<span class="fc" id="L190">            j++;</span>
+<span class="fc" id="L191">        }</span>
+<span class="fc" id="L192">    }</span>
+
+    @Test
+    public void testNoMissingBackpressureException() {
+<span class="fc" id="L196">        final int m = 4 * 1000 * 1000;</span>
+<span class="fc" id="L197">        Observable&lt;Integer&gt; firehose = Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super Integer&gt; t) {
+<span class="fc" id="L200">                t.onSubscribe(Disposables.empty());</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                for (int i = 0; i &lt; m; i++) {</span>
+<span class="fc" id="L202">                    t.onNext(i);</span>
+                }
+<span class="fc" id="L204">                t.onComplete();</span>
+<span class="fc" id="L205">            }</span>
+        });
+
+<span class="fc" id="L208">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L209">        firehose.cache().observeOn(Schedulers.computation()).takeLast(100).subscribe(to);</span>
+
+<span class="fc" id="L211">        to.awaitTerminalEvent(3, TimeUnit.SECONDS);</span>
+<span class="fc" id="L212">        to.assertNoErrors();</span>
+<span class="fc" id="L213">        to.assertComplete();</span>
+
+<span class="fc" id="L215">        assertEquals(100, to.values().size());</span>
+<span class="fc" id="L216">    }</span>
+
+    @Test
+    public void testValuesAndThenError() {
+<span class="fc" id="L220">        Observable&lt;Integer&gt; source = Observable.range(1, 10)</span>
+<span class="fc" id="L221">                .concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L222">                .cache();</span>
+
+<span class="fc" id="L224">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L225">        source.subscribe(to);</span>
+
+<span class="fc" id="L227">        to.assertValues(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L228">        to.assertNotComplete();</span>
+<span class="fc" id="L229">        to.assertError(TestException.class);</span>
+
+<span class="fc" id="L231">        TestObserver&lt;Integer&gt; to2 = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L232">        source.subscribe(to2);</span>
+
+<span class="fc" id="L234">        to2.assertValues(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L235">        to2.assertNotComplete();</span>
+<span class="fc" id="L236">        to2.assertError(TestException.class);</span>
+<span class="fc" id="L237">    }</span>
+
+    @Test
+    @Ignore(&quot;2.x consumers are not allowed to throw&quot;)
+    public void unsafeChildThrows() {
+<span class="nc" id="L242">        final AtomicInteger count = new AtomicInteger();</span>
+
+<span class="nc" id="L244">        Observable&lt;Integer&gt; source = Observable.range(1, 100)</span>
+<span class="nc" id="L245">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer t) {
+<span class="nc" id="L248">                count.getAndIncrement();</span>
+<span class="nc" id="L249">            }</span>
+        })
+<span class="nc" id="L251">        .cache();</span>
+
+<span class="nc" id="L253">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="nc" id="L256">                throw new TestException();</span>
+            }
+        };
+
+<span class="nc" id="L260">        source.subscribe(to);</span>
+
+<span class="nc" id="L262">        Assert.assertEquals(100, count.get());</span>
+
+<span class="nc" id="L264">        to.assertNoValues();</span>
+<span class="nc" id="L265">        to.assertNotComplete();</span>
+<span class="nc" id="L266">        to.assertError(TestException.class);</span>
+<span class="nc" id="L267">    }</span>
+
+    @Test
+    public void observers() {
+<span class="fc" id="L271">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+<span class="fc" id="L272">        ObservableCache&lt;Integer&gt; cache = (ObservableCache&lt;Integer&gt;)Observable.range(1, 5).concatWith(ps).cache();</span>
+
+<span class="fc" id="L274">        assertFalse(cache.hasObservers());</span>
+
+<span class="fc" id="L276">        assertEquals(0, cache.cachedEventCount());</span>
+
+<span class="fc" id="L278">        TestObserver&lt;Integer&gt; to = cache.test();</span>
+
+<span class="fc" id="L280">        assertTrue(cache.hasObservers());</span>
+
+<span class="fc" id="L282">        assertEquals(5, cache.cachedEventCount());</span>
+
+<span class="fc" id="L284">        ps.onComplete();</span>
+
+<span class="fc" id="L286">        to.assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L287">    }</span>
+
+    @Test
+    public void disposeOnArrival() {
+<span class="fc" id="L291">        Observable.range(1, 5).cache()</span>
+<span class="fc" id="L292">        .test(true)</span>
+<span class="fc" id="L293">        .assertEmpty();</span>
+<span class="fc" id="L294">    }</span>
+
+    @Test
+    public void disposeOnArrival2() {
+<span class="fc" id="L298">        Observable&lt;Integer&gt; o = PublishSubject.&lt;Integer&gt;create().cache();</span>
+
+<span class="fc" id="L300">        o.test();</span>
+
+<span class="fc" id="L302">        o.test(true)</span>
+<span class="fc" id="L303">        .assertEmpty();</span>
+<span class="fc" id="L304">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L308">        TestHelper.checkDisposed(Observable.range(1, 5).cache());</span>
+<span class="fc" id="L309">    }</span>
+
+    @Test
+    public void take() {
+<span class="fc" id="L313">        Observable&lt;Integer&gt; cache = Observable.range(1, 5).cache();</span>
+
+<span class="fc" id="L315">        cache.take(2).test().assertResult(1, 2);</span>
+<span class="fc" id="L316">        cache.take(3).test().assertResult(1, 2, 3);</span>
+<span class="fc" id="L317">    }</span>
+
+    @Test
+    public void subscribeEmitRace() {
+<span class="fc bfc" id="L321" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L322">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L324">            final Observable&lt;Integer&gt; cache = ps.cache();</span>
+
+<span class="fc" id="L326">            cache.test();</span>
+
+<span class="fc" id="L328">            final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L330">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L333">                    cache.subscribe(to);</span>
+<span class="fc" id="L334">                }</span>
+            };
+
+<span class="fc" id="L337">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc bfc" id="L340" title="All 2 branches covered.">                    for (int j = 0; j &lt; 500; j++) {</span>
+<span class="fc" id="L341">                        ps.onNext(j);</span>
+                    }
+<span class="fc" id="L343">                    ps.onComplete();</span>
+<span class="fc" id="L344">                }</span>
+            };
+
+<span class="fc" id="L347">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L349">            to</span>
+<span class="fc" id="L350">            .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L351">            .assertSubscribed().assertValueCount(500).assertComplete().assertNoErrors();</span>
+        }
+<span class="fc" id="L353">    }</span>
+
+    @Test
+    public void cancelledUpFront() {
+<span class="fc" id="L357">        final AtomicInteger call = new AtomicInteger();</span>
+<span class="fc" id="L358">        Observable&lt;Object&gt; f = Observable.fromCallable(new Callable&lt;Object&gt;() {</span>
+            @Override
+            public Object call() throws Exception {
+<span class="fc" id="L361">                return call.incrementAndGet();</span>
+            }
+<span class="fc" id="L363">        }).concatWith(Observable.never())</span>
+<span class="fc" id="L364">        .cache();</span>
+
+<span class="fc" id="L366">        f.test().assertValuesOnly(1);</span>
+
+<span class="fc" id="L368">        f.test(true)</span>
+<span class="fc" id="L369">        .assertEmpty();</span>
+
+<span class="fc" id="L371">        assertEquals(1, call.get());</span>
+<span class="fc" id="L372">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

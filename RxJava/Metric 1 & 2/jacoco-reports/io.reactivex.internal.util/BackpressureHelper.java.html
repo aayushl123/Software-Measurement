@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BackpressureHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.util</a> &gt; <span class="el_source">BackpressureHelper.java</span></div><h1>BackpressureHelper.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.internal.util;
+
+import java.util.concurrent.atomic.AtomicLong;
+
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Utility class to help with backpressure-related operations such as request aggregation.
+ */
+public final class BackpressureHelper {
+    /** Utility class. */
+<span class="fc" id="L24">    private BackpressureHelper() {</span>
+<span class="fc" id="L25">        throw new IllegalStateException(&quot;No instances!&quot;);</span>
+    }
+
+    /**
+     * Adds two long values and caps the sum at Long.MAX_VALUE.
+     * @param a the first value
+     * @param b the second value
+     * @return the sum capped at Long.MAX_VALUE
+     */
+    public static long addCap(long a, long b) {
+<span class="fc" id="L35">        long u = a + b;</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (u &lt; 0L) {</span>
+<span class="fc" id="L37">            return Long.MAX_VALUE;</span>
+        }
+<span class="fc" id="L39">        return u;</span>
+    }
+
+    /**
+     * Multiplies two long values and caps the product at Long.MAX_VALUE.
+     * @param a the first value
+     * @param b the second value
+     * @return the product capped at Long.MAX_VALUE
+     */
+    public static long multiplyCap(long a, long b) {
+<span class="fc" id="L49">        long u = a * b;</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (((a | b) &gt;&gt;&gt; 31) != 0) {</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (u / a != b) {</span>
+<span class="fc" id="L52">                return Long.MAX_VALUE;</span>
+            }
+        }
+<span class="fc" id="L55">        return u;</span>
+    }
+
+    /**
+     * Atomically adds the positive value n to the requested value in the AtomicLong and
+     * caps the result at Long.MAX_VALUE and returns the previous value.
+     * @param requested the AtomicLong holding the current requested value
+     * @param n the value to add, must be positive (not verified)
+     * @return the original value before the add
+     */
+    public static long add(AtomicLong requested, long n) {
+        for (;;) {
+<span class="fc" id="L67">            long r = requested.get();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (r == Long.MAX_VALUE) {</span>
+<span class="fc" id="L69">                return Long.MAX_VALUE;</span>
+            }
+<span class="fc" id="L71">            long u = addCap(r, n);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (requested.compareAndSet(r, u)) {</span>
+<span class="fc" id="L73">                return r;</span>
+            }
+<span class="fc" id="L75">        }</span>
+    }
+
+    /**
+     * Atomically adds the positive value n to the requested value in the AtomicLong and
+     * caps the result at Long.MAX_VALUE and returns the previous value and
+     * considers Long.MIN_VALUE as a cancel indication (no addition then).
+     * @param requested the AtomicLong holding the current requested value
+     * @param n the value to add, must be positive (not verified)
+     * @return the original value before the add
+     */
+    public static long addCancel(AtomicLong requested, long n) {
+        for (;;) {
+<span class="fc" id="L88">            long r = requested.get();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (r == Long.MIN_VALUE) {</span>
+<span class="fc" id="L90">                return Long.MIN_VALUE;</span>
+            }
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            if (r == Long.MAX_VALUE) {</span>
+<span class="fc" id="L93">                return Long.MAX_VALUE;</span>
+            }
+<span class="fc" id="L95">            long u = addCap(r, n);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (requested.compareAndSet(r, u)) {</span>
+<span class="fc" id="L97">                return r;</span>
+            }
+<span class="fc" id="L99">        }</span>
+    }
+
+    /**
+     * Atomically subtract the given number (positive, not validated) from the target field unless it contains Long.MAX_VALUE.
+     * @param requested the target field holding the current requested amount
+     * @param n the produced element count, positive (not validated)
+     * @return the new amount
+     */
+    public static long produced(AtomicLong requested, long n) {
+        for (;;) {
+<span class="fc" id="L110">            long current = requested.get();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (current == Long.MAX_VALUE) {</span>
+<span class="fc" id="L112">                return Long.MAX_VALUE;</span>
+            }
+<span class="fc" id="L114">            long update = current - n;</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            if (update &lt; 0L) {</span>
+<span class="fc" id="L116">                RxJavaPlugins.onError(new IllegalStateException(&quot;More produced than requested: &quot; + update));</span>
+<span class="fc" id="L117">                update = 0L;</span>
+            }
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (requested.compareAndSet(current, update)) {</span>
+<span class="fc" id="L120">                return update;</span>
+            }
+<span class="fc" id="L122">        }</span>
+    }
+
+    /**
+     * Atomically subtract the given number (positive, not validated) from the target field if
+     * it doesn't contain Long.MIN_VALUE (indicating some cancelled state) or Long.MAX_VALUE (unbounded mode).
+     * @param requested the target field holding the current requested amount
+     * @param n the produced element count, positive (not validated)
+     * @return the new amount
+     */
+    public static long producedCancel(AtomicLong requested, long n) {
+        for (;;) {
+<span class="fc" id="L134">            long current = requested.get();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (current == Long.MIN_VALUE) {</span>
+<span class="fc" id="L136">                return Long.MIN_VALUE;</span>
+            }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (current == Long.MAX_VALUE) {</span>
+<span class="fc" id="L139">                return Long.MAX_VALUE;</span>
+            }
+<span class="fc" id="L141">            long update = current - n;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (update &lt; 0L) {</span>
+<span class="fc" id="L143">                RxJavaPlugins.onError(new IllegalStateException(&quot;More produced than requested: &quot; + update));</span>
+<span class="fc" id="L144">                update = 0L;</span>
+            }
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (requested.compareAndSet(current, update)) {</span>
+<span class="fc" id="L147">                return update;</span>
+            }
+<span class="fc" id="L149">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

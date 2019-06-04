@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeZipArrayTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeZipArrayTest.java</span></div><h1>MaybeZipArrayTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+
+<span class="fc" id="L30">public class MaybeZipArrayTest {</span>
+
+<span class="fc" id="L32">    final BiFunction&lt;Object, Object, Object&gt; addString = new BiFunction&lt;Object, Object, Object&gt;() {</span>
+        @Override
+        public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L35">            return &quot;&quot; + a + b;</span>
+        }
+    };
+
+<span class="fc" id="L39">    final Function3&lt;Object, Object, Object, Object&gt; addString3 = new Function3&lt;Object, Object, Object, Object&gt;() {</span>
+        @Override
+        public Object apply(Object a, Object b, Object c) throws Exception {
+<span class="nc" id="L42">            return &quot;&quot; + a + b + c;</span>
+        }
+    };
+
+    @Test
+    public void firstError() {
+<span class="fc" id="L48">        Maybe.zip(Maybe.error(new TestException()), Maybe.just(1), addString)</span>
+<span class="fc" id="L49">        .test()</span>
+<span class="fc" id="L50">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L51">    }</span>
+
+    @Test
+    public void secondError() {
+<span class="fc" id="L55">        Maybe.zip(Maybe.just(1), Maybe.&lt;Integer&gt;error(new TestException()), addString)</span>
+<span class="fc" id="L56">        .test()</span>
+<span class="fc" id="L57">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L58">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L62">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L64">        TestObserver&lt;Object&gt; to = Maybe.zip(pp.singleElement(), pp.singleElement(), addString)</span>
+<span class="fc" id="L65">        .test();</span>
+
+<span class="fc" id="L67">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L69">        to.cancel();</span>
+
+<span class="fc" id="L71">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void zipperThrows() {
+<span class="fc" id="L76">        Maybe.zip(Maybe.just(1), Maybe.just(2), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L79">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L82">        .test()</span>
+<span class="fc" id="L83">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L84">    }</span>
+
+    @Test
+    public void zipperReturnsNull() {
+<span class="fc" id="L88">        Maybe.zip(Maybe.just(1), Maybe.just(2), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L91">                return null;</span>
+            }
+        })
+<span class="fc" id="L94">        .test()</span>
+<span class="fc" id="L95">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L96">    }</span>
+
+    @Test
+    public void middleError() {
+<span class="fc" id="L100">        PublishProcessor&lt;Integer&gt; pp0 = PublishProcessor.create();</span>
+<span class="fc" id="L101">        PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+
+<span class="fc" id="L103">        TestObserver&lt;Object&gt; to = Maybe.zip(pp0.singleElement(), pp1.singleElement(), pp0.singleElement(), addString3)</span>
+<span class="fc" id="L104">        .test();</span>
+
+<span class="fc" id="L106">        pp1.onError(new TestException());</span>
+
+<span class="fc" id="L108">        assertFalse(pp0.hasSubscribers());</span>
+
+<span class="fc" id="L110">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L111">    }</span>
+
+    @Test
+    public void innerErrorRace() {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L116">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L118">                final PublishProcessor&lt;Integer&gt; pp0 = PublishProcessor.create();</span>
+<span class="fc" id="L119">                final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+
+<span class="fc" id="L121">                final TestObserver&lt;Object&gt; to = Maybe.zip(pp0.singleElement(), pp1.singleElement(), addString)</span>
+<span class="fc" id="L122">                .test();</span>
+
+<span class="fc" id="L124">                final TestException ex = new TestException();</span>
+
+<span class="fc" id="L126">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L129">                        pp0.onError(ex);</span>
+<span class="fc" id="L130">                    }</span>
+                };
+
+<span class="fc" id="L133">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L136">                        pp1.onError(ex);</span>
+<span class="fc" id="L137">                    }</span>
+                };
+
+<span class="fc" id="L140">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L142">                to.assertFailure(TestException.class);</span>
+
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L145">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L148">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L151">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test(expected = NullPointerException.class)
+    public void zipArrayOneIsNull() {
+<span class="fc" id="L156">        Maybe.zipArray(new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] v) {
+<span class="nc" id="L159">                return 1;</span>
+            }
+<span class="fc" id="L161">        }, Maybe.just(1), null)</span>
+<span class="nc" id="L162">        .blockingGet();</span>
+<span class="nc" id="L163">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void singleSourceZipperReturnsNull() {
+<span class="fc" id="L168">        Maybe.zipArray(Functions.justFunction(null), Maybe.just(1))</span>
+<span class="fc" id="L169">        .test()</span>
+<span class="fc" id="L170">        .assertFailureAndMessage(NullPointerException.class, &quot;The zipper returned a null value&quot;);</span>
+<span class="fc" id="L171">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

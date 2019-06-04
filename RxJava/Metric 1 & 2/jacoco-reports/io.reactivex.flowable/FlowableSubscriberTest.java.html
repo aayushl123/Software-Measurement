@@ -1,0 +1,851 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSubscriberTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.flowable</a> &gt; <span class="el_source">FlowableSubscriberTest.java</span></div><h1>FlowableSubscriberTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.*;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscribers.ForEachWhileSubscriber;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L36">public class FlowableSubscriberTest {</span>
+
+    /**
+     * Should request n for whatever the final Subscriber asks for.
+     */
+    @Test
+    public void testRequestFromFinalSubscribeWithRequestValue() {
+<span class="fc" id="L43">        TestSubscriber&lt;String&gt; s = new TestSubscriber&lt;String&gt;(0L);</span>
+<span class="fc" id="L44">        s.request(10);</span>
+<span class="fc" id="L45">        final AtomicLong r = new AtomicLong();</span>
+<span class="fc" id="L46">        s.onSubscribe(new Subscription() {</span>
+
+            @Override
+            public void request(long n) {
+<span class="fc" id="L50">                r.set(n);</span>
+<span class="fc" id="L51">            }</span>
+
+            @Override
+            public void cancel() {
+
+<span class="nc" id="L56">            }</span>
+
+        });
+<span class="fc" id="L59">        assertEquals(10, r.get());</span>
+<span class="fc" id="L60">    }</span>
+
+    /**
+     * Should request -1 for infinite.
+     */
+    @Test
+    public void testRequestFromFinalSubscribeWithoutRequestValue() {
+<span class="fc" id="L67">        TestSubscriber&lt;String&gt; s = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L68">        final AtomicLong r = new AtomicLong();</span>
+<span class="fc" id="L69">        s.onSubscribe(new Subscription() {</span>
+
+            @Override
+            public void request(long n) {
+<span class="fc" id="L73">                r.set(n);</span>
+<span class="fc" id="L74">            }</span>
+
+            @Override
+            public void cancel() {
+
+<span class="nc" id="L79">            }</span>
+
+        });
+<span class="fc" id="L82">        assertEquals(Long.MAX_VALUE, r.get());</span>
+<span class="fc" id="L83">    }</span>
+
+    @Test
+    public void testRequestFromChainedOperator() throws Exception {
+<span class="fc" id="L87">        TestSubscriber&lt;String&gt; s = new TestSubscriber&lt;String&gt;(10L);</span>
+<span class="fc" id="L88">        FlowableOperator&lt;String, String&gt; o = new FlowableOperator&lt;String, String&gt;() {</span>
+            @Override
+            public Subscriber&lt;? super String&gt; apply(final Subscriber&lt;? super String&gt; s1) {
+<span class="fc" id="L91">                return new FlowableSubscriber&lt;String&gt;() {</span>
+
+                    @Override
+                    public void onSubscribe(Subscription a) {
+<span class="fc" id="L95">                        s1.onSubscribe(a);</span>
+<span class="fc" id="L96">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+
+<span class="nc" id="L101">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+
+<span class="nc" id="L106">                    }</span>
+
+                    @Override
+                    public void onNext(String t) {
+
+<span class="nc" id="L111">                    }</span>
+
+                };
+            }
+        };
+<span class="fc" id="L116">        Subscriber&lt;? super String&gt; ns = o.apply(s);</span>
+
+<span class="fc" id="L118">        final AtomicLong r = new AtomicLong();</span>
+        // set set the producer at the top of the chain (ns) and it should flow through the operator to the (s) subscriber
+        // and then it should request up with the value set on the final Subscriber (s)
+<span class="fc" id="L121">        ns.onSubscribe(new Subscription() {</span>
+
+            @Override
+            public void request(long n) {
+<span class="fc" id="L125">                r.set(n);</span>
+<span class="fc" id="L126">            }</span>
+
+            @Override
+            public void cancel() {
+
+<span class="nc" id="L131">            }</span>
+
+        });
+<span class="fc" id="L134">        assertEquals(10, r.get());</span>
+<span class="fc" id="L135">    }</span>
+
+    @Test
+    public void testRequestFromDecoupledOperator() throws Exception {
+<span class="fc" id="L139">        TestSubscriber&lt;String&gt; s = new TestSubscriber&lt;String&gt;(0L);</span>
+<span class="fc" id="L140">        FlowableOperator&lt;String, String&gt; o = new FlowableOperator&lt;String, String&gt;() {</span>
+            @Override
+            public Subscriber&lt;? super String&gt; apply(final Subscriber&lt;? super String&gt; s1) {
+<span class="fc" id="L143">                return new FlowableSubscriber&lt;String&gt;() {</span>
+
+                    @Override
+                    public void onSubscribe(Subscription a) {
+<span class="fc" id="L147">                        s1.onSubscribe(a);</span>
+<span class="fc" id="L148">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+
+<span class="nc" id="L153">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+
+<span class="nc" id="L158">                    }</span>
+
+                    @Override
+                    public void onNext(String t) {
+
+<span class="nc" id="L163">                    }</span>
+
+                };
+            }
+        };
+<span class="fc" id="L168">        s.request(10);</span>
+<span class="fc" id="L169">        Subscriber&lt;? super String&gt; ns = o.apply(s);</span>
+
+<span class="fc" id="L171">        final AtomicLong r = new AtomicLong();</span>
+        // set set the producer at the top of the chain (ns) and it should flow through the operator to the (s) subscriber
+        // and then it should request up with the value set on the final Subscriber (s)
+<span class="fc" id="L174">        ns.onSubscribe(new Subscription() {</span>
+
+            @Override
+            public void request(long n) {
+<span class="fc" id="L178">                r.set(n);</span>
+<span class="fc" id="L179">            }</span>
+
+            @Override
+            public void cancel() {
+
+<span class="nc" id="L184">            }</span>
+
+        });
+<span class="fc" id="L187">        assertEquals(10, r.get());</span>
+<span class="fc" id="L188">    }</span>
+
+    @Test
+    public void testRequestFromDecoupledOperatorThatRequestsN() throws Exception {
+<span class="fc" id="L192">        TestSubscriber&lt;String&gt; s = new TestSubscriber&lt;String&gt;(10L);</span>
+<span class="fc" id="L193">        final AtomicLong innerR = new AtomicLong();</span>
+<span class="fc" id="L194">        FlowableOperator&lt;String, String&gt; o = new FlowableOperator&lt;String, String&gt;() {</span>
+            @Override
+            public Subscriber&lt;? super String&gt; apply(Subscriber&lt;? super String&gt; child) {
+                // we want to decouple the chain so set our own Producer on the child instead of it coming from the parent
+<span class="fc" id="L198">                child.onSubscribe(new Subscription() {</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L202">                        innerR.set(n);</span>
+<span class="fc" id="L203">                    }</span>
+
+                    @Override
+                    public void cancel() {
+
+<span class="nc" id="L208">                    }</span>
+
+                });
+
+<span class="fc" id="L212">                ResourceSubscriber&lt;String&gt; as = new ResourceSubscriber&lt;String&gt;() {</span>
+
+                    @Override
+                    protected void onStart() {
+                        // we request 99 up to the parent
+<span class="fc" id="L217">                        request(99);</span>
+<span class="fc" id="L218">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+
+<span class="nc" id="L223">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+
+<span class="nc" id="L228">                    }</span>
+
+                    @Override
+                    public void onNext(String t) {
+
+<span class="nc" id="L233">                    }</span>
+                };
+
+<span class="fc" id="L236">                return as;</span>
+            }
+        };
+<span class="fc" id="L239">        Subscriber&lt;? super String&gt; ns = o.apply(s);</span>
+
+<span class="fc" id="L241">        final AtomicLong r = new AtomicLong();</span>
+        // set set the producer at the top of the chain (ns) and it should flow through the operator to the (s) subscriber
+        // and then it should request up with the value set on the final Subscriber (s)
+<span class="fc" id="L244">        ns.onSubscribe(new Subscription() {</span>
+
+            @Override
+            public void request(long n) {
+<span class="fc" id="L248">                r.set(n);</span>
+<span class="fc" id="L249">            }</span>
+
+            @Override
+            public void cancel() {
+
+<span class="nc" id="L254">            }</span>
+
+        });
+<span class="fc" id="L257">        assertEquals(99, r.get());</span>
+<span class="fc" id="L258">        assertEquals(10, innerR.get());</span>
+<span class="fc" id="L259">    }</span>
+
+    @Test
+    public void testRequestToFlowable() {
+<span class="fc" id="L263">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(3L);</span>
+<span class="fc" id="L264">        final AtomicLong requested = new AtomicLong();</span>
+<span class="fc" id="L265">        Flowable.&lt;Integer&gt;unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L268">                s.onSubscribe(new Subscription() {</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L272">                        requested.set(n);</span>
+<span class="fc" id="L273">                    }</span>
+
+                    @Override
+                    public void cancel() {
+
+<span class="nc" id="L278">                    }</span>
+                });
+<span class="fc" id="L280">            }</span>
+<span class="fc" id="L281">        }).subscribe(ts);</span>
+<span class="fc" id="L282">        assertEquals(3, requested.get());</span>
+<span class="fc" id="L283">    }</span>
+
+    @Test
+    public void testRequestThroughMap() {
+<span class="fc" id="L287">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+<span class="fc" id="L288">        ts.request(3);</span>
+<span class="fc" id="L289">        final AtomicLong requested = new AtomicLong();</span>
+<span class="fc" id="L290">        Flowable.&lt;Integer&gt;unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L293">                s.onSubscribe(new Subscription() {</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L297">                        requested.set(n);</span>
+<span class="fc" id="L298">                    }</span>
+
+                    @Override
+                    public void cancel() {
+
+<span class="nc" id="L303">                    }</span>
+                });
+<span class="fc" id="L305">            }</span>
+<span class="fc" id="L306">        }).map(Functions.&lt;Integer&gt;identity()).subscribe(ts);</span>
+<span class="fc" id="L307">        assertEquals(3, requested.get());</span>
+<span class="fc" id="L308">    }</span>
+
+    @Test
+    public void testRequestThroughTakeThatReducesRequest() {
+<span class="fc" id="L312">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+<span class="fc" id="L313">        ts.request(3);</span>
+<span class="fc" id="L314">        final AtomicLong requested = new AtomicLong();</span>
+<span class="fc" id="L315">        Flowable.&lt;Integer&gt;unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L318">                s.onSubscribe(new Subscription() {</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L322">                        requested.set(n);</span>
+<span class="fc" id="L323">                    }</span>
+
+                    @Override
+                    public void cancel() {
+
+<span class="nc" id="L328">                    }</span>
+
+                });
+<span class="fc" id="L331">            }</span>
+<span class="fc" id="L332">        }).take(2).subscribe(ts);</span>
+
+        // FIXME the take now requests Long.MAX_PATH if downstream requests at least the limit
+<span class="fc" id="L335">        assertEquals(Long.MAX_VALUE, requested.get());</span>
+<span class="fc" id="L336">    }</span>
+
+    @Test
+    public void testRequestThroughTakeWhereRequestIsSmallerThanTake() {
+<span class="fc" id="L340">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+<span class="fc" id="L341">        ts.request(3);</span>
+<span class="fc" id="L342">        final AtomicLong requested = new AtomicLong();</span>
+<span class="fc" id="L343">        Flowable.&lt;Integer&gt;unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L346">                s.onSubscribe(new Subscription() {</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L350">                        requested.set(n);</span>
+<span class="fc" id="L351">                    }</span>
+
+                    @Override
+                    public void cancel() {
+
+<span class="nc" id="L356">                    }</span>
+
+                });
+<span class="fc" id="L359">            }</span>
+<span class="fc" id="L360">        }).take(10).subscribe(ts);</span>
+<span class="fc" id="L361">        assertEquals(3, requested.get());</span>
+<span class="fc" id="L362">    }</span>
+
+    @Test
+    public void testOnStartCalledOnceViaSubscribe() {
+<span class="fc" id="L366">        final AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L367">        Flowable.just(1, 2, 3, 4).take(2).subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onStart() {
+<span class="fc" id="L371">                c.incrementAndGet();</span>
+<span class="fc" id="L372">                request(1);</span>
+<span class="fc" id="L373">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="fc" id="L378">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L383">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L387">                request(1);</span>
+<span class="fc" id="L388">            }</span>
+
+        });
+
+<span class="fc" id="L392">        assertEquals(1, c.get());</span>
+<span class="fc" id="L393">    }</span>
+
+    @Test
+    public void testOnStartCalledOnceViaUnsafeSubscribe() {
+<span class="fc" id="L397">        final AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L398">        Flowable.just(1, 2, 3, 4).take(2).subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onStart() {
+<span class="fc" id="L402">                c.incrementAndGet();</span>
+<span class="fc" id="L403">                request(1);</span>
+<span class="fc" id="L404">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="fc" id="L409">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L414">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L418">                request(1);</span>
+<span class="fc" id="L419">            }</span>
+
+        });
+
+<span class="fc" id="L423">        assertEquals(1, c.get());</span>
+<span class="fc" id="L424">    }</span>
+
+    @Test
+    public void testOnStartCalledOnceViaLift() {
+<span class="fc" id="L428">        final AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L429">        Flowable.just(1, 2, 3, 4).lift(new FlowableOperator&lt;Integer, Integer&gt;() {</span>
+
+            @Override
+            public Subscriber&lt;? super Integer&gt; apply(final Subscriber&lt;? super Integer&gt; child) {
+<span class="fc" id="L433">                return new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public void onStart() {
+<span class="fc" id="L437">                        c.incrementAndGet();</span>
+<span class="fc" id="L438">                        request(1);</span>
+<span class="fc" id="L439">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L443">                        child.onComplete();</span>
+<span class="fc" id="L444">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L448">                        child.onError(e);</span>
+<span class="nc" id="L449">                    }</span>
+
+                    @Override
+                    public void onNext(Integer t) {
+<span class="fc" id="L453">                        child.onNext(t);</span>
+<span class="fc" id="L454">                        request(1);</span>
+<span class="fc" id="L455">                    }</span>
+
+                };
+            }
+
+<span class="fc" id="L460">        }).subscribe();</span>
+
+<span class="fc" id="L462">        assertEquals(1, c.get());</span>
+<span class="fc" id="L463">    }</span>
+
+    @Ignore(&quot;Non-positive requests are relayed to the plugin and is a no-op otherwise&quot;)
+    @Test
+    public void testNegativeRequestThrowsIllegalArgumentException() throws InterruptedException {
+<span class="nc" id="L468">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="nc" id="L469">        final AtomicReference&lt;Throwable&gt; exception = new AtomicReference&lt;Throwable&gt;();</span>
+<span class="nc" id="L470">        Flowable.just(1, 2, 3, 4).subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onStart() {
+<span class="nc" id="L474">                request(1);</span>
+<span class="nc" id="L475">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L480">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L484">               exception.set(e);</span>
+<span class="nc" id="L485">               latch.countDown();</span>
+<span class="nc" id="L486">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="nc" id="L490">                request(-1);</span>
+<span class="nc" id="L491">                request(1);</span>
+<span class="nc" id="L492">            }});</span>
+
+<span class="nc" id="L494">        Assert.assertTrue(latch.await(10, TimeUnit.SECONDS));</span>
+<span class="nc" id="L495">        Assert.assertTrue(exception.get() instanceof IllegalArgumentException);</span>
+<span class="nc" id="L496">    }</span>
+
+    @Test
+    public void testOnStartRequestsAreAdditive() {
+<span class="fc" id="L500">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc" id="L501">        Flowable.just(1, 2, 3, 4, 5)</span>
+<span class="fc" id="L502">        .subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onStart() {
+<span class="fc" id="L505">                request(3);</span>
+<span class="fc" id="L506">                request(2);</span>
+<span class="fc" id="L507">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="fc" id="L512">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L517">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L521">                list.add(t);</span>
+<span class="fc" id="L522">            }});</span>
+<span class="fc" id="L523">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L524">    }</span>
+
+    @Test
+    public void testOnStartRequestsAreAdditiveAndOverflowBecomesMaxValue() {
+<span class="fc" id="L528">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc" id="L529">        Flowable.just(1, 2, 3, 4, 5).subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onStart() {
+<span class="fc" id="L532">                request(2);</span>
+<span class="fc" id="L533">                request(Long.MAX_VALUE - 1);</span>
+<span class="fc" id="L534">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="fc" id="L539">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L544">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L548">                list.add(t);</span>
+<span class="fc" id="L549">            }});</span>
+<span class="fc" id="L550">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L551">    }</span>
+
+    @Test
+    public void forEachWhile() {
+<span class="fc" id="L555">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L557">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L559">        Disposable d = pp.forEachWhile(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="fc" id="L562">                list.add(v);</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">                return v &lt; 3;</span>
+            }
+        });
+
+<span class="fc" id="L567">        assertFalse(d.isDisposed());</span>
+
+<span class="fc" id="L569">        pp.onNext(1);</span>
+<span class="fc" id="L570">        pp.onNext(2);</span>
+<span class="fc" id="L571">        pp.onNext(3);</span>
+
+<span class="fc" id="L573">        assertFalse(pp.hasSubscribers());</span>
+
+<span class="fc" id="L575">        assertEquals(Arrays.asList(1, 2, 3), list);</span>
+<span class="fc" id="L576">    }</span>
+
+    @Test
+    public void doubleSubscribe() {
+<span class="fc" id="L580">        ForEachWhileSubscriber&lt;Integer&gt; s = new ForEachWhileSubscriber&lt;Integer&gt;(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="nc" id="L583">                return true;</span>
+            }
+<span class="fc" id="L585">        }, Functions.&lt;Throwable&gt;emptyConsumer(), Functions.EMPTY_ACTION);</span>
+
+<span class="fc" id="L587">        List&lt;Throwable&gt; list = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L590">            s.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L592">            BooleanSubscription bs = new BooleanSubscription();</span>
+<span class="fc" id="L593">            s.onSubscribe(bs);</span>
+
+<span class="fc" id="L595">            assertTrue(bs.isCancelled());</span>
+
+<span class="fc" id="L597">            TestHelper.assertError(list, 0, IllegalStateException.class, &quot;Subscription already set!&quot;);</span>
+        } finally {
+<span class="fc" id="L599">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L601">    }</span>
+
+    @Test
+    public void suppressAfterCompleteEvents() {
+<span class="fc" id="L605">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L607">            final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L608">            ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L610">            ForEachWhileSubscriber&lt;Integer&gt; s = new ForEachWhileSubscriber&lt;Integer&gt;(new Predicate&lt;Integer&gt;() {</span>
+                @Override
+                public boolean test(Integer v) throws Exception {
+<span class="nc" id="L613">                    ts.onNext(v);</span>
+<span class="nc" id="L614">                    return true;</span>
+                }
+<span class="fc" id="L616">            }, new Consumer&lt;Throwable&gt;() {</span>
+                @Override
+                public void accept(Throwable e) throws Exception {
+<span class="nc" id="L619">                    ts.onError(e);</span>
+<span class="nc" id="L620">                }</span>
+<span class="fc" id="L621">            }, new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L624">                    ts.onComplete();</span>
+<span class="fc" id="L625">                }</span>
+            });
+
+<span class="fc" id="L628">            s.onComplete();</span>
+<span class="fc" id="L629">            s.onNext(1);</span>
+<span class="fc" id="L630">            s.onError(new TestException());</span>
+<span class="fc" id="L631">            s.onComplete();</span>
+
+<span class="fc" id="L633">            ts.assertResult();</span>
+
+<span class="fc" id="L635">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L637">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L639">    }</span>
+
+    @Test
+    public void onNextCrashes() {
+<span class="fc" id="L643">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L644">        ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L646">        ForEachWhileSubscriber&lt;Integer&gt; s = new ForEachWhileSubscriber&lt;Integer&gt;(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="fc" id="L649">                throw new TestException();</span>
+            }
+<span class="fc" id="L651">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L654">                ts.onError(e);</span>
+<span class="fc" id="L655">            }</span>
+<span class="fc" id="L656">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L659">                ts.onComplete();</span>
+<span class="nc" id="L660">            }</span>
+        });
+
+<span class="fc" id="L663">        BooleanSubscription b = new BooleanSubscription();</span>
+
+<span class="fc" id="L665">        s.onSubscribe(b);</span>
+<span class="fc" id="L666">        s.onNext(1);</span>
+
+<span class="fc" id="L668">        assertTrue(b.isCancelled());</span>
+<span class="fc" id="L669">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L670">    }</span>
+
+    @Test
+    public void onErrorThrows() {
+<span class="fc" id="L674">        ForEachWhileSubscriber&lt;Integer&gt; s = new ForEachWhileSubscriber&lt;Integer&gt;(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="nc" id="L677">                return true;</span>
+            }
+<span class="fc" id="L679">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L682">                throw new TestException(&quot;Inner&quot;);</span>
+            }
+<span class="fc" id="L684">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+
+<span class="nc" id="L688">            }</span>
+        });
+
+<span class="fc" id="L691">        List&lt;Throwable&gt; list = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L694">            s.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L696">            s.onError(new TestException(&quot;Outer&quot;));</span>
+
+<span class="fc" id="L698">            TestHelper.assertError(list, 0, CompositeException.class);</span>
+<span class="fc" id="L699">            List&lt;Throwable&gt; cel = TestHelper.compositeList(list.get(0));</span>
+<span class="fc" id="L700">            TestHelper.assertError(cel, 0, TestException.class, &quot;Outer&quot;);</span>
+<span class="fc" id="L701">            TestHelper.assertError(cel, 1, TestException.class, &quot;Inner&quot;);</span>
+        } finally {
+<span class="fc" id="L703">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L705">    }</span>
+
+    @Test
+    public void onCompleteThrows() {
+<span class="fc" id="L709">        ForEachWhileSubscriber&lt;Integer&gt; s = new ForEachWhileSubscriber&lt;Integer&gt;(new Predicate&lt;Integer&gt;() {</span>
+            @Override
+            public boolean test(Integer v) throws Exception {
+<span class="nc" id="L712">                return true;</span>
+            }
+<span class="fc" id="L714">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="nc" id="L717">            }</span>
+<span class="fc" id="L718">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L721">                throw new TestException(&quot;Inner&quot;);</span>
+            }
+        });
+
+<span class="fc" id="L725">        List&lt;Throwable&gt; list = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L728">            s.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L730">            s.onComplete();</span>
+
+<span class="fc" id="L732">            TestHelper.assertUndeliverable(list, 0, TestException.class, &quot;Inner&quot;);</span>
+        } finally {
+<span class="fc" id="L734">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L736">    }</span>
+
+    @Test
+    public void subscribeConsumerConsumerWithError() {
+<span class="fc" id="L740">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L742">        Flowable.&lt;Integer&gt;error(new TestException()).subscribe(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L745">                list.add(v);</span>
+<span class="nc" id="L746">            }</span>
+<span class="fc" id="L747">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L750">                list.add(100);</span>
+<span class="fc" id="L751">            }</span>
+        });
+
+<span class="fc" id="L754">        assertEquals(Arrays.asList(100), list);</span>
+<span class="fc" id="L755">    }</span>
+
+    @Test
+    public void methodTestCancelled() {
+<span class="fc" id="L759">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L761">        pp.test(Long.MAX_VALUE, true);</span>
+
+<span class="fc" id="L763">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L764">    }</span>
+
+    @Test
+    public void safeSubscriberAlreadySafe() {
+<span class="fc" id="L768">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L769">        Flowable.just(1).safeSubscribe(new SafeSubscriber&lt;Integer&gt;(ts));</span>
+
+<span class="fc" id="L771">        ts.assertResult(1);</span>
+<span class="fc" id="L772">    }</span>
+
+    @Test
+    public void methodTestNoCancel() {
+<span class="fc" id="L776">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L778">        pp.test(Long.MAX_VALUE, false);</span>
+
+<span class="fc" id="L780">        assertTrue(pp.hasSubscribers());</span>
+<span class="fc" id="L781">    }</span>
+
+    @Test
+    public void subscribeConsumerConsumer() {
+<span class="fc" id="L785">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L787">        Flowable.just(1).subscribe(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L790">                list.add(v);</span>
+<span class="fc" id="L791">            }</span>
+<span class="fc" id="L792">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="nc" id="L795">                list.add(100);</span>
+<span class="nc" id="L796">            }</span>
+        });
+
+<span class="fc" id="L799">        assertEquals(Arrays.asList(1), list);</span>
+<span class="fc" id="L800">    }</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Test
+    public void pluginNull() {
+<span class="fc" id="L805">        RxJavaPlugins.setOnFlowableSubscribe(new BiFunction&lt;Flowable, Subscriber, Subscriber&gt;() {</span>
+            @Override
+            public Subscriber apply(Flowable a, Subscriber b) throws Exception {
+<span class="fc" id="L808">                return null;</span>
+            }
+        });
+
+        try {
+            try {
+
+<span class="nc" id="L815">                Flowable.just(1).test();</span>
+<span class="nc" id="L816">                fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L817">            } catch (NullPointerException ex) {</span>
+<span class="fc" id="L818">                assertEquals(&quot;The RxJavaPlugins.onSubscribe hook returned a null FlowableSubscriber. Please check the handler provided to RxJavaPlugins.setOnFlowableSubscribe for invalid null returns. Further reading: https://github.com/ReactiveX/RxJava/wiki/Plugins&quot;, ex.getMessage());</span>
+<span class="nc" id="L819">            }</span>
+        } finally {
+<span class="fc" id="L821">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L823">    }</span>
+
+<span class="fc" id="L825">    static final class BadFlowable extends Flowable&lt;Integer&gt; {</span>
+        @Override
+        protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L828">            throw new IllegalArgumentException();</span>
+        }
+    }
+
+    @Test
+    public void subscribeActualThrows() {
+<span class="fc" id="L834">        List&lt;Throwable&gt; list = TestHelper.trackPluginErrors();</span>
+        try {
+            try {
+<span class="nc" id="L837">                new BadFlowable().test();</span>
+<span class="nc" id="L838">                fail(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L839">            } catch (NullPointerException ex) {</span>
+<span class="pc bpc" id="L840" title="1 of 2 branches missed.">                if (!(ex.getCause() instanceof IllegalArgumentException)) {</span>
+<span class="nc" id="L841">                    fail(ex.toString() + &quot;: Should be NPE(IAE)&quot;);</span>
+                }
+<span class="nc" id="L843">            }</span>
+
+<span class="fc" id="L845">            TestHelper.assertError(list, 0, IllegalArgumentException.class);</span>
+        } finally {
+<span class="fc" id="L847">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L849">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

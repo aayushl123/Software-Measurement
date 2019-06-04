@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReplaySubjectConcurrencyTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subjects</a> &gt; <span class="el_source">ReplaySubjectConcurrencyTest.java</span></div><h1>ReplaySubjectConcurrencyTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subjects;
+
+import static org.junit.Assert.assertEquals;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.functions.Consumer;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="fc" id="L32">public class ReplaySubjectConcurrencyTest {</span>
+
+    @Test(timeout = 4000)
+    public void testReplaySubjectConcurrentSubscribersDoingReplayDontBlockEachOther() throws InterruptedException {
+<span class="fc" id="L36">        final ReplaySubject&lt;Long&gt; replay = ReplaySubject.create();</span>
+<span class="fc" id="L37">        Thread source = new Thread(new Runnable() {</span>
+
+            @Override
+            public void run() {
+<span class="fc" id="L41">                Observable.unsafeCreate(new ObservableSource&lt;Long&gt;() {</span>
+
+                    @Override
+                    public void subscribe(Observer&lt;? super Long&gt; o) {
+<span class="fc" id="L45">                        o.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L46">                        System.out.println(&quot;********* Start Source Data ***********&quot;);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                        for (long l = 1; l &lt;= 10000; l++) {</span>
+<span class="fc" id="L48">                            o.onNext(l);</span>
+                        }
+<span class="fc" id="L50">                        System.out.println(&quot;********* Finished Source Data ***********&quot;);</span>
+<span class="fc" id="L51">                        o.onComplete();</span>
+<span class="fc" id="L52">                    }</span>
+<span class="fc" id="L53">                }).subscribe(replay);</span>
+<span class="fc" id="L54">            }</span>
+        });
+<span class="fc" id="L56">        source.start();</span>
+
+<span class="fc" id="L58">        long v = replay.blockingLast();</span>
+<span class="fc" id="L59">        assertEquals(10000, v);</span>
+
+        // it's been played through once so now it will all be replays
+<span class="fc" id="L62">        final CountDownLatch slowLatch = new CountDownLatch(1);</span>
+<span class="fc" id="L63">        Thread slowThread = new Thread(new Runnable() {</span>
+
+            @Override
+            public void run() {
+<span class="fc" id="L67">                Observer&lt;Long&gt; slow = new DefaultObserver&lt;Long&gt;() {</span>
+
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L71">                        System.out.println(&quot;*** Slow Observer completed&quot;);</span>
+<span class="fc" id="L72">                        slowLatch.countDown();</span>
+<span class="fc" id="L73">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L77">                    }</span>
+
+                    @Override
+                    public void onNext(Long args) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                        if (args == 1) {</span>
+<span class="fc" id="L82">                            System.out.println(&quot;*** Slow Observer STARTED&quot;);</span>
+                        }
+                        try {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                            if (args % 10 == 0) {</span>
+<span class="fc" id="L86">                                Thread.sleep(1);</span>
+                            }
+<span class="nc" id="L88">                        } catch (InterruptedException e) {</span>
+<span class="nc" id="L89">                            e.printStackTrace();</span>
+<span class="fc" id="L90">                        }</span>
+<span class="fc" id="L91">                    }</span>
+                };
+<span class="fc" id="L93">                replay.subscribe(slow);</span>
+                try {
+<span class="fc" id="L95">                    slowLatch.await();</span>
+<span class="nc" id="L96">                } catch (InterruptedException e1) {</span>
+<span class="nc" id="L97">                    e1.printStackTrace();</span>
+<span class="fc" id="L98">                }</span>
+<span class="fc" id="L99">            }</span>
+        });
+<span class="fc" id="L101">        slowThread.start();</span>
+
+<span class="fc" id="L103">        Thread fastThread = new Thread(new Runnable() {</span>
+
+            @Override
+            public void run() {
+<span class="fc" id="L107">                final CountDownLatch fastLatch = new CountDownLatch(1);</span>
+<span class="fc" id="L108">                Observer&lt;Long&gt; fast = new DefaultObserver&lt;Long&gt;() {</span>
+
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L112">                        System.out.println(&quot;*** Fast Observer completed&quot;);</span>
+<span class="fc" id="L113">                        fastLatch.countDown();</span>
+<span class="fc" id="L114">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L118">                    }</span>
+
+                    @Override
+                    public void onNext(Long args) {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                        if (args == 1) {</span>
+<span class="fc" id="L123">                            System.out.println(&quot;*** Fast Observer STARTED&quot;);</span>
+                        }
+<span class="fc" id="L125">                    }</span>
+                };
+<span class="fc" id="L127">                replay.subscribe(fast);</span>
+                try {
+<span class="fc" id="L129">                    fastLatch.await();</span>
+<span class="nc" id="L130">                } catch (InterruptedException e1) {</span>
+<span class="nc" id="L131">                    e1.printStackTrace();</span>
+<span class="fc" id="L132">                }</span>
+<span class="fc" id="L133">            }</span>
+        });
+<span class="fc" id="L135">        fastThread.start();</span>
+<span class="fc" id="L136">        fastThread.join();</span>
+
+        // slow should not yet be completed when fast completes
+<span class="fc" id="L139">        assertEquals(1, slowLatch.getCount());</span>
+
+<span class="fc" id="L141">        slowThread.join();</span>
+<span class="fc" id="L142">    }</span>
+
+    @Test
+    public void testReplaySubjectConcurrentSubscriptions() throws InterruptedException {
+<span class="fc" id="L146">        final ReplaySubject&lt;Long&gt; replay = ReplaySubject.create();</span>
+<span class="fc" id="L147">        Thread source = new Thread(new Runnable() {</span>
+
+            @Override
+            public void run() {
+<span class="fc" id="L151">                Observable.unsafeCreate(new ObservableSource&lt;Long&gt;() {</span>
+
+                    @Override
+                    public void subscribe(Observer&lt;? super Long&gt; o) {
+<span class="fc" id="L155">                        o.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L156">                        System.out.println(&quot;********* Start Source Data ***********&quot;);</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                        for (long l = 1; l &lt;= 10000; l++) {</span>
+<span class="fc" id="L158">                            o.onNext(l);</span>
+                        }
+<span class="fc" id="L160">                        System.out.println(&quot;********* Finished Source Data ***********&quot;);</span>
+<span class="fc" id="L161">                        o.onComplete();</span>
+<span class="fc" id="L162">                    }</span>
+<span class="fc" id="L163">                }).subscribe(replay);</span>
+<span class="fc" id="L164">            }</span>
+        });
+
+        // used to collect results of each thread
+<span class="fc" id="L168">        final List&lt;List&lt;Long&gt;&gt; listOfListsOfValues = Collections.synchronizedList(new ArrayList&lt;List&lt;Long&gt;&gt;());</span>
+<span class="fc" id="L169">        final List&lt;Thread&gt; threads = Collections.synchronizedList(new ArrayList&lt;Thread&gt;());</span>
+
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        for (int i = 1; i &lt;= 200; i++) {</span>
+<span class="fc" id="L172">            final int count = i;</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (count == 20) {</span>
+                // start source data after we have some already subscribed
+                // and while others are in process of subscribing
+<span class="fc" id="L176">                source.start();</span>
+            }
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (count == 100) {</span>
+                // wait for source to finish then keep adding after it's done
+<span class="fc" id="L180">                source.join();</span>
+            }
+<span class="fc" id="L182">            Thread t = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+<span class="fc" id="L186">                    List&lt;Long&gt; values = replay.toList().blockingGet();</span>
+<span class="fc" id="L187">                    listOfListsOfValues.add(values);</span>
+<span class="fc" id="L188">                    System.out.println(&quot;Finished thread: &quot; + count);</span>
+<span class="fc" id="L189">                }</span>
+            });
+<span class="fc" id="L191">            t.start();</span>
+<span class="fc" id="L192">            System.out.println(&quot;Started thread: &quot; + i);</span>
+<span class="fc" id="L193">            threads.add(t);</span>
+        }
+
+        // wait for all threads to complete
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        for (Thread t : threads) {</span>
+<span class="fc" id="L198">            t.join();</span>
+<span class="fc" id="L199">        }</span>
+
+        // assert all threads got the same results
+<span class="fc" id="L202">        List&lt;Long&gt; sums = new ArrayList&lt;Long&gt;();</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        for (List&lt;Long&gt; values : listOfListsOfValues) {</span>
+<span class="fc" id="L204">            long v = 0;</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            for (long l : values) {</span>
+<span class="fc" id="L206">                v += l;</span>
+<span class="fc" id="L207">            }</span>
+<span class="fc" id="L208">            sums.add(v);</span>
+<span class="fc" id="L209">        }</span>
+
+<span class="fc" id="L211">        long expected = sums.get(0);</span>
+<span class="fc" id="L212">        boolean success = true;</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        for (long l : sums) {</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">            if (l != expected) {</span>
+<span class="nc" id="L215">                success = false;</span>
+<span class="nc" id="L216">                System.out.println(&quot;FAILURE =&gt; Expected &quot; + expected + &quot; but got: &quot; + l);</span>
+            }
+<span class="fc" id="L218">        }</span>
+
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">        if (success) {</span>
+<span class="fc" id="L221">            System.out.println(&quot;Success! &quot; + sums.size() + &quot; each had the same sum of &quot; + expected);</span>
+        } else {
+<span class="nc" id="L223">            throw new RuntimeException(&quot;Concurrency Bug&quot;);</span>
+        }
+
+<span class="fc" id="L226">    }</span>
+
+    /**
+     * Can receive timeout if subscribe never receives an onError/onComplete ... which reveals a race condition.
+     */
+    @Test(timeout = 10000)
+    public void testSubscribeCompletionRaceCondition() {
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        for (int i = 0; i &lt; 50; i++) {</span>
+<span class="fc" id="L234">            final ReplaySubject&lt;String&gt; subject = ReplaySubject.create();</span>
+<span class="fc" id="L235">            final AtomicReference&lt;String&gt; value1 = new AtomicReference&lt;String&gt;();</span>
+
+<span class="fc" id="L237">            subject.subscribe(new Consumer&lt;String&gt;() {</span>
+
+                @Override
+                public void accept(String t1) {
+                    try {
+                        // simulate a slow observer
+<span class="fc" id="L243">                        Thread.sleep(50);</span>
+<span class="nc" id="L244">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L245">                        e.printStackTrace();</span>
+<span class="fc" id="L246">                    }</span>
+<span class="fc" id="L247">                    value1.set(t1);</span>
+<span class="fc" id="L248">                }</span>
+
+            });
+
+<span class="fc" id="L252">            Thread t1 = new Thread(new Runnable() {</span>
+
+                @Override
+                public void run() {
+<span class="fc" id="L256">                    subject.onNext(&quot;value&quot;);</span>
+<span class="fc" id="L257">                    subject.onComplete();</span>
+<span class="fc" id="L258">                }</span>
+            });
+
+<span class="fc" id="L261">            SubjectObserverThread t2 = new SubjectObserverThread(subject);</span>
+<span class="fc" id="L262">            SubjectObserverThread t3 = new SubjectObserverThread(subject);</span>
+<span class="fc" id="L263">            SubjectObserverThread t4 = new SubjectObserverThread(subject);</span>
+<span class="fc" id="L264">            SubjectObserverThread t5 = new SubjectObserverThread(subject);</span>
+
+<span class="fc" id="L266">            t2.start();</span>
+<span class="fc" id="L267">            t3.start();</span>
+<span class="fc" id="L268">            t1.start();</span>
+<span class="fc" id="L269">            t4.start();</span>
+<span class="fc" id="L270">            t5.start();</span>
+            try {
+<span class="fc" id="L272">                t1.join();</span>
+<span class="fc" id="L273">                t2.join();</span>
+<span class="fc" id="L274">                t3.join();</span>
+<span class="fc" id="L275">                t4.join();</span>
+<span class="fc" id="L276">                t5.join();</span>
+<span class="nc" id="L277">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L278">                throw new RuntimeException(e);</span>
+<span class="fc" id="L279">            }</span>
+
+<span class="fc" id="L281">            assertEquals(&quot;value&quot;, value1.get());</span>
+<span class="fc" id="L282">            assertEquals(&quot;value&quot;, t2.value.get());</span>
+<span class="fc" id="L283">            assertEquals(&quot;value&quot;, t3.value.get());</span>
+<span class="fc" id="L284">            assertEquals(&quot;value&quot;, t4.value.get());</span>
+<span class="fc" id="L285">            assertEquals(&quot;value&quot;, t5.value.get());</span>
+        }
+
+<span class="fc" id="L288">    }</span>
+
+    /**
+     * Make sure emission-subscription races are handled correctly.
+     * https://github.com/ReactiveX/RxJava/issues/1147
+     */
+    @Test
+    public void testRaceForTerminalState() {
+<span class="fc" id="L296">        final List&lt;Integer&gt; expected = Arrays.asList(1);</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        for (int i = 0; i &lt; 100000; i++) {</span>
+<span class="fc" id="L298">            TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L299">            Observable.just(1).subscribeOn(Schedulers.computation()).cache().subscribe(to);</span>
+<span class="fc" id="L300">            to.awaitTerminalEvent();</span>
+<span class="fc" id="L301">            to.assertValueSequence(expected);</span>
+<span class="fc" id="L302">            to.assertTerminated();</span>
+        }
+<span class="fc" id="L304">    }</span>
+
+    static class SubjectObserverThread extends Thread {
+
+        private final ReplaySubject&lt;String&gt; subject;
+<span class="fc" id="L309">        private final AtomicReference&lt;String&gt; value = new AtomicReference&lt;String&gt;();</span>
+
+<span class="fc" id="L311">        SubjectObserverThread(ReplaySubject&lt;String&gt; subject) {</span>
+<span class="fc" id="L312">            this.subject = subject;</span>
+<span class="fc" id="L313">        }</span>
+
+        @Override
+        public void run() {
+            try {
+                // a timeout exception will happen if we don't get a terminal state
+<span class="fc" id="L319">                String v = subject.timeout(2000, TimeUnit.MILLISECONDS).blockingSingle();</span>
+<span class="fc" id="L320">                value.set(v);</span>
+<span class="nc" id="L321">            } catch (Exception e) {</span>
+<span class="nc" id="L322">                e.printStackTrace();</span>
+<span class="fc" id="L323">            }</span>
+<span class="fc" id="L324">        }</span>
+    }
+
+    @Test
+    public void testReplaySubjectEmissionSubscriptionRace() throws Exception {
+<span class="fc" id="L329">        Scheduler s = Schedulers.io();</span>
+<span class="fc" id="L330">        Scheduler.Worker worker = Schedulers.io().createWorker();</span>
+        try {
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            for (int i = 0; i &lt; 50000; i++) {</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">                if (i % 1000 == 0) {</span>
+<span class="fc" id="L334">                    System.out.println(i);</span>
+                }
+<span class="fc" id="L336">                final ReplaySubject&lt;Object&gt; rs = ReplaySubject.create();</span>
+
+<span class="fc" id="L338">                final CountDownLatch finish = new CountDownLatch(1);</span>
+<span class="fc" id="L339">                final CountDownLatch start = new CountDownLatch(1);</span>
+
+<span class="fc" id="L341">                worker.schedule(new Runnable() {</span>
+                    @Override
+                    public void run() {
+                        try {
+<span class="fc" id="L345">                            start.await();</span>
+<span class="nc" id="L346">                        } catch (Exception e1) {</span>
+<span class="nc" id="L347">                            e1.printStackTrace();</span>
+<span class="fc" id="L348">                        }</span>
+<span class="fc" id="L349">                        rs.onNext(1);</span>
+<span class="fc" id="L350">                    }</span>
+                });
+
+<span class="fc" id="L353">                final AtomicReference&lt;Object&gt; o = new AtomicReference&lt;Object&gt;();</span>
+
+<span class="fc" id="L355">                rs.subscribeOn(s).observeOn(Schedulers.io())</span>
+<span class="fc" id="L356">                .subscribe(new DefaultObserver&lt;Object&gt;() {</span>
+
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L360">                        o.set(-1);</span>
+<span class="fc" id="L361">                        finish.countDown();</span>
+<span class="fc" id="L362">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L366">                        o.set(e);</span>
+<span class="nc" id="L367">                        finish.countDown();</span>
+<span class="nc" id="L368">                    }</span>
+
+                    @Override
+                    public void onNext(Object t) {
+<span class="fc" id="L372">                        o.set(t);</span>
+<span class="fc" id="L373">                        finish.countDown();</span>
+<span class="fc" id="L374">                    }</span>
+
+                });
+<span class="fc" id="L377">                start.countDown();</span>
+
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">                if (!finish.await(5, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L380">                    System.out.println(o.get());</span>
+<span class="nc" id="L381">                    System.out.println(rs.hasObservers());</span>
+<span class="nc" id="L382">                    rs.onComplete();</span>
+<span class="nc" id="L383">                    Assert.fail(&quot;Timeout @ &quot; + i);</span>
+<span class="nc" id="L384">                    break;</span>
+                } else {
+<span class="fc" id="L386">                    Assert.assertEquals(1, o.get());</span>
+<span class="fc" id="L387">                    worker.schedule(new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L390">                            rs.onComplete();</span>
+<span class="fc" id="L391">                        }</span>
+                    });
+
+                }
+            }
+        } finally {
+<span class="fc" id="L397">            worker.dispose();</span>
+        }
+<span class="fc" id="L399">    }</span>
+
+    @Test(timeout = 10000)
+    public void testConcurrentSizeAndHasAnyValue() throws InterruptedException {
+<span class="fc" id="L403">        final ReplaySubject&lt;Object&gt; rs = ReplaySubject.create();</span>
+<span class="fc" id="L404">        final CyclicBarrier cb = new CyclicBarrier(2);</span>
+
+<span class="fc" id="L406">        Thread t = new Thread(new Runnable() {</span>
+            @Override
+            public void run() {
+                try {
+<span class="fc" id="L410">                    cb.await();</span>
+<span class="nc" id="L411">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L412">                    return;</span>
+<span class="nc" id="L413">                } catch (BrokenBarrierException e) {</span>
+<span class="nc" id="L414">                    return;</span>
+<span class="fc" id="L415">                }</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">                for (int i = 0; i &lt; 1000000; i++) {</span>
+<span class="fc" id="L417">                    rs.onNext(i);</span>
+                }
+<span class="fc" id="L419">                rs.onComplete();</span>
+<span class="fc" id="L420">                System.out.println(&quot;Replay fill Thread finished!&quot;);</span>
+<span class="fc" id="L421">            }</span>
+        });
+<span class="fc" id="L423">        t.start();</span>
+        try {
+<span class="fc" id="L425">            cb.await();</span>
+<span class="nc" id="L426">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L427">            return;</span>
+<span class="nc" id="L428">        } catch (BrokenBarrierException e) {</span>
+<span class="nc" id="L429">            return;</span>
+<span class="fc" id="L430">        }</span>
+<span class="fc" id="L431">        int lastSize = 0;</span>
+<span class="pc bpc" id="L432" title="1 of 4 branches missed.">        for (; !rs.hasThrowable() &amp;&amp; !rs.hasComplete();) {</span>
+<span class="fc" id="L433">            int size = rs.size();</span>
+<span class="fc" id="L434">            boolean hasAny = rs.hasValue();</span>
+<span class="fc" id="L435">            Object[] values = rs.getValues();</span>
+<span class="pc bpc" id="L436" title="1 of 2 branches missed.">            if (size &lt; lastSize) {</span>
+<span class="nc" id="L437">                Assert.fail(&quot;Size decreased! &quot; + lastSize + &quot; -&gt; &quot; + size);</span>
+            }
+<span class="pc bpc" id="L439" title="2 of 4 branches missed.">            if ((size &gt; 0) &amp;&amp; !hasAny) {</span>
+<span class="nc" id="L440">                Assert.fail(&quot;hasAnyValue reports emptyness but size doesn't&quot;);</span>
+            }
+<span class="pc bpc" id="L442" title="1 of 2 branches missed.">            if (size &gt; values.length) {</span>
+<span class="nc" id="L443">                Assert.fail(&quot;Got fewer values than size! &quot; + size + &quot; -&gt; &quot; + values.length);</span>
+            }
+<span class="fc" id="L445">            lastSize = size;</span>
+<span class="fc" id="L446">        }</span>
+
+<span class="fc" id="L448">        t.join();</span>
+<span class="fc" id="L449">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

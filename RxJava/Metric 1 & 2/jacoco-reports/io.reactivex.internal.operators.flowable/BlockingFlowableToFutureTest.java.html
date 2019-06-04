@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BlockingFlowableToFutureTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">BlockingFlowableToFutureTest.java</span></div><h1>BlockingFlowableToFutureTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+import org.junit.*;
+import org.reactivestreams.*;
+
+import io.reactivex.Flowable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+
+<span class="fc" id="L30">public class BlockingFlowableToFutureTest {</span>
+    @Ignore(&quot;No separate file&quot;)
+    @Test
+    public void constructorShouldBePrivate() {
+//        TestHelper.checkUtilityClass(FlowableToFuture.class);
+<span class="nc" id="L35">    }</span>
+
+    @Test
+    public void testToFuture() throws InterruptedException, ExecutionException {
+<span class="fc" id="L39">        Flowable&lt;String&gt; obs = Flowable.just(&quot;one&quot;);</span>
+<span class="fc" id="L40">        Future&lt;String&gt; f = obs.toFuture();</span>
+<span class="fc" id="L41">        assertEquals(&quot;one&quot;, f.get());</span>
+<span class="fc" id="L42">    }</span>
+
+    @Test
+    public void testToFutureList() throws InterruptedException, ExecutionException {
+<span class="fc" id="L46">        Flowable&lt;String&gt; obs = Flowable.just(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L47">        Future&lt;List&lt;String&gt;&gt; f = obs.toList().toFuture();</span>
+<span class="fc" id="L48">        assertEquals(&quot;one&quot;, f.get().get(0));</span>
+<span class="fc" id="L49">        assertEquals(&quot;two&quot;, f.get().get(1));</span>
+<span class="fc" id="L50">        assertEquals(&quot;three&quot;, f.get().get(2));</span>
+<span class="fc" id="L51">    }</span>
+
+    @Test(/* timeout = 5000, */expected = IndexOutOfBoundsException.class)
+    public void testExceptionWithMoreThanOneElement() throws Throwable {
+<span class="fc" id="L55">        Flowable&lt;String&gt; obs = Flowable.just(&quot;one&quot;, &quot;two&quot;);</span>
+<span class="fc" id="L56">        Future&lt;String&gt; f = obs.toFuture();</span>
+        try {
+            // we expect an exception since there are more than 1 element
+<span class="nc" id="L59">            f.get();</span>
+<span class="nc" id="L60">            fail(&quot;Should have thrown!&quot;);</span>
+        }
+<span class="fc" id="L62">        catch (ExecutionException e) {</span>
+<span class="fc" id="L63">            throw e.getCause();</span>
+<span class="nc" id="L64">        }</span>
+<span class="nc" id="L65">    }</span>
+
+    @Test
+    public void testToFutureWithException() {
+<span class="fc" id="L69">        Flowable&lt;String&gt; obs = Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L73">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L74">                subscriber.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L75">                subscriber.onError(new TestException());</span>
+<span class="fc" id="L76">            }</span>
+        });
+
+<span class="fc" id="L79">        Future&lt;String&gt; f = obs.toFuture();</span>
+        try {
+<span class="nc" id="L81">            f.get();</span>
+<span class="nc" id="L82">            fail(&quot;expected exception&quot;);</span>
+<span class="fc" id="L83">        } catch (Throwable e) {</span>
+<span class="fc" id="L84">            assertEquals(TestException.class, e.getCause().getClass());</span>
+<span class="nc" id="L85">        }</span>
+<span class="fc" id="L86">    }</span>
+
+    @Test(expected = CancellationException.class)
+    public void testGetAfterCancel() throws Exception {
+<span class="fc" id="L90">        Flowable&lt;String&gt; obs = Flowable.never();</span>
+<span class="fc" id="L91">        Future&lt;String&gt; f = obs.toFuture();</span>
+<span class="fc" id="L92">        boolean cancelled = f.cancel(true);</span>
+<span class="fc" id="L93">        assertTrue(cancelled);  // because OperationNeverComplete never does</span>
+<span class="nc" id="L94">        f.get();                // Future.get() docs require this to throw</span>
+<span class="nc" id="L95">    }</span>
+
+    @Test(expected = CancellationException.class)
+    public void testGetWithTimeoutAfterCancel() throws Exception {
+<span class="fc" id="L99">        Flowable&lt;String&gt; obs = Flowable.never();</span>
+<span class="fc" id="L100">        Future&lt;String&gt; f = obs.toFuture();</span>
+<span class="fc" id="L101">        boolean cancelled = f.cancel(true);</span>
+<span class="fc" id="L102">        assertTrue(cancelled);  // because OperationNeverComplete never does</span>
+<span class="nc" id="L103">        f.get(Long.MAX_VALUE, TimeUnit.NANOSECONDS);    // Future.get() docs require this to throw</span>
+<span class="nc" id="L104">    }</span>
+
+    @Test(expected = NoSuchElementException.class)
+    public void testGetWithEmptyFlowable() throws Throwable {
+<span class="fc" id="L108">        Flowable&lt;String&gt; obs = Flowable.empty();</span>
+<span class="fc" id="L109">        Future&lt;String&gt; f = obs.toFuture();</span>
+        try {
+<span class="nc" id="L111">            f.get();</span>
+        }
+<span class="fc" id="L113">        catch (ExecutionException e) {</span>
+<span class="fc" id="L114">            throw e.getCause();</span>
+<span class="nc" id="L115">        }</span>
+<span class="nc" id="L116">    }</span>
+
+    @Ignore(&quot;null value is not allowed&quot;)
+    @Test
+    public void testGetWithASingleNullItem() throws Exception {
+<span class="nc" id="L121">        Flowable&lt;String&gt; obs = Flowable.just((String)null);</span>
+<span class="nc" id="L122">        Future&lt;String&gt; f = obs.toFuture();</span>
+<span class="nc" id="L123">        assertEquals(null, f.get());</span>
+<span class="nc" id="L124">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

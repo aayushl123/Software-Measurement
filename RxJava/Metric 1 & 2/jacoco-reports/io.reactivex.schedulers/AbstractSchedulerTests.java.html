@@ -1,0 +1,775 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractSchedulerTests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.schedulers</a> &gt; <span class="el_source">AbstractSchedulerTests.java</span></div><h1>AbstractSchedulerTests.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.schedulers;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.plugins.RxJavaPlugins;
+import org.junit.Test;
+import org.mockito.InOrder;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.*;
+import io.reactivex.internal.disposables.SequentialDisposable;
+import io.reactivex.internal.schedulers.TrampolineScheduler;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.subscribers.DefaultSubscriber;
+
+/**
+ * Base tests for all schedulers including Immediate/Current.
+ */
+<span class="fc" id="L42">public abstract class AbstractSchedulerTests {</span>
+
+    /**
+     * The scheduler to test.
+     *
+     * @return the Scheduler instance
+     */
+    protected abstract Scheduler getScheduler();
+
+    @Test
+    public void testNestedActions() throws InterruptedException {
+<span class="fc" id="L53">        Scheduler scheduler = getScheduler();</span>
+<span class="fc" id="L54">        final Scheduler.Worker inner = scheduler.createWorker();</span>
+        try {
+<span class="fc" id="L56">            final CountDownLatch latch = new CountDownLatch(1);</span>
+
+<span class="fc" id="L58">            final Runnable firstStepStart = mock(Runnable.class);</span>
+<span class="fc" id="L59">            final Runnable firstStepEnd = mock(Runnable.class);</span>
+
+<span class="fc" id="L61">            final Runnable secondStepStart = mock(Runnable.class);</span>
+<span class="fc" id="L62">            final Runnable secondStepEnd = mock(Runnable.class);</span>
+
+<span class="fc" id="L64">            final Runnable thirdStepStart = mock(Runnable.class);</span>
+<span class="fc" id="L65">            final Runnable thirdStepEnd = mock(Runnable.class);</span>
+
+<span class="fc" id="L67">            final Runnable firstAction = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L70">                    firstStepStart.run();</span>
+<span class="fc" id="L71">                    firstStepEnd.run();</span>
+<span class="fc" id="L72">                    latch.countDown();</span>
+<span class="fc" id="L73">                }</span>
+            };
+<span class="fc" id="L75">            final Runnable secondAction = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L78">                    secondStepStart.run();</span>
+<span class="fc" id="L79">                    inner.schedule(firstAction);</span>
+<span class="fc" id="L80">                    secondStepEnd.run();</span>
+
+<span class="fc" id="L82">                }</span>
+            };
+<span class="fc" id="L84">            final Runnable thirdAction = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L87">                    thirdStepStart.run();</span>
+<span class="fc" id="L88">                    inner.schedule(secondAction);</span>
+<span class="fc" id="L89">                    thirdStepEnd.run();</span>
+<span class="fc" id="L90">                }</span>
+            };
+
+<span class="fc" id="L93">            InOrder inOrder = inOrder(firstStepStart, firstStepEnd, secondStepStart, secondStepEnd, thirdStepStart, thirdStepEnd);</span>
+
+<span class="fc" id="L95">            inner.schedule(thirdAction);</span>
+
+<span class="fc" id="L97">            latch.await();</span>
+
+<span class="fc" id="L99">            inOrder.verify(thirdStepStart, times(1)).run();</span>
+<span class="fc" id="L100">            inOrder.verify(thirdStepEnd, times(1)).run();</span>
+<span class="fc" id="L101">            inOrder.verify(secondStepStart, times(1)).run();</span>
+<span class="fc" id="L102">            inOrder.verify(secondStepEnd, times(1)).run();</span>
+<span class="fc" id="L103">            inOrder.verify(firstStepStart, times(1)).run();</span>
+<span class="fc" id="L104">            inOrder.verify(firstStepEnd, times(1)).run();</span>
+        } finally {
+<span class="fc" id="L106">            inner.dispose();</span>
+        }
+<span class="fc" id="L108">    }</span>
+
+    @Test
+    public final void testNestedScheduling() {
+
+<span class="fc" id="L113">        Flowable&lt;Integer&gt; ids = Flowable.fromIterable(Arrays.asList(1, 2)).subscribeOn(getScheduler());</span>
+
+<span class="fc" id="L115">        Flowable&lt;String&gt; m = ids.flatMap(new Function&lt;Integer, Flowable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public Flowable&lt;String&gt; apply(Integer id) {
+<span class="fc" id="L119">                return Flowable.fromIterable(Arrays.asList(&quot;a-&quot; + id, &quot;b-&quot; + id)).subscribeOn(getScheduler())</span>
+<span class="fc" id="L120">                        .map(new Function&lt;String, String&gt;() {</span>
+
+                            @Override
+                            public String apply(String s) {
+<span class="fc" id="L124">                                return &quot;names=&gt;&quot; + s;</span>
+                            }
+                        });
+            }
+
+        });
+
+<span class="fc" id="L131">        List&lt;String&gt; strings = m.toList().blockingGet();</span>
+
+<span class="fc" id="L133">        assertEquals(4, strings.size());</span>
+        // because flatMap does a merge there is no guarantee of order
+<span class="fc" id="L135">        assertTrue(strings.contains(&quot;names=&gt;a-1&quot;));</span>
+<span class="fc" id="L136">        assertTrue(strings.contains(&quot;names=&gt;a-2&quot;));</span>
+<span class="fc" id="L137">        assertTrue(strings.contains(&quot;names=&gt;b-1&quot;));</span>
+<span class="fc" id="L138">        assertTrue(strings.contains(&quot;names=&gt;b-2&quot;));</span>
+<span class="fc" id="L139">    }</span>
+
+    /**
+     * The order of execution is nondeterministic.
+     *
+     * @throws InterruptedException if the await is interrupted
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Test
+    public final void testSequenceOfActions() throws InterruptedException {
+<span class="fc" id="L149">        final Scheduler scheduler = getScheduler();</span>
+<span class="fc" id="L150">        final Scheduler.Worker inner = scheduler.createWorker();</span>
+        try {
+<span class="fc" id="L152">            final CountDownLatch latch = new CountDownLatch(2);</span>
+<span class="fc" id="L153">            final Runnable first = mock(Runnable.class);</span>
+<span class="fc" id="L154">            final Runnable second = mock(Runnable.class);</span>
+
+            // make it wait until both the first and second are called
+<span class="fc" id="L157">            doAnswer(new Answer() {</span>
+
+                @Override
+                public Object answer(InvocationOnMock invocation) throws Throwable {
+                    try {
+<span class="fc" id="L162">                        return invocation.getMock();</span>
+                    } finally {
+<span class="fc" id="L164">                        latch.countDown();</span>
+                    }
+                }
+<span class="fc" id="L167">            }).when(first).run();</span>
+<span class="fc" id="L168">            doAnswer(new Answer() {</span>
+
+                @Override
+                public Object answer(InvocationOnMock invocation) throws Throwable {
+                    try {
+<span class="fc" id="L173">                        return invocation.getMock();</span>
+                    } finally {
+<span class="fc" id="L175">                        latch.countDown();</span>
+                    }
+                }
+<span class="fc" id="L178">            }).when(second).run();</span>
+
+<span class="fc" id="L180">            inner.schedule(first);</span>
+<span class="fc" id="L181">            inner.schedule(second);</span>
+
+<span class="fc" id="L183">            latch.await();</span>
+
+<span class="fc" id="L185">            verify(first, times(1)).run();</span>
+<span class="fc" id="L186">            verify(second, times(1)).run();</span>
+        } finally {
+<span class="fc" id="L188">            inner.dispose();</span>
+        }
+<span class="fc" id="L190">    }</span>
+
+    @Test
+    public void testSequenceOfDelayedActions() throws InterruptedException {
+<span class="fc" id="L194">        Scheduler scheduler = getScheduler();</span>
+<span class="fc" id="L195">        final Scheduler.Worker inner = scheduler.createWorker();</span>
+
+        try {
+<span class="fc" id="L198">            final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L199">            final Runnable first = mock(Runnable.class);</span>
+<span class="fc" id="L200">            final Runnable second = mock(Runnable.class);</span>
+
+<span class="fc" id="L202">            inner.schedule(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L205">                    inner.schedule(first, 30, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L206">                    inner.schedule(second, 10, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L207">                    inner.schedule(new Runnable() {</span>
+
+                        @Override
+                        public void run() {
+<span class="fc" id="L211">                            latch.countDown();</span>
+<span class="fc" id="L212">                        }</span>
+                    }, 40, TimeUnit.MILLISECONDS);
+<span class="fc" id="L214">                }</span>
+            });
+
+<span class="fc" id="L217">            latch.await();</span>
+<span class="fc" id="L218">            InOrder inOrder = inOrder(first, second);</span>
+
+<span class="fc" id="L220">            inOrder.verify(second, times(1)).run();</span>
+<span class="fc" id="L221">            inOrder.verify(first, times(1)).run();</span>
+        } finally {
+<span class="fc" id="L223">            inner.dispose();</span>
+        }
+<span class="fc" id="L225">    }</span>
+
+    @Test
+    public void testMixOfDelayedAndNonDelayedActions() throws InterruptedException {
+<span class="fc" id="L229">        Scheduler scheduler = getScheduler();</span>
+<span class="fc" id="L230">        final Scheduler.Worker inner = scheduler.createWorker();</span>
+
+        try {
+<span class="fc" id="L233">            final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L234">            final Runnable first = mock(Runnable.class);</span>
+<span class="fc" id="L235">            final Runnable second = mock(Runnable.class);</span>
+<span class="fc" id="L236">            final Runnable third = mock(Runnable.class);</span>
+<span class="fc" id="L237">            final Runnable fourth = mock(Runnable.class);</span>
+
+<span class="fc" id="L239">            inner.schedule(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L242">                    inner.schedule(first);</span>
+<span class="fc" id="L243">                    inner.schedule(second, 300, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L244">                    inner.schedule(third, 100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L245">                    inner.schedule(fourth);</span>
+<span class="fc" id="L246">                    inner.schedule(new Runnable() {</span>
+
+                        @Override
+                        public void run() {
+<span class="fc" id="L250">                            latch.countDown();</span>
+<span class="fc" id="L251">                        }</span>
+                    }, 400, TimeUnit.MILLISECONDS);
+<span class="fc" id="L253">                }</span>
+            });
+
+<span class="fc" id="L256">            latch.await();</span>
+<span class="fc" id="L257">            InOrder inOrder = inOrder(first, second, third, fourth);</span>
+
+<span class="fc" id="L259">            inOrder.verify(first, times(1)).run();</span>
+<span class="fc" id="L260">            inOrder.verify(fourth, times(1)).run();</span>
+<span class="fc" id="L261">            inOrder.verify(third, times(1)).run();</span>
+<span class="fc" id="L262">            inOrder.verify(second, times(1)).run();</span>
+        } finally {
+<span class="fc" id="L264">            inner.dispose();</span>
+        }
+<span class="fc" id="L266">    }</span>
+
+    @Test
+    public final void testRecursiveExecution() throws InterruptedException {
+<span class="fc" id="L270">        final Scheduler scheduler = getScheduler();</span>
+<span class="fc" id="L271">        final Scheduler.Worker inner = scheduler.createWorker();</span>
+
+        try {
+
+<span class="fc" id="L275">            final AtomicInteger i = new AtomicInteger();</span>
+<span class="fc" id="L276">            final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L277">            inner.schedule(new Runnable() {</span>
+
+                @Override
+                public void run() {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">                    if (i.incrementAndGet() &lt; 100) {</span>
+<span class="fc" id="L282">                        inner.schedule(this);</span>
+                    } else {
+<span class="fc" id="L284">                        latch.countDown();</span>
+                    }
+<span class="fc" id="L286">                }</span>
+            });
+
+<span class="fc" id="L289">            latch.await();</span>
+<span class="fc" id="L290">            assertEquals(100, i.get());</span>
+        } finally {
+<span class="fc" id="L292">            inner.dispose();</span>
+        }
+<span class="fc" id="L294">    }</span>
+
+    @Test
+    public final void testRecursiveExecutionWithDelayTime() throws InterruptedException {
+<span class="fc" id="L298">        Scheduler scheduler = getScheduler();</span>
+<span class="fc" id="L299">        final Scheduler.Worker inner = scheduler.createWorker();</span>
+
+        try {
+<span class="fc" id="L302">            final AtomicInteger i = new AtomicInteger();</span>
+<span class="fc" id="L303">            final CountDownLatch latch = new CountDownLatch(1);</span>
+
+<span class="fc" id="L305">            inner.schedule(new Runnable() {</span>
+
+                int state;
+
+                @Override
+                public void run() {
+<span class="fc" id="L311">                    i.set(state);</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">                    if (state++ &lt; 100) {</span>
+<span class="fc" id="L313">                        inner.schedule(this, 1, TimeUnit.MILLISECONDS);</span>
+                    } else {
+<span class="fc" id="L315">                        latch.countDown();</span>
+                    }
+<span class="fc" id="L317">                }</span>
+
+            });
+
+<span class="fc" id="L321">            latch.await();</span>
+<span class="fc" id="L322">            assertEquals(100, i.get());</span>
+        } finally {
+<span class="fc" id="L324">            inner.dispose();</span>
+        }
+<span class="fc" id="L326">    }</span>
+
+    @Test
+    public final void testRecursiveSchedulerInObservable() {
+<span class="fc" id="L330">        Flowable&lt;Integer&gt; obs = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(final Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L333">                final Scheduler.Worker inner = getScheduler().createWorker();</span>
+
+<span class="fc" id="L335">                AsyncSubscription as = new AsyncSubscription();</span>
+<span class="fc" id="L336">                subscriber.onSubscribe(as);</span>
+<span class="fc" id="L337">                as.setResource(inner);</span>
+
+<span class="fc" id="L339">                inner.schedule(new Runnable() {</span>
+                    int i;
+
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L344" title="All 2 branches covered.">                        if (i &gt; 42) {</span>
+                            try {
+<span class="fc" id="L346">                                subscriber.onComplete();</span>
+                            } finally {
+<span class="fc" id="L348">                                inner.dispose();</span>
+                            }
+<span class="fc" id="L350">                            return;</span>
+                        }
+
+<span class="fc" id="L353">                        subscriber.onNext(i++);</span>
+
+<span class="fc" id="L355">                        inner.schedule(this);</span>
+<span class="fc" id="L356">                    }</span>
+                });
+<span class="fc" id="L358">            }</span>
+        });
+
+<span class="fc" id="L361">        final AtomicInteger lastValue = new AtomicInteger();</span>
+<span class="fc" id="L362">        obs.blockingForEach(new Consumer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void accept(Integer v) {
+<span class="fc" id="L366">                System.out.println(&quot;Value: &quot; + v);</span>
+<span class="fc" id="L367">                lastValue.set(v);</span>
+<span class="fc" id="L368">            }</span>
+        });
+
+<span class="fc" id="L371">        assertEquals(42, lastValue.get());</span>
+<span class="fc" id="L372">    }</span>
+
+    @Test
+    public final void testConcurrentOnNextFailsValidation() throws InterruptedException {
+<span class="fc" id="L376">        final int count = 10;</span>
+<span class="fc" id="L377">        final CountDownLatch latch = new CountDownLatch(count);</span>
+<span class="fc" id="L378">        Flowable&lt;String&gt; f = Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(final Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L382">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc bfc" id="L383" title="All 2 branches covered.">                for (int i = 0; i &lt; count; i++) {</span>
+<span class="fc" id="L384">                    final int v = i;</span>
+<span class="fc" id="L385">                    new Thread(new Runnable() {</span>
+
+                        @Override
+                        public void run() {
+<span class="fc" id="L389">                            subscriber.onNext(&quot;v: &quot; + v);</span>
+
+<span class="fc" id="L391">                            latch.countDown();</span>
+<span class="fc" id="L392">                        }</span>
+<span class="fc" id="L393">                    }).start();</span>
+                }
+<span class="fc" id="L395">            }</span>
+        });
+
+<span class="fc" id="L398">        ConcurrentObserverValidator&lt;String&gt; observer = new ConcurrentObserverValidator&lt;String&gt;();</span>
+        // this should call onNext concurrently
+<span class="fc" id="L400">        f.subscribe(observer);</span>
+
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">        if (!observer.completed.await(3000, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L403">            fail(&quot;timed out&quot;);</span>
+        }
+
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">        if (observer.error.get() == null) {</span>
+<span class="nc" id="L407">            fail(&quot;We expected error messages due to concurrency&quot;);</span>
+        }
+<span class="fc" id="L409">    }</span>
+
+    @Test
+    public final void testObserveOn() throws InterruptedException {
+<span class="fc" id="L413">        final Scheduler scheduler = getScheduler();</span>
+
+<span class="fc" id="L415">        Flowable&lt;String&gt; f = Flowable.fromArray(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;, &quot;four&quot;, &quot;five&quot;, &quot;six&quot;, &quot;seven&quot;, &quot;eight&quot;, &quot;nine&quot;, &quot;ten&quot;);</span>
+
+<span class="fc" id="L417">        ConcurrentObserverValidator&lt;String&gt; observer = new ConcurrentObserverValidator&lt;String&gt;();</span>
+
+<span class="fc" id="L419">        f.observeOn(scheduler).subscribe(observer);</span>
+
+<span class="pc bpc" id="L421" title="1 of 2 branches missed.">        if (!observer.completed.await(3000, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L422">            fail(&quot;timed out&quot;);</span>
+        }
+
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">        if (observer.error.get() != null) {</span>
+<span class="nc" id="L426">            observer.error.get().printStackTrace();</span>
+<span class="nc" id="L427">            fail(&quot;Error: &quot; + observer.error.get().getMessage());</span>
+        }
+<span class="fc" id="L429">    }</span>
+
+    @Test
+    public final void testSubscribeOnNestedConcurrency() throws InterruptedException {
+<span class="fc" id="L433">        final Scheduler scheduler = getScheduler();</span>
+
+<span class="fc" id="L435">        Flowable&lt;String&gt; f = Flowable.fromArray(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;, &quot;four&quot;, &quot;five&quot;, &quot;six&quot;, &quot;seven&quot;, &quot;eight&quot;, &quot;nine&quot;, &quot;ten&quot;)</span>
+<span class="fc" id="L436">                .flatMap(new Function&lt;String, Flowable&lt;String&gt;&gt;() {</span>
+
+                    @Override
+                    public Flowable&lt;String&gt; apply(final String v) {
+<span class="fc" id="L440">                        return Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+
+                            @Override
+                            public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L444">                                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L445">                                subscriber.onNext(&quot;value_after_map-&quot; + v);</span>
+<span class="fc" id="L446">                                subscriber.onComplete();</span>
+<span class="fc" id="L447">                            }</span>
+<span class="fc" id="L448">                        }).subscribeOn(scheduler);</span>
+                    }
+                });
+
+<span class="fc" id="L452">        ConcurrentObserverValidator&lt;String&gt; observer = new ConcurrentObserverValidator&lt;String&gt;();</span>
+
+<span class="fc" id="L454">        f.subscribe(observer);</span>
+
+<span class="pc bpc" id="L456" title="1 of 2 branches missed.">        if (!observer.completed.await(3000, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L457">            fail(&quot;timed out&quot;);</span>
+        }
+
+<span class="pc bpc" id="L460" title="1 of 2 branches missed.">        if (observer.error.get() != null) {</span>
+<span class="nc" id="L461">            observer.error.get().printStackTrace();</span>
+<span class="nc" id="L462">            fail(&quot;Error: &quot; + observer.error.get().getMessage());</span>
+        }
+<span class="fc" id="L464">    }</span>
+
+    /**
+     * Used to determine if onNext is being invoked concurrently.
+     *
+     * @param &lt;T&gt;
+     */
+<span class="fc" id="L471">    private static class ConcurrentObserverValidator&lt;T&gt; extends DefaultSubscriber&lt;T&gt; {</span>
+
+<span class="fc" id="L473">        final AtomicInteger concurrentCounter = new AtomicInteger();</span>
+<span class="fc" id="L474">        final AtomicReference&lt;Throwable&gt; error = new AtomicReference&lt;Throwable&gt;();</span>
+<span class="fc" id="L475">        final CountDownLatch completed = new CountDownLatch(1);</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L479">            completed.countDown();</span>
+<span class="fc" id="L480">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L484">            error.set(e);</span>
+<span class="fc" id="L485">            completed.countDown();</span>
+<span class="fc" id="L486">        }</span>
+
+        @Override
+        public void onNext(T args) {
+<span class="fc" id="L490">            int count = concurrentCounter.incrementAndGet();</span>
+<span class="fc" id="L491">            System.out.println(&quot;ConcurrentObserverValidator.onNext: &quot; + args);</span>
+<span class="fc bfc" id="L492" title="All 2 branches covered.">            if (count &gt; 1) {</span>
+<span class="fc" id="L493">                onError(new RuntimeException(&quot;we should not have concurrent execution of onNext&quot;));</span>
+            }
+            try {
+                try {
+                    // take some time so other onNext calls could pile up (I haven't yet thought of a way to do this without sleeping)
+<span class="fc" id="L498">                    Thread.sleep(50);</span>
+<span class="nc" id="L499">                } catch (InterruptedException e) {</span>
+                    // ignore
+<span class="fc" id="L501">                }</span>
+            } finally {
+<span class="fc" id="L503">                concurrentCounter.decrementAndGet();</span>
+            }
+<span class="fc" id="L505">        }</span>
+
+    }
+
+    @Test
+    public void scheduleDirect() throws Exception {
+<span class="fc" id="L511">        Scheduler s = getScheduler();</span>
+
+<span class="fc" id="L513">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L515">        s.scheduleDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L518">                cdl.countDown();</span>
+<span class="fc" id="L519">            }</span>
+        });
+
+<span class="fc" id="L522">        assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="fc" id="L523">    }</span>
+
+    @Test
+    public void scheduleDirectDelayed() throws Exception {
+<span class="fc" id="L527">        Scheduler s = getScheduler();</span>
+
+<span class="fc" id="L529">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L531">        s.scheduleDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L534">                cdl.countDown();</span>
+<span class="fc" id="L535">            }</span>
+        }, 50, TimeUnit.MILLISECONDS);
+
+<span class="fc" id="L538">        assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="fc" id="L539">    }</span>
+
+    @Test(timeout = 7000)
+    public void scheduleDirectPeriodic() throws Exception {
+<span class="fc" id="L543">        Scheduler s = getScheduler();</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        if (s instanceof TrampolineScheduler) {</span>
+            // can't properly stop a trampolined periodic task
+<span class="fc" id="L546">            return;</span>
+        }
+
+<span class="fc" id="L549">        final CountDownLatch cdl = new CountDownLatch(5);</span>
+
+<span class="fc" id="L551">        Disposable d = s.schedulePeriodicallyDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L554">                cdl.countDown();</span>
+<span class="fc" id="L555">            }</span>
+        }, 10, 10, TimeUnit.MILLISECONDS);
+
+        try {
+<span class="fc" id="L559">            assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+        } finally {
+<span class="fc" id="L561">            d.dispose();</span>
+        }
+<span class="fc" id="L563">        assertTrue(d.isDisposed());</span>
+<span class="fc" id="L564">    }</span>
+
+    @Test(timeout = 10000)
+    public void schedulePeriodicallyDirectZeroPeriod() throws Exception {
+<span class="fc" id="L568">        Scheduler s = getScheduler();</span>
+<span class="fc bfc" id="L569" title="All 2 branches covered.">        if (s instanceof TrampolineScheduler) {</span>
+            // can't properly stop a trampolined periodic task
+<span class="fc" id="L571">            return;</span>
+        }
+
+<span class="fc bfc" id="L574" title="All 2 branches covered.">        for (int initial = 0; initial &lt; 2; initial++) {</span>
+<span class="fc" id="L575">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L577">            final SequentialDisposable sd = new SequentialDisposable();</span>
+
+            try {
+<span class="fc" id="L580">                sd.replace(s.schedulePeriodicallyDirect(new Runnable() {</span>
+                    int count;
+
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L585" title="All 2 branches covered.">                        if (++count == 10) {</span>
+<span class="fc" id="L586">                            sd.dispose();</span>
+<span class="fc" id="L587">                            cdl.countDown();</span>
+                        }
+<span class="fc" id="L589">                    }</span>
+                }, initial, 0, TimeUnit.MILLISECONDS));
+
+<span class="fc" id="L592">                assertTrue(&quot;&quot; + initial, cdl.await(5, TimeUnit.SECONDS));</span>
+            } finally {
+<span class="fc" id="L594">                sd.dispose();</span>
+            }
+        }
+<span class="fc" id="L597">    }</span>
+
+    @Test(timeout = 10000)
+    public void schedulePeriodicallyZeroPeriod() throws Exception {
+<span class="fc" id="L601">        Scheduler s = getScheduler();</span>
+<span class="fc bfc" id="L602" title="All 2 branches covered.">        if (s instanceof TrampolineScheduler) {</span>
+            // can't properly stop a trampolined periodic task
+<span class="fc" id="L604">            return;</span>
+        }
+
+<span class="fc bfc" id="L607" title="All 2 branches covered.">        for (int initial = 0; initial &lt; 2; initial++) {</span>
+<span class="fc" id="L608">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L610">            final SequentialDisposable sd = new SequentialDisposable();</span>
+
+<span class="fc" id="L612">            Scheduler.Worker w = s.createWorker();</span>
+
+            try {
+<span class="fc" id="L615">                sd.replace(w.schedulePeriodically(new Runnable() {</span>
+                    int count;
+
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L620" title="All 2 branches covered.">                        if (++count == 10) {</span>
+<span class="fc" id="L621">                            sd.dispose();</span>
+<span class="fc" id="L622">                            cdl.countDown();</span>
+                        }
+<span class="fc" id="L624">                    }</span>
+                }, initial, 0, TimeUnit.MILLISECONDS));
+
+<span class="fc" id="L627">                assertTrue(&quot;&quot; + initial, cdl.await(5, TimeUnit.SECONDS));</span>
+            } finally {
+<span class="fc" id="L629">                sd.dispose();</span>
+<span class="fc" id="L630">                w.dispose();</span>
+            }
+        }
+<span class="fc" id="L633">    }</span>
+
+    private void assertRunnableDecorated(Runnable scheduleCall) throws InterruptedException {
+        try {
+<span class="fc" id="L637">            final CountDownLatch decoratedCalled = new CountDownLatch(1);</span>
+
+<span class="fc" id="L639">            RxJavaPlugins.setScheduleHandler(new Function&lt;Runnable, Runnable&gt;() {</span>
+                @Override
+                public Runnable apply(final Runnable actual) throws Exception {
+<span class="fc" id="L642">                    return new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L645">                            decoratedCalled.countDown();</span>
+<span class="fc" id="L646">                            actual.run();</span>
+<span class="fc" id="L647">                        }</span>
+                    };
+                }
+            });
+
+<span class="fc" id="L652">            scheduleCall.run();</span>
+
+<span class="fc" id="L654">            assertTrue(decoratedCalled.await(5, TimeUnit.SECONDS));</span>
+        } finally {
+<span class="fc" id="L656">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L658">    }</span>
+
+    @Test(timeout = 6000)
+    public void scheduleDirectDecoratesRunnable() throws InterruptedException {
+<span class="fc" id="L662">        assertRunnableDecorated(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L665">                getScheduler().scheduleDirect(Functions.EMPTY_RUNNABLE);</span>
+<span class="fc" id="L666">            }</span>
+        });
+<span class="fc" id="L668">    }</span>
+
+    @Test(timeout = 6000)
+    public void scheduleDirectWithDelayDecoratesRunnable() throws InterruptedException {
+<span class="fc" id="L672">        assertRunnableDecorated(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L675">                getScheduler().scheduleDirect(Functions.EMPTY_RUNNABLE, 1, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L676">            }</span>
+        });
+<span class="fc" id="L678">    }</span>
+
+    @Test(timeout = 6000)
+    public void schedulePeriodicallyDirectDecoratesRunnable() throws InterruptedException {
+<span class="fc" id="L682">        final Scheduler scheduler = getScheduler();</span>
+<span class="fc bfc" id="L683" title="All 2 branches covered.">        if (scheduler instanceof TrampolineScheduler) {</span>
+            // Can't properly stop a trampolined periodic task.
+<span class="fc" id="L685">            return;</span>
+        }
+
+<span class="fc" id="L688">        final AtomicReference&lt;Disposable&gt; disposable = new AtomicReference&lt;Disposable&gt;();</span>
+
+        try {
+<span class="fc" id="L691">            assertRunnableDecorated(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L694">                    disposable.set(scheduler.schedulePeriodicallyDirect(Functions.EMPTY_RUNNABLE, 1, 10000, TimeUnit.MILLISECONDS));</span>
+<span class="fc" id="L695">                }</span>
+            });
+        } finally {
+<span class="fc" id="L698">            disposable.get().dispose();</span>
+        }
+<span class="fc" id="L700">    }</span>
+
+    @Test(timeout = 5000)
+    public void unwrapDefaultPeriodicTask() throws InterruptedException {
+<span class="fc" id="L704">        Scheduler s = getScheduler();</span>
+<span class="fc bfc" id="L705" title="All 2 branches covered.">        if (s instanceof TrampolineScheduler) {</span>
+            // TrampolineScheduler always return EmptyDisposable
+<span class="fc" id="L707">            return;</span>
+        }
+
+<span class="fc" id="L710">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L711">        Runnable countDownRunnable = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L714">                cdl.countDown();</span>
+<span class="fc" id="L715">            }</span>
+        };
+<span class="fc" id="L717">        Disposable disposable = s.schedulePeriodicallyDirect(countDownRunnable, 100, 100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L718">        SchedulerRunnableIntrospection wrapper = (SchedulerRunnableIntrospection) disposable;</span>
+
+<span class="fc" id="L720">        assertSame(countDownRunnable, wrapper.getWrappedRunnable());</span>
+<span class="fc" id="L721">        assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="fc" id="L722">        disposable.dispose();</span>
+<span class="fc" id="L723">    }</span>
+
+    @Test
+    public void unwrapScheduleDirectTask() {
+<span class="fc" id="L727">        Scheduler scheduler = getScheduler();</span>
+<span class="fc bfc" id="L728" title="All 2 branches covered.">        if (scheduler instanceof TrampolineScheduler) {</span>
+            // TrampolineScheduler always return EmptyDisposable
+<span class="fc" id="L730">            return;</span>
+        }
+<span class="fc" id="L732">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L733">        Runnable countDownRunnable = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="nc" id="L736">                cdl.countDown();</span>
+<span class="nc" id="L737">            }</span>
+        };
+<span class="fc" id="L739">        Disposable disposable = scheduler.scheduleDirect(countDownRunnable, 100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L740">        SchedulerRunnableIntrospection wrapper = (SchedulerRunnableIntrospection) disposable;</span>
+<span class="fc" id="L741">        assertSame(countDownRunnable, wrapper.getWrappedRunnable());</span>
+<span class="fc" id="L742">        disposable.dispose();</span>
+<span class="fc" id="L743">    }</span>
+
+    @Test
+    public void scheduleDirectNullRunnable() {
+        try {
+<span class="nc" id="L748">            getScheduler().scheduleDirect(null);</span>
+<span class="nc" id="L749">            fail();</span>
+<span class="fc" id="L750">        } catch (NullPointerException npe) {</span>
+<span class="fc" id="L751">            assertEquals(&quot;run is null&quot;, npe.getMessage());</span>
+<span class="nc" id="L752">        }</span>
+<span class="fc" id="L753">    }</span>
+
+    @Test
+    public void scheduleDirectWithDelayNullRunnable() {
+        try {
+<span class="nc" id="L758">            getScheduler().scheduleDirect(null, 10, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L759">            fail();</span>
+<span class="fc" id="L760">        } catch (NullPointerException npe) {</span>
+<span class="fc" id="L761">            assertEquals(&quot;run is null&quot;, npe.getMessage());</span>
+<span class="nc" id="L762">        }</span>
+<span class="fc" id="L763">    }</span>
+
+    @Test
+    public void schedulePeriodicallyDirectNullRunnable() {
+        try {
+<span class="nc" id="L768">            getScheduler().schedulePeriodicallyDirect(null, 5, 10, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L769">            fail();</span>
+<span class="fc" id="L770">        } catch (NullPointerException npe) {</span>
+<span class="fc" id="L771">            assertEquals(&quot;run is null&quot;, npe.getMessage());</span>
+<span class="nc" id="L772">        }</span>
+<span class="fc" id="L773">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

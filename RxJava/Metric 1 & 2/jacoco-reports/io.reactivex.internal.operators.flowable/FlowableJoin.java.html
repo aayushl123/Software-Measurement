@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableJoin.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableJoin.java</span></div><h1>FlowableJoin.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.*;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.Flowable;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.SimpleQueue;
+import io.reactivex.internal.operators.flowable.FlowableGroupJoin.*;
+import io.reactivex.internal.queue.SpscLinkedArrayQueue;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableJoin&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt; extends AbstractFlowableWithUpstream&lt;TLeft, R&gt; {
+
+    final Publisher&lt;? extends TRight&gt; other;
+
+    final Function&lt;? super TLeft, ? extends Publisher&lt;TLeftEnd&gt;&gt; leftEnd;
+
+    final Function&lt;? super TRight, ? extends Publisher&lt;TRightEnd&gt;&gt; rightEnd;
+
+    final BiFunction&lt;? super TLeft, ? super TRight, ? extends R&gt; resultSelector;
+
+    public FlowableJoin(
+            Flowable&lt;TLeft&gt; source,
+            Publisher&lt;? extends TRight&gt; other,
+            Function&lt;? super TLeft, ? extends Publisher&lt;TLeftEnd&gt;&gt; leftEnd,
+            Function&lt;? super TRight, ? extends Publisher&lt;TRightEnd&gt;&gt; rightEnd,
+            BiFunction&lt;? super TLeft, ? super TRight, ? extends R&gt; resultSelector) {
+<span class="fc" id="L49">        super(source);</span>
+<span class="fc" id="L50">        this.other = other;</span>
+<span class="fc" id="L51">        this.leftEnd = leftEnd;</span>
+<span class="fc" id="L52">        this.rightEnd = rightEnd;</span>
+<span class="fc" id="L53">        this.resultSelector = resultSelector;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super R&gt; s) {
+
+<span class="fc" id="L59">        JoinSubscription&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt; parent =</span>
+                new JoinSubscription&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt;(s, leftEnd, rightEnd, resultSelector);
+
+<span class="fc" id="L62">        s.onSubscribe(parent);</span>
+
+<span class="fc" id="L64">        LeftRightSubscriber left = new LeftRightSubscriber(parent, true);</span>
+<span class="fc" id="L65">        parent.disposables.add(left);</span>
+<span class="fc" id="L66">        LeftRightSubscriber right = new LeftRightSubscriber(parent, false);</span>
+<span class="fc" id="L67">        parent.disposables.add(right);</span>
+
+<span class="fc" id="L69">        source.subscribe(left);</span>
+<span class="fc" id="L70">        other.subscribe(right);</span>
+<span class="fc" id="L71">    }</span>
+
+    static final class JoinSubscription&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt;
+    extends AtomicInteger implements Subscription, JoinSupport {
+
+        private static final long serialVersionUID = -6071216598687999801L;
+
+        final Subscriber&lt;? super R&gt; downstream;
+
+        final AtomicLong requested;
+
+        final SpscLinkedArrayQueue&lt;Object&gt; queue;
+
+        final CompositeDisposable disposables;
+
+        final Map&lt;Integer, TLeft&gt; lefts;
+
+        final Map&lt;Integer, TRight&gt; rights;
+
+        final AtomicReference&lt;Throwable&gt; error;
+
+        final Function&lt;? super TLeft, ? extends Publisher&lt;TLeftEnd&gt;&gt; leftEnd;
+
+        final Function&lt;? super TRight, ? extends Publisher&lt;TRightEnd&gt;&gt; rightEnd;
+
+        final BiFunction&lt;? super TLeft, ? super TRight, ? extends R&gt; resultSelector;
+
+        final AtomicInteger active;
+
+        int leftIndex;
+
+        int rightIndex;
+
+        volatile boolean cancelled;
+
+<span class="fc" id="L106">        static final Integer LEFT_VALUE = 1;</span>
+
+<span class="fc" id="L108">        static final Integer RIGHT_VALUE = 2;</span>
+
+<span class="fc" id="L110">        static final Integer LEFT_CLOSE = 3;</span>
+
+<span class="fc" id="L112">        static final Integer RIGHT_CLOSE = 4;</span>
+
+        JoinSubscription(Subscriber&lt;? super R&gt; actual, Function&lt;? super TLeft, ? extends Publisher&lt;TLeftEnd&gt;&gt; leftEnd,
+                Function&lt;? super TRight, ? extends Publisher&lt;TRightEnd&gt;&gt; rightEnd,
+<span class="fc" id="L116">                        BiFunction&lt;? super TLeft, ? super TRight, ? extends R&gt; resultSelector) {</span>
+<span class="fc" id="L117">            this.downstream = actual;</span>
+<span class="fc" id="L118">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L119">            this.disposables = new CompositeDisposable();</span>
+<span class="fc" id="L120">            this.queue = new SpscLinkedArrayQueue&lt;Object&gt;(bufferSize());</span>
+<span class="fc" id="L121">            this.lefts = new LinkedHashMap&lt;Integer, TLeft&gt;();</span>
+<span class="fc" id="L122">            this.rights = new LinkedHashMap&lt;Integer, TRight&gt;();</span>
+<span class="fc" id="L123">            this.error = new AtomicReference&lt;Throwable&gt;();</span>
+<span class="fc" id="L124">            this.leftEnd = leftEnd;</span>
+<span class="fc" id="L125">            this.rightEnd = rightEnd;</span>
+<span class="fc" id="L126">            this.resultSelector = resultSelector;</span>
+<span class="fc" id="L127">            this.active = new AtomicInteger(2);</span>
+<span class="fc" id="L128">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L133">                BackpressureHelper.add(requested, n);</span>
+            }
+<span class="fc" id="L135">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L140">                return;</span>
+            }
+<span class="fc" id="L142">            cancelled = true;</span>
+<span class="fc" id="L143">            cancelAll();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L145">                queue.clear();</span>
+            }
+<span class="fc" id="L147">        }</span>
+
+        void cancelAll() {
+<span class="fc" id="L150">            disposables.dispose();</span>
+<span class="fc" id="L151">        }</span>
+
+        void errorAll(Subscriber&lt;?&gt; a) {
+<span class="fc" id="L154">            Throwable ex = ExceptionHelper.terminate(error);</span>
+
+<span class="fc" id="L156">            lefts.clear();</span>
+<span class="fc" id="L157">            rights.clear();</span>
+
+<span class="fc" id="L159">            a.onError(ex);</span>
+<span class="fc" id="L160">        }</span>
+
+        void fail(Throwable exc, Subscriber&lt;?&gt; a, SimpleQueue&lt;?&gt; q) {
+<span class="fc" id="L163">            Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L164">            ExceptionHelper.addThrowable(error, exc);</span>
+<span class="fc" id="L165">            q.clear();</span>
+<span class="fc" id="L166">            cancelAll();</span>
+<span class="fc" id="L167">            errorAll(a);</span>
+<span class="fc" id="L168">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L172">                return;</span>
+            }
+
+<span class="fc" id="L175">            int missed = 1;</span>
+<span class="fc" id="L176">            SpscLinkedArrayQueue&lt;Object&gt; q = queue;</span>
+<span class="fc" id="L177">            Subscriber&lt;? super R&gt; a = downstream;</span>
+
+            for (;;) {
+                for (;;) {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L182">                        q.clear();</span>
+<span class="fc" id="L183">                        return;</span>
+                    }
+
+<span class="fc" id="L186">                    Throwable ex = error.get();</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                    if (ex != null) {</span>
+<span class="fc" id="L188">                        q.clear();</span>
+<span class="fc" id="L189">                        cancelAll();</span>
+<span class="fc" id="L190">                        errorAll(a);</span>
+<span class="fc" id="L191">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                    boolean d = active.get() == 0;</span>
+
+<span class="fc" id="L196">                    Integer mode = (Integer)q.poll();</span>
+
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                    boolean empty = mode == null;</span>
+
+<span class="pc bpc" id="L200" title="1 of 4 branches missed.">                    if (d &amp;&amp; empty) {</span>
+
+<span class="fc" id="L202">                        lefts.clear();</span>
+<span class="fc" id="L203">                        rights.clear();</span>
+<span class="fc" id="L204">                        disposables.dispose();</span>
+
+<span class="fc" id="L206">                        a.onComplete();</span>
+<span class="fc" id="L207">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L211">                        break;</span>
+                    }
+
+<span class="fc" id="L214">                    Object val = q.poll();</span>
+
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                    if (mode == LEFT_VALUE) {</span>
+                        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L218">                        TLeft left = (TLeft)val;</span>
+
+<span class="fc" id="L220">                        int idx = leftIndex++;</span>
+<span class="fc" id="L221">                        lefts.put(idx, left);</span>
+
+                        Publisher&lt;TLeftEnd&gt; p;
+
+                        try {
+<span class="fc" id="L226">                            p = ObjectHelper.requireNonNull(leftEnd.apply(left), &quot;The leftEnd returned a null Publisher&quot;);</span>
+<span class="fc" id="L227">                        } catch (Throwable exc) {</span>
+<span class="fc" id="L228">                            fail(exc, a, q);</span>
+<span class="fc" id="L229">                            return;</span>
+<span class="fc" id="L230">                        }</span>
+
+<span class="fc" id="L232">                        LeftRightEndSubscriber end = new LeftRightEndSubscriber(this, true, idx);</span>
+<span class="fc" id="L233">                        disposables.add(end);</span>
+
+<span class="fc" id="L235">                        p.subscribe(end);</span>
+
+<span class="fc" id="L237">                        ex = error.get();</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L239">                            q.clear();</span>
+<span class="fc" id="L240">                            cancelAll();</span>
+<span class="fc" id="L241">                            errorAll(a);</span>
+<span class="fc" id="L242">                            return;</span>
+                        }
+
+<span class="fc" id="L245">                        long r = requested.get();</span>
+<span class="fc" id="L246">                        long e = 0L;</span>
+
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                        for (TRight right : rights.values()) {</span>
+
+                            R w;
+
+                            try {
+<span class="fc" id="L253">                                w = ObjectHelper.requireNonNull(resultSelector.apply(left, right), &quot;The resultSelector returned a null value&quot;);</span>
+<span class="fc" id="L254">                            } catch (Throwable exc) {</span>
+<span class="fc" id="L255">                                fail(exc, a, q);</span>
+<span class="fc" id="L256">                                return;</span>
+<span class="fc" id="L257">                            }</span>
+
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                            if (e != r) {</span>
+<span class="fc" id="L260">                                a.onNext(w);</span>
+
+<span class="fc" id="L262">                                e++;</span>
+                            } else {
+<span class="fc" id="L264">                                ExceptionHelper.addThrowable(error, new MissingBackpressureException(&quot;Could not emit value due to lack of requests&quot;));</span>
+<span class="fc" id="L265">                                q.clear();</span>
+<span class="fc" id="L266">                                cancelAll();</span>
+<span class="fc" id="L267">                                errorAll(a);</span>
+<span class="fc" id="L268">                                return;</span>
+                            }
+<span class="fc" id="L270">                        }</span>
+
+<span class="fc bfc" id="L272" title="All 2 branches covered.">                        if (e != 0L) {</span>
+<span class="fc" id="L273">                            BackpressureHelper.produced(requested, e);</span>
+                        }
+<span class="fc" id="L275">                    }</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">                    else if (mode == RIGHT_VALUE) {</span>
+                        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L278">                        TRight right = (TRight)val;</span>
+
+<span class="fc" id="L280">                        int idx = rightIndex++;</span>
+
+<span class="fc" id="L282">                        rights.put(idx, right);</span>
+
+                        Publisher&lt;TRightEnd&gt; p;
+
+                        try {
+<span class="fc" id="L287">                            p = ObjectHelper.requireNonNull(rightEnd.apply(right), &quot;The rightEnd returned a null Publisher&quot;);</span>
+<span class="fc" id="L288">                        } catch (Throwable exc) {</span>
+<span class="fc" id="L289">                            fail(exc, a, q);</span>
+<span class="fc" id="L290">                            return;</span>
+<span class="fc" id="L291">                        }</span>
+
+<span class="fc" id="L293">                        LeftRightEndSubscriber end = new LeftRightEndSubscriber(this, false, idx);</span>
+<span class="fc" id="L294">                        disposables.add(end);</span>
+
+<span class="fc" id="L296">                        p.subscribe(end);</span>
+
+<span class="fc" id="L298">                        ex = error.get();</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L300">                            q.clear();</span>
+<span class="fc" id="L301">                            cancelAll();</span>
+<span class="fc" id="L302">                            errorAll(a);</span>
+<span class="fc" id="L303">                            return;</span>
+                        }
+
+<span class="fc" id="L306">                        long r = requested.get();</span>
+<span class="fc" id="L307">                        long e = 0L;</span>
+
+<span class="fc bfc" id="L309" title="All 2 branches covered.">                        for (TLeft left : lefts.values()) {</span>
+
+                            R w;
+
+                            try {
+<span class="fc" id="L314">                                w = ObjectHelper.requireNonNull(resultSelector.apply(left, right), &quot;The resultSelector returned a null value&quot;);</span>
+<span class="fc" id="L315">                            } catch (Throwable exc) {</span>
+<span class="fc" id="L316">                                fail(exc, a, q);</span>
+<span class="fc" id="L317">                                return;</span>
+<span class="fc" id="L318">                            }</span>
+
+<span class="fc bfc" id="L320" title="All 2 branches covered.">                            if (e != r) {</span>
+<span class="fc" id="L321">                                a.onNext(w);</span>
+
+<span class="fc" id="L323">                                e++;</span>
+                            } else {
+<span class="fc" id="L325">                                ExceptionHelper.addThrowable(error, new MissingBackpressureException(&quot;Could not emit value due to lack of requests&quot;));</span>
+<span class="fc" id="L326">                                q.clear();</span>
+<span class="fc" id="L327">                                cancelAll();</span>
+<span class="fc" id="L328">                                errorAll(a);</span>
+<span class="fc" id="L329">                                return;</span>
+                            }
+<span class="fc" id="L331">                        }</span>
+
+<span class="fc bfc" id="L333" title="All 2 branches covered.">                        if (e != 0L) {</span>
+<span class="fc" id="L334">                            BackpressureHelper.produced(requested, e);</span>
+                        }
+<span class="fc" id="L336">                    }</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">                    else if (mode == LEFT_CLOSE) {</span>
+<span class="fc" id="L338">                        LeftRightEndSubscriber end = (LeftRightEndSubscriber)val;</span>
+
+<span class="fc" id="L340">                        lefts.remove(end.index);</span>
+<span class="fc" id="L341">                        disposables.remove(end);</span>
+<span class="fc" id="L342">                    }</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">                    else if (mode == RIGHT_CLOSE) {</span>
+<span class="fc" id="L344">                        LeftRightEndSubscriber end = (LeftRightEndSubscriber)val;</span>
+
+<span class="fc" id="L346">                        rights.remove(end.index);</span>
+<span class="fc" id="L347">                        disposables.remove(end);</span>
+                    }
+<span class="fc" id="L349">                }</span>
+
+<span class="fc" id="L351">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L353">                    break;</span>
+                }
+            }
+<span class="fc" id="L356">        }</span>
+
+        @Override
+        public void innerError(Throwable ex) {
+<span class="fc bfc" id="L360" title="All 2 branches covered.">            if (ExceptionHelper.addThrowable(error, ex)) {</span>
+<span class="fc" id="L361">                active.decrementAndGet();</span>
+<span class="fc" id="L362">                drain();</span>
+            } else {
+<span class="fc" id="L364">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L366">        }</span>
+
+        @Override
+        public void innerComplete(LeftRightSubscriber sender) {
+<span class="fc" id="L370">            disposables.delete(sender);</span>
+<span class="fc" id="L371">            active.decrementAndGet();</span>
+<span class="fc" id="L372">            drain();</span>
+<span class="fc" id="L373">        }</span>
+
+        @Override
+        public void innerValue(boolean isLeft, Object o) {
+<span class="fc" id="L377">            synchronized (this) {</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">                queue.offer(isLeft ? LEFT_VALUE : RIGHT_VALUE, o);</span>
+<span class="fc" id="L379">            }</span>
+<span class="fc" id="L380">            drain();</span>
+<span class="fc" id="L381">        }</span>
+
+        @Override
+        public void innerClose(boolean isLeft, LeftRightEndSubscriber index) {
+<span class="fc" id="L385">            synchronized (this) {</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">                queue.offer(isLeft ? LEFT_CLOSE : RIGHT_CLOSE, index);</span>
+<span class="fc" id="L387">            }</span>
+<span class="fc" id="L388">            drain();</span>
+<span class="fc" id="L389">        }</span>
+
+        @Override
+        public void innerCloseError(Throwable ex) {
+<span class="fc bfc" id="L393" title="All 2 branches covered.">            if (ExceptionHelper.addThrowable(error, ex)) {</span>
+<span class="fc" id="L394">                drain();</span>
+            } else {
+<span class="fc" id="L396">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L398">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

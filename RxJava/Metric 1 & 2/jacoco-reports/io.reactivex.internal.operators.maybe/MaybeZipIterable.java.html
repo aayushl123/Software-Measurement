@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeZipIterable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeZipIterable.java</span></div><h1>MaybeZipIterable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.Arrays;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.EmptyDisposable;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.operators.maybe.MaybeZipArray.ZipCoordinator;
+
+public final class MaybeZipIterable&lt;T, R&gt; extends Maybe&lt;R&gt; {
+
+    final Iterable&lt;? extends MaybeSource&lt;? extends T&gt;&gt; sources;
+
+    final Function&lt;? super Object[], ? extends R&gt; zipper;
+
+<span class="fc" id="L31">    public MaybeZipIterable(Iterable&lt;? extends MaybeSource&lt;? extends T&gt;&gt; sources, Function&lt;? super Object[], ? extends R&gt; zipper) {</span>
+<span class="fc" id="L32">        this.sources = sources;</span>
+<span class="fc" id="L33">        this.zipper = zipper;</span>
+<span class="fc" id="L34">    }</span>
+
+    @Override
+    protected void subscribeActual(MaybeObserver&lt;? super R&gt; observer) {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L39">        MaybeSource&lt;? extends T&gt;[] a = new MaybeSource[8];</span>
+<span class="fc" id="L40">        int n = 0;</span>
+
+        try {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            for (MaybeSource&lt;? extends T&gt; source : sources) {</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                if (source == null) {</span>
+<span class="fc" id="L45">                    EmptyDisposable.error(new NullPointerException(&quot;One of the sources is null&quot;), observer);</span>
+<span class="fc" id="L46">                    return;</span>
+                }
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                if (n == a.length) {</span>
+<span class="fc" id="L49">                    a = Arrays.copyOf(a, n + (n &gt;&gt; 2));</span>
+                }
+<span class="fc" id="L51">                a[n++] = source;</span>
+<span class="fc" id="L52">            }</span>
+<span class="fc" id="L53">        } catch (Throwable ex) {</span>
+<span class="fc" id="L54">            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L55">            EmptyDisposable.error(ex, observer);</span>
+<span class="fc" id="L56">            return;</span>
+<span class="fc" id="L57">        }</span>
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (n == 0) {</span>
+<span class="fc" id="L60">            EmptyDisposable.complete(observer);</span>
+<span class="fc" id="L61">            return;</span>
+        }
+
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (n == 1) {</span>
+<span class="fc" id="L65">            a[0].subscribe(new MaybeMap.MapMaybeObserver&lt;T, R&gt;(observer, new SingletonArrayFunc()));</span>
+<span class="fc" id="L66">            return;</span>
+        }
+
+<span class="fc" id="L69">        ZipCoordinator&lt;T, R&gt; parent = new ZipCoordinator&lt;T, R&gt;(observer, n, zipper);</span>
+
+<span class="fc" id="L71">        observer.onSubscribe(parent);</span>
+
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (parent.isDisposed()) {</span>
+<span class="fc" id="L75">                return;</span>
+            }
+
+<span class="fc" id="L78">            a[i].subscribe(parent.observers[i]);</span>
+        }
+<span class="fc" id="L80">    }</span>
+
+<span class="fc" id="L82">    final class SingletonArrayFunc implements Function&lt;T, R&gt; {</span>
+        @Override
+        public R apply(T t) throws Exception {
+<span class="fc" id="L85">            return ObjectHelper.requireNonNull(zipper.apply(new Object[] { t }), &quot;The zipper returned a null value&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

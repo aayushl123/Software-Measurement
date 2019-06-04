@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObserverFusion.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.observers</a> &gt; <span class="el_source">ObserverFusion.java</span></div><h1>ObserverFusion.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.observers;
+
+import io.reactivex.Observable;
+import io.reactivex.functions.*;
+import io.reactivex.internal.fuseable.*;
+
+/**
+ * Utility methods that return functional interfaces to support assertions regarding fusion
+ * in a TestObserver.
+ * &lt;p&gt;Don't move this class as it needs package-private access to TestObserver's internals.
+ */
+<span class="fc" id="L25">public enum ObserverFusion {</span>
+    ;
+
+    /**
+     * Returns a function that takes a Flowable and returns a TestObserver that
+     * is set up according to the parameters and is subscribed to the Flowable.
+     * &lt;p&gt;
+     * Use this as follows:
+     * &lt;pre&gt;
+     * source
+     * .to(ObserverFusion.test(QueueFuseable.ANY, false))
+     * .assertResult(0);
+     * &lt;/pre&gt;
+     * @param &lt;T&gt; the value type
+     * @param mode the fusion mode to request, see {@link QueueDisposable} constants.
+     * @param cancelled should the TestObserver cancelled before the subscription even happens?
+     * @return the new Function instance
+     */
+    public static &lt;T&gt; Function&lt;Observable&lt;T&gt;, TestObserver&lt;T&gt;&gt; test(
+            final int mode, final boolean cancelled) {
+<span class="fc" id="L45">        return new TestFunctionCallback&lt;T&gt;(mode, cancelled);</span>
+    }
+
+    /**
+     * Returns a Consumer that asserts on its TestObserver parameter that
+     * the upstream is Fuseable (sent a QueueDisposable subclass in onSubscribe).
+     * &lt;p&gt;
+     * Use this as follows:
+     * &lt;pre&gt;
+     * source
+     * .to(ObserverFusion.test(0, QueueFuseable.ANY, false))
+     * .assertOf(ObserverFusion.assertFuseable());
+     * &lt;/pre&gt;
+     * @param &lt;T&gt; the value type
+     * @return the new Consumer instance
+     */
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    public static &lt;T&gt; Consumer&lt;TestObserver&lt;T&gt;&gt; assertFuseable() {
+<span class="fc" id="L63">        return (Consumer)AssertFuseable.INSTANCE;</span>
+    }
+
+    static final class AssertFusionConsumer&lt;T&gt; implements Consumer&lt;TestObserver&lt;T&gt;&gt; {
+        private final int mode;
+
+<span class="fc" id="L69">        AssertFusionConsumer(int mode) {</span>
+<span class="fc" id="L70">            this.mode = mode;</span>
+<span class="fc" id="L71">        }</span>
+
+        @Override
+        public void accept(TestObserver&lt;T&gt; to) throws Exception {
+<span class="fc" id="L75">            to.assertFusionMode(mode);</span>
+<span class="fc" id="L76">        }</span>
+    }
+
+    static final class TestFunctionCallback&lt;T&gt; implements Function&lt;Observable&lt;T&gt;, TestObserver&lt;T&gt;&gt; {
+        private final int mode;
+        private final boolean cancelled;
+
+<span class="fc" id="L83">        TestFunctionCallback(int mode, boolean cancelled) {</span>
+<span class="fc" id="L84">            this.mode = mode;</span>
+<span class="fc" id="L85">            this.cancelled = cancelled;</span>
+<span class="fc" id="L86">        }</span>
+
+        @Override
+        public TestObserver&lt;T&gt; apply(Observable&lt;T&gt; t) throws Exception {
+<span class="fc" id="L90">            TestObserver&lt;T&gt; to = new TestObserver&lt;T&gt;();</span>
+<span class="fc" id="L91">            to.setInitialFusionMode(mode);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">            if (cancelled) {</span>
+<span class="nc" id="L93">                to.cancel();</span>
+            }
+<span class="fc" id="L95">            t.subscribe(to);</span>
+<span class="fc" id="L96">            return to;</span>
+        }
+    }
+
+<span class="fc" id="L100">    enum AssertFuseable implements Consumer&lt;TestObserver&lt;Object&gt;&gt; {</span>
+<span class="fc" id="L101">        INSTANCE;</span>
+        @Override
+        public void accept(TestObserver&lt;Object&gt; to) throws Exception {
+<span class="fc" id="L104">            to.assertFuseable();</span>
+<span class="fc" id="L105">        }</span>
+    }
+
+    /**
+     * Returns a Consumer that asserts on its TestObserver parameter that
+     * the upstream is not Fuseable (didn't sent a QueueDisposable subclass in onSubscribe).
+     * &lt;p&gt;
+     * Use this as follows:
+     * &lt;pre&gt;
+     * source
+     * .to(ObserverFusion.test(0, QueueFuseable.ANY, false))
+     * .assertOf(ObserverFusion.assertNotFuseable());
+     * &lt;/pre&gt;
+     * @param &lt;T&gt; the value type
+     * @return the new Consumer instance
+     */
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    public static &lt;T&gt; Consumer&lt;TestObserver&lt;T&gt;&gt; assertNotFuseable() {
+<span class="fc" id="L123">        return (Consumer)AssertNotFuseable.INSTANCE;</span>
+    }
+
+<span class="fc" id="L126">    enum AssertNotFuseable implements Consumer&lt;TestObserver&lt;Object&gt;&gt; {</span>
+<span class="fc" id="L127">        INSTANCE;</span>
+        @Override
+        public void accept(TestObserver&lt;Object&gt; to) throws Exception {
+<span class="fc" id="L130">            to.assertNotFuseable();</span>
+<span class="fc" id="L131">        }</span>
+    }
+
+    /**
+     * Returns a Consumer that asserts on its TestObserver parameter that
+     * the upstream is Fuseable (sent a QueueDisposable subclass in onSubscribe)
+     * and the established the given fusion mode.
+     * &lt;p&gt;
+     * Use this as follows:
+     * &lt;pre&gt;
+     * source
+     * .to(ObserverFusion.test(0, QueueFuseable.ANY, false))
+     * .assertOf(ObserverFusion.assertFusionMode(QueueFuseable.SYNC));
+     * &lt;/pre&gt;
+     * @param &lt;T&gt; the value type
+     * @param mode the expected established fusion mode, see {@link QueueFuseable} constants.
+     * @return the new Consumer instance
+     */
+    public static &lt;T&gt; Consumer&lt;TestObserver&lt;T&gt;&gt; assertFusionMode(final int mode) {
+<span class="fc" id="L150">        return new AssertFusionConsumer&lt;T&gt;(mode);</span>
+    }
+
+    /**
+     * Constructs a TestObserver with the given required fusion mode.
+     * @param &lt;T&gt; the value type
+     * @param mode the requested fusion mode, see {@link QueueFuseable} constants
+     * @return the new TestSubscriber
+     */
+    public static &lt;T&gt; TestObserver&lt;T&gt; newTest(int mode) {
+<span class="fc" id="L160">        TestObserver&lt;T&gt; to = new TestObserver&lt;T&gt;();</span>
+<span class="fc" id="L161">        to.setInitialFusionMode(mode);</span>
+<span class="fc" id="L162">        return to;</span>
+    }
+
+    /**
+     * Assert that the TestSubscriber received a fuseabe QueueFuseable.and
+     * is in the given fusion mode.
+     * @param &lt;T&gt; the value type
+     * @param to the TestSubscriber instance
+     * @param mode the expected mode
+     * @return the TestSubscriber
+     */
+    public static &lt;T&gt; TestObserver&lt;T&gt; assertFusion(TestObserver&lt;T&gt; to, int mode) {
+<span class="fc" id="L174">        return to.assertOf(ObserverFusion.&lt;T&gt;assertFuseable())</span>
+<span class="fc" id="L175">                .assertOf(ObserverFusion.&lt;T&gt;assertFusionMode(mode));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

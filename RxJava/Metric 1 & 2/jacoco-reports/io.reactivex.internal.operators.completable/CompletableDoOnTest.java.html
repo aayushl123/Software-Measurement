@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompletableDoOnTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.completable</a> &gt; <span class="el_source">CompletableDoOnTest.java</span></div><h1>CompletableDoOnTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.completable;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.Assert.*;
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L29">public class CompletableDoOnTest {</span>
+
+    @Test
+    public void successAcceptThrows() {
+<span class="fc" id="L33">        Completable.complete().doOnEvent(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L36">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L39">        .test()</span>
+<span class="fc" id="L40">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L41">    }</span>
+
+    @Test
+    public void errorAcceptThrows() {
+<span class="fc" id="L45">        TestObserver&lt;Void&gt; to = Completable.error(new TestException(&quot;Outer&quot;)).doOnEvent(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L48">                throw new TestException(&quot;Inner&quot;);</span>
+            }
+        })
+<span class="fc" id="L51">        .test()</span>
+<span class="fc" id="L52">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L54">        List&lt;Throwable&gt; errors = TestHelper.compositeList(to.errors().get(0));</span>
+
+<span class="fc" id="L56">        TestHelper.assertError(errors, 0, TestException.class, &quot;Outer&quot;);</span>
+<span class="fc" id="L57">        TestHelper.assertError(errors, 1, TestException.class, &quot;Inner&quot;);</span>
+<span class="fc" id="L58">    }</span>
+
+    @Test
+    public void doOnDisposeCalled() {
+<span class="fc" id="L62">        final AtomicBoolean atomicBoolean = new AtomicBoolean();</span>
+
+<span class="fc" id="L64">        assertFalse(atomicBoolean.get());</span>
+
+<span class="fc" id="L66">        Completable.complete()</span>
+<span class="fc" id="L67">            .doOnDispose(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L70">                    atomicBoolean.set(true);</span>
+<span class="fc" id="L71">                }</span>
+            })
+<span class="fc" id="L73">            .test()</span>
+<span class="fc" id="L74">            .assertResult()</span>
+<span class="fc" id="L75">            .dispose();</span>
+
+<span class="fc" id="L77">        assertTrue(atomicBoolean.get());</span>
+<span class="fc" id="L78">    }</span>
+
+    @Test
+    public void onSubscribeCrash() {
+<span class="fc" id="L82">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L84">            final Disposable bs = Disposables.empty();</span>
+
+<span class="fc" id="L86">            new Completable() {</span>
+                @Override
+                protected void subscribeActual(CompletableObserver observer) {
+<span class="fc" id="L89">                    observer.onSubscribe(bs);</span>
+<span class="fc" id="L90">                    observer.onError(new TestException(&quot;Second&quot;));</span>
+<span class="fc" id="L91">                    observer.onComplete();</span>
+<span class="fc" id="L92">                }</span>
+            }
+<span class="fc" id="L94">            .doOnSubscribe(new Consumer&lt;Disposable&gt;() {</span>
+                @Override
+                public void accept(Disposable d) throws Exception {
+<span class="fc" id="L97">                    throw new TestException(&quot;First&quot;);</span>
+                }
+            })
+<span class="fc" id="L100">            .test()</span>
+<span class="fc" id="L101">            .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+
+<span class="fc" id="L103">            assertTrue(bs.isDisposed());</span>
+
+<span class="fc" id="L105">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Second&quot;);</span>
+        } finally {
+<span class="fc" id="L107">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L109">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

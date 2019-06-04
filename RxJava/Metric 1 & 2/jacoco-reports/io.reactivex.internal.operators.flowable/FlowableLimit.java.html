@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableLimit.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableLimit.java</span></div><h1>FlowableLimit.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Limits both the total request amount and items received from the upstream.
+ * &lt;p&gt;History: 2.1.6 - experimental
+ * @param &lt;T&gt; the source and output value type
+ * @since 2.2
+ */
+public final class FlowableLimit&lt;T&gt; extends AbstractFlowableWithUpstream&lt;T, T&gt; {
+
+    final long n;
+
+    public FlowableLimit(Flowable&lt;T&gt; source, long n) {
+<span class="fc" id="L35">        super(source);</span>
+<span class="fc" id="L36">        this.n = n;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L41">        source.subscribe(new LimitSubscriber&lt;T&gt;(s, n));</span>
+<span class="fc" id="L42">    }</span>
+
+    static final class LimitSubscriber&lt;T&gt;
+    extends AtomicLong
+    implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = 2288246011222124525L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        long remaining;
+
+        Subscription upstream;
+
+<span class="fc" id="L56">        LimitSubscriber(Subscriber&lt;? super T&gt; actual, long remaining) {</span>
+<span class="fc" id="L57">            this.downstream = actual;</span>
+<span class="fc" id="L58">            this.remaining = remaining;</span>
+<span class="fc" id="L59">            lazySet(remaining);</span>
+<span class="fc" id="L60">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                if (remaining == 0L) {</span>
+<span class="fc" id="L66">                    s.cancel();</span>
+<span class="fc" id="L67">                    EmptySubscription.complete(downstream);</span>
+                } else {
+<span class="fc" id="L69">                    this.upstream = s;</span>
+<span class="fc" id="L70">                    downstream.onSubscribe(this);</span>
+                }
+            }
+<span class="fc" id="L73">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L77">            long r = remaining;</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (r &gt; 0L) {</span>
+<span class="fc" id="L79">                remaining = --r;</span>
+<span class="fc" id="L80">                downstream.onNext(t);</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                if (r == 0L) {</span>
+<span class="fc" id="L82">                    upstream.cancel();</span>
+<span class="fc" id="L83">                    downstream.onComplete();</span>
+                }
+            }
+<span class="fc" id="L86">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (remaining &gt; 0L) {</span>
+<span class="fc" id="L91">                remaining = 0L;</span>
+<span class="fc" id="L92">                downstream.onError(t);</span>
+            } else {
+<span class="fc" id="L94">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L96">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (remaining &gt; 0L) {</span>
+<span class="fc" id="L101">                remaining = 0L;</span>
+<span class="fc" id="L102">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L104">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+                for (;;) {
+<span class="fc" id="L110">                    long r = get();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                    if (r == 0L) {</span>
+<span class="fc" id="L112">                        break;</span>
+                    }
+                    long toRequest;
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                    if (r &lt;= n) {</span>
+<span class="fc" id="L116">                        toRequest = r;</span>
+                    } else {
+<span class="fc" id="L118">                        toRequest = n;</span>
+                    }
+<span class="fc" id="L120">                    long u = r - toRequest;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                    if (compareAndSet(r, u)) {</span>
+<span class="fc" id="L122">                        upstream.request(toRequest);</span>
+<span class="fc" id="L123">                        break;</span>
+                    }
+<span class="fc" id="L125">                }</span>
+            }
+<span class="fc" id="L127">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L131">            upstream.cancel();</span>
+<span class="fc" id="L132">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

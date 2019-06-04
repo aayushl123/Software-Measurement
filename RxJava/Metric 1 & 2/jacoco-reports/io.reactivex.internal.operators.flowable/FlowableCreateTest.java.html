@@ -1,0 +1,1082 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableCreateTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableCreateTest.java</span></div><h1>FlowableCreateTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Cancellable;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L34">public class FlowableCreateTest {</span>
+
+    @Test(expected = NullPointerException.class)
+    public void sourceNull() {
+<span class="nc" id="L38">        Flowable.create(null, BackpressureStrategy.BUFFER);</span>
+<span class="nc" id="L39">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void modeNull() {
+<span class="pc" id="L43">        Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+            @Override
+<span class="nc" id="L45">            public void subscribe(FlowableEmitter&lt;Object&gt; s) throws Exception { }</span>
+        }, null);
+<span class="nc" id="L47">    }</span>
+
+    @Test
+    public void basic() {
+<span class="fc" id="L51">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L53">            final Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L55">            Flowable.&lt;Integer&gt;create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L58">                    e.setDisposable(d);</span>
+
+<span class="fc" id="L60">                    e.onNext(1);</span>
+<span class="fc" id="L61">                    e.onNext(2);</span>
+<span class="fc" id="L62">                    e.onNext(3);</span>
+<span class="fc" id="L63">                    e.onComplete();</span>
+<span class="fc" id="L64">                    e.onError(new TestException(&quot;first&quot;));</span>
+<span class="fc" id="L65">                    e.onNext(4);</span>
+<span class="fc" id="L66">                    e.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L67">                    e.onComplete();</span>
+<span class="fc" id="L68">                }</span>
+            }, BackpressureStrategy.BUFFER)
+<span class="fc" id="L70">            .test()</span>
+<span class="fc" id="L71">            .assertResult(1, 2, 3);</span>
+
+<span class="fc" id="L73">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L75">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;first&quot;);</span>
+<span class="fc" id="L76">            TestHelper.assertUndeliverable(errors, 1, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L78">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L80">    }</span>
+
+    @Test
+    public void basicWithCancellable() {
+<span class="fc" id="L84">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L86">            final Disposable d1 = Disposables.empty();</span>
+<span class="fc" id="L87">            final Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L89">            Flowable.&lt;Integer&gt;create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L92">                    e.setDisposable(d1);</span>
+<span class="fc" id="L93">                    e.setCancellable(new Cancellable() {</span>
+                        @Override
+                        public void cancel() throws Exception {
+<span class="fc" id="L96">                            d2.dispose();</span>
+<span class="fc" id="L97">                        }</span>
+                    });
+
+<span class="fc" id="L100">                    e.onNext(1);</span>
+<span class="fc" id="L101">                    e.onNext(2);</span>
+<span class="fc" id="L102">                    e.onNext(3);</span>
+<span class="fc" id="L103">                    e.onComplete();</span>
+<span class="fc" id="L104">                    e.onError(new TestException(&quot;first&quot;));</span>
+<span class="fc" id="L105">                    e.onNext(4);</span>
+<span class="fc" id="L106">                    e.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L107">                    e.onComplete();</span>
+<span class="fc" id="L108">                }</span>
+            }, BackpressureStrategy.BUFFER)
+<span class="fc" id="L110">            .test()</span>
+<span class="fc" id="L111">            .assertResult(1, 2, 3);</span>
+
+<span class="fc" id="L113">            assertTrue(d1.isDisposed());</span>
+<span class="fc" id="L114">            assertTrue(d2.isDisposed());</span>
+
+<span class="fc" id="L116">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;first&quot;);</span>
+<span class="fc" id="L117">            TestHelper.assertUndeliverable(errors, 1, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L119">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L121">    }</span>
+
+    @Test
+    public void basicWithError() {
+<span class="fc" id="L125">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L127">            final Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L129">            Flowable.&lt;Integer&gt;create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L132">                    e.setDisposable(d);</span>
+
+<span class="fc" id="L134">                    e.onNext(1);</span>
+<span class="fc" id="L135">                    e.onNext(2);</span>
+<span class="fc" id="L136">                    e.onNext(3);</span>
+<span class="fc" id="L137">                    e.onError(new TestException());</span>
+<span class="fc" id="L138">                    e.onComplete();</span>
+<span class="fc" id="L139">                    e.onNext(4);</span>
+<span class="fc" id="L140">                    e.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L141">                }</span>
+            }, BackpressureStrategy.BUFFER)
+<span class="fc" id="L143">            .test()</span>
+<span class="fc" id="L144">            .assertFailure(TestException.class, 1, 2, 3);</span>
+
+<span class="fc" id="L146">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L148">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L150">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L152">    }</span>
+
+    @Test
+    public void basicSerialized() {
+<span class="fc" id="L156">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L158">            final Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L160">            Flowable.&lt;Integer&gt;create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L163">                    e = e.serialize();</span>
+
+<span class="fc" id="L165">                    e.setDisposable(d);</span>
+
+<span class="fc" id="L167">                    e.onNext(1);</span>
+<span class="fc" id="L168">                    e.onNext(2);</span>
+<span class="fc" id="L169">                    e.onNext(3);</span>
+<span class="fc" id="L170">                    e.onComplete();</span>
+<span class="fc" id="L171">                    e.onError(new TestException(&quot;first&quot;));</span>
+<span class="fc" id="L172">                    e.onNext(4);</span>
+<span class="fc" id="L173">                    e.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L174">                    e.onComplete();</span>
+<span class="fc" id="L175">                }</span>
+            }, BackpressureStrategy.BUFFER)
+<span class="fc" id="L177">            .test()</span>
+<span class="fc" id="L178">            .assertResult(1, 2, 3);</span>
+
+<span class="fc" id="L180">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L182">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;first&quot;);</span>
+<span class="fc" id="L183">            TestHelper.assertUndeliverable(errors, 1, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L185">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L187">    }</span>
+
+    @Test
+    public void basicWithErrorSerialized() {
+<span class="fc" id="L191">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L193">            final Disposable d = Disposables.empty();</span>
+
+<span class="fc" id="L195">            Flowable.&lt;Integer&gt;create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L198">                    e = e.serialize();</span>
+
+<span class="fc" id="L200">                    e.setDisposable(d);</span>
+
+<span class="fc" id="L202">                    e.onNext(1);</span>
+<span class="fc" id="L203">                    e.onNext(2);</span>
+<span class="fc" id="L204">                    e.onNext(3);</span>
+<span class="fc" id="L205">                    e.onError(new TestException());</span>
+<span class="fc" id="L206">                    e.onComplete();</span>
+<span class="fc" id="L207">                    e.onNext(4);</span>
+<span class="fc" id="L208">                    e.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L209">                }</span>
+            }, BackpressureStrategy.BUFFER)
+<span class="fc" id="L211">            .test()</span>
+<span class="fc" id="L212">            .assertFailure(TestException.class, 1, 2, 3);</span>
+
+<span class="fc" id="L214">            assertTrue(d.isDisposed());</span>
+
+<span class="fc" id="L216">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L218">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L220">    }</span>
+
+    @Test
+    public void wrap() {
+<span class="fc" id="L224">        Flowable.fromPublisher(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L227">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L228">                subscriber.onNext(1);</span>
+<span class="fc" id="L229">                subscriber.onNext(2);</span>
+<span class="fc" id="L230">                subscriber.onNext(3);</span>
+<span class="fc" id="L231">                subscriber.onNext(4);</span>
+<span class="fc" id="L232">                subscriber.onNext(5);</span>
+<span class="fc" id="L233">                subscriber.onComplete();</span>
+<span class="fc" id="L234">            }</span>
+        })
+<span class="fc" id="L236">        .test()</span>
+<span class="fc" id="L237">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L238">    }</span>
+
+    @Test
+    public void unsafe() {
+<span class="fc" id="L242">        Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L245">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L246">                subscriber.onNext(1);</span>
+<span class="fc" id="L247">                subscriber.onNext(2);</span>
+<span class="fc" id="L248">                subscriber.onNext(3);</span>
+<span class="fc" id="L249">                subscriber.onNext(4);</span>
+<span class="fc" id="L250">                subscriber.onNext(5);</span>
+<span class="fc" id="L251">                subscriber.onComplete();</span>
+<span class="fc" id="L252">            }</span>
+        })
+<span class="fc" id="L254">        .test()</span>
+<span class="fc" id="L255">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L256">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void unsafeWithFlowable() {
+<span class="nc" id="L260">        Flowable.unsafeCreate(Flowable.just(1));</span>
+<span class="nc" id="L261">    }</span>
+
+    @Test
+    public void createNullValueBuffer() {
+<span class="fc" id="L265">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+
+<span class="fc" id="L268">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L270">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+                    try {
+<span class="fc" id="L274">                        e.onNext(null);</span>
+<span class="fc" id="L275">                        e.onNext(1);</span>
+<span class="fc" id="L276">                        e.onError(new TestException());</span>
+<span class="fc" id="L277">                        e.onComplete();</span>
+<span class="nc" id="L278">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L279">                        error[0] = ex;</span>
+<span class="fc" id="L280">                    }</span>
+<span class="fc" id="L281">                }</span>
+            }, BackpressureStrategy.BUFFER)
+<span class="fc" id="L283">            .test()</span>
+<span class="fc" id="L284">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L286">            assertNull(error[0]);</span>
+
+<span class="fc" id="L288">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L290">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L292">    }</span>
+
+    @Test
+    public void createNullValueLatest() {
+<span class="fc" id="L296">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L298">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L300">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+                    try {
+<span class="fc" id="L304">                        e.onNext(null);</span>
+<span class="fc" id="L305">                        e.onNext(1);</span>
+<span class="fc" id="L306">                        e.onError(new TestException());</span>
+<span class="fc" id="L307">                        e.onComplete();</span>
+<span class="nc" id="L308">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L309">                        error[0] = ex;</span>
+<span class="fc" id="L310">                    }</span>
+<span class="fc" id="L311">                }</span>
+            }, BackpressureStrategy.LATEST)
+<span class="fc" id="L313">            .test()</span>
+<span class="fc" id="L314">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L316">            assertNull(error[0]);</span>
+
+<span class="fc" id="L318">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L320">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L322">    }</span>
+
+    @Test
+    public void createNullValueError() {
+<span class="fc" id="L326">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L328">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L330">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+                    try {
+<span class="fc" id="L334">                        e.onNext(null);</span>
+<span class="fc" id="L335">                        e.onNext(1);</span>
+<span class="fc" id="L336">                        e.onError(new TestException());</span>
+<span class="fc" id="L337">                        e.onComplete();</span>
+<span class="nc" id="L338">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L339">                        error[0] = ex;</span>
+<span class="fc" id="L340">                    }</span>
+<span class="fc" id="L341">                }</span>
+            }, BackpressureStrategy.ERROR)
+<span class="fc" id="L343">            .test()</span>
+<span class="fc" id="L344">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L346">            assertNull(error[0]);</span>
+
+<span class="fc" id="L348">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L350">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L352">    }</span>
+
+    @Test
+    public void createNullValueDrop() {
+<span class="fc" id="L356">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L358">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L360">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+                    try {
+<span class="fc" id="L364">                        e.onNext(null);</span>
+<span class="fc" id="L365">                        e.onNext(1);</span>
+<span class="fc" id="L366">                        e.onError(new TestException());</span>
+<span class="fc" id="L367">                        e.onComplete();</span>
+<span class="nc" id="L368">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L369">                        error[0] = ex;</span>
+<span class="fc" id="L370">                    }</span>
+<span class="fc" id="L371">                }</span>
+            }, BackpressureStrategy.DROP)
+<span class="fc" id="L373">            .test()</span>
+<span class="fc" id="L374">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L376">            assertNull(error[0]);</span>
+
+<span class="fc" id="L378">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L380">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L382">    }</span>
+
+    @Test
+    public void createNullValueMissing() {
+<span class="fc" id="L386">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L388">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L390">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+                    try {
+<span class="fc" id="L394">                        e.onNext(null);</span>
+<span class="fc" id="L395">                        e.onNext(1);</span>
+<span class="fc" id="L396">                        e.onError(new TestException());</span>
+<span class="fc" id="L397">                        e.onComplete();</span>
+<span class="nc" id="L398">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L399">                        error[0] = ex;</span>
+<span class="fc" id="L400">                    }</span>
+<span class="fc" id="L401">                }</span>
+            }, BackpressureStrategy.MISSING)
+<span class="fc" id="L403">            .test()</span>
+<span class="fc" id="L404">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L406">            assertNull(error[0]);</span>
+
+<span class="fc" id="L408">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L410">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L412">    }</span>
+
+    @Test
+    public void createNullValueBufferSerialized() {
+<span class="fc" id="L416">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L418">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L420">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L423">                    e = e.serialize();</span>
+                    try {
+<span class="fc" id="L425">                        e.onNext(null);</span>
+<span class="fc" id="L426">                        e.onNext(1);</span>
+<span class="fc" id="L427">                        e.onError(new TestException());</span>
+<span class="fc" id="L428">                        e.onComplete();</span>
+<span class="nc" id="L429">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L430">                        error[0] = ex;</span>
+<span class="fc" id="L431">                    }</span>
+<span class="fc" id="L432">                }</span>
+            }, BackpressureStrategy.BUFFER)
+<span class="fc" id="L434">            .test()</span>
+<span class="fc" id="L435">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L437">            assertNull(error[0]);</span>
+
+<span class="fc" id="L439">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L441">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L443">    }</span>
+
+    @Test
+    public void createNullValueLatestSerialized() {
+<span class="fc" id="L447">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L449">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L451">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L454">                    e = e.serialize();</span>
+                    try {
+<span class="fc" id="L456">                        e.onNext(null);</span>
+<span class="fc" id="L457">                        e.onNext(1);</span>
+<span class="fc" id="L458">                        e.onError(new TestException());</span>
+<span class="fc" id="L459">                        e.onComplete();</span>
+<span class="nc" id="L460">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L461">                        error[0] = ex;</span>
+<span class="fc" id="L462">                    }</span>
+<span class="fc" id="L463">                }</span>
+            }, BackpressureStrategy.LATEST)
+<span class="fc" id="L465">            .test()</span>
+<span class="fc" id="L466">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L468">            assertNull(error[0]);</span>
+
+<span class="fc" id="L470">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L472">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L474">    }</span>
+
+    @Test
+    public void createNullValueErrorSerialized() {
+<span class="fc" id="L478">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L480">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L482">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L485">                    e = e.serialize();</span>
+                    try {
+<span class="fc" id="L487">                        e.onNext(null);</span>
+<span class="fc" id="L488">                        e.onNext(1);</span>
+<span class="fc" id="L489">                        e.onError(new TestException());</span>
+<span class="fc" id="L490">                        e.onComplete();</span>
+<span class="nc" id="L491">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L492">                        error[0] = ex;</span>
+<span class="fc" id="L493">                    }</span>
+<span class="fc" id="L494">                }</span>
+            }, BackpressureStrategy.ERROR)
+<span class="fc" id="L496">            .test()</span>
+<span class="fc" id="L497">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L499">            assertNull(error[0]);</span>
+
+<span class="fc" id="L501">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L503">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L505">    }</span>
+
+    @Test
+    public void createNullValueDropSerialized() {
+<span class="fc" id="L509">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L511">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L513">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L516">                    e = e.serialize();</span>
+                    try {
+<span class="fc" id="L518">                        e.onNext(null);</span>
+<span class="fc" id="L519">                        e.onNext(1);</span>
+<span class="fc" id="L520">                        e.onError(new TestException());</span>
+<span class="fc" id="L521">                        e.onComplete();</span>
+<span class="nc" id="L522">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L523">                        error[0] = ex;</span>
+<span class="fc" id="L524">                    }</span>
+<span class="fc" id="L525">                }</span>
+            }, BackpressureStrategy.DROP)
+<span class="fc" id="L527">            .test()</span>
+<span class="fc" id="L528">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L530">            assertNull(error[0]);</span>
+
+<span class="fc" id="L532">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L534">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L536">    }</span>
+
+    @Test
+    public void createNullValueMissingSerialized() {
+<span class="fc" id="L540">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L542">            final Throwable[] error = { null };</span>
+
+<span class="fc" id="L544">            Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L547">                    e = e.serialize();</span>
+                    try {
+<span class="fc" id="L549">                        e.onNext(null);</span>
+<span class="fc" id="L550">                        e.onNext(1);</span>
+<span class="fc" id="L551">                        e.onError(new TestException());</span>
+<span class="fc" id="L552">                        e.onComplete();</span>
+<span class="nc" id="L553">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L554">                        error[0] = ex;</span>
+<span class="fc" id="L555">                    }</span>
+<span class="fc" id="L556">                }</span>
+            }, BackpressureStrategy.MISSING)
+<span class="fc" id="L558">            .test()</span>
+<span class="fc" id="L559">            .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L561">            assertNull(error[0]);</span>
+
+<span class="fc" id="L563">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L565">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L567">    }</span>
+
+    @Test
+    public void onErrorRace() {
+<span class="fc bfc" id="L571" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L572">            Flowable&lt;Object&gt; source = Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L575">                    final FlowableEmitter&lt;Object&gt; f = e.serialize();</span>
+
+<span class="fc" id="L577">                    final TestException ex = new TestException();</span>
+
+<span class="fc" id="L579">                    Runnable r1 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L582">                            f.onError(null);</span>
+<span class="fc" id="L583">                        }</span>
+                    };
+
+<span class="fc" id="L586">                    Runnable r2 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L589">                            f.onError(ex);</span>
+<span class="fc" id="L590">                        }</span>
+                    };
+
+<span class="fc" id="L593">                    TestHelper.race(r1, r2);</span>
+<span class="fc" id="L594">                }</span>
+            }, m);
+
+<span class="fc" id="L597">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+            try {
+<span class="fc bfc" id="L600" title="All 2 branches covered.">                for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L601">                    source</span>
+<span class="fc" id="L602">                    .test()</span>
+<span class="fc" id="L603">                    .assertFailure(Throwable.class);</span>
+                }
+            } finally {
+<span class="fc" id="L606">                RxJavaPlugins.reset();</span>
+            }
+<span class="fc" id="L608">            assertFalse(errors.isEmpty());</span>
+        }
+<span class="fc" id="L610">    }</span>
+
+    @Test
+    public void onCompleteRace() {
+<span class="fc bfc" id="L614" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L615">            Flowable&lt;Object&gt; source = Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L618">                    final FlowableEmitter&lt;Object&gt; f = e.serialize();</span>
+
+<span class="fc" id="L620">                    Runnable r1 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L623">                            f.onComplete();</span>
+<span class="fc" id="L624">                        }</span>
+                    };
+
+<span class="fc" id="L627">                    Runnable r2 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L630">                            f.onComplete();</span>
+<span class="fc" id="L631">                        }</span>
+                    };
+
+<span class="fc" id="L634">                    TestHelper.race(r1, r2);</span>
+<span class="fc" id="L635">                }</span>
+            }, m);
+
+<span class="fc bfc" id="L638" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L639">                source</span>
+<span class="fc" id="L640">                .test()</span>
+<span class="fc" id="L641">                .assertResult();</span>
+            }
+        }
+<span class="fc" id="L644">    }</span>
+
+    @Test
+    public void nullValue() {
+<span class="fc bfc" id="L648" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L649">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L652">                    e.onNext(null);</span>
+<span class="fc" id="L653">                }</span>
+            }, m)
+<span class="fc" id="L655">            .test()</span>
+<span class="fc" id="L656">            .assertFailure(NullPointerException.class);</span>
+        }
+<span class="fc" id="L658">    }</span>
+
+    @Test
+    public void nullThrowable() {
+<span class="fc bfc" id="L662" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L663">            System.out.println(m);</span>
+<span class="fc" id="L664">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L667">                    e.onError(null);</span>
+<span class="fc" id="L668">                }</span>
+            }, m)
+<span class="fc" id="L670">            .test()</span>
+<span class="fc" id="L671">            .assertFailure(NullPointerException.class);</span>
+        }
+<span class="fc" id="L673">    }</span>
+
+    @Test
+    public void serializedConcurrentOnNextOnError() {
+<span class="fc bfc" id="L677" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L678">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L681">                    final FlowableEmitter&lt;Object&gt; f = e.serialize();</span>
+
+<span class="fc" id="L683">                    Runnable r1 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc bfc" id="L686" title="All 2 branches covered.">                            for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L687">                                f.onNext(1);</span>
+                            }
+<span class="fc" id="L689">                        }</span>
+                    };
+
+<span class="fc" id="L692">                    Runnable r2 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc bfc" id="L695" title="All 2 branches covered.">                            for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L696">                                f.onNext(1);</span>
+                            }
+<span class="fc" id="L698">                            f.onError(new TestException());</span>
+<span class="fc" id="L699">                        }</span>
+                    };
+
+<span class="fc" id="L702">                    TestHelper.race(r1, r2);</span>
+<span class="fc" id="L703">                }</span>
+            }, m)
+<span class="fc" id="L705">            .test()</span>
+<span class="fc" id="L706">            .assertSubscribed().assertNotComplete()</span>
+<span class="fc" id="L707">            .assertError(TestException.class);</span>
+        }
+<span class="fc" id="L709">    }</span>
+
+    @Test
+    public void callbackThrows() {
+<span class="fc bfc" id="L713" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L714">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L717">                    throw new TestException();</span>
+                }
+            }, m)
+<span class="fc" id="L720">            .test()</span>
+<span class="fc" id="L721">            .assertFailure(TestException.class);</span>
+        }
+<span class="fc" id="L723">    }</span>
+
+    @Test
+    public void nullValueSync() {
+<span class="fc bfc" id="L727" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L728">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L731">                    e.serialize().onNext(null);</span>
+<span class="fc" id="L732">                }</span>
+            }, m)
+<span class="fc" id="L734">            .test()</span>
+<span class="fc" id="L735">            .assertFailure(NullPointerException.class);</span>
+        }
+<span class="fc" id="L737">    }</span>
+
+    @Test
+    public void createNullValue() {
+<span class="fc bfc" id="L741" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L742">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L744">                final Throwable[] error = { null };</span>
+
+<span class="fc" id="L746">                Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                    @Override
+                    public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+                        try {
+<span class="fc" id="L750">                            e.onNext(null);</span>
+<span class="fc" id="L751">                            e.onNext(1);</span>
+<span class="fc" id="L752">                            e.onError(new TestException());</span>
+<span class="fc" id="L753">                            e.onComplete();</span>
+<span class="nc" id="L754">                        } catch (Throwable ex) {</span>
+<span class="nc" id="L755">                            error[0] = ex;</span>
+<span class="fc" id="L756">                        }</span>
+<span class="fc" id="L757">                    }</span>
+                }, m)
+<span class="fc" id="L759">                .test()</span>
+<span class="fc" id="L760">                .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L762">                assertNull(error[0]);</span>
+
+<span class="fc" id="L764">                TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+            } finally {
+<span class="fc" id="L766">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L769">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void nullArgument() {
+<span class="nc" id="L773">        Flowable.create(null, BackpressureStrategy.MISSING);</span>
+<span class="nc" id="L774">    }</span>
+
+    @Test
+    public void onErrorCrash() {
+<span class="fc bfc" id="L778" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L779">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L782">                    Disposable d = Disposables.empty();</span>
+<span class="fc" id="L783">                    e.setDisposable(d);</span>
+                    try {
+<span class="nc" id="L785">                        e.onError(new IOException());</span>
+<span class="nc" id="L786">                        fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L787">                    } catch (TestException ex) {</span>
+                        // expected
+<span class="nc" id="L789">                    }</span>
+<span class="fc" id="L790">                    assertTrue(d.isDisposed());</span>
+<span class="fc" id="L791">                }</span>
+            }, m)
+<span class="fc" id="L793">            .subscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+                @Override
+                public void onSubscribe(Subscription s) {
+<span class="fc" id="L796">                }</span>
+
+                @Override
+                public void onNext(Object value) {
+<span class="nc" id="L800">                }</span>
+
+                @Override
+                public void onError(Throwable e) {
+<span class="fc" id="L804">                    throw new TestException();</span>
+                }
+
+                @Override
+                public void onComplete() {
+<span class="nc" id="L809">                }</span>
+            });
+        }
+<span class="fc" id="L812">    }</span>
+
+    @Test
+    public void onCompleteCrash() {
+<span class="fc bfc" id="L816" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L817">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L820">                    Disposable d = Disposables.empty();</span>
+<span class="fc" id="L821">                    e.setDisposable(d);</span>
+                    try {
+<span class="nc" id="L823">                        e.onComplete();</span>
+<span class="nc" id="L824">                        fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L825">                    } catch (TestException ex) {</span>
+                        // expected
+<span class="nc" id="L827">                    }</span>
+<span class="fc" id="L828">                    assertTrue(d.isDisposed());</span>
+<span class="fc" id="L829">                }</span>
+            }, m)
+<span class="fc" id="L831">            .subscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+                @Override
+                public void onSubscribe(Subscription s) {
+<span class="fc" id="L834">                }</span>
+
+                @Override
+                public void onNext(Object value) {
+<span class="nc" id="L838">                }</span>
+
+                @Override
+                public void onError(Throwable e) {
+<span class="nc" id="L842">                }</span>
+
+                @Override
+                public void onComplete() {
+<span class="fc" id="L846">                    throw new TestException();</span>
+                }
+            });
+        }
+<span class="fc" id="L850">    }</span>
+
+    @Test
+    public void createNullValueSerialized() {
+<span class="fc bfc" id="L854" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L855">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L857">                final Throwable[] error = { null };</span>
+
+<span class="fc" id="L859">                Flowable.create(new FlowableOnSubscribe&lt;Integer&gt;() {</span>
+                    @Override
+                    public void subscribe(FlowableEmitter&lt;Integer&gt; e) throws Exception {
+<span class="fc" id="L862">                        e = e.serialize();</span>
+                        try {
+<span class="fc" id="L864">                            e.onNext(null);</span>
+<span class="fc" id="L865">                            e.onNext(1);</span>
+<span class="fc" id="L866">                            e.onError(new TestException());</span>
+<span class="fc" id="L867">                            e.onComplete();</span>
+<span class="nc" id="L868">                        } catch (Throwable ex) {</span>
+<span class="nc" id="L869">                            error[0] = ex;</span>
+<span class="fc" id="L870">                        }</span>
+<span class="fc" id="L871">                    }</span>
+                }, m)
+<span class="fc" id="L873">                .test()</span>
+<span class="fc" id="L874">                .assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L876">                assertNull(error[0]);</span>
+
+<span class="fc" id="L878">                TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+            } finally {
+<span class="fc" id="L880">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L883">    }</span>
+
+    @Test
+    public void nullThrowableSync() {
+<span class="fc bfc" id="L887" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L888">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L891">                    e.serialize().onError(null);</span>
+<span class="fc" id="L892">                }</span>
+            }, m)
+<span class="fc" id="L894">            .test()</span>
+<span class="fc" id="L895">            .assertFailure(NullPointerException.class);</span>
+        }
+<span class="fc" id="L897">    }</span>
+
+    @Test
+    public void serializedConcurrentOnNext() {
+<span class="fc bfc" id="L901" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L902">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L905">                    final FlowableEmitter&lt;Object&gt; f = e.serialize();</span>
+
+<span class="fc" id="L907">                    Runnable r1 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc bfc" id="L910" title="All 2 branches covered.">                            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L911">                                f.onNext(1);</span>
+                            }
+<span class="fc" id="L913">                        }</span>
+                    };
+
+<span class="fc" id="L916">                    TestHelper.race(r1, r1);</span>
+<span class="fc" id="L917">                }</span>
+            }, m)
+<span class="fc" id="L919">            .take(TestHelper.RACE_DEFAULT_LOOPS)</span>
+<span class="fc" id="L920">            .test()</span>
+<span class="fc" id="L921">            .assertSubscribed().assertValueCount(TestHelper.RACE_DEFAULT_LOOPS).assertComplete().assertNoErrors();</span>
+        }
+<span class="fc" id="L923">    }</span>
+
+    @Test
+    public void serializedConcurrentOnNextOnComplete() {
+<span class="fc bfc" id="L927" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L928">            TestSubscriber&lt;Object&gt; ts = Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L931">                    final FlowableEmitter&lt;Object&gt; f = e.serialize();</span>
+
+<span class="fc" id="L933">                    Runnable r1 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc bfc" id="L936" title="All 2 branches covered.">                            for (int i = 0; i &lt; 1000; i++) {</span>
+<span class="fc" id="L937">                                f.onNext(1);</span>
+                            }
+<span class="fc" id="L939">                        }</span>
+                    };
+
+<span class="fc" id="L942">                    Runnable r2 = new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc bfc" id="L945" title="All 2 branches covered.">                            for (int i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L946">                                f.onNext(1);</span>
+                            }
+<span class="fc" id="L948">                            f.onComplete();</span>
+<span class="fc" id="L949">                        }</span>
+                    };
+
+<span class="fc" id="L952">                    TestHelper.race(r1, r2);</span>
+<span class="fc" id="L953">                }</span>
+            }, m)
+<span class="fc" id="L955">            .test()</span>
+<span class="fc" id="L956">            .assertSubscribed().assertComplete()</span>
+<span class="fc" id="L957">            .assertNoErrors();</span>
+
+<span class="fc" id="L959">            int c = ts.valueCount();</span>
+<span class="pc bpc" id="L960" title="1 of 2 branches missed.">            assertTrue(&quot;&quot; + c, c &gt;= 100);</span>
+        }
+<span class="fc" id="L962">    }</span>
+
+    @Test
+    public void serialized() {
+<span class="fc bfc" id="L966" title="All 2 branches covered.">        for (BackpressureStrategy m : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L967">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L969">                Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                    @Override
+                    public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L972">                        FlowableEmitter&lt;Object&gt; f = e.serialize();</span>
+
+<span class="fc" id="L974">                        assertSame(f, f.serialize());</span>
+
+<span class="fc" id="L976">                        assertFalse(f.isCancelled());</span>
+
+<span class="fc" id="L978">                        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L980">                        f.setCancellable(new Cancellable() {</span>
+                            @Override
+                            public void cancel() throws Exception {
+<span class="fc" id="L983">                                calls[0]++;</span>
+<span class="fc" id="L984">                            }</span>
+                        });
+
+<span class="fc" id="L987">                        e.onComplete();</span>
+
+<span class="fc" id="L989">                        assertTrue(f.isCancelled());</span>
+
+<span class="fc" id="L991">                        assertEquals(1, calls[0]);</span>
+<span class="fc" id="L992">                    }</span>
+                }, m)
+<span class="fc" id="L994">                .test()</span>
+<span class="fc" id="L995">                .assertResult();</span>
+
+<span class="fc" id="L997">                assertTrue(errors.toString(), errors.isEmpty());</span>
+            } finally {
+<span class="fc" id="L999">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L1002">    }</span>
+
+    @Test
+    public void tryOnError() {
+<span class="fc bfc" id="L1006" title="All 2 branches covered.">        for (BackpressureStrategy strategy : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L1007">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L1009">                final Boolean[] response = { null };</span>
+<span class="fc" id="L1010">                Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                    @Override
+                    public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L1013">                        e.onNext(1);</span>
+<span class="fc" id="L1014">                        response[0] = e.tryOnError(new TestException());</span>
+<span class="fc" id="L1015">                    }</span>
+                }, strategy)
+<span class="fc" id="L1017">                .take(1)</span>
+<span class="fc" id="L1018">                .test()</span>
+<span class="fc" id="L1019">                .withTag(strategy.toString())</span>
+<span class="fc" id="L1020">                .assertResult(1);</span>
+
+<span class="fc" id="L1022">                assertFalse(response[0]);</span>
+
+<span class="fc" id="L1024">                assertTrue(strategy + &quot;: &quot; + errors.toString(), errors.isEmpty());</span>
+            } finally {
+<span class="fc" id="L1026">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L1029">    }</span>
+
+    @Test
+    public void tryOnErrorSerialized() {
+<span class="fc bfc" id="L1033" title="All 2 branches covered.">        for (BackpressureStrategy strategy : BackpressureStrategy.values()) {</span>
+<span class="fc" id="L1034">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L1036">                final Boolean[] response = { null };</span>
+<span class="fc" id="L1037">                Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                    @Override
+                    public void subscribe(FlowableEmitter&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L1040">                        e = e.serialize();</span>
+<span class="fc" id="L1041">                        e.onNext(1);</span>
+<span class="fc" id="L1042">                        response[0] = e.tryOnError(new TestException());</span>
+<span class="fc" id="L1043">                    }</span>
+                }, strategy)
+<span class="fc" id="L1045">                .take(1)</span>
+<span class="fc" id="L1046">                .test()</span>
+<span class="fc" id="L1047">                .withTag(strategy.toString())</span>
+<span class="fc" id="L1048">                .assertResult(1);</span>
+
+<span class="fc" id="L1050">                assertFalse(response[0]);</span>
+
+<span class="fc" id="L1052">                assertTrue(strategy + &quot;: &quot; + errors.toString(), errors.isEmpty());</span>
+            } finally {
+<span class="fc" id="L1054">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L1057">    }</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Test
+    public void emittersHasToString() {
+<span class="fc" id="L1062">        Map&lt;BackpressureStrategy, Class&lt;? extends FlowableEmitter&gt;&gt; emitterMap =</span>
+                new HashMap&lt;BackpressureStrategy, Class&lt;? extends FlowableEmitter&gt;&gt;();
+
+<span class="fc" id="L1065">        emitterMap.put(BackpressureStrategy.MISSING, FlowableCreate.MissingEmitter.class);</span>
+<span class="fc" id="L1066">        emitterMap.put(BackpressureStrategy.ERROR, FlowableCreate.ErrorAsyncEmitter.class);</span>
+<span class="fc" id="L1067">        emitterMap.put(BackpressureStrategy.DROP, FlowableCreate.DropAsyncEmitter.class);</span>
+<span class="fc" id="L1068">        emitterMap.put(BackpressureStrategy.LATEST, FlowableCreate.LatestAsyncEmitter.class);</span>
+<span class="fc" id="L1069">        emitterMap.put(BackpressureStrategy.BUFFER, FlowableCreate.BufferAsyncEmitter.class);</span>
+
+<span class="fc bfc" id="L1071" title="All 2 branches covered.">        for (final Map.Entry&lt;BackpressureStrategy, Class&lt;? extends FlowableEmitter&gt;&gt; entry : emitterMap.entrySet()) {</span>
+<span class="fc" id="L1072">            Flowable.create(new FlowableOnSubscribe&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(FlowableEmitter&lt;Object&gt; emitter) throws Exception {
+<span class="fc" id="L1075">                    assertTrue(emitter.toString().contains(entry.getValue().getSimpleName()));</span>
+<span class="fc" id="L1076">                    assertTrue(emitter.serialize().toString().contains(entry.getValue().getSimpleName()));</span>
+<span class="fc" id="L1077">                }</span>
+<span class="fc" id="L1078">            }, entry.getKey()).test().assertEmpty();</span>
+<span class="fc" id="L1079">        }</span>
+<span class="fc" id="L1080">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSwitchMapCompletableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.mixed</a> &gt; <span class="el_source">FlowableSwitchMapCompletableTest.java</span></div><h1>FlowableSwitchMapCompletableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.mixed;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+
+import org.junit.Test;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subjects.CompletableSubject;
+
+<span class="fc" id="L33">public class FlowableSwitchMapCompletableTest {</span>
+
+    @Test
+    public void normal() {
+<span class="fc" id="L37">        Flowable.range(1, 10)</span>
+<span class="fc" id="L38">        .switchMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L41">                return Completable.complete();</span>
+            }
+        })
+<span class="fc" id="L44">        .test()</span>
+<span class="fc" id="L45">        .assertResult();</span>
+<span class="fc" id="L46">    }</span>
+
+    @Test
+    public void mainError() {
+<span class="fc" id="L50">        Flowable.&lt;Integer&gt;error(new TestException())</span>
+<span class="fc" id="L51">        .switchMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="nc" id="L54">                return Completable.complete();</span>
+            }
+        })
+<span class="fc" id="L57">        .test()</span>
+<span class="fc" id="L58">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L59">    }</span>
+
+    @Test
+    public void innerError() {
+<span class="fc" id="L63">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L64">        CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L66">        TestObserver&lt;Void&gt; to = pp.switchMapCompletable(Functions.justFunction(cs))</span>
+<span class="fc" id="L67">        .test();</span>
+
+<span class="fc" id="L69">        assertTrue(pp.hasSubscribers());</span>
+<span class="fc" id="L70">        assertFalse(cs.hasObservers());</span>
+
+<span class="fc" id="L72">        pp.onNext(1);</span>
+
+<span class="fc" id="L74">        assertTrue(cs.hasObservers());</span>
+
+<span class="fc" id="L76">        to.assertEmpty();</span>
+
+<span class="fc" id="L78">        cs.onError(new TestException());</span>
+
+<span class="fc" id="L80">        to.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L82">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L83">        assertFalse(cs.hasObservers());</span>
+<span class="fc" id="L84">    }</span>
+
+    @Test
+    public void switchOver() {
+<span class="fc" id="L88">        final CompletableSubject[] css = {</span>
+<span class="fc" id="L89">                CompletableSubject.create(),</span>
+<span class="fc" id="L90">                CompletableSubject.create()</span>
+        };
+
+<span class="fc" id="L93">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L95">        TestObserver&lt;Void&gt; to = pp.switchMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L98">                return css[v];</span>
+            }
+        })
+<span class="fc" id="L101">        .test();</span>
+
+<span class="fc" id="L103">        to.assertEmpty();</span>
+
+<span class="fc" id="L105">        pp.onNext(0);</span>
+
+<span class="fc" id="L107">        assertTrue(css[0].hasObservers());</span>
+
+<span class="fc" id="L109">        pp.onNext(1);</span>
+
+<span class="fc" id="L111">        assertFalse(css[0].hasObservers());</span>
+<span class="fc" id="L112">        assertTrue(css[1].hasObservers());</span>
+
+<span class="fc" id="L114">        pp.onComplete();</span>
+
+<span class="fc" id="L116">        to.assertEmpty();</span>
+
+<span class="fc" id="L118">        assertTrue(css[1].hasObservers());</span>
+
+<span class="fc" id="L120">        css[1].onComplete();</span>
+
+<span class="fc" id="L122">        to.assertResult();</span>
+<span class="fc" id="L123">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L127">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L128">        CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L130">        TestObserver&lt;Void&gt; to = pp.switchMapCompletable(Functions.justFunction(cs))</span>
+<span class="fc" id="L131">        .test();</span>
+
+<span class="fc" id="L133">        pp.onNext(1);</span>
+
+<span class="fc" id="L135">        assertTrue(pp.hasSubscribers());</span>
+<span class="fc" id="L136">        assertTrue(cs.hasObservers());</span>
+
+<span class="fc" id="L138">        to.dispose();</span>
+
+<span class="fc" id="L140">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L141">        assertFalse(cs.hasObservers());</span>
+<span class="fc" id="L142">    }</span>
+
+    @Test
+    public void checkDisposed() {
+<span class="fc" id="L146">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L147">        CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L149">        TestHelper.checkDisposed(pp.switchMapCompletable(Functions.justFunction(cs)));</span>
+<span class="fc" id="L150">    }</span>
+
+    @Test
+    public void checkBadSource() {
+<span class="fc" id="L154">        TestHelper.checkDoubleOnSubscribeFlowableToCompletable(new Function&lt;Flowable&lt;Object&gt;, Completable&gt;() {</span>
+            @Override
+            public Completable apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L157">                return f.switchMapCompletable(Functions.justFunction(Completable.never()));</span>
+            }
+        });
+<span class="fc" id="L160">    }</span>
+
+    @Test
+    public void mapperCrash() {
+<span class="fc" id="L164">        Flowable.range(1, 5).switchMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer f) throws Exception {
+<span class="fc" id="L167">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L170">        .test()</span>
+<span class="fc" id="L171">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L172">    }</span>
+
+    @Test
+    public void mapperCancels() {
+<span class="fc" id="L176">        final TestObserver&lt;Void&gt; to = new TestObserver&lt;Void&gt;();</span>
+
+<span class="fc" id="L178">        Flowable.range(1, 5).switchMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer f) throws Exception {
+<span class="fc" id="L181">                to.cancel();</span>
+<span class="fc" id="L182">                return Completable.complete();</span>
+            }
+        })
+<span class="fc" id="L185">        .subscribe(to);</span>
+
+<span class="fc" id="L187">        to.assertEmpty();</span>
+<span class="fc" id="L188">    }</span>
+
+    @Test
+    public void onNextInnerCompleteRace() {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L193">            final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L194">            final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L196">            TestObserver&lt;Void&gt; to = pp.switchMapCompletable(Functions.justFunction(cs)).test();</span>
+
+<span class="fc" id="L198">            pp.onNext(1);</span>
+
+<span class="fc" id="L200">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L203">                    pp.onNext(2);</span>
+<span class="fc" id="L204">                }</span>
+            };
+
+<span class="fc" id="L207">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L210">                    cs.onComplete();</span>
+<span class="fc" id="L211">                }</span>
+            };
+
+<span class="fc" id="L214">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L216">            to.assertEmpty();</span>
+        }
+<span class="fc" id="L218">    }</span>
+
+    @Test
+    public void onNextInnerErrorRace() {
+<span class="fc" id="L222">        final TestException ex = new TestException();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L224">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L226">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L227">                final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L229">                TestObserver&lt;Void&gt; to = pp.switchMapCompletable(Functions.justFunction(cs)).test();</span>
+
+<span class="fc" id="L231">                pp.onNext(1);</span>
+
+<span class="fc" id="L233">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L236">                        pp.onNext(2);</span>
+<span class="fc" id="L237">                    }</span>
+                };
+
+<span class="fc" id="L240">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L243">                        cs.onError(ex);</span>
+<span class="fc" id="L244">                    }</span>
+                };
+
+<span class="fc" id="L247">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L249">                to.assertError(new Predicate&lt;Throwable&gt;() {</span>
+                    @Override
+                    public boolean test(Throwable e) throws Exception {
+<span class="pc bpc" id="L252" title="3 of 4 branches missed.">                        return e instanceof TestException || e instanceof CompositeException;</span>
+                    }
+                });
+
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L257">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L260">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L263">    }</span>
+
+    @Test
+    public void onErrorInnerErrorRace() {
+<span class="fc" id="L267">        final TestException ex0 = new TestException();</span>
+<span class="fc" id="L268">        final TestException ex = new TestException();</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L270">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L272">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L273">                final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L275">                TestObserver&lt;Void&gt; to = pp.switchMapCompletable(Functions.justFunction(cs)).test();</span>
+
+<span class="fc" id="L277">                pp.onNext(1);</span>
+
+<span class="fc" id="L279">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L282">                        pp.onError(ex0);</span>
+<span class="fc" id="L283">                    }</span>
+                };
+
+<span class="fc" id="L286">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L289">                        cs.onError(ex);</span>
+<span class="fc" id="L290">                    }</span>
+                };
+
+<span class="fc" id="L293">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L295">                to.assertError(new Predicate&lt;Throwable&gt;() {</span>
+                    @Override
+                    public boolean test(Throwable e) throws Exception {
+<span class="pc bpc" id="L298" title="1 of 4 branches missed.">                        return e instanceof TestException || e instanceof CompositeException;</span>
+                    }
+                });
+
+<span class="fc bfc" id="L302" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L303">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L306">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L309">    }</span>
+
+    @Test
+    public void innerErrorThenMainError() {
+<span class="fc" id="L313">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L315">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L318">                    s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L319">                    s.onNext(1);</span>
+<span class="fc" id="L320">                    s.onError(new TestException(&quot;main&quot;));</span>
+<span class="fc" id="L321">                }</span>
+            }
+<span class="fc" id="L323">            .switchMapCompletable(Functions.justFunction(Completable.error(new TestException(&quot;inner&quot;))))</span>
+<span class="fc" id="L324">            .test()</span>
+<span class="fc" id="L325">            .assertFailureAndMessage(TestException.class, &quot;inner&quot;);</span>
+
+<span class="fc" id="L327">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;main&quot;);</span>
+        } finally {
+<span class="fc" id="L329">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L331">    }</span>
+
+    @Test
+    public void innerErrorDelayed() {
+<span class="fc" id="L335">        final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L336">        final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L338">        TestObserver&lt;Void&gt; to = pp.switchMapCompletableDelayError(Functions.justFunction(cs)).test();</span>
+
+<span class="fc" id="L340">        pp.onNext(1);</span>
+
+<span class="fc" id="L342">        cs.onError(new TestException());</span>
+
+<span class="fc" id="L344">        to.assertEmpty();</span>
+
+<span class="fc" id="L346">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L348">        pp.onComplete();</span>
+
+<span class="fc" id="L350">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L351">    }</span>
+
+    @Test
+    public void mainCompletesinnerErrorDelayed() {
+<span class="fc" id="L355">        final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L356">        final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L358">        TestObserver&lt;Void&gt; to = pp.switchMapCompletableDelayError(Functions.justFunction(cs)).test();</span>
+
+<span class="fc" id="L360">        pp.onNext(1);</span>
+<span class="fc" id="L361">        pp.onComplete();</span>
+
+<span class="fc" id="L363">        to.assertEmpty();</span>
+
+<span class="fc" id="L365">        cs.onError(new TestException());</span>
+
+<span class="fc" id="L367">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L368">    }</span>
+
+    @Test
+    public void mainErrorDelayed() {
+<span class="fc" id="L372">        final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+<span class="fc" id="L373">        final CompletableSubject cs = CompletableSubject.create();</span>
+
+<span class="fc" id="L375">        TestObserver&lt;Void&gt; to = pp.switchMapCompletableDelayError(Functions.justFunction(cs)).test();</span>
+
+<span class="fc" id="L377">        pp.onNext(1);</span>
+
+<span class="fc" id="L379">        pp.onError(new TestException());</span>
+
+<span class="fc" id="L381">        to.assertEmpty();</span>
+
+<span class="fc" id="L383">        assertTrue(cs.hasObservers());</span>
+
+<span class="fc" id="L385">        cs.onComplete();</span>
+
+<span class="fc" id="L387">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L388">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

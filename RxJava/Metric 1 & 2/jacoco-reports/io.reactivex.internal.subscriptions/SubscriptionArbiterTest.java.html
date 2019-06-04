@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionArbiterTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.subscriptions</a> &gt; <span class="el_source">SubscriptionArbiterTest.java</span></div><h1>SubscriptionArbiterTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.subscriptions;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+
+import org.junit.Test;
+
+import io.reactivex.TestHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L25">public class SubscriptionArbiterTest {</span>
+
+    @Test
+    public void setSubscriptionMissed() {
+<span class="fc" id="L29">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L31">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L33">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L35">        sa.setSubscription(bs1);</span>
+
+<span class="fc" id="L37">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L39">        sa.setSubscription(bs2);</span>
+
+<span class="fc" id="L41">        assertTrue(bs1.isCancelled());</span>
+
+<span class="fc" id="L43">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L44">    }</span>
+
+    @Test
+    public void invalidDeferredRequest() {
+<span class="fc" id="L48">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L50">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L52">            sa.request(-99);</span>
+
+<span class="fc" id="L54">            TestHelper.assertError(errors, 0, IllegalArgumentException.class, &quot;n &gt; 0 required but it was -99&quot;);</span>
+        } finally {
+<span class="fc" id="L56">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L58">    }</span>
+
+    @Test
+    public void unbounded() {
+<span class="fc" id="L62">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L64">        sa.request(Long.MAX_VALUE);</span>
+
+<span class="fc" id="L66">        assertEquals(Long.MAX_VALUE, sa.requested);</span>
+
+<span class="fc" id="L68">        assertTrue(sa.isUnbounded());</span>
+
+<span class="fc" id="L70">        sa.unbounded = false;</span>
+
+<span class="fc" id="L72">        sa.request(Long.MAX_VALUE);</span>
+
+<span class="fc" id="L74">        assertEquals(Long.MAX_VALUE, sa.requested);</span>
+
+<span class="fc" id="L76">        sa.produced(1);</span>
+
+<span class="fc" id="L78">        assertEquals(Long.MAX_VALUE, sa.requested);</span>
+
+<span class="fc" id="L80">        sa.unbounded = false;</span>
+
+<span class="fc" id="L82">        sa.produced(Long.MAX_VALUE);</span>
+
+<span class="fc" id="L84">        assertEquals(Long.MAX_VALUE, sa.requested);</span>
+<span class="fc" id="L85">    }</span>
+
+    @Test
+    public void cancelled() {
+<span class="fc" id="L89">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+<span class="fc" id="L90">        sa.cancelled = true;</span>
+
+<span class="fc" id="L92">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L94">        sa.missedSubscription.set(bs1);</span>
+
+<span class="fc" id="L96">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L98">        sa.drainLoop();</span>
+
+<span class="fc" id="L100">        assertTrue(bs1.isCancelled());</span>
+<span class="fc" id="L101">    }</span>
+
+    @Test
+    public void drainUnbounded() {
+<span class="fc" id="L105">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L107">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L109">        sa.requested = Long.MAX_VALUE;</span>
+
+<span class="fc" id="L111">        sa.drainLoop();</span>
+<span class="fc" id="L112">    }</span>
+
+    @Test
+    public void drainMissedRequested() {
+<span class="fc" id="L116">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L118">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L120">        sa.requested = 0;</span>
+
+<span class="fc" id="L122">        sa.missedRequested.set(1);</span>
+
+<span class="fc" id="L124">        sa.drainLoop();</span>
+
+<span class="fc" id="L126">        assertEquals(1, sa.requested);</span>
+<span class="fc" id="L127">    }</span>
+
+    @Test
+    public void drainMissedRequestedProduced() {
+<span class="fc" id="L131">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L133">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L135">        sa.requested = 0;</span>
+
+<span class="fc" id="L137">        sa.missedRequested.set(Long.MAX_VALUE);</span>
+
+<span class="fc" id="L139">        sa.missedProduced.set(1);</span>
+
+<span class="fc" id="L141">        sa.drainLoop();</span>
+
+<span class="fc" id="L143">        assertEquals(Long.MAX_VALUE, sa.requested);</span>
+<span class="fc" id="L144">    }</span>
+
+    @Test
+    public void drainMissedRequestedMoreProduced() {
+<span class="fc" id="L148">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L150">            SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L152">            sa.getAndIncrement();</span>
+
+<span class="fc" id="L154">            sa.requested = 0;</span>
+
+<span class="fc" id="L156">            sa.missedRequested.set(1);</span>
+
+<span class="fc" id="L158">            sa.missedProduced.set(2);</span>
+
+<span class="fc" id="L160">            sa.drainLoop();</span>
+
+<span class="fc" id="L162">            assertEquals(0, sa.requested);</span>
+
+<span class="fc" id="L164">            TestHelper.assertError(errors, 0, IllegalStateException.class, &quot;More produced than requested: -1&quot;);</span>
+        } finally {
+<span class="fc" id="L166">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L168">    }</span>
+
+    @Test
+    public void missedSubscriptionNoPrior() {
+<span class="fc" id="L172">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L174">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L176">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L178">        sa.missedSubscription.set(bs1);</span>
+
+<span class="fc" id="L180">        sa.drainLoop();</span>
+
+<span class="fc" id="L182">        assertSame(bs1, sa.actual);</span>
+<span class="fc" id="L183">    }</span>
+
+    @Test
+    public void noCancelFastPath() {
+<span class="fc" id="L187">        SubscriptionArbiter sa = new SubscriptionArbiter(false);</span>
+
+<span class="fc" id="L189">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L190">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L192">        sa.setSubscription(bs1);</span>
+<span class="fc" id="L193">        sa.setSubscription(bs2);</span>
+
+<span class="fc" id="L195">        assertFalse(bs1.isCancelled());</span>
+<span class="fc" id="L196">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L197">    }</span>
+
+    @Test
+    public void cancelFastPath() {
+<span class="fc" id="L201">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L203">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L204">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L206">        sa.setSubscription(bs1);</span>
+<span class="fc" id="L207">        sa.setSubscription(bs2);</span>
+
+<span class="fc" id="L209">        assertTrue(bs1.isCancelled());</span>
+<span class="fc" id="L210">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L211">    }</span>
+
+    @Test
+    public void noCancelSlowPathReplace() {
+<span class="fc" id="L215">        SubscriptionArbiter sa = new SubscriptionArbiter(false);</span>
+
+<span class="fc" id="L217">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L218">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+<span class="fc" id="L219">        BooleanSubscription bs3 = new BooleanSubscription();</span>
+
+<span class="fc" id="L221">        sa.setSubscription(bs1);</span>
+
+<span class="fc" id="L223">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L225">        sa.setSubscription(bs2);</span>
+<span class="fc" id="L226">        sa.setSubscription(bs3);</span>
+
+<span class="fc" id="L228">        sa.drainLoop();</span>
+
+<span class="fc" id="L230">        assertFalse(bs1.isCancelled());</span>
+<span class="fc" id="L231">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L232">        assertFalse(bs3.isCancelled());</span>
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void cancelSlowPathReplace() {
+<span class="fc" id="L237">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L239">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L240">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+<span class="fc" id="L241">        BooleanSubscription bs3 = new BooleanSubscription();</span>
+
+<span class="fc" id="L243">        sa.setSubscription(bs1);</span>
+
+<span class="fc" id="L245">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L247">        sa.setSubscription(bs2);</span>
+<span class="fc" id="L248">        sa.setSubscription(bs3);</span>
+
+<span class="fc" id="L250">        sa.drainLoop();</span>
+
+<span class="fc" id="L252">        assertTrue(bs1.isCancelled());</span>
+<span class="fc" id="L253">        assertTrue(bs2.isCancelled());</span>
+<span class="fc" id="L254">        assertFalse(bs3.isCancelled());</span>
+<span class="fc" id="L255">    }</span>
+
+    @Test
+    public void noCancelSlowPath() {
+<span class="fc" id="L259">        SubscriptionArbiter sa = new SubscriptionArbiter(false);</span>
+
+<span class="fc" id="L261">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L262">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L264">        sa.setSubscription(bs1);</span>
+
+<span class="fc" id="L266">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L268">        sa.setSubscription(bs2);</span>
+
+<span class="fc" id="L270">        sa.drainLoop();</span>
+
+<span class="fc" id="L272">        assertFalse(bs1.isCancelled());</span>
+<span class="fc" id="L273">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L274">    }</span>
+
+    @Test
+    public void cancelSlowPath() {
+<span class="fc" id="L278">        SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L280">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L281">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L283">        sa.setSubscription(bs1);</span>
+
+<span class="fc" id="L285">        sa.getAndIncrement();</span>
+
+<span class="fc" id="L287">        sa.setSubscription(bs2);</span>
+
+<span class="fc" id="L289">        sa.drainLoop();</span>
+
+<span class="fc" id="L291">        assertTrue(bs1.isCancelled());</span>
+<span class="fc" id="L292">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L293">    }</span>
+
+    @Test
+    public void moreProducedViolationFastPath() {
+<span class="fc" id="L297">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L299">            SubscriptionArbiter sa = new SubscriptionArbiter(true);</span>
+
+<span class="fc" id="L301">            sa.produced(2);</span>
+
+<span class="fc" id="L303">            assertEquals(0, sa.requested);</span>
+
+<span class="fc" id="L305">            TestHelper.assertError(errors, 0, IllegalStateException.class, &quot;More produced than requested: -2&quot;);</span>
+        } finally {
+<span class="fc" id="L307">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L309">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

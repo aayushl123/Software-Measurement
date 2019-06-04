@@ -1,0 +1,797 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableAmbTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableAmbTest.java</span></div><h1>FlowableAmbTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.*;
+import org.mockito.InOrder;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.util.CrashingMappedIterable;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.*;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L40">public class FlowableAmbTest {</span>
+
+    private TestScheduler scheduler;
+    private Scheduler.Worker innerScheduler;
+
+    @Before
+    public void setUp() {
+<span class="fc" id="L47">        scheduler = new TestScheduler();</span>
+<span class="fc" id="L48">        innerScheduler = scheduler.createWorker();</span>
+<span class="fc" id="L49">    }</span>
+
+    private Flowable&lt;String&gt; createFlowable(final String[] values,
+            final long interval, final Throwable e) {
+<span class="fc" id="L53">        return Flowable.unsafeCreate(new Publisher&lt;String&gt;() {</span>
+
+            @Override
+            public void subscribe(final Subscriber&lt;? super String&gt; subscriber) {
+<span class="fc" id="L57">                final CompositeDisposable parentSubscription = new CompositeDisposable();</span>
+
+<span class="fc" id="L59">                subscriber.onSubscribe(new Subscription() {</span>
+                    @Override
+                    public void request(long n) {
+
+<span class="fc" id="L63">                    }</span>
+
+                    @Override
+                    public void cancel() {
+<span class="fc" id="L67">                        parentSubscription.dispose();</span>
+<span class="fc" id="L68">                    }</span>
+                });
+
+<span class="fc" id="L71">                long delay = interval;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                for (final String value : values) {</span>
+<span class="fc" id="L73">                    parentSubscription.add(innerScheduler.schedule(new Runnable() {</span>
+                        @Override
+                        public void run() {
+<span class="fc" id="L76">                            subscriber.onNext(value);</span>
+<span class="fc" id="L77">                        }</span>
+                    }
+                    , delay, TimeUnit.MILLISECONDS));
+<span class="fc" id="L80">                    delay += interval;</span>
+                }
+<span class="fc" id="L82">                parentSubscription.add(innerScheduler.schedule(new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                            if (e == null) {</span>
+<span class="fc" id="L86">                                subscriber.onComplete();</span>
+                            } else {
+<span class="fc" id="L88">                                subscriber.onError(e);</span>
+                            }
+<span class="fc" id="L90">                    }</span>
+                }, delay, TimeUnit.MILLISECONDS));
+<span class="fc" id="L92">            }</span>
+        });
+    }
+
+    @Test
+    public void testAmb() {
+<span class="fc" id="L98">        Flowable&lt;String&gt; flowable1 = createFlowable(new String[] {</span>
+                &quot;1&quot;, &quot;11&quot;, &quot;111&quot;, &quot;1111&quot; }, 2000, null);
+<span class="fc" id="L100">        Flowable&lt;String&gt; flowable2 = createFlowable(new String[] {</span>
+                &quot;2&quot;, &quot;22&quot;, &quot;222&quot;, &quot;2222&quot; }, 1000, null);
+<span class="fc" id="L102">        Flowable&lt;String&gt; flowable3 = createFlowable(new String[] {</span>
+                &quot;3&quot;, &quot;33&quot;, &quot;333&quot;, &quot;3333&quot; }, 3000, null);
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L106">        Flowable&lt;String&gt; f = Flowable.ambArray(flowable1,</span>
+                flowable2, flowable3);
+
+<span class="fc" id="L109">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L110">        f.subscribe(subscriber);</span>
+
+<span class="fc" id="L112">        scheduler.advanceTimeBy(100000, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L114">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L115">        inOrder.verify(subscriber, times(1)).onNext(&quot;2&quot;);</span>
+<span class="fc" id="L116">        inOrder.verify(subscriber, times(1)).onNext(&quot;22&quot;);</span>
+<span class="fc" id="L117">        inOrder.verify(subscriber, times(1)).onNext(&quot;222&quot;);</span>
+<span class="fc" id="L118">        inOrder.verify(subscriber, times(1)).onNext(&quot;2222&quot;);</span>
+<span class="fc" id="L119">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L120">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L121">    }</span>
+
+    @Test
+    public void testAmb2() {
+<span class="fc" id="L125">        IOException expectedException = new IOException(</span>
+                &quot;fake exception&quot;);
+<span class="fc" id="L127">        Flowable&lt;String&gt; flowable1 = createFlowable(new String[] {},</span>
+                2000, new IOException(&quot;fake exception&quot;));
+<span class="fc" id="L129">        Flowable&lt;String&gt; flowable2 = createFlowable(new String[] {</span>
+                &quot;2&quot;, &quot;22&quot;, &quot;222&quot;, &quot;2222&quot; }, 1000, expectedException);
+<span class="fc" id="L131">        Flowable&lt;String&gt; flowable3 = createFlowable(new String[] {},</span>
+                3000, new IOException(&quot;fake exception&quot;));
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L135">        Flowable&lt;String&gt; f = Flowable.ambArray(flowable1,</span>
+                flowable2, flowable3);
+
+<span class="fc" id="L138">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L139">        f.subscribe(subscriber);</span>
+
+<span class="fc" id="L141">        scheduler.advanceTimeBy(100000, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L143">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L144">        inOrder.verify(subscriber, times(1)).onNext(&quot;2&quot;);</span>
+<span class="fc" id="L145">        inOrder.verify(subscriber, times(1)).onNext(&quot;22&quot;);</span>
+<span class="fc" id="L146">        inOrder.verify(subscriber, times(1)).onNext(&quot;222&quot;);</span>
+<span class="fc" id="L147">        inOrder.verify(subscriber, times(1)).onNext(&quot;2222&quot;);</span>
+<span class="fc" id="L148">        inOrder.verify(subscriber, times(1)).onError(expectedException);</span>
+<span class="fc" id="L149">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L150">    }</span>
+
+    @Test
+    public void testAmb3() {
+<span class="fc" id="L154">        Flowable&lt;String&gt; flowable1 = createFlowable(new String[] {</span>
+                &quot;1&quot; }, 2000, null);
+<span class="fc" id="L156">        Flowable&lt;String&gt; flowable2 = createFlowable(new String[] {},</span>
+                1000, null);
+<span class="fc" id="L158">        Flowable&lt;String&gt; flowable3 = createFlowable(new String[] {</span>
+                &quot;3&quot; }, 3000, null);
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L162">        Flowable&lt;String&gt; f = Flowable.ambArray(flowable1,</span>
+                flowable2, flowable3);
+
+<span class="fc" id="L165">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L166">        f.subscribe(subscriber);</span>
+
+<span class="fc" id="L168">        scheduler.advanceTimeBy(100000, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L169">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L170">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L171">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L172">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void testProducerRequestThroughAmb() {
+<span class="fc" id="L177">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+<span class="fc" id="L178">        ts.request(3);</span>
+<span class="fc" id="L179">        final AtomicLong requested1 = new AtomicLong();</span>
+<span class="fc" id="L180">        final AtomicLong requested2 = new AtomicLong();</span>
+<span class="fc" id="L181">        Flowable&lt;Integer&gt; f1 = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L185">                s.onSubscribe(new Subscription() {</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L189">                        System.out.println(&quot;1-requested: &quot; + n);</span>
+<span class="fc" id="L190">                        requested1.set(n);</span>
+<span class="fc" id="L191">                    }</span>
+
+                    @Override
+                    public void cancel() {
+
+<span class="nc" id="L196">                    }</span>
+                });
+<span class="fc" id="L198">            }</span>
+
+        });
+<span class="fc" id="L201">        Flowable&lt;Integer&gt; f2 = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L205">                s.onSubscribe(new Subscription() {</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L209">                        System.out.println(&quot;2-requested: &quot; + n);</span>
+<span class="fc" id="L210">                        requested2.set(n);</span>
+<span class="fc" id="L211">                    }</span>
+
+                    @Override
+                    public void cancel() {
+
+<span class="nc" id="L216">                    }</span>
+                });
+<span class="fc" id="L218">            }</span>
+
+        });
+<span class="fc" id="L221">        Flowable.ambArray(f1, f2).subscribe(ts);</span>
+<span class="fc" id="L222">        assertEquals(3, requested1.get());</span>
+<span class="fc" id="L223">        assertEquals(3, requested2.get());</span>
+<span class="fc" id="L224">    }</span>
+
+    @Test
+    public void testBackpressure() {
+<span class="fc" id="L228">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L229">        Flowable.range(0, Flowable.bufferSize() * 2)</span>
+<span class="fc" id="L230">                .ambWith(Flowable.range(0, Flowable.bufferSize() * 2))</span>
+<span class="fc" id="L231">                .observeOn(Schedulers.computation()) // observeOn has a backpressured RxRingBuffer</span>
+<span class="fc" id="L232">                .delay(1, TimeUnit.MICROSECONDS) // make it a slightly slow consumer</span>
+<span class="fc" id="L233">                .subscribe(ts);</span>
+
+<span class="fc" id="L235">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L236">        ts.assertNoErrors();</span>
+<span class="fc" id="L237">        assertEquals(Flowable.bufferSize() * 2, ts.values().size());</span>
+<span class="fc" id="L238">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void testSubscriptionOnlyHappensOnce() throws InterruptedException {
+<span class="fc" id="L243">        final AtomicLong count = new AtomicLong();</span>
+<span class="fc" id="L244">        Consumer&lt;Subscription&gt; incrementer = new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription s) {
+<span class="fc" id="L247">                count.incrementAndGet();</span>
+<span class="fc" id="L248">            }</span>
+        };
+
+        //this aync stream should emit first
+<span class="fc" id="L252">        Flowable&lt;Integer&gt; f1 = Flowable.just(1).doOnSubscribe(incrementer)</span>
+<span class="fc" id="L253">                .delay(100, TimeUnit.MILLISECONDS).subscribeOn(Schedulers.computation());</span>
+        //this stream emits second
+<span class="fc" id="L255">        Flowable&lt;Integer&gt; f2 = Flowable.just(1).doOnSubscribe(incrementer)</span>
+<span class="fc" id="L256">                .delay(100, TimeUnit.MILLISECONDS).subscribeOn(Schedulers.computation());</span>
+<span class="fc" id="L257">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L258">        Flowable.ambArray(f1, f2).subscribe(ts);</span>
+<span class="fc" id="L259">        ts.request(1);</span>
+<span class="fc" id="L260">        ts.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L261">        ts.assertNoErrors();</span>
+<span class="fc" id="L262">        assertEquals(2, count.get());</span>
+<span class="fc" id="L263">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void testSecondaryRequestsPropagatedToChildren() throws InterruptedException {
+        //this aync stream should emit first
+<span class="fc" id="L269">        Flowable&lt;Integer&gt; f1 = Flowable.fromArray(1, 2, 3)</span>
+<span class="fc" id="L270">                .delay(100, TimeUnit.MILLISECONDS).subscribeOn(Schedulers.computation());</span>
+        //this stream emits second
+<span class="fc" id="L272">        Flowable&lt;Integer&gt; f2 = Flowable.fromArray(4, 5, 6)</span>
+<span class="fc" id="L273">                .delay(200, TimeUnit.MILLISECONDS).subscribeOn(Schedulers.computation());</span>
+<span class="fc" id="L274">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(1L);</span>
+
+<span class="fc" id="L276">        Flowable.ambArray(f1, f2).subscribe(ts);</span>
+        // before first emission request 20 more
+        // this request should suffice to emit all
+<span class="fc" id="L279">        ts.request(20);</span>
+        //ensure stream does not hang
+<span class="fc" id="L281">        ts.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L282">        ts.assertNoErrors();</span>
+<span class="fc" id="L283">    }</span>
+
+    @Test
+    public void testSynchronousSources() {
+        // under async subscription the second Flowable would complete before
+        // the first but because this is a synchronous subscription to sources
+        // then second Flowable does not get subscribed to before first
+        // subscription completes hence first Flowable emits result through
+        // amb
+<span class="fc" id="L292">        int result = Flowable.just(1).doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer t) {
+                    try {
+<span class="fc" id="L296">                        Thread.sleep(100);</span>
+<span class="nc" id="L297">                    } catch (InterruptedException e) {</span>
+                        //
+<span class="fc" id="L299">                    }</span>
+<span class="fc" id="L300">            }</span>
+<span class="fc" id="L301">        }).ambWith(Flowable.just(2)).blockingSingle();</span>
+<span class="fc" id="L302">        assertEquals(1, result);</span>
+<span class="fc" id="L303">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void testAmbCancelsOthers() {
+<span class="fc" id="L308">        PublishProcessor&lt;Integer&gt; source1 = PublishProcessor.create();</span>
+<span class="fc" id="L309">        PublishProcessor&lt;Integer&gt; source2 = PublishProcessor.create();</span>
+<span class="fc" id="L310">        PublishProcessor&lt;Integer&gt; source3 = PublishProcessor.create();</span>
+
+<span class="fc" id="L312">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L314">        Flowable.ambArray(source1, source2, source3).subscribe(ts);</span>
+
+<span class="fc" id="L316">        assertTrue(&quot;Source 1 doesn't have subscribers!&quot;, source1.hasSubscribers());</span>
+<span class="fc" id="L317">        assertTrue(&quot;Source 2 doesn't have subscribers!&quot;, source2.hasSubscribers());</span>
+<span class="fc" id="L318">        assertTrue(&quot;Source 3 doesn't have subscribers!&quot;, source3.hasSubscribers());</span>
+
+<span class="fc" id="L320">        source1.onNext(1);</span>
+
+<span class="fc" id="L322">        assertTrue(&quot;Source 1 doesn't have subscribers!&quot;, source1.hasSubscribers());</span>
+<span class="fc" id="L323">        assertFalse(&quot;Source 2 still has subscribers!&quot;, source2.hasSubscribers());</span>
+<span class="fc" id="L324">        assertFalse(&quot;Source 2 still has subscribers!&quot;, source3.hasSubscribers());</span>
+
+<span class="fc" id="L326">    }</span>
+
+    @Test(timeout = 1000)
+    public void testMultipleUse() {
+<span class="fc" id="L330">        TestSubscriber&lt;Long&gt; ts1 = new TestSubscriber&lt;Long&gt;();</span>
+<span class="fc" id="L331">        TestSubscriber&lt;Long&gt; ts2 = new TestSubscriber&lt;Long&gt;();</span>
+
+<span class="fc" id="L333">        Flowable&lt;Long&gt; amb = Flowable.timer(100, TimeUnit.MILLISECONDS).ambWith(Flowable.timer(200, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L335">        amb.subscribe(ts1);</span>
+<span class="fc" id="L336">        amb.subscribe(ts2);</span>
+
+<span class="fc" id="L338">        ts1.awaitTerminalEvent();</span>
+<span class="fc" id="L339">        ts2.awaitTerminalEvent();</span>
+
+<span class="fc" id="L341">        ts1.assertValue(0L);</span>
+<span class="fc" id="L342">        ts1.assertComplete();</span>
+<span class="fc" id="L343">        ts1.assertNoErrors();</span>
+
+<span class="fc" id="L345">        ts2.assertValue(0L);</span>
+<span class="fc" id="L346">        ts2.assertComplete();</span>
+<span class="fc" id="L347">        ts2.assertNoErrors();</span>
+<span class="fc" id="L348">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambIterable() {
+<span class="fc" id="L353">        PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L354">        PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L356">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L358">        Flowable.amb(Arrays.asList(pp1, pp2)).subscribe(ts);</span>
+
+<span class="fc" id="L360">        ts.assertNoValues();</span>
+
+<span class="fc" id="L362">        pp1.onNext(1);</span>
+<span class="fc" id="L363">        pp1.onComplete();</span>
+
+<span class="fc" id="L365">        assertFalse(pp1.hasSubscribers());</span>
+<span class="fc" id="L366">        assertFalse(pp2.hasSubscribers());</span>
+
+<span class="fc" id="L368">        ts.assertValue(1);</span>
+<span class="fc" id="L369">        ts.assertNoErrors();</span>
+<span class="fc" id="L370">        ts.assertComplete();</span>
+<span class="fc" id="L371">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambIterable2() {
+<span class="fc" id="L376">        PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L377">        PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L379">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L381">        Flowable.amb(Arrays.asList(pp1, pp2)).subscribe(ts);</span>
+
+<span class="fc" id="L383">        ts.assertNoValues();</span>
+
+<span class="fc" id="L385">        pp2.onNext(2);</span>
+<span class="fc" id="L386">        pp2.onComplete();</span>
+
+<span class="fc" id="L388">        assertFalse(pp1.hasSubscribers());</span>
+<span class="fc" id="L389">        assertFalse(pp2.hasSubscribers());</span>
+
+<span class="fc" id="L391">        ts.assertValue(2);</span>
+<span class="fc" id="L392">        ts.assertNoErrors();</span>
+<span class="fc" id="L393">        ts.assertComplete();</span>
+<span class="fc" id="L394">    }</span>
+
+    @Ignore(&quot;No 2-9 arg overloads&quot;)
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambMany() throws Exception {
+<span class="nc bnc" id="L400" title="All 2 branches missed.">        for (int i = 2; i &lt; 10; i++) {</span>
+<span class="nc" id="L401">            Class&lt;?&gt;[] clazz = new Class[i];</span>
+<span class="nc" id="L402">            Arrays.fill(clazz, Publisher.class);</span>
+
+<span class="nc" id="L404">            PublishProcessor&lt;Integer&gt;[] ps = new PublishProcessor[i];</span>
+
+<span class="nc bnc" id="L406" title="All 2 branches missed.">            for (int j = 0; j &lt; i; j++) {</span>
+
+<span class="nc bnc" id="L408" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L409">                    ps[k] = PublishProcessor.create();</span>
+                }
+
+<span class="nc" id="L412">                Method m = Flowable.class.getMethod(&quot;amb&quot;, clazz);</span>
+
+<span class="nc" id="L414">                Flowable&lt;Integer&gt; obs = (Flowable&lt;Integer&gt;)m.invoke(null, (Object[])ps);</span>
+
+<span class="nc" id="L416">                TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="nc" id="L418">                obs.subscribe(ts);</span>
+
+<span class="nc bnc" id="L420" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L421">                    assertTrue(&quot;@&quot; + i + &quot;/&quot; + k + &quot; has no observers?&quot;, ps[k].hasSubscribers());</span>
+                }
+
+<span class="nc" id="L424">                ps[j].onNext(j);</span>
+<span class="nc" id="L425">                ps[j].onComplete();</span>
+
+<span class="nc bnc" id="L427" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L428">                    assertFalse(&quot;@&quot; + i + &quot;/&quot; + k + &quot; has observers?&quot;, ps[k].hasSubscribers());</span>
+                }
+
+<span class="nc" id="L431">                ts.assertValue(j);</span>
+<span class="nc" id="L432">                ts.assertNoErrors();</span>
+<span class="nc" id="L433">                ts.assertComplete();</span>
+            }
+        }
+<span class="nc" id="L436">    }</span>
+
+    @Ignore(&quot;No 2-9 arg overloads&quot;)
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambManyError() throws Exception {
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        for (int i = 2; i &lt; 10; i++) {</span>
+<span class="nc" id="L443">            Class&lt;?&gt;[] clazz = new Class[i];</span>
+<span class="nc" id="L444">            Arrays.fill(clazz, Publisher.class);</span>
+
+<span class="nc" id="L446">            PublishProcessor&lt;Integer&gt;[] ps = new PublishProcessor[i];</span>
+
+<span class="nc bnc" id="L448" title="All 2 branches missed.">            for (int j = 0; j &lt; i; j++) {</span>
+
+<span class="nc bnc" id="L450" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L451">                    ps[k] = PublishProcessor.create();</span>
+                }
+
+<span class="nc" id="L454">                Method m = Flowable.class.getMethod(&quot;amb&quot;, clazz);</span>
+
+<span class="nc" id="L456">                Flowable&lt;Integer&gt; obs = (Flowable&lt;Integer&gt;)m.invoke(null, (Object[])ps);</span>
+
+<span class="nc" id="L458">                TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="nc" id="L460">                obs.subscribe(ts);</span>
+
+<span class="nc bnc" id="L462" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L463">                    assertTrue(&quot;@&quot; + i + &quot;/&quot; + k + &quot; has no observers?&quot;, ps[k].hasSubscribers());</span>
+                }
+
+<span class="nc" id="L466">                ps[j].onError(new TestException(Integer.toString(j)));</span>
+
+<span class="nc bnc" id="L468" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L469">                    assertFalse(&quot;@&quot; + i + &quot;/&quot; + k + &quot; has observers?&quot;, ps[k].hasSubscribers());</span>
+                }
+
+<span class="nc" id="L472">                ts.assertNoValues();</span>
+<span class="nc" id="L473">                ts.assertError(TestException.class);</span>
+<span class="nc" id="L474">                ts.assertNotComplete();</span>
+
+<span class="nc" id="L476">                assertEquals(Integer.toString(j), ts.errors().get(0).getMessage());</span>
+            }
+        }
+<span class="nc" id="L479">    }</span>
+
+    @Ignore(&quot;No 2-9 arg overloads&quot;)
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambManyComplete() throws Exception {
+<span class="nc bnc" id="L485" title="All 2 branches missed.">        for (int i = 2; i &lt; 10; i++) {</span>
+<span class="nc" id="L486">            Class&lt;?&gt;[] clazz = new Class[i];</span>
+<span class="nc" id="L487">            Arrays.fill(clazz, Publisher.class);</span>
+
+<span class="nc" id="L489">            PublishProcessor&lt;Integer&gt;[] ps = new PublishProcessor[i];</span>
+
+<span class="nc bnc" id="L491" title="All 2 branches missed.">            for (int j = 0; j &lt; i; j++) {</span>
+
+<span class="nc bnc" id="L493" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L494">                    ps[k] = PublishProcessor.create();</span>
+                }
+
+<span class="nc" id="L497">                Method m = Flowable.class.getMethod(&quot;amb&quot;, clazz);</span>
+
+<span class="nc" id="L499">                Flowable&lt;Integer&gt; obs = (Flowable&lt;Integer&gt;)m.invoke(null, (Object[])ps);</span>
+
+<span class="nc" id="L501">                TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="nc" id="L503">                obs.subscribe(ts);</span>
+
+<span class="nc bnc" id="L505" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L506">                    assertTrue(&quot;@&quot; + i + &quot;/&quot; + k + &quot; has no observers?&quot;, ps[k].hasSubscribers());</span>
+                }
+
+<span class="nc" id="L509">                ps[j].onComplete();</span>
+
+<span class="nc bnc" id="L511" title="All 2 branches missed.">                for (int k = 0; k &lt; i; k++) {</span>
+<span class="nc" id="L512">                    assertFalse(&quot;@&quot; + i + &quot;/&quot; + k + &quot; has observers?&quot;, ps[k].hasSubscribers());</span>
+                }
+
+<span class="nc" id="L515">                ts.assertNoValues();</span>
+<span class="nc" id="L516">                ts.assertNoErrors();</span>
+<span class="nc" id="L517">                ts.assertComplete();</span>
+            }
+        }
+<span class="nc" id="L520">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambArrayEmpty() {
+<span class="fc" id="L525">        assertSame(Flowable.empty(), Flowable.ambArray());</span>
+<span class="fc" id="L526">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambArraySingleElement() {
+<span class="fc" id="L531">        assertSame(Flowable.never(), Flowable.ambArray(Flowable.never()));</span>
+<span class="fc" id="L532">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void disposed() {
+<span class="fc" id="L537">        TestHelper.checkDisposed(Flowable.ambArray(Flowable.never(), Flowable.never()));</span>
+<span class="fc" id="L538">    }</span>
+
+    @Test
+    public void manySources() {
+<span class="fc" id="L542">        Flowable&lt;?&gt;[] a = new Flowable[32];</span>
+<span class="fc" id="L543">        Arrays.fill(a, Flowable.never());</span>
+<span class="fc" id="L544">        a[31] = Flowable.just(1);</span>
+
+<span class="fc" id="L546">        Flowable.amb(Arrays.asList(a))</span>
+<span class="fc" id="L547">        .test()</span>
+<span class="fc" id="L548">        .assertResult(1);</span>
+<span class="fc" id="L549">    }</span>
+
+    @Test
+    public void emptyIterable() {
+<span class="fc" id="L553">        Flowable.amb(Collections.&lt;Flowable&lt;Integer&gt;&gt;emptyList())</span>
+<span class="fc" id="L554">        .test()</span>
+<span class="fc" id="L555">        .assertResult();</span>
+<span class="fc" id="L556">    }</span>
+
+    @Test
+    public void singleIterable() {
+<span class="fc" id="L560">        Flowable.amb(Collections.singletonList(Flowable.just(1)))</span>
+<span class="fc" id="L561">        .test()</span>
+<span class="fc" id="L562">        .assertResult(1);</span>
+<span class="fc" id="L563">    }</span>
+
+    @Test
+    public void onNextRace() {
+<span class="fc bfc" id="L567" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L568">            final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L569">            final PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L572">            TestSubscriber&lt;Integer&gt; ts = Flowable.ambArray(pp1, pp2).test();</span>
+
+<span class="fc" id="L574">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L577">                    pp1.onNext(1);</span>
+<span class="fc" id="L578">                }</span>
+            };
+<span class="fc" id="L580">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L583">                    pp2.onNext(1);</span>
+<span class="fc" id="L584">                }</span>
+            };
+
+<span class="fc" id="L587">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L589">            ts.assertSubscribed().assertNoErrors()</span>
+<span class="fc" id="L590">            .assertNotComplete().assertValueCount(1);</span>
+        }
+<span class="fc" id="L592">    }</span>
+
+    @Test
+    public void onCompleteRace() {
+<span class="fc bfc" id="L596" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L597">            final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L598">            final PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L601">            TestSubscriber&lt;Integer&gt; ts = Flowable.ambArray(pp1, pp2).test();</span>
+
+<span class="fc" id="L603">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L606">                    pp1.onComplete();</span>
+<span class="fc" id="L607">                }</span>
+            };
+<span class="fc" id="L609">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L612">                    pp2.onComplete();</span>
+<span class="fc" id="L613">                }</span>
+            };
+
+<span class="fc" id="L616">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L618">            ts.assertResult();</span>
+        }
+<span class="fc" id="L620">    }</span>
+
+    @Test
+    public void onErrorRace() {
+<span class="fc bfc" id="L624" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L625">            final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L626">            final PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L629">            TestSubscriber&lt;Integer&gt; ts = Flowable.ambArray(pp1, pp2).test();</span>
+
+<span class="fc" id="L631">            final Throwable ex = new TestException();</span>
+
+<span class="fc" id="L633">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L636">                    pp1.onError(ex);</span>
+<span class="fc" id="L637">                }</span>
+            };
+<span class="fc" id="L639">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L642">                    pp2.onError(ex);</span>
+<span class="fc" id="L643">                }</span>
+            };
+
+<span class="fc" id="L646">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L648">                TestHelper.race(r1, r2);</span>
+            } finally {
+<span class="fc" id="L650">                RxJavaPlugins.reset();</span>
+            }
+
+<span class="fc" id="L653">            ts.assertFailure(TestException.class);</span>
+<span class="fc bfc" id="L654" title="All 2 branches covered.">            if (!errors.isEmpty()) {</span>
+<span class="fc" id="L655">                TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+            }
+        }
+<span class="fc" id="L658">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void nullIterableElement() {
+<span class="fc" id="L663">        Flowable.amb(Arrays.asList(Flowable.never(), null, Flowable.never()))</span>
+<span class="fc" id="L664">        .test()</span>
+<span class="fc" id="L665">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L666">    }</span>
+
+    @Test
+    public void iteratorThrows() {
+<span class="fc" id="L670">        Flowable.amb(new CrashingMappedIterable&lt;Flowable&lt;Integer&gt;&gt;(1, 100, 100, new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L673">                return Flowable.never();</span>
+            }
+        }))
+<span class="fc" id="L676">        .test()</span>
+<span class="fc" id="L677">        .assertFailureAndMessage(TestException.class, &quot;iterator()&quot;);</span>
+
+<span class="fc" id="L679">        Flowable.amb(new CrashingMappedIterable&lt;Flowable&lt;Integer&gt;&gt;(100, 1, 100, new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L682">                return Flowable.never();</span>
+            }
+        }))
+<span class="fc" id="L685">        .test()</span>
+<span class="fc" id="L686">        .assertFailureAndMessage(TestException.class, &quot;hasNext()&quot;);</span>
+
+<span class="fc" id="L688">        Flowable.amb(new CrashingMappedIterable&lt;Flowable&lt;Integer&gt;&gt;(100, 100, 1, new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer v) throws Exception {
+<span class="nc" id="L691">                return Flowable.never();</span>
+            }
+        }))
+<span class="fc" id="L694">        .test()</span>
+<span class="fc" id="L695">        .assertFailureAndMessage(TestException.class, &quot;next()&quot;);</span>
+<span class="fc" id="L696">    }</span>
+
+    @Test
+    public void ambWithOrder() {
+<span class="fc" id="L700">        Flowable&lt;Integer&gt; error = Flowable.error(new RuntimeException());</span>
+<span class="fc" id="L701">        Flowable.just(1).ambWith(error).test().assertValue(1).assertComplete();</span>
+<span class="fc" id="L702">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambIterableOrder() {
+<span class="fc" id="L707">        Flowable&lt;Integer&gt; error = Flowable.error(new RuntimeException());</span>
+<span class="fc" id="L708">        Flowable.amb(Arrays.asList(Flowable.just(1), error)).test().assertValue(1).assertComplete();</span>
+<span class="fc" id="L709">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void ambArrayOrder() {
+<span class="fc" id="L714">        Flowable&lt;Integer&gt; error = Flowable.error(new RuntimeException());</span>
+<span class="fc" id="L715">        Flowable.ambArray(Flowable.just(1), error).test().assertValue(1).assertComplete();</span>
+<span class="fc" id="L716">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noWinnerSuccessDispose() throws Exception {
+<span class="fc bfc" id="L721" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L722">            final AtomicBoolean interrupted = new AtomicBoolean();</span>
+<span class="fc" id="L723">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L725">            Flowable.ambArray(</span>
+<span class="fc" id="L726">                Flowable.just(1)</span>
+<span class="fc" id="L727">                    .subscribeOn(Schedulers.single())</span>
+<span class="fc" id="L728">                    .observeOn(Schedulers.computation()),</span>
+<span class="fc" id="L729">                Flowable.never()</span>
+            )
+<span class="fc" id="L731">            .subscribe(new Consumer&lt;Object&gt;() {</span>
+                @Override
+                public void accept(Object v) throws Exception {
+<span class="fc" id="L734">                    interrupted.set(Thread.currentThread().isInterrupted());</span>
+<span class="fc" id="L735">                    cdl.countDown();</span>
+<span class="fc" id="L736">                }</span>
+            });
+
+<span class="fc" id="L739">            assertTrue(cdl.await(500, TimeUnit.SECONDS));</span>
+<span class="fc" id="L740">            assertFalse(&quot;Interrupted!&quot;, interrupted.get());</span>
+        }
+<span class="fc" id="L742">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noWinnerErrorDispose() throws Exception {
+<span class="fc" id="L747">        final TestException ex = new TestException();</span>
+<span class="fc bfc" id="L748" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L749">            final AtomicBoolean interrupted = new AtomicBoolean();</span>
+<span class="fc" id="L750">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L752">            Flowable.ambArray(</span>
+<span class="fc" id="L753">                Flowable.error(ex)</span>
+<span class="fc" id="L754">                    .subscribeOn(Schedulers.single())</span>
+<span class="fc" id="L755">                    .observeOn(Schedulers.computation()),</span>
+<span class="fc" id="L756">                Flowable.never()</span>
+            )
+<span class="fc" id="L758">            .subscribe(Functions.emptyConsumer(), new Consumer&lt;Throwable&gt;() {</span>
+                @Override
+                public void accept(Throwable e) throws Exception {
+<span class="fc" id="L761">                    interrupted.set(Thread.currentThread().isInterrupted());</span>
+<span class="fc" id="L762">                    cdl.countDown();</span>
+<span class="fc" id="L763">                }</span>
+            });
+
+<span class="fc" id="L766">            assertTrue(cdl.await(500, TimeUnit.SECONDS));</span>
+<span class="fc" id="L767">            assertFalse(&quot;Interrupted!&quot;, interrupted.get());</span>
+        }
+<span class="fc" id="L769">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noWinnerCompleteDispose() throws Exception {
+<span class="fc bfc" id="L774" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L775">            final AtomicBoolean interrupted = new AtomicBoolean();</span>
+<span class="fc" id="L776">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L778">            Flowable.ambArray(</span>
+<span class="fc" id="L779">                Flowable.empty()</span>
+<span class="fc" id="L780">                    .subscribeOn(Schedulers.single())</span>
+<span class="fc" id="L781">                    .observeOn(Schedulers.computation()),</span>
+<span class="fc" id="L782">                Flowable.never()</span>
+            )
+<span class="fc" id="L784">            .subscribe(Functions.emptyConsumer(), Functions.emptyConsumer(), new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L787">                    interrupted.set(Thread.currentThread().isInterrupted());</span>
+<span class="fc" id="L788">                    cdl.countDown();</span>
+<span class="fc" id="L789">                }</span>
+            });
+
+<span class="fc" id="L792">            assertTrue(cdl.await(500, TimeUnit.SECONDS));</span>
+<span class="fc" id="L793">            assertFalse(&quot;Interrupted!&quot;, interrupted.get());</span>
+        }
+<span class="fc" id="L795">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

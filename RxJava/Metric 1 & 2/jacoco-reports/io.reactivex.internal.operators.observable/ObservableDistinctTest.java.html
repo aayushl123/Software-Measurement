@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableDistinctTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableDistinctTest.java</span></div><h1>ObservableDistinctTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.Callable;
+
+import org.junit.*;
+import org.mockito.InOrder;
+
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.TestHelper;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.UnicastSubject;
+
+<span class="fc" id="L38">public class ObservableDistinctTest {</span>
+
+    Observer&lt;String&gt; w;
+
+    // nulls lead to exceptions
+<span class="fc" id="L43">    final Function&lt;String, String&gt; TO_UPPER_WITH_EXCEPTION = new Function&lt;String, String&gt;() {</span>
+        @Override
+        public String apply(String s) {
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if (s.equals(&quot;x&quot;)) {</span>
+<span class="nc" id="L47">                return &quot;XX&quot;;</span>
+            }
+<span class="fc" id="L49">            return s.toUpperCase();</span>
+        }
+    };
+
+    @Before
+    public void before() {
+<span class="fc" id="L55">        w = TestHelper.mockObserver();</span>
+<span class="fc" id="L56">    }</span>
+
+    @Test
+    public void testDistinctOfNone() {
+<span class="fc" id="L60">        Observable&lt;String&gt; src = Observable.empty();</span>
+<span class="fc" id="L61">        src.distinct().subscribe(w);</span>
+
+<span class="fc" id="L63">        verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L64">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L65">        verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L66">    }</span>
+
+    @Test
+    public void testDistinctOfNoneWithKeySelector() {
+<span class="fc" id="L70">        Observable&lt;String&gt; src = Observable.empty();</span>
+<span class="fc" id="L71">        src.distinct(TO_UPPER_WITH_EXCEPTION).subscribe(w);</span>
+
+<span class="fc" id="L73">        verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L74">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L75">        verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L76">    }</span>
+
+    @Test
+    public void testDistinctOfNormalSource() {
+<span class="fc" id="L80">        Observable&lt;String&gt; src = Observable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;, &quot;c&quot;, &quot;c&quot;, &quot;b&quot;, &quot;b&quot;, &quot;a&quot;, &quot;e&quot;);</span>
+<span class="fc" id="L81">        src.distinct().subscribe(w);</span>
+
+<span class="fc" id="L83">        InOrder inOrder = inOrder(w);</span>
+<span class="fc" id="L84">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L85">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L86">        inOrder.verify(w, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L87">        inOrder.verify(w, times(1)).onNext(&quot;e&quot;);</span>
+<span class="fc" id="L88">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L89">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L90">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L91">    }</span>
+
+    @Test
+    public void testDistinctOfNormalSourceWithKeySelector() {
+<span class="fc" id="L95">        Observable&lt;String&gt; src = Observable.just(&quot;a&quot;, &quot;B&quot;, &quot;c&quot;, &quot;C&quot;, &quot;c&quot;, &quot;B&quot;, &quot;b&quot;, &quot;a&quot;, &quot;E&quot;);</span>
+<span class="fc" id="L96">        src.distinct(TO_UPPER_WITH_EXCEPTION).subscribe(w);</span>
+
+<span class="fc" id="L98">        InOrder inOrder = inOrder(w);</span>
+<span class="fc" id="L99">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L100">        inOrder.verify(w, times(1)).onNext(&quot;B&quot;);</span>
+<span class="fc" id="L101">        inOrder.verify(w, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L102">        inOrder.verify(w, times(1)).onNext(&quot;E&quot;);</span>
+<span class="fc" id="L103">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L104">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="fc" id="L105">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L106">    }</span>
+
+    @Test
+    @Ignore(&quot;Null values no longer allowed&quot;)
+    public void testDistinctOfSourceWithNulls() {
+<span class="nc" id="L111">        Observable&lt;String&gt; src = Observable.just(null, &quot;a&quot;, &quot;a&quot;, null, null, &quot;b&quot;, null);</span>
+<span class="nc" id="L112">        src.distinct().subscribe(w);</span>
+
+<span class="nc" id="L114">        InOrder inOrder = inOrder(w);</span>
+<span class="nc" id="L115">        inOrder.verify(w, times(1)).onNext(null);</span>
+<span class="nc" id="L116">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="nc" id="L117">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="nc" id="L118">        inOrder.verify(w, times(1)).onComplete();</span>
+<span class="nc" id="L119">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="nc" id="L120">        verify(w, never()).onError(any(Throwable.class));</span>
+<span class="nc" id="L121">    }</span>
+
+    @Test
+    @Ignore(&quot;Null values no longer allowed&quot;)
+    public void testDistinctOfSourceWithExceptionsFromKeySelector() {
+<span class="nc" id="L126">        Observable&lt;String&gt; src = Observable.just(&quot;a&quot;, &quot;b&quot;, null, &quot;c&quot;);</span>
+<span class="nc" id="L127">        src.distinct(TO_UPPER_WITH_EXCEPTION).subscribe(w);</span>
+
+<span class="nc" id="L129">        InOrder inOrder = inOrder(w);</span>
+<span class="nc" id="L130">        inOrder.verify(w, times(1)).onNext(&quot;a&quot;);</span>
+<span class="nc" id="L131">        inOrder.verify(w, times(1)).onNext(&quot;b&quot;);</span>
+<span class="nc" id="L132">        inOrder.verify(w, times(1)).onError(any(NullPointerException.class));</span>
+<span class="nc" id="L133">        inOrder.verify(w, never()).onNext(anyString());</span>
+<span class="nc" id="L134">        inOrder.verify(w, never()).onComplete();</span>
+<span class="nc" id="L135">    }</span>
+
+    @Test
+    public void error() {
+<span class="fc" id="L139">        Observable.error(new TestException())</span>
+<span class="fc" id="L140">        .distinct()</span>
+<span class="fc" id="L141">        .test()</span>
+<span class="fc" id="L142">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L143">    }</span>
+
+    @Test
+    public void fusedSync() {
+<span class="fc" id="L147">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L149">        Observable.just(1, 1, 2, 1, 3, 2, 4, 5, 4)</span>
+<span class="fc" id="L150">        .distinct()</span>
+<span class="fc" id="L151">        .subscribe(to);</span>
+
+<span class="fc" id="L153">        ObserverFusion.assertFusion(to, QueueFuseable.SYNC)</span>
+<span class="fc" id="L154">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L155">    }</span>
+
+    @Test
+    public void fusedAsync() {
+<span class="fc" id="L159">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L161">        UnicastSubject&lt;Integer&gt; us = UnicastSubject.create();</span>
+
+<span class="fc" id="L163">        us</span>
+<span class="fc" id="L164">        .distinct()</span>
+<span class="fc" id="L165">        .subscribe(to);</span>
+
+<span class="fc" id="L167">        TestHelper.emit(us, 1, 1, 2, 1, 3, 2, 4, 5, 4);</span>
+
+<span class="fc" id="L169">        ObserverFusion.assertFusion(to, QueueFuseable.ASYNC)</span>
+<span class="fc" id="L170">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L171">    }</span>
+
+    @Test
+    public void fusedClear() {
+<span class="fc" id="L175">        Observable.just(1, 1, 2, 1, 3, 2, 4, 5, 4)</span>
+<span class="fc" id="L176">        .distinct()</span>
+<span class="fc" id="L177">        .subscribe(new Observer&lt;Integer&gt;() {</span>
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L180">                QueueDisposable&lt;?&gt; qd = (QueueDisposable&lt;?&gt;)d;</span>
+
+<span class="fc" id="L182">                assertFalse(qd.isEmpty());</span>
+
+<span class="fc" id="L184">                qd.clear();</span>
+
+<span class="fc" id="L186">                assertTrue(qd.isEmpty());</span>
+<span class="fc" id="L187">            }</span>
+
+            @Override
+            public void onNext(Integer value) {
+<span class="fc" id="L191">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L195">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L199">            }</span>
+        });
+<span class="fc" id="L201">    }</span>
+
+    @Test
+    public void collectionSupplierThrows() {
+<span class="fc" id="L205">        Observable.just(1)</span>
+<span class="fc" id="L206">        .distinct(Functions.identity(), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L209">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L212">        .test()</span>
+<span class="fc" id="L213">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L214">    }</span>
+
+    @Test
+    public void collectionSupplierIsNull() {
+<span class="fc" id="L218">        Observable.just(1)</span>
+<span class="fc" id="L219">        .distinct(Functions.identity(), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L222">                return null;</span>
+            }
+        })
+<span class="fc" id="L225">        .test()</span>
+<span class="fc" id="L226">        .assertFailure(NullPointerException.class)</span>
+<span class="fc" id="L227">        .assertErrorMessage(&quot;The collectionSupplier returned a null collection. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc" id="L228">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L232">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L234">            new Observable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L237">                    observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L239">                    observer.onNext(1);</span>
+<span class="fc" id="L240">                    observer.onComplete();</span>
+<span class="fc" id="L241">                    observer.onNext(2);</span>
+<span class="fc" id="L242">                    observer.onError(new TestException());</span>
+<span class="fc" id="L243">                    observer.onComplete();</span>
+<span class="fc" id="L244">                }</span>
+            }
+<span class="fc" id="L246">            .distinct()</span>
+<span class="fc" id="L247">            .test()</span>
+<span class="fc" id="L248">            .assertResult(1);</span>
+
+<span class="fc" id="L250">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L252">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L254">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

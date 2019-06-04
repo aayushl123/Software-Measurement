@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParallelCollect.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.parallel</a> &gt; <span class="el_source">ParallelCollect.java</span></div><h1>ParallelCollect.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.parallel;
+
+import java.util.concurrent.Callable;
+
+import org.reactivestreams.*;
+
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.BiConsumer;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscribers.DeferredScalarSubscriber;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.parallel.ParallelFlowable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Reduce the sequence of values in each 'rail' to a single value.
+ *
+ * @param &lt;T&gt; the input value type
+ * @param &lt;C&gt; the collection type
+ */
+public final class ParallelCollect&lt;T, C&gt; extends ParallelFlowable&lt;C&gt; {
+
+    final ParallelFlowable&lt;? extends T&gt; source;
+
+    final Callable&lt;? extends C&gt; initialCollection;
+
+    final BiConsumer&lt;? super C, ? super T&gt; collector;
+
+    public ParallelCollect(ParallelFlowable&lt;? extends T&gt; source,
+<span class="fc" id="L43">            Callable&lt;? extends C&gt; initialCollection, BiConsumer&lt;? super C, ? super T&gt; collector) {</span>
+<span class="fc" id="L44">        this.source = source;</span>
+<span class="fc" id="L45">        this.initialCollection = initialCollection;</span>
+<span class="fc" id="L46">        this.collector = collector;</span>
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public void subscribe(Subscriber&lt;? super C&gt;[] subscribers) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (!validate(subscribers)) {</span>
+<span class="fc" id="L52">            return;</span>
+        }
+
+<span class="fc" id="L55">        int n = subscribers.length;</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L57">        Subscriber&lt;T&gt;[] parents = new Subscriber[n];</span>
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+
+            C initialValue;
+
+            try {
+<span class="fc" id="L64">                initialValue = ObjectHelper.requireNonNull(initialCollection.call(), &quot;The initialSupplier returned a null value&quot;);</span>
+<span class="fc" id="L65">            } catch (Throwable ex) {</span>
+<span class="fc" id="L66">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L67">                reportError(subscribers, ex);</span>
+<span class="fc" id="L68">                return;</span>
+<span class="fc" id="L69">            }</span>
+
+<span class="fc" id="L71">            parents[i] = new ParallelCollectSubscriber&lt;T, C&gt;(subscribers[i], initialValue, collector);</span>
+        }
+
+<span class="fc" id="L74">        source.subscribe(parents);</span>
+<span class="fc" id="L75">    }</span>
+
+    void reportError(Subscriber&lt;?&gt;[] subscribers, Throwable ex) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (Subscriber&lt;?&gt; s : subscribers) {</span>
+<span class="fc" id="L79">            EmptySubscription.error(ex, s);</span>
+        }
+<span class="fc" id="L81">    }</span>
+
+    @Override
+    public int parallelism() {
+<span class="fc" id="L85">        return source.parallelism();</span>
+    }
+
+    static final class ParallelCollectSubscriber&lt;T, C&gt; extends DeferredScalarSubscriber&lt;T, C&gt; {
+
+        private static final long serialVersionUID = -4767392946044436228L;
+
+        final BiConsumer&lt;? super C, ? super T&gt; collector;
+
+        C collection;
+
+        boolean done;
+
+        ParallelCollectSubscriber(Subscriber&lt;? super C&gt; subscriber,
+                C initialValue, BiConsumer&lt;? super C, ? super T&gt; collector) {
+<span class="fc" id="L100">            super(subscriber);</span>
+<span class="fc" id="L101">            this.collection = initialValue;</span>
+<span class="fc" id="L102">            this.collector = collector;</span>
+<span class="fc" id="L103">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L108">                this.upstream = s;</span>
+
+<span class="fc" id="L110">                downstream.onSubscribe(this);</span>
+
+<span class="fc" id="L112">                s.request(Long.MAX_VALUE);</span>
+            }
+<span class="fc" id="L114">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L119">                return;</span>
+            }
+
+            try {
+<span class="fc" id="L123">                collector.accept(collection, t);</span>
+<span class="fc" id="L124">            } catch (Throwable ex) {</span>
+<span class="fc" id="L125">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L126">                cancel();</span>
+<span class="fc" id="L127">                onError(ex);</span>
+<span class="fc" id="L128">            }</span>
+<span class="fc" id="L129">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L134">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L135">                return;</span>
+            }
+<span class="fc" id="L137">            done = true;</span>
+<span class="fc" id="L138">            collection = null;</span>
+<span class="fc" id="L139">            downstream.onError(t);</span>
+<span class="fc" id="L140">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L145">                return;</span>
+            }
+<span class="fc" id="L147">            done = true;</span>
+<span class="fc" id="L148">            C c = collection;</span>
+<span class="fc" id="L149">            collection = null;</span>
+<span class="fc" id="L150">            complete(c);</span>
+<span class="fc" id="L151">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L155">            super.cancel();</span>
+<span class="fc" id="L156">            upstream.cancel();</span>
+<span class="fc" id="L157">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

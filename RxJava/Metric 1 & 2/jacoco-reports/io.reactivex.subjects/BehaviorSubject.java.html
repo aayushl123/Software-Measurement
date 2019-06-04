@@ -1,0 +1,592 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BehaviorSubject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subjects</a> &gt; <span class="el_source">BehaviorSubject.java</span></div><h1>BehaviorSubject.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subjects;
+
+import io.reactivex.annotations.CheckReturnValue;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.annotations.NonNull;
+import java.lang.reflect.Array;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.*;
+
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.util.*;
+import io.reactivex.internal.util.AppendOnlyLinkedArrayList.NonThrowingPredicate;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Subject that emits the most recent item it has observed and all subsequent observed items to each subscribed
+ * {@link Observer}.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;415&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/S.BehaviorSubject.png&quot; alt=&quot;&quot;&gt;
+ * &lt;p&gt;
+ * This subject does not have a public constructor by design; a new empty instance of this
+ * {@code BehaviorSubject} can be created via the {@link #create()} method and
+ * a new non-empty instance can be created via {@link #createDefault(Object)} (named as such to avoid
+ * overload resolution conflict with {@code Observable.create} that creates an Observable, not a {@code BehaviorSubject}).
+ * &lt;p&gt;
+ * Since a {@code Subject} is conceptionally derived from the {@code Processor} type in the Reactive Streams specification,
+ * {@code null}s are not allowed (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.13&quot;&gt;Rule 2.13&lt;/a&gt;) as
+ * default initial values in {@link #createDefault(Object)} or as parameters to {@link #onNext(Object)} and
+ * {@link #onError(Throwable)}. Such calls will result in a
+ * {@link NullPointerException} being thrown and the subject's state is not changed.
+ * &lt;p&gt;
+ * Since a {@code BehaviorSubject} is an {@link io.reactivex.Observable}, it does not support backpressure.
+ * &lt;p&gt;
+ * When this {@code BehaviorSubject} is terminated via {@link #onError(Throwable)} or {@link #onComplete()}, the
+ * last observed item (if any) is cleared and late {@link io.reactivex.Observer}s only receive
+ * the respective terminal event.
+ * &lt;p&gt;
+ * The {@code BehaviorSubject} does not support clearing its cached value (to appear empty again), however, the
+ * effect can be achieved by using a special item and making sure {@code Observer}s subscribe through a
+ * filter whose predicate filters out this special item:
+ * &lt;pre&gt;&lt;code&gt;
+ * BehaviorSubject&amp;lt;Integer&amp;gt; subject = BehaviorSubject.create();
+ *
+ * final Integer EMPTY = Integer.MIN_VALUE;
+ *
+ * Observable&amp;lt;Integer&amp;gt; observable = subject.filter(v -&amp;gt; v != EMPTY);
+ *
+ * TestObserver&amp;lt;Integer&amp;gt; to1 = observable.test();
+ *
+ * observable.onNext(1);
+ * // this will &quot;clear&quot; the cache
+ * observable.onNext(EMPTY);
+ *
+ * TestObserver&amp;lt;Integer&amp;gt; to2 = observable.test();
+ *
+ * subject.onNext(2);
+ * subject.onComplete();
+ *
+ * // to1 received both non-empty items
+ * to1.assertResult(1, 2);
+ *
+ * // to2 received only 2 even though the current item was EMPTY
+ * // when it got subscribed
+ * to2.assertResult(2);
+ *
+ * // Observers coming after the subject was terminated receive
+ * // no items and only the onComplete event in this case.
+ * observable.test().assertResult();
+ * &lt;/code&gt;&lt;/pre&gt;
+ * &lt;p&gt;
+ * Even though {@code BehaviorSubject} implements the {@code Observer} interface, calling
+ * {@code onSubscribe} is not required (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.12&quot;&gt;Rule 2.12&lt;/a&gt;)
+ * if the subject is used as a standalone source. However, calling {@code onSubscribe}
+ * after the {@code BehaviorSubject} reached its terminal state will result in the
+ * given {@code Disposable} being disposed immediately.
+ * &lt;p&gt;
+ * Calling {@link #onNext(Object)}, {@link #onError(Throwable)} and {@link #onComplete()}
+ * is required to be serialized (called from the same thread or called non-overlappingly from different threads
+ * through external means of serialization). The {@link #toSerialized()} method available to all {@code Subject}s
+ * provides such serialization and also protects against reentrance (i.e., when a downstream {@code Observer}
+ * consuming this subject also wants to call {@link #onNext(Object)} on this subject recursively).
+ * &lt;p&gt;
+ * This {@code BehaviorSubject} supports the standard state-peeking methods {@link #hasComplete()}, {@link #hasThrowable()},
+ * {@link #getThrowable()} and {@link #hasObservers()} as well as means to read the latest observed value
+ * in a non-blocking and thread-safe manner via {@link #hasValue()}, {@link #getValue()},
+ * {@link #getValues()} or {@link #getValues(Object[])}.
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;{@code BehaviorSubject} does not operate by default on a particular {@link io.reactivex.Scheduler} and
+ *  the {@code Observer}s get notified on the thread the respective {@code onXXX} methods were invoked.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Error handling:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;When the {@link #onError(Throwable)} is called, the {@code BehaviorSubject} enters into a terminal state
+ *  and emits the same {@code Throwable} instance to the last set of {@code Observer}s. During this emission,
+ *  if one or more {@code Observer}s dispose their respective {@code Disposable}s, the
+ *  {@code Throwable} is delivered to the global error handler via
+ *  {@link io.reactivex.plugins.RxJavaPlugins#onError(Throwable)} (multiple times if multiple {@code Observer}s
+ *  cancel at once).
+ *  If there were no {@code Observer}s subscribed to this {@code BehaviorSubject} when the {@code onError()}
+ *  was called, the global error handler is not invoked.
+ *  &lt;/dd&gt;
+ * &lt;/dl&gt;
+ * &lt;p&gt;
+ * Example usage:
+ * &lt;pre&gt; {@code
+
+  // observer will receive all 4 events (including &quot;default&quot;).
+  BehaviorSubject&lt;Object&gt; subject = BehaviorSubject.createDefault(&quot;default&quot;);
+  subject.subscribe(observer);
+  subject.onNext(&quot;one&quot;);
+  subject.onNext(&quot;two&quot;);
+  subject.onNext(&quot;three&quot;);
+
+  // observer will receive the &quot;one&quot;, &quot;two&quot; and &quot;three&quot; events, but not &quot;zero&quot;
+  BehaviorSubject&lt;Object&gt; subject = BehaviorSubject.create();
+  subject.onNext(&quot;zero&quot;);
+  subject.onNext(&quot;one&quot;);
+  subject.subscribe(observer);
+  subject.onNext(&quot;two&quot;);
+  subject.onNext(&quot;three&quot;);
+
+  // observer will receive only onComplete
+  BehaviorSubject&lt;Object&gt; subject = BehaviorSubject.create();
+  subject.onNext(&quot;zero&quot;);
+  subject.onNext(&quot;one&quot;);
+  subject.onComplete();
+  subject.subscribe(observer);
+
+  // observer will receive only onError
+  BehaviorSubject&lt;Object&gt; subject = BehaviorSubject.create();
+  subject.onNext(&quot;zero&quot;);
+  subject.onNext(&quot;one&quot;);
+  subject.onError(new RuntimeException(&quot;error&quot;));
+  subject.subscribe(observer);
+  } &lt;/pre&gt;
+ *
+ * @param &lt;T&gt;
+ *          the type of item expected to be observed by the Subject
+ */
+public final class BehaviorSubject&lt;T&gt; extends Subject&lt;T&gt; {
+
+    /** An empty array to avoid allocation in getValues(). */
+<span class="fc" id="L157">    private static final Object[] EMPTY_ARRAY = new Object[0];</span>
+
+    final AtomicReference&lt;Object&gt; value;
+
+    final AtomicReference&lt;BehaviorDisposable&lt;T&gt;[]&gt; subscribers;
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L164">    static final BehaviorDisposable[] EMPTY = new BehaviorDisposable[0];</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L167">    static final BehaviorDisposable[] TERMINATED = new BehaviorDisposable[0];</span>
+    final ReadWriteLock lock;
+    final Lock readLock;
+    final Lock writeLock;
+
+    final AtomicReference&lt;Throwable&gt; terminalEvent;
+
+    long index;
+
+    /**
+     * Creates a {@link BehaviorSubject} without a default item.
+     *
+     * @param &lt;T&gt;
+     *            the type of item the Subject will emit
+     * @return the constructed {@link BehaviorSubject}
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; BehaviorSubject&lt;T&gt; create() {
+<span class="fc" id="L186">        return new BehaviorSubject&lt;T&gt;();</span>
+    }
+
+    /**
+     * Creates a {@link BehaviorSubject} that emits the last item it observed and all subsequent items to each
+     * {@link Observer} that subscribes to it.
+     *
+     * @param &lt;T&gt;
+     *            the type of item the Subject will emit
+     * @param defaultValue
+     *            the item that will be emitted first to any {@link Observer} as long as the
+     *            {@link BehaviorSubject} has not yet observed any items from its source {@code Observable}
+     * @return the constructed {@link BehaviorSubject}
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; BehaviorSubject&lt;T&gt; createDefault(T defaultValue) {
+<span class="fc" id="L203">        return new BehaviorSubject&lt;T&gt;(defaultValue);</span>
+    }
+
+    /**
+     * Constructs an empty BehaviorSubject.
+     * @since 2.0
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L211">    BehaviorSubject() {</span>
+<span class="fc" id="L212">        this.lock = new ReentrantReadWriteLock();</span>
+<span class="fc" id="L213">        this.readLock = lock.readLock();</span>
+<span class="fc" id="L214">        this.writeLock = lock.writeLock();</span>
+<span class="fc" id="L215">        this.subscribers = new AtomicReference&lt;BehaviorDisposable&lt;T&gt;[]&gt;(EMPTY);</span>
+<span class="fc" id="L216">        this.value = new AtomicReference&lt;Object&gt;();</span>
+<span class="fc" id="L217">        this.terminalEvent = new AtomicReference&lt;Throwable&gt;();</span>
+<span class="fc" id="L218">    }</span>
+
+    /**
+     * Constructs a BehaviorSubject with the given initial value.
+     * @param defaultValue the initial value, not null (verified)
+     * @throws NullPointerException if {@code defaultValue} is null
+     * @since 2.0
+     */
+    BehaviorSubject(T defaultValue) {
+<span class="fc" id="L227">        this();</span>
+<span class="fc" id="L228">        this.value.lazySet(ObjectHelper.requireNonNull(defaultValue, &quot;defaultValue is null&quot;));</span>
+<span class="fc" id="L229">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L233">        BehaviorDisposable&lt;T&gt; bs = new BehaviorDisposable&lt;T&gt;(observer, this);</span>
+<span class="fc" id="L234">        observer.onSubscribe(bs);</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (add(bs)) {</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">            if (bs.cancelled) {</span>
+<span class="fc" id="L237">                remove(bs);</span>
+            } else {
+<span class="fc" id="L239">                bs.emitFirst();</span>
+            }
+        } else {
+<span class="fc" id="L242">            Throwable ex = terminalEvent.get();</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            if (ex == ExceptionHelper.TERMINATED) {</span>
+<span class="fc" id="L244">                observer.onComplete();</span>
+            } else {
+<span class="fc" id="L246">                observer.onError(ex);</span>
+            }
+        }
+<span class="fc" id="L249">    }</span>
+
+    @Override
+    public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (terminalEvent.get() != null) {</span>
+<span class="fc" id="L254">            d.dispose();</span>
+        }
+<span class="fc" id="L256">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc" id="L260">        ObjectHelper.requireNonNull(t, &quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (terminalEvent.get() != null) {</span>
+<span class="fc" id="L263">            return;</span>
+        }
+<span class="fc" id="L265">        Object o = NotificationLite.next(t);</span>
+<span class="fc" id="L266">        setCurrent(o);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        for (BehaviorDisposable&lt;T&gt; bs : subscribers.get()) {</span>
+<span class="fc" id="L268">            bs.emitNext(o, index);</span>
+        }
+<span class="fc" id="L270">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+<span class="fc" id="L274">        ObjectHelper.requireNonNull(t, &quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (!terminalEvent.compareAndSet(null, t)) {</span>
+<span class="fc" id="L276">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L277">            return;</span>
+        }
+<span class="fc" id="L279">        Object o = NotificationLite.error(t);</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        for (BehaviorDisposable&lt;T&gt; bs : terminate(o)) {</span>
+<span class="fc" id="L281">            bs.emitNext(o, index);</span>
+        }
+<span class="fc" id="L283">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        if (!terminalEvent.compareAndSet(null, ExceptionHelper.TERMINATED)) {</span>
+<span class="fc" id="L288">            return;</span>
+        }
+<span class="fc" id="L290">        Object o = NotificationLite.complete();</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        for (BehaviorDisposable&lt;T&gt; bs : terminate(o)) {</span>
+<span class="fc" id="L292">            bs.emitNext(o, index);  // relaxed read okay since this is the only mutator thread</span>
+        }
+<span class="fc" id="L294">    }</span>
+
+    @Override
+    public boolean hasObservers() {
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">        return subscribers.get().length != 0;</span>
+    }
+
+    /* test support*/ int subscriberCount() {
+<span class="fc" id="L302">        return subscribers.get().length;</span>
+    }
+
+    @Override
+    @Nullable
+    public Throwable getThrowable() {
+<span class="fc" id="L308">        Object o = value.get();</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (NotificationLite.isError(o)) {</span>
+<span class="fc" id="L310">            return NotificationLite.getError(o);</span>
+        }
+<span class="fc" id="L312">        return null;</span>
+    }
+
+    /**
+     * Returns a single value the Subject currently has or null if no such value exists.
+     * &lt;p&gt;The method is thread-safe.
+     * @return a single value the Subject currently has or null if no such value exists
+     */
+    @Nullable
+    public T getValue() {
+<span class="fc" id="L322">        Object o = value.get();</span>
+<span class="fc bfc" id="L323" title="All 4 branches covered.">        if (NotificationLite.isComplete(o) || NotificationLite.isError(o)) {</span>
+<span class="fc" id="L324">            return null;</span>
+        }
+<span class="fc" id="L326">        return NotificationLite.getValue(o);</span>
+    }
+
+    /**
+     * Returns an Object array containing snapshot all values of the Subject.
+     * &lt;p&gt;The method is thread-safe.
+     * @return the array containing the snapshot of all values of the Subject
+     * @deprecated in 2.1.14; put the result of {@link #getValue()} into an array manually, will be removed in 3.x
+     */
+    @Deprecated
+    public Object[] getValues() {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L338">        T[] a = (T[])EMPTY_ARRAY;</span>
+<span class="fc" id="L339">        T[] b = getValues(a);</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">        if (b == EMPTY_ARRAY) {</span>
+<span class="fc" id="L341">            return new Object[0];</span>
+        }
+<span class="fc" id="L343">        return b;</span>
+
+    }
+
+    /**
+     * Returns a typed array containing a snapshot of all values of the Subject.
+     * &lt;p&gt;The method follows the conventions of Collection.toArray by setting the array element
+     * after the last value to null (if the capacity permits).
+     * &lt;p&gt;The method is thread-safe.
+     * @param array the target array to copy values into if it fits
+     * @return the given array if the values fit into it or a new array containing all values
+     * @deprecated in 2.1.14; put the result of {@link #getValue()} into an array manually, will be removed in 3.x
+     */
+    @Deprecated
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public T[] getValues(T[] array) {
+<span class="fc" id="L359">        Object o = value.get();</span>
+<span class="fc bfc" id="L360" title="All 6 branches covered.">        if (o == null || NotificationLite.isComplete(o) || NotificationLite.isError(o)) {</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">            if (array.length != 0) {</span>
+<span class="fc" id="L362">                array[0] = null;</span>
+            }
+<span class="fc" id="L364">            return array;</span>
+        }
+<span class="fc" id="L366">        T v = NotificationLite.getValue(o);</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">        if (array.length != 0) {</span>
+<span class="fc" id="L368">            array[0] = v;</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">            if (array.length != 1) {</span>
+<span class="fc" id="L370">                array[1] = null;</span>
+            }
+        } else {
+<span class="fc" id="L373">            array = (T[])Array.newInstance(array.getClass().getComponentType(), 1);</span>
+<span class="fc" id="L374">            array[0] = v;</span>
+        }
+<span class="fc" id="L376">        return array;</span>
+    }
+
+    @Override
+    public boolean hasComplete() {
+<span class="fc" id="L381">        Object o = value.get();</span>
+<span class="fc" id="L382">        return NotificationLite.isComplete(o);</span>
+    }
+
+    @Override
+    public boolean hasThrowable() {
+<span class="fc" id="L387">        Object o = value.get();</span>
+<span class="fc" id="L388">        return NotificationLite.isError(o);</span>
+    }
+
+    /**
+     * Returns true if the subject has any value.
+     * &lt;p&gt;The method is thread-safe.
+     * @return true if the subject has any value
+     */
+    public boolean hasValue() {
+<span class="fc" id="L397">        Object o = value.get();</span>
+<span class="fc bfc" id="L398" title="All 6 branches covered.">        return o != null &amp;&amp; !NotificationLite.isComplete(o) &amp;&amp; !NotificationLite.isError(o);</span>
+    }
+
+    boolean add(BehaviorDisposable&lt;T&gt; rs) {
+        for (;;) {
+<span class="fc" id="L403">            BehaviorDisposable&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">            if (a == TERMINATED) {</span>
+<span class="fc" id="L405">                return false;</span>
+            }
+<span class="fc" id="L407">            int len = a.length;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L409">            BehaviorDisposable&lt;T&gt;[] b = new BehaviorDisposable[len + 1];</span>
+<span class="fc" id="L410">            System.arraycopy(a, 0, b, 0, len);</span>
+<span class="fc" id="L411">            b[len] = rs;</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L413">                return true;</span>
+            }
+<span class="fc" id="L415">        }</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    void remove(BehaviorDisposable&lt;T&gt; rs) {
+        for (;;) {
+<span class="fc" id="L421">            BehaviorDisposable&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc" id="L422">            int len = a.length;</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            if (len == 0) {</span>
+<span class="fc" id="L424">                return;</span>
+            }
+<span class="fc" id="L426">            int j = -1;</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">            for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L428" title="All 2 branches covered.">                if (a[i] == rs) {</span>
+<span class="fc" id="L429">                    j = i;</span>
+<span class="fc" id="L430">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L434" title="All 2 branches covered.">            if (j &lt; 0) {</span>
+<span class="fc" id="L435">                return;</span>
+            }
+            BehaviorDisposable&lt;T&gt;[] b;
+<span class="fc bfc" id="L438" title="All 2 branches covered.">            if (len == 1) {</span>
+<span class="fc" id="L439">                b = EMPTY;</span>
+            } else {
+<span class="fc" id="L441">                b = new BehaviorDisposable[len - 1];</span>
+<span class="fc" id="L442">                System.arraycopy(a, 0, b, 0, j);</span>
+<span class="fc" id="L443">                System.arraycopy(a, j + 1, b, j, len - j - 1);</span>
+            }
+<span class="fc bfc" id="L445" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L446">                return;</span>
+            }
+<span class="fc" id="L448">        }</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    BehaviorDisposable&lt;T&gt;[] terminate(Object terminalValue) {
+
+<span class="fc" id="L454">        BehaviorDisposable&lt;T&gt;[] a = subscribers.getAndSet(TERMINATED);</span>
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">        if (a != TERMINATED) {</span>
+            // either this or atomics with lots of allocation
+<span class="fc" id="L457">            setCurrent(terminalValue);</span>
+        }
+
+<span class="fc" id="L460">        return a;</span>
+    }
+
+    void setCurrent(Object o) {
+<span class="fc" id="L464">        writeLock.lock();</span>
+<span class="fc" id="L465">        index++;</span>
+<span class="fc" id="L466">        value.lazySet(o);</span>
+<span class="fc" id="L467">        writeLock.unlock();</span>
+<span class="fc" id="L468">    }</span>
+
+    static final class BehaviorDisposable&lt;T&gt; implements Disposable, NonThrowingPredicate&lt;Object&gt; {
+
+        final Observer&lt;? super T&gt; downstream;
+        final BehaviorSubject&lt;T&gt; state;
+
+        boolean next;
+        boolean emitting;
+        AppendOnlyLinkedArrayList&lt;Object&gt; queue;
+
+        boolean fastPath;
+
+        volatile boolean cancelled;
+
+        long index;
+
+<span class="fc" id="L485">        BehaviorDisposable(Observer&lt;? super T&gt; actual, BehaviorSubject&lt;T&gt; state) {</span>
+<span class="fc" id="L486">            this.downstream = actual;</span>
+<span class="fc" id="L487">            this.state = state;</span>
+<span class="fc" id="L488">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L492" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L493">                cancelled = true;</span>
+
+<span class="fc" id="L495">                state.remove(this);</span>
+            }
+<span class="fc" id="L497">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L501">            return cancelled;</span>
+        }
+
+        void emitFirst() {
+<span class="fc bfc" id="L505" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L506">                return;</span>
+            }
+            Object o;
+<span class="fc" id="L509">            synchronized (this) {</span>
+<span class="fc bfc" id="L510" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L511">                    return;</span>
+                }
+<span class="fc bfc" id="L513" title="All 2 branches covered.">                if (next) {</span>
+<span class="fc" id="L514">                    return;</span>
+                }
+
+<span class="fc" id="L517">                BehaviorSubject&lt;T&gt; s = state;</span>
+<span class="fc" id="L518">                Lock lock = s.readLock;</span>
+
+<span class="fc" id="L520">                lock.lock();</span>
+<span class="fc" id="L521">                index = s.index;</span>
+<span class="fc" id="L522">                o = s.value.get();</span>
+<span class="fc" id="L523">                lock.unlock();</span>
+
+<span class="fc bfc" id="L525" title="All 2 branches covered.">                emitting = o != null;</span>
+<span class="fc" id="L526">                next = true;</span>
+<span class="fc" id="L527">            }</span>
+
+<span class="fc bfc" id="L529" title="All 2 branches covered.">            if (o != null) {</span>
+<span class="fc bfc" id="L530" title="All 2 branches covered.">                if (test(o)) {</span>
+<span class="fc" id="L531">                    return;</span>
+                }
+
+<span class="fc" id="L534">                emitLoop();</span>
+            }
+<span class="fc" id="L536">        }</span>
+
+        void emitNext(Object value, long stateIndex) {
+<span class="fc bfc" id="L539" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L540">                return;</span>
+            }
+<span class="fc bfc" id="L542" title="All 2 branches covered.">            if (!fastPath) {</span>
+<span class="fc" id="L543">                synchronized (this) {</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L545">                        return;</span>
+                    }
+<span class="fc bfc" id="L547" title="All 2 branches covered.">                    if (index == stateIndex) {</span>
+<span class="fc" id="L548">                        return;</span>
+                    }
+<span class="fc bfc" id="L550" title="All 2 branches covered.">                    if (emitting) {</span>
+<span class="fc" id="L551">                        AppendOnlyLinkedArrayList&lt;Object&gt; q = queue;</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">                        if (q == null) {</span>
+<span class="fc" id="L553">                            q = new AppendOnlyLinkedArrayList&lt;Object&gt;(4);</span>
+<span class="fc" id="L554">                            queue = q;</span>
+                        }
+<span class="fc" id="L556">                        q.add(value);</span>
+<span class="fc" id="L557">                        return;</span>
+                    }
+<span class="fc" id="L559">                    next = true;</span>
+<span class="fc" id="L560">                }</span>
+<span class="fc" id="L561">                fastPath = true;</span>
+            }
+
+<span class="fc" id="L564">            test(value);</span>
+<span class="fc" id="L565">        }</span>
+
+        @Override
+        public boolean test(Object o) {
+<span class="fc bfc" id="L569" title="All 4 branches covered.">            return cancelled || NotificationLite.accept(o, downstream);</span>
+        }
+
+        void emitLoop() {
+            for (;;) {
+<span class="fc bfc" id="L574" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L575">                    return;</span>
+                }
+                AppendOnlyLinkedArrayList&lt;Object&gt; q;
+<span class="fc" id="L578">                synchronized (this) {</span>
+<span class="fc" id="L579">                    q = queue;</span>
+<span class="fc bfc" id="L580" title="All 2 branches covered.">                    if (q == null) {</span>
+<span class="fc" id="L581">                        emitting = false;</span>
+<span class="fc" id="L582">                        return;</span>
+                    }
+<span class="fc" id="L584">                    queue = null;</span>
+<span class="fc" id="L585">                }</span>
+
+<span class="fc" id="L587">                q.forEachWhile(this);</span>
+<span class="fc" id="L588">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

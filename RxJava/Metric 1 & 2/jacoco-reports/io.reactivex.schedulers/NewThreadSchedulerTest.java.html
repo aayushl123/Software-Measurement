@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NewThreadSchedulerTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.schedulers</a> &gt; <span class="el_source">NewThreadSchedulerTest.java</span></div><h1>NewThreadSchedulerTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.schedulers;
+
+import static org.junit.Assert.*;
+
+import java.util.concurrent.TimeUnit;
+
+import org.junit.*;
+
+import io.reactivex.Scheduler;
+import io.reactivex.Scheduler.Worker;
+import io.reactivex.disposables.*;
+import io.reactivex.internal.schedulers.NewThreadWorker;
+
+<span class="fc" id="L27">public class NewThreadSchedulerTest extends AbstractSchedulerConcurrencyTests {</span>
+
+    @Override
+    protected Scheduler getScheduler() {
+<span class="fc" id="L31">        return Schedulers.newThread();</span>
+    }
+
+    @Test
+    @Ignore(&quot;Unhandled errors are no longer thrown&quot;)
+    public final void testUnhandledErrorIsDeliveredToThreadHandler() throws InterruptedException {
+<span class="nc" id="L37">        SchedulerTestHelper.testUnhandledErrorIsDeliveredToThreadHandler(getScheduler());</span>
+<span class="nc" id="L38">    }</span>
+
+    @Test
+    public final void testHandledErrorIsNotDeliveredToThreadHandler() throws InterruptedException {
+<span class="fc" id="L42">        SchedulerTestHelper.testHandledErrorIsNotDeliveredToThreadHandler(getScheduler());</span>
+<span class="fc" id="L43">    }</span>
+
+    // FIXME no longer testable due to internal changes
+//    @Test(timeout = 3000)
+//    public void testNoSelfInterrupt() throws InterruptedException {
+//        Scheduler.Worker worker = Schedulers.newThread().createWorker();
+//        try {
+//            final CountDownLatch run = new CountDownLatch(1);
+//            final CountDownLatch done = new CountDownLatch(1);
+//            final AtomicReference&lt;Throwable&gt; exception = new AtomicReference&lt;T&gt;();
+//            final AtomicBoolean interruptFlag = new AtomicBoolean();
+//
+//            ScheduledRunnable sa = (ScheduledRunnable)worker.schedule(new Runnable() {
+//                @Override
+//                public void run() {
+//                    try {
+//                        run.await();
+//                    } catch (InterruptedException ex) {
+//                        exception.set(ex);
+//                    }
+//                }
+//            });
+//
+//            sa.add(new Disposable() {
+//                @Override
+//                public void dispose() {
+//                    interruptFlag.set(Thread.currentThread().isInterrupted());
+//                    done.countDown();
+//                }
+//            });
+//
+//            run.countDown();
+//
+//            done.await();
+//
+//            Assert.assertEquals(null, exception.get());
+//            Assert.assertFalse(&quot;Interrupted?!&quot;, interruptFlag.get());
+//        } finally {
+//            worker.dispose();
+//        }
+//    }
+
+    @Test
+    public void shutdownRejects() {
+<span class="fc" id="L87">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L89">        Runnable r = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="nc" id="L92">                calls[0]++;</span>
+<span class="nc" id="L93">            }</span>
+        };
+
+<span class="fc" id="L96">        Scheduler s = getScheduler();</span>
+<span class="fc" id="L97">        Worker w = s.createWorker();</span>
+<span class="fc" id="L98">        w.dispose();</span>
+
+<span class="fc" id="L100">        assertTrue(w.isDisposed());</span>
+
+<span class="fc" id="L102">        assertEquals(Disposables.disposed(), w.schedule(r));</span>
+
+<span class="fc" id="L104">        assertEquals(Disposables.disposed(), w.schedule(r, 1, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L106">        assertEquals(Disposables.disposed(), w.schedulePeriodically(r, 1, 1, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L108">        NewThreadWorker actual = (NewThreadWorker)w;</span>
+
+<span class="fc" id="L110">        CompositeDisposable cd = new CompositeDisposable();</span>
+
+<span class="fc" id="L112">        actual.scheduleActual(r, 1, TimeUnit.SECONDS, cd);</span>
+
+<span class="fc" id="L114">        assertEquals(0, cd.size());</span>
+
+<span class="fc" id="L116">        assertEquals(0, calls[0]);</span>
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * Regression test to ensure there is no NPE when the worker has been disposed.
+     * @throws Exception on error
+     */
+    @Test
+    public void npeRegression() throws Exception {
+<span class="fc" id="L125">        Scheduler s = getScheduler();</span>
+<span class="fc" id="L126">        NewThreadWorker w = (NewThreadWorker) s.createWorker();</span>
+<span class="fc" id="L127">        w.dispose();</span>
+
+        //This method used to throw a NPE when the worker has been disposed and the parent is null
+<span class="fc" id="L130">        w.scheduleActual(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="nc" id="L133">            }</span>
+        }, 0, TimeUnit.MILLISECONDS, null);
+
+<span class="fc" id="L136">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

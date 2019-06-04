@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParallelDoOnNextTry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.parallel</a> &gt; <span class="el_source">ParallelDoOnNextTry.java</span></div><h1>ParallelDoOnNextTry.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.parallel;
+
+import org.reactivestreams.*;
+
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.ConditionalSubscriber;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.parallel.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Calls a Consumer for each upstream value passing by
+ * and handles any failure with a handler function.
+ * &lt;p&gt;History: 2.0.8 - experimental
+ * @param &lt;T&gt; the input value type
+ * @since 2.2
+ */
+public final class ParallelDoOnNextTry&lt;T&gt; extends ParallelFlowable&lt;T&gt; {
+
+    final ParallelFlowable&lt;T&gt; source;
+
+    final Consumer&lt;? super T&gt; onNext;
+
+    final BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler;
+
+    public ParallelDoOnNextTry(ParallelFlowable&lt;T&gt; source, Consumer&lt;? super T&gt; onNext,
+<span class="fc" id="L42">            BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler) {</span>
+<span class="fc" id="L43">        this.source = source;</span>
+<span class="fc" id="L44">        this.onNext = onNext;</span>
+<span class="fc" id="L45">        this.errorHandler = errorHandler;</span>
+<span class="fc" id="L46">    }</span>
+
+    @Override
+    public void subscribe(Subscriber&lt;? super T&gt;[] subscribers) {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (!validate(subscribers)) {</span>
+<span class="fc" id="L51">            return;</span>
+        }
+
+<span class="fc" id="L54">        int n = subscribers.length;</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L56">        Subscriber&lt;? super T&gt;[] parents = new Subscriber[n];</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L59">            Subscriber&lt;? super T&gt; a = subscribers[i];</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (a instanceof ConditionalSubscriber) {</span>
+<span class="fc" id="L61">                parents[i] = new ParallelDoOnNextConditionalSubscriber&lt;T&gt;((ConditionalSubscriber&lt;? super T&gt;)a, onNext, errorHandler);</span>
+            } else {
+<span class="fc" id="L63">                parents[i] = new ParallelDoOnNextSubscriber&lt;T&gt;(a, onNext, errorHandler);</span>
+            }
+        }
+
+<span class="fc" id="L67">        source.subscribe(parents);</span>
+<span class="fc" id="L68">    }</span>
+
+    @Override
+    public int parallelism() {
+<span class="fc" id="L72">        return source.parallelism();</span>
+    }
+
+    static final class ParallelDoOnNextSubscriber&lt;T&gt; implements ConditionalSubscriber&lt;T&gt;, Subscription {
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        final Consumer&lt;? super T&gt; onNext;
+
+        final BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler;
+
+        Subscription upstream;
+
+        boolean done;
+
+        ParallelDoOnNextSubscriber(Subscriber&lt;? super T&gt; actual, Consumer&lt;? super T&gt; onNext,
+<span class="fc" id="L88">                BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler) {</span>
+<span class="fc" id="L89">            this.downstream = actual;</span>
+<span class="fc" id="L90">            this.onNext = onNext;</span>
+<span class="fc" id="L91">            this.errorHandler = errorHandler;</span>
+<span class="fc" id="L92">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L96">            upstream.request(n);</span>
+<span class="fc" id="L97">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L101">            upstream.cancel();</span>
+<span class="fc" id="L102">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L107">                this.upstream = s;</span>
+
+<span class="fc" id="L109">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L111">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            if (!tryOnNext(t)) {</span>
+<span class="fc" id="L116">                upstream.request(1);</span>
+            }
+<span class="fc" id="L118">        }</span>
+
+        @Override
+        public boolean tryOnNext(T t) {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L123">                return false;</span>
+            }
+<span class="fc" id="L125">            long retries = 0;</span>
+
+            for (;;) {
+                try {
+<span class="fc" id="L129">                    onNext.accept(t);</span>
+<span class="fc" id="L130">                } catch (Throwable ex) {</span>
+<span class="fc" id="L131">                    Exceptions.throwIfFatal(ex);</span>
+
+                    ParallelFailureHandling h;
+
+                    try {
+<span class="fc" id="L136">                        h = ObjectHelper.requireNonNull(errorHandler.apply(++retries, ex), &quot;The errorHandler returned a null item&quot;);</span>
+<span class="fc" id="L137">                    } catch (Throwable exc) {</span>
+<span class="fc" id="L138">                        Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L139">                        cancel();</span>
+<span class="fc" id="L140">                        onError(new CompositeException(ex, exc));</span>
+<span class="fc" id="L141">                        return false;</span>
+<span class="fc" id="L142">                    }</span>
+
+<span class="fc bfc" id="L144" title="All 4 branches covered.">                    switch (h) {</span>
+                    case RETRY:
+<span class="fc" id="L146">                        continue;</span>
+                    case SKIP:
+<span class="fc" id="L148">                        return false;</span>
+                    case STOP:
+<span class="fc" id="L150">                        cancel();</span>
+<span class="fc" id="L151">                        onComplete();</span>
+<span class="fc" id="L152">                        return false;</span>
+                    default:
+<span class="fc" id="L154">                        cancel();</span>
+<span class="fc" id="L155">                        onError(ex);</span>
+<span class="fc" id="L156">                        return false;</span>
+                    }
+<span class="fc" id="L158">                }</span>
+
+<span class="fc" id="L160">                downstream.onNext(t);</span>
+<span class="fc" id="L161">                return true;</span>
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L168">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L169">                return;</span>
+            }
+<span class="fc" id="L171">            done = true;</span>
+<span class="fc" id="L172">            downstream.onError(t);</span>
+<span class="fc" id="L173">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L178">                return;</span>
+            }
+<span class="fc" id="L180">            done = true;</span>
+<span class="fc" id="L181">            downstream.onComplete();</span>
+<span class="fc" id="L182">        }</span>
+
+    }
+    static final class ParallelDoOnNextConditionalSubscriber&lt;T&gt; implements ConditionalSubscriber&lt;T&gt;, Subscription {
+
+        final ConditionalSubscriber&lt;? super T&gt; downstream;
+
+        final Consumer&lt;? super T&gt; onNext;
+
+        final BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler;
+
+        Subscription upstream;
+
+        boolean done;
+
+        ParallelDoOnNextConditionalSubscriber(ConditionalSubscriber&lt;? super T&gt; actual,
+                Consumer&lt;? super T&gt; onNext,
+<span class="fc" id="L199">                BiFunction&lt;? super Long, ? super Throwable, ParallelFailureHandling&gt; errorHandler) {</span>
+<span class="fc" id="L200">            this.downstream = actual;</span>
+<span class="fc" id="L201">            this.onNext = onNext;</span>
+<span class="fc" id="L202">            this.errorHandler = errorHandler;</span>
+<span class="fc" id="L203">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L207">            upstream.request(n);</span>
+<span class="fc" id="L208">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L212">            upstream.cancel();</span>
+<span class="fc" id="L213">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L218">                this.upstream = s;</span>
+
+<span class="fc" id="L220">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L222">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L226" title="All 4 branches covered.">            if (!tryOnNext(t) &amp;&amp; !done) {</span>
+<span class="fc" id="L227">                upstream.request(1);</span>
+            }
+<span class="fc" id="L229">        }</span>
+
+        @Override
+        public boolean tryOnNext(T t) {
+<span class="fc bfc" id="L233" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L234">                return false;</span>
+            }
+<span class="fc" id="L236">            long retries = 0;</span>
+
+            for (;;) {
+                try {
+<span class="fc" id="L240">                    onNext.accept(t);</span>
+<span class="fc" id="L241">                } catch (Throwable ex) {</span>
+<span class="fc" id="L242">                    Exceptions.throwIfFatal(ex);</span>
+
+                    ParallelFailureHandling h;
+
+                    try {
+<span class="fc" id="L247">                        h = ObjectHelper.requireNonNull(errorHandler.apply(++retries, ex), &quot;The errorHandler returned a null item&quot;);</span>
+<span class="fc" id="L248">                    } catch (Throwable exc) {</span>
+<span class="fc" id="L249">                        Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L250">                        cancel();</span>
+<span class="fc" id="L251">                        onError(new CompositeException(ex, exc));</span>
+<span class="fc" id="L252">                        return false;</span>
+<span class="fc" id="L253">                    }</span>
+
+<span class="fc bfc" id="L255" title="All 4 branches covered.">                    switch (h) {</span>
+                    case RETRY:
+<span class="fc" id="L257">                        continue;</span>
+                    case SKIP:
+<span class="fc" id="L259">                        return false;</span>
+                    case STOP:
+<span class="fc" id="L261">                        cancel();</span>
+<span class="fc" id="L262">                        onComplete();</span>
+<span class="fc" id="L263">                        return false;</span>
+                    default:
+<span class="fc" id="L265">                        cancel();</span>
+<span class="fc" id="L266">                        onError(ex);</span>
+<span class="fc" id="L267">                        return false;</span>
+                    }
+<span class="fc" id="L269">                }</span>
+
+<span class="fc" id="L271">                return downstream.tryOnNext(t);</span>
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L277" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L278">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L279">                return;</span>
+            }
+<span class="fc" id="L281">            done = true;</span>
+<span class="fc" id="L282">            downstream.onError(t);</span>
+<span class="fc" id="L283">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L288">                return;</span>
+            }
+<span class="fc" id="L290">            done = true;</span>
+<span class="fc" id="L291">            downstream.onComplete();</span>
+<span class="fc" id="L292">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BoundedSubscriberTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.subscribers</a> &gt; <span class="el_source">BoundedSubscriberTest.java</span></div><h1>BoundedSubscriberTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.subscribers;
+
+import io.reactivex.Flowable;
+import io.reactivex.TestHelper;
+import io.reactivex.exceptions.CompositeException;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.Consumer;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import org.junit.Test;
+import org.reactivestreams.Publisher;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+<span class="fc" id="L39">public class BoundedSubscriberTest {</span>
+
+    @Test
+    public void onSubscribeThrows() {
+<span class="fc" id="L43">        final List&lt;Object&gt; received = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L45">        BoundedSubscriber&lt;Object&gt; subscriber = new BoundedSubscriber&lt;Object&gt;(new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object o) throws Exception {
+<span class="nc" id="L48">                received.add(o);</span>
+<span class="nc" id="L49">            }</span>
+<span class="fc" id="L50">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable throwable) throws Exception {
+<span class="fc" id="L53">                received.add(throwable);</span>
+<span class="fc" id="L54">            }</span>
+<span class="fc" id="L55">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L58">                received.add(1);</span>
+<span class="nc" id="L59">            }</span>
+<span class="fc" id="L60">        }, new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription subscription) throws Exception {
+<span class="fc" id="L63">                throw new TestException();</span>
+            }
+        }, 128);
+
+<span class="fc" id="L67">        assertFalse(subscriber.isDisposed());</span>
+
+<span class="fc" id="L69">        Flowable.just(1).subscribe(subscriber);</span>
+
+<span class="fc" id="L71">        assertTrue(received.toString(), received.get(0) instanceof TestException);</span>
+<span class="fc" id="L72">        assertEquals(received.toString(), 1, received.size());</span>
+
+<span class="fc" id="L74">        assertTrue(subscriber.isDisposed());</span>
+<span class="fc" id="L75">    }</span>
+
+    @Test
+    public void onNextThrows() {
+<span class="fc" id="L79">        final List&lt;Object&gt; received = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L81">        BoundedSubscriber&lt;Object&gt; subscriber = new BoundedSubscriber&lt;Object&gt;(new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object o) throws Exception {
+<span class="fc" id="L84">                throw new TestException();</span>
+            }
+<span class="fc" id="L86">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable throwable) throws Exception {
+<span class="fc" id="L89">                received.add(throwable);</span>
+<span class="fc" id="L90">            }</span>
+<span class="fc" id="L91">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L94">                received.add(1);</span>
+<span class="nc" id="L95">            }</span>
+<span class="fc" id="L96">        }, new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription subscription) throws Exception {
+<span class="fc" id="L99">                subscription.request(128);</span>
+<span class="fc" id="L100">            }</span>
+        }, 128);
+
+<span class="fc" id="L103">        assertFalse(subscriber.isDisposed());</span>
+
+<span class="fc" id="L105">        Flowable.just(1).subscribe(subscriber);</span>
+
+<span class="fc" id="L107">        assertTrue(received.toString(), received.get(0) instanceof TestException);</span>
+<span class="fc" id="L108">        assertEquals(received.toString(), 1, received.size());</span>
+
+<span class="fc" id="L110">        assertTrue(subscriber.isDisposed());</span>
+<span class="fc" id="L111">    }</span>
+
+    @Test
+    public void onErrorThrows() {
+<span class="fc" id="L115">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L118">            final List&lt;Object&gt; received = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L120">            BoundedSubscriber&lt;Object&gt; subscriber = new BoundedSubscriber&lt;Object&gt;(new Consumer&lt;Object&gt;() {</span>
+                @Override
+                public void accept(Object o) throws Exception {
+<span class="nc" id="L123">                    received.add(o);</span>
+<span class="nc" id="L124">                }</span>
+<span class="fc" id="L125">            }, new Consumer&lt;Throwable&gt;() {</span>
+                @Override
+                public void accept(Throwable throwable) throws Exception {
+<span class="fc" id="L128">                    throw new TestException(&quot;Inner&quot;);</span>
+                }
+<span class="fc" id="L130">            }, new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="nc" id="L133">                    received.add(1);</span>
+<span class="nc" id="L134">                }</span>
+<span class="fc" id="L135">            }, new Consumer&lt;Subscription&gt;() {</span>
+                @Override
+                public void accept(Subscription subscription) throws Exception {
+<span class="fc" id="L138">                    subscription.request(128);</span>
+<span class="fc" id="L139">                }</span>
+            }, 128);
+
+<span class="fc" id="L142">            assertFalse(subscriber.isDisposed());</span>
+
+<span class="fc" id="L144">            Flowable.&lt;Integer&gt;error(new TestException(&quot;Outer&quot;)).subscribe(subscriber);</span>
+
+<span class="fc" id="L146">            assertTrue(received.toString(), received.isEmpty());</span>
+
+<span class="fc" id="L148">            assertTrue(subscriber.isDisposed());</span>
+
+<span class="fc" id="L150">            TestHelper.assertError(errors, 0, CompositeException.class);</span>
+<span class="fc" id="L151">            List&lt;Throwable&gt; ce = TestHelper.compositeList(errors.get(0));</span>
+<span class="fc" id="L152">            TestHelper.assertError(ce, 0, TestException.class, &quot;Outer&quot;);</span>
+<span class="fc" id="L153">            TestHelper.assertError(ce, 1, TestException.class, &quot;Inner&quot;);</span>
+        } finally {
+<span class="fc" id="L155">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L157">    }</span>
+
+    @Test
+    public void onCompleteThrows() {
+<span class="fc" id="L161">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L164">            final List&lt;Object&gt; received = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L166">            BoundedSubscriber&lt;Object&gt; subscriber = new BoundedSubscriber&lt;Object&gt;(new Consumer&lt;Object&gt;() {</span>
+                @Override
+                public void accept(Object o) throws Exception {
+<span class="nc" id="L169">                    received.add(o);</span>
+<span class="nc" id="L170">                }</span>
+<span class="fc" id="L171">            }, new Consumer&lt;Throwable&gt;() {</span>
+                @Override
+                public void accept(Throwable throwable) throws Exception {
+<span class="nc" id="L174">                    received.add(throwable);</span>
+<span class="nc" id="L175">                }</span>
+<span class="fc" id="L176">            }, new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L179">                    throw new TestException();</span>
+                }
+<span class="fc" id="L181">            }, new Consumer&lt;Subscription&gt;() {</span>
+                @Override
+                public void accept(Subscription subscription) throws Exception {
+<span class="fc" id="L184">                    subscription.request(128);</span>
+<span class="fc" id="L185">                }</span>
+            }, 128);
+
+<span class="fc" id="L188">            assertFalse(subscriber.isDisposed());</span>
+
+<span class="fc" id="L190">            Flowable.&lt;Integer&gt;empty().subscribe(subscriber);</span>
+
+<span class="fc" id="L192">            assertTrue(received.toString(), received.isEmpty());</span>
+
+<span class="fc" id="L194">            assertTrue(subscriber.isDisposed());</span>
+
+<span class="fc" id="L196">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L198">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L200">    }</span>
+
+    @Test
+    public void onNextThrowsCancelsUpstream() {
+<span class="fc" id="L204">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L206">        final List&lt;Throwable&gt; errors = new ArrayList&lt;Throwable&gt;();</span>
+
+<span class="fc" id="L208">        BoundedSubscriber&lt;Integer&gt; s = new BoundedSubscriber&lt;Integer&gt;(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L211">                throw new TestException();</span>
+            }
+<span class="fc" id="L213">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L216">                errors.add(e);</span>
+<span class="fc" id="L217">            }</span>
+<span class="fc" id="L218">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+
+<span class="nc" id="L222">            }</span>
+<span class="fc" id="L223">        }, new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription subscription) throws Exception {
+<span class="fc" id="L226">                subscription.request(128);</span>
+<span class="fc" id="L227">            }</span>
+        }, 128);
+
+<span class="fc" id="L230">        pp.subscribe(s);</span>
+
+<span class="fc" id="L232">        assertTrue(&quot;No observers?!&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L233">        assertTrue(&quot;Has errors already?!&quot;, errors.isEmpty());</span>
+
+<span class="fc" id="L235">        pp.onNext(1);</span>
+
+<span class="fc" id="L237">        assertFalse(&quot;Has observers?!&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L238">        assertFalse(&quot;No errors?!&quot;, errors.isEmpty());</span>
+
+<span class="fc" id="L240">        assertTrue(errors.toString(), errors.get(0) instanceof TestException);</span>
+<span class="fc" id="L241">    }</span>
+
+    @Test
+    public void onSubscribeThrowsCancelsUpstream() {
+<span class="fc" id="L245">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L247">        final List&lt;Throwable&gt; errors = new ArrayList&lt;Throwable&gt;();</span>
+
+<span class="fc" id="L249">        BoundedSubscriber&lt;Integer&gt; s = new BoundedSubscriber&lt;Integer&gt;(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L252">            }</span>
+<span class="fc" id="L253">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L256">                errors.add(e);</span>
+<span class="fc" id="L257">            }</span>
+<span class="fc" id="L258">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L261">            }</span>
+<span class="fc" id="L262">        }, new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription s) throws Exception {
+<span class="fc" id="L265">                throw new TestException();</span>
+            }
+        }, 128);
+
+<span class="fc" id="L269">        pp.subscribe(s);</span>
+
+<span class="fc" id="L271">        assertFalse(&quot;Has observers?!&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L272">        assertFalse(&quot;No errors?!&quot;, errors.isEmpty());</span>
+
+<span class="fc" id="L274">        assertTrue(errors.toString(), errors.get(0) instanceof TestException);</span>
+<span class="fc" id="L275">    }</span>
+
+    @Test
+    public void badSourceOnSubscribe() {
+<span class="fc" id="L279">        Flowable&lt;Integer&gt; source = Flowable.fromPublisher(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L282">                BooleanSubscription s1 = new BooleanSubscription();</span>
+<span class="fc" id="L283">                s.onSubscribe(s1);</span>
+<span class="fc" id="L284">                BooleanSubscription s2 = new BooleanSubscription();</span>
+<span class="fc" id="L285">                s.onSubscribe(s2);</span>
+
+<span class="fc" id="L287">                assertFalse(s1.isCancelled());</span>
+<span class="fc" id="L288">                assertTrue(s2.isCancelled());</span>
+
+<span class="fc" id="L290">                s.onNext(1);</span>
+<span class="fc" id="L291">                s.onComplete();</span>
+<span class="fc" id="L292">            }</span>
+        });
+
+<span class="fc" id="L295">        final List&lt;Object&gt; received = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L297">        BoundedSubscriber&lt;Object&gt; subscriber = new BoundedSubscriber&lt;Object&gt;(new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L300">                received.add(v);</span>
+<span class="fc" id="L301">            }</span>
+<span class="fc" id="L302">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="nc" id="L305">                received.add(e);</span>
+<span class="nc" id="L306">            }</span>
+<span class="fc" id="L307">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L310">                received.add(100);</span>
+<span class="fc" id="L311">            }</span>
+<span class="fc" id="L312">        }, new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription s) throws Exception {
+<span class="fc" id="L315">                s.request(128);</span>
+<span class="fc" id="L316">            }</span>
+        }, 128);
+
+<span class="fc" id="L319">        source.subscribe(subscriber);</span>
+
+<span class="fc" id="L321">        assertEquals(Arrays.asList(1, 100), received);</span>
+<span class="fc" id="L322">    }</span>
+
+    @Test
+    public void badSourceEmitAfterDone() {
+<span class="fc" id="L326">        Flowable&lt;Integer&gt; source = Flowable.fromPublisher(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L329">                BooleanSubscription s1 = new BooleanSubscription();</span>
+<span class="fc" id="L330">                s.onSubscribe(s1);</span>
+
+<span class="fc" id="L332">                s.onNext(1);</span>
+<span class="fc" id="L333">                s.onComplete();</span>
+<span class="fc" id="L334">                s.onNext(2);</span>
+<span class="fc" id="L335">                s.onError(new TestException());</span>
+<span class="fc" id="L336">                s.onComplete();</span>
+<span class="fc" id="L337">            }</span>
+        });
+
+<span class="fc" id="L340">        final List&lt;Object&gt; received = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L342">        BoundedSubscriber&lt;Object&gt; subscriber = new BoundedSubscriber&lt;Object&gt;(new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L345">                received.add(v);</span>
+<span class="fc" id="L346">            }</span>
+<span class="fc" id="L347">        }, new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="nc" id="L350">                received.add(e);</span>
+<span class="nc" id="L351">            }</span>
+<span class="fc" id="L352">        }, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L355">                received.add(100);</span>
+<span class="fc" id="L356">            }</span>
+<span class="fc" id="L357">        }, new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription s) throws Exception {
+<span class="fc" id="L360">                s.request(128);</span>
+<span class="fc" id="L361">            }</span>
+        }, 128);
+
+<span class="fc" id="L364">        source.subscribe(subscriber);</span>
+
+<span class="fc" id="L366">        assertEquals(Arrays.asList(1, 100), received);</span>
+<span class="fc" id="L367">    }</span>
+
+    @Test
+    public void onErrorMissingShouldReportNoCustomOnError() {
+<span class="fc" id="L371">        BoundedSubscriber&lt;Integer&gt; subscriber = new BoundedSubscriber&lt;Integer&gt;(Functions.&lt;Integer&gt;emptyConsumer(),</span>
+                Functions.ON_ERROR_MISSING,
+                Functions.EMPTY_ACTION,
+<span class="fc" id="L374">                Functions.&lt;Subscription&gt;boundedConsumer(128), 128);</span>
+
+<span class="fc" id="L376">        assertFalse(subscriber.hasCustomOnError());</span>
+<span class="fc" id="L377">    }</span>
+
+    @Test
+    public void customOnErrorShouldReportCustomOnError() {
+<span class="fc" id="L381">        BoundedSubscriber&lt;Integer&gt; subscriber = new BoundedSubscriber&lt;Integer&gt;(Functions.&lt;Integer&gt;emptyConsumer(),</span>
+<span class="fc" id="L382">                Functions.&lt;Throwable&gt;emptyConsumer(),</span>
+                Functions.EMPTY_ACTION,
+<span class="fc" id="L384">                Functions.&lt;Subscription&gt;boundedConsumer(128), 128);</span>
+
+<span class="fc" id="L386">        assertTrue(subscriber.hasCustomOnError());</span>
+<span class="fc" id="L387">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

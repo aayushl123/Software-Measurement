@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableThrottleFirstTimed.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableThrottleFirstTimed.java</span></div><h1>ObservableThrottleFirstTimed.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.Scheduler.Worker;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.observers.SerializedObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class ObservableThrottleFirstTimed&lt;T&gt; extends AbstractObservableWithUpstream&lt;T, T&gt; {
+    final long timeout;
+    final TimeUnit unit;
+    final Scheduler scheduler;
+
+    public ObservableThrottleFirstTimed(ObservableSource&lt;T&gt; source,
+            long timeout, TimeUnit unit, Scheduler scheduler) {
+<span class="fc" id="L33">        super(source);</span>
+<span class="fc" id="L34">        this.timeout = timeout;</span>
+<span class="fc" id="L35">        this.unit = unit;</span>
+<span class="fc" id="L36">        this.scheduler = scheduler;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    public void subscribeActual(Observer&lt;? super T&gt; t) {
+<span class="fc" id="L41">        source.subscribe(new DebounceTimedObserver&lt;T&gt;(</span>
+                new SerializedObserver&lt;T&gt;(t),
+<span class="fc" id="L43">                timeout, unit, scheduler.createWorker()));</span>
+<span class="fc" id="L44">    }</span>
+
+    static final class DebounceTimedObserver&lt;T&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements Observer&lt;T&gt;, Disposable, Runnable {
+        private static final long serialVersionUID = 786994795061867455L;
+
+        final Observer&lt;? super T&gt; downstream;
+        final long timeout;
+        final TimeUnit unit;
+        final Scheduler.Worker worker;
+
+        Disposable upstream;
+
+        volatile boolean gate;
+
+        boolean done;
+
+<span class="fc" id="L62">        DebounceTimedObserver(Observer&lt;? super T&gt; actual, long timeout, TimeUnit unit, Worker worker) {</span>
+<span class="fc" id="L63">            this.downstream = actual;</span>
+<span class="fc" id="L64">            this.timeout = timeout;</span>
+<span class="fc" id="L65">            this.unit = unit;</span>
+<span class="fc" id="L66">            this.worker = worker;</span>
+<span class="fc" id="L67">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if (DisposableHelper.validate(this.upstream, d)) {</span>
+<span class="fc" id="L72">                this.upstream = d;</span>
+<span class="fc" id="L73">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L75">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">            if (!gate &amp;&amp; !done) {</span>
+<span class="fc" id="L80">                gate = true;</span>
+
+<span class="fc" id="L82">                downstream.onNext(t);</span>
+
+<span class="fc" id="L84">                Disposable d = get();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                if (d != null) {</span>
+<span class="fc" id="L86">                    d.dispose();</span>
+                }
+<span class="fc" id="L88">                DisposableHelper.replace(this, worker.schedule(this, timeout, unit));</span>
+            }
+<span class="fc" id="L90">        }</span>
+
+        @Override
+        public void run() {
+<span class="fc" id="L94">            gate = false;</span>
+<span class="fc" id="L95">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L100">                RxJavaPlugins.onError(t);</span>
+            } else {
+<span class="fc" id="L102">                done = true;</span>
+<span class="fc" id="L103">                downstream.onError(t);</span>
+<span class="fc" id="L104">                worker.dispose();</span>
+            }
+<span class="fc" id="L106">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L111">                done = true;</span>
+<span class="fc" id="L112">                downstream.onComplete();</span>
+<span class="fc" id="L113">                worker.dispose();</span>
+            }
+<span class="fc" id="L115">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L119">            upstream.dispose();</span>
+<span class="fc" id="L120">            worker.dispose();</span>
+<span class="fc" id="L121">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L125">            return worker.isDisposed();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

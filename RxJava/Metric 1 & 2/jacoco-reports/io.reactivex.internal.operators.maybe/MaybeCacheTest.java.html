@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeCacheTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeCacheTest.java</span></div><h1>MaybeCacheTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import static org.junit.Assert.*;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L29">public class MaybeCacheTest {</span>
+
+    @Test
+    public void offlineSuccess() {
+<span class="fc" id="L33">        Maybe&lt;Integer&gt; source = Maybe.just(1).cache();</span>
+<span class="fc" id="L34">        assertEquals(1, source.blockingGet().intValue());</span>
+
+<span class="fc" id="L36">        source.test()</span>
+<span class="fc" id="L37">        .assertResult(1);</span>
+<span class="fc" id="L38">    }</span>
+
+    @Test
+    public void offlineError() {
+<span class="fc" id="L42">        Maybe&lt;Integer&gt; source = Maybe.&lt;Integer&gt;error(new TestException()).cache();</span>
+
+        try {
+<span class="nc" id="L45">            source.blockingGet();</span>
+<span class="nc" id="L46">            fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L47">        } catch (TestException ex) {</span>
+            // expected
+<span class="nc" id="L49">        }</span>
+
+<span class="fc" id="L51">        source.test()</span>
+<span class="fc" id="L52">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L53">    }</span>
+
+    @Test
+    public void offlineComplete() {
+<span class="fc" id="L57">        Maybe&lt;Integer&gt; source = Maybe.&lt;Integer&gt;empty().cache();</span>
+
+<span class="fc" id="L59">        assertNull(source.blockingGet());</span>
+
+<span class="fc" id="L61">        source.test()</span>
+<span class="fc" id="L62">        .assertResult();</span>
+<span class="fc" id="L63">    }</span>
+
+    @Test
+    public void onlineSuccess() {
+<span class="fc" id="L67">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L69">        Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L71">        assertFalse(pp.hasSubscribers());</span>
+
+<span class="fc" id="L73">        assertNotNull(((MaybeCache&lt;Integer&gt;)source).source.get());</span>
+
+<span class="fc" id="L75">        TestObserver&lt;Integer&gt; to = source.test();</span>
+
+<span class="fc" id="L77">        assertNull(((MaybeCache&lt;Integer&gt;)source).source.get());</span>
+
+<span class="fc" id="L79">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L81">        source.test(true).assertEmpty();</span>
+
+<span class="fc" id="L83">        to.assertEmpty();</span>
+
+<span class="fc" id="L85">        pp.onNext(1);</span>
+<span class="fc" id="L86">        pp.onComplete();</span>
+
+<span class="fc" id="L88">        to.assertResult(1);</span>
+
+<span class="fc" id="L90">        source.test().assertResult(1);</span>
+
+<span class="fc" id="L92">        source.test(true).assertEmpty();</span>
+<span class="fc" id="L93">    }</span>
+
+    @Test
+    public void onlineError() {
+<span class="fc" id="L97">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L99">        Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L101">        assertFalse(pp.hasSubscribers());</span>
+
+<span class="fc" id="L103">        assertNotNull(((MaybeCache&lt;Integer&gt;)source).source.get());</span>
+
+<span class="fc" id="L105">        TestObserver&lt;Integer&gt; to = source.test();</span>
+
+<span class="fc" id="L107">        assertNull(((MaybeCache&lt;Integer&gt;)source).source.get());</span>
+
+<span class="fc" id="L109">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L111">        source.test(true).assertEmpty();</span>
+
+<span class="fc" id="L113">        to.assertEmpty();</span>
+
+<span class="fc" id="L115">        pp.onError(new TestException());</span>
+
+<span class="fc" id="L117">        to.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L119">        source.test().assertFailure(TestException.class);</span>
+
+<span class="fc" id="L121">        source.test(true).assertEmpty();</span>
+<span class="fc" id="L122">    }</span>
+
+    @Test
+    public void onlineComplete() {
+<span class="fc" id="L126">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L128">        Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L130">        assertFalse(pp.hasSubscribers());</span>
+
+<span class="fc" id="L132">        assertNotNull(((MaybeCache&lt;Integer&gt;)source).source.get());</span>
+
+<span class="fc" id="L134">        TestObserver&lt;Integer&gt; to = source.test();</span>
+
+<span class="fc" id="L136">        assertNull(((MaybeCache&lt;Integer&gt;)source).source.get());</span>
+
+<span class="fc" id="L138">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L140">        source.test(true).assertEmpty();</span>
+
+<span class="fc" id="L142">        to.assertEmpty();</span>
+
+<span class="fc" id="L144">        pp.onComplete();</span>
+
+<span class="fc" id="L146">        to.assertResult();</span>
+
+<span class="fc" id="L148">        source.test().assertResult();</span>
+
+<span class="fc" id="L150">        source.test(true).assertEmpty();</span>
+<span class="fc" id="L151">    }</span>
+
+    @Test
+    public void crossCancelOnSuccess() {
+
+<span class="fc" id="L156">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L158">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L160">        Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L162">        source.subscribe(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L165">                ts.cancel();</span>
+<span class="fc" id="L166">            }</span>
+        });
+
+<span class="fc" id="L169">        source.toFlowable().subscribe(ts);</span>
+
+<span class="fc" id="L171">        pp.onNext(1);</span>
+<span class="fc" id="L172">        pp.onComplete();</span>
+
+<span class="fc" id="L174">        ts.assertEmpty();</span>
+<span class="fc" id="L175">    }</span>
+
+    @Test
+    public void crossCancelOnError() {
+
+<span class="fc" id="L180">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L182">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L184">        Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L186">        source.subscribe(Functions.emptyConsumer(), new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L189">                ts.cancel();</span>
+<span class="fc" id="L190">            }</span>
+        });
+
+<span class="fc" id="L193">        source.toFlowable().subscribe(ts);</span>
+
+<span class="fc" id="L195">        pp.onError(new TestException());</span>
+
+<span class="fc" id="L197">        ts.assertEmpty();</span>
+<span class="fc" id="L198">    }</span>
+
+    @Test
+    public void crossCancelOnComplete() {
+
+<span class="fc" id="L203">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L205">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L207">        Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L209">        source.subscribe(Functions.emptyConsumer(), Functions.emptyConsumer(), new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L212">                ts.cancel();</span>
+<span class="fc" id="L213">            }</span>
+        });
+
+<span class="fc" id="L216">        source.toFlowable().subscribe(ts);</span>
+
+<span class="fc" id="L218">        pp.onComplete();</span>
+
+<span class="fc" id="L220">        ts.assertEmpty();</span>
+<span class="fc" id="L221">    }</span>
+
+    @Test
+    public void addAddRace() {
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L226">            PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L228">            final Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L230">            Runnable r = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L233">                    source.test();</span>
+<span class="fc" id="L234">                }</span>
+            };
+
+<span class="fc" id="L237">            TestHelper.race(r, r);</span>
+        }
+<span class="fc" id="L239">    }</span>
+
+    @Test
+    public void removeRemoveRace() {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L244">            PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L246">            final Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L248">            final TestObserver&lt;Integer&gt; to1 = source.test();</span>
+<span class="fc" id="L249">            final TestObserver&lt;Integer&gt; to2 = source.test();</span>
+
+<span class="fc" id="L251">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L254">                    to1.cancel();</span>
+<span class="fc" id="L255">                }</span>
+            };
+
+<span class="fc" id="L258">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L261">                    to2.cancel();</span>
+<span class="fc" id="L262">                }</span>
+            };
+
+<span class="fc" id="L265">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L267">    }</span>
+
+    @Test
+    public void doubleDispose() {
+<span class="fc" id="L271">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L273">        final Maybe&lt;Integer&gt; source = pp.singleElement().cache();</span>
+
+<span class="fc" id="L275">        final Disposable[] dout = { null };</span>
+
+<span class="fc" id="L277">        source.subscribe(new MaybeObserver&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L281">                dout[0] = d;</span>
+<span class="fc" id="L282">            }</span>
+
+            @Override
+            public void onSuccess(Integer value) {
+
+<span class="nc" id="L287">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L292">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L297">            }</span>
+
+        });
+
+<span class="fc" id="L301">        dout[0].dispose();</span>
+<span class="fc" id="L302">        dout[0].dispose();</span>
+<span class="fc" id="L303">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

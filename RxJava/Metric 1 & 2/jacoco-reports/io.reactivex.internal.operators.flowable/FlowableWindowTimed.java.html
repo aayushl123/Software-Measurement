@@ -1,0 +1,847 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableWindowTimed.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableWindowTimed.java</span></div><h1>FlowableWindowTimed.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.Scheduler.Worker;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.MissingBackpressureException;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.fuseable.SimplePlainQueue;
+import io.reactivex.internal.queue.MpscLinkedQueue;
+import io.reactivex.internal.subscribers.QueueDrainSubscriber;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.NotificationLite;
+import io.reactivex.processors.UnicastProcessor;
+import io.reactivex.subscribers.SerializedSubscriber;
+
+public final class FlowableWindowTimed&lt;T&gt; extends AbstractFlowableWithUpstream&lt;T, Flowable&lt;T&gt;&gt; {
+    final long timespan;
+    final long timeskip;
+    final TimeUnit unit;
+    final Scheduler scheduler;
+    final long maxSize;
+    final int bufferSize;
+    final boolean restartTimerOnMaxSize;
+
+    public FlowableWindowTimed(Flowable&lt;T&gt; source,
+            long timespan, long timeskip, TimeUnit unit, Scheduler scheduler, long maxSize,
+            int bufferSize, boolean restartTimerOnMaxSize) {
+<span class="fc" id="L46">        super(source);</span>
+<span class="fc" id="L47">        this.timespan = timespan;</span>
+<span class="fc" id="L48">        this.timeskip = timeskip;</span>
+<span class="fc" id="L49">        this.unit = unit;</span>
+<span class="fc" id="L50">        this.scheduler = scheduler;</span>
+<span class="fc" id="L51">        this.maxSize = maxSize;</span>
+<span class="fc" id="L52">        this.bufferSize = bufferSize;</span>
+<span class="fc" id="L53">        this.restartTimerOnMaxSize = restartTimerOnMaxSize;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super Flowable&lt;T&gt;&gt; s) {
+<span class="fc" id="L58">        SerializedSubscriber&lt;Flowable&lt;T&gt;&gt; actual = new SerializedSubscriber&lt;Flowable&lt;T&gt;&gt;(s);</span>
+
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (timespan == timeskip) {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (maxSize == Long.MAX_VALUE) {</span>
+<span class="fc" id="L62">                source.subscribe(new WindowExactUnboundedSubscriber&lt;T&gt;(</span>
+                        actual,
+                        timespan, unit, scheduler, bufferSize));
+<span class="fc" id="L65">                return;</span>
+            }
+<span class="fc" id="L67">            source.subscribe(new WindowExactBoundedSubscriber&lt;T&gt;(</span>
+                        actual,
+                        timespan, unit, scheduler,
+                        bufferSize, maxSize, restartTimerOnMaxSize));
+<span class="fc" id="L71">            return;</span>
+        }
+<span class="fc" id="L73">        source.subscribe(new WindowSkipSubscriber&lt;T&gt;(actual,</span>
+<span class="fc" id="L74">                timespan, timeskip, unit, scheduler.createWorker(), bufferSize));</span>
+<span class="fc" id="L75">    }</span>
+
+    static final class WindowExactUnboundedSubscriber&lt;T&gt;
+            extends QueueDrainSubscriber&lt;T, Object, Flowable&lt;T&gt;&gt;
+            implements FlowableSubscriber&lt;T&gt;, Subscription, Runnable {
+        final long timespan;
+        final TimeUnit unit;
+        final Scheduler scheduler;
+        final int bufferSize;
+
+        Subscription upstream;
+
+        UnicastProcessor&lt;T&gt; window;
+
+<span class="fc" id="L89">        final SequentialDisposable timer = new SequentialDisposable();</span>
+
+<span class="fc" id="L91">        static final Object NEXT = new Object();</span>
+
+        volatile boolean terminated;
+
+        WindowExactUnboundedSubscriber(Subscriber&lt;? super Flowable&lt;T&gt;&gt; actual, long timespan, TimeUnit unit,
+                Scheduler scheduler, int bufferSize) {
+<span class="fc" id="L97">            super(actual, new MpscLinkedQueue&lt;Object&gt;());</span>
+<span class="fc" id="L98">            this.timespan = timespan;</span>
+<span class="fc" id="L99">            this.unit = unit;</span>
+<span class="fc" id="L100">            this.scheduler = scheduler;</span>
+<span class="fc" id="L101">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L102">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L107">                this.upstream = s;</span>
+
+<span class="fc" id="L109">                window = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+
+<span class="fc" id="L111">                Subscriber&lt;? super Flowable&lt;T&gt;&gt; a = downstream;</span>
+<span class="fc" id="L112">                a.onSubscribe(this);</span>
+
+<span class="fc" id="L114">                long r = requested();</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                if (r != 0L) {</span>
+<span class="fc" id="L116">                    a.onNext(window);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                    if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L118">                        produced(1);</span>
+                    }
+                } else {
+<span class="fc" id="L121">                    cancelled = true;</span>
+<span class="fc" id="L122">                    s.cancel();</span>
+<span class="fc" id="L123">                    a.onError(new MissingBackpressureException(&quot;Could not deliver first window due to lack of requests.&quot;));</span>
+<span class="fc" id="L124">                    return;</span>
+                }
+
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                if (!cancelled) {</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                    if (timer.replace(scheduler.schedulePeriodicallyDirect(this, timespan, timespan, unit))) {</span>
+<span class="fc" id="L129">                        s.request(Long.MAX_VALUE);</span>
+                    }
+                }
+            }
+<span class="fc" id="L133">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (terminated) {</span>
+<span class="nc" id="L138">                return;</span>
+            }
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            if (fastEnter()) {</span>
+<span class="fc" id="L141">                window.onNext(t);</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                if (leave(-1) == 0) {</span>
+<span class="fc" id="L143">                    return;</span>
+                }
+            } else {
+<span class="fc" id="L146">                queue.offer(NotificationLite.next(t));</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">                if (!enter()) {</span>
+<span class="fc" id="L148">                    return;</span>
+                }
+            }
+<span class="fc" id="L151">            drainLoop();</span>
+<span class="fc" id="L152">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L156">            error = t;</span>
+<span class="fc" id="L157">            done = true;</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L159">                drainLoop();</span>
+            }
+
+<span class="fc" id="L162">            downstream.onError(t);</span>
+<span class="fc" id="L163">            dispose();</span>
+<span class="fc" id="L164">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L168">            done = true;</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            if (enter()) {</span>
+<span class="fc" id="L170">                drainLoop();</span>
+            }
+
+<span class="fc" id="L173">            downstream.onComplete();</span>
+<span class="fc" id="L174">            dispose();</span>
+<span class="fc" id="L175">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L179">            requested(n);</span>
+<span class="fc" id="L180">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L184">            cancelled = true;</span>
+<span class="fc" id="L185">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L188">            DisposableHelper.dispose(timer);</span>
+<span class="fc" id="L189">        }</span>
+
+        @Override
+        public void run() {
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L195">                terminated = true;</span>
+<span class="fc" id="L196">                dispose();</span>
+            }
+<span class="fc" id="L198">            queue.offer(NEXT);</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L200">                drainLoop();</span>
+            }
+
+<span class="fc" id="L203">        }</span>
+
+        void drainLoop() {
+
+<span class="fc" id="L207">            final SimplePlainQueue&lt;Object&gt; q = queue;</span>
+<span class="fc" id="L208">            final Subscriber&lt;? super Flowable&lt;T&gt;&gt; a = downstream;</span>
+<span class="fc" id="L209">            UnicastProcessor&lt;T&gt; w = window;</span>
+
+<span class="fc" id="L211">            int missed = 1;</span>
+            for (;;) {
+
+                for (;;) {
+<span class="fc" id="L215">                    boolean term = terminated; // NOPMD</span>
+
+<span class="fc" id="L217">                    boolean d = done;</span>
+
+<span class="fc" id="L219">                    Object o = q.poll();</span>
+
+<span class="pc bpc" id="L221" title="1 of 6 branches missed.">                    if (d &amp;&amp; (o == null || o == NEXT)) {</span>
+<span class="fc" id="L222">                        window = null;</span>
+<span class="fc" id="L223">                        q.clear();</span>
+<span class="fc" id="L224">                        dispose();</span>
+<span class="fc" id="L225">                        Throwable err = error;</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                        if (err != null) {</span>
+<span class="fc" id="L227">                            w.onError(err);</span>
+                        } else {
+<span class="fc" id="L229">                            w.onComplete();</span>
+                        }
+<span class="fc" id="L231">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                    if (o == null) {</span>
+<span class="fc" id="L235">                        break;</span>
+                    }
+
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                    if (o == NEXT) {</span>
+<span class="fc" id="L239">                        w.onComplete();</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                        if (!term) {</span>
+<span class="fc" id="L241">                            w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+<span class="fc" id="L242">                            window = w;</span>
+
+<span class="fc" id="L244">                            long r = requested();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                            if (r != 0L) {</span>
+<span class="fc" id="L246">                                a.onNext(w);</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">                                if (r != Long.MAX_VALUE) {</span>
+<span class="nc" id="L248">                                    produced(1);</span>
+                                }
+                            } else {
+<span class="fc" id="L251">                                window = null;</span>
+<span class="fc" id="L252">                                queue.clear();</span>
+<span class="fc" id="L253">                                upstream.cancel();</span>
+<span class="fc" id="L254">                                dispose();</span>
+<span class="fc" id="L255">                                a.onError(new MissingBackpressureException(&quot;Could not deliver first window due to lack of requests.&quot;));</span>
+<span class="fc" id="L256">                                return;</span>
+                            }
+<span class="fc" id="L258">                        } else {</span>
+<span class="fc" id="L259">                            upstream.cancel();</span>
+                        }
+<span class="fc" id="L261">                        continue;</span>
+                    }
+
+<span class="fc" id="L264">                    w.onNext(NotificationLite.&lt;T&gt;getValue(o));</span>
+<span class="fc" id="L265">                }</span>
+
+<span class="fc" id="L267">                missed = leave(-missed);</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">                if (missed == 0) {</span>
+<span class="fc" id="L269">                    break;</span>
+                }
+            }
+<span class="fc" id="L272">        }</span>
+    }
+
+    static final class WindowExactBoundedSubscriber&lt;T&gt;
+    extends QueueDrainSubscriber&lt;T, Object, Flowable&lt;T&gt;&gt;
+    implements Subscription {
+        final long timespan;
+        final TimeUnit unit;
+        final Scheduler scheduler;
+        final int bufferSize;
+        final boolean restartTimerOnMaxSize;
+        final long maxSize;
+        final Scheduler.Worker worker;
+
+        long count;
+
+        long producerIndex;
+
+        Subscription upstream;
+
+        UnicastProcessor&lt;T&gt; window;
+
+        volatile boolean terminated;
+
+<span class="fc" id="L296">        final SequentialDisposable timer = new SequentialDisposable();</span>
+
+        WindowExactBoundedSubscriber(
+                Subscriber&lt;? super Flowable&lt;T&gt;&gt; actual,
+                long timespan, TimeUnit unit, Scheduler scheduler,
+                int bufferSize, long maxSize, boolean restartTimerOnMaxSize) {
+<span class="fc" id="L302">            super(actual, new MpscLinkedQueue&lt;Object&gt;());</span>
+<span class="fc" id="L303">            this.timespan = timespan;</span>
+<span class="fc" id="L304">            this.unit = unit;</span>
+<span class="fc" id="L305">            this.scheduler = scheduler;</span>
+<span class="fc" id="L306">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L307">            this.maxSize = maxSize;</span>
+<span class="fc" id="L308">            this.restartTimerOnMaxSize = restartTimerOnMaxSize;</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">            if (restartTimerOnMaxSize) {</span>
+<span class="fc" id="L310">                worker = scheduler.createWorker();</span>
+            } else {
+<span class="fc" id="L312">                worker = null;</span>
+            }
+<span class="fc" id="L314">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L318" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+
+<span class="fc" id="L320">                this.upstream = s;</span>
+
+<span class="fc" id="L322">                Subscriber&lt;? super Flowable&lt;T&gt;&gt; a = downstream;</span>
+
+<span class="fc" id="L324">                a.onSubscribe(this);</span>
+
+<span class="fc bfc" id="L326" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L327">                    return;</span>
+                }
+
+<span class="fc" id="L330">                UnicastProcessor&lt;T&gt; w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+<span class="fc" id="L331">                window = w;</span>
+
+<span class="fc" id="L333">                long r = requested();</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                if (r != 0L) {</span>
+<span class="fc" id="L335">                    a.onNext(w);</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">                    if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L337">                        produced(1);</span>
+                    }
+                } else {
+<span class="fc" id="L340">                    cancelled = true;</span>
+<span class="fc" id="L341">                    s.cancel();</span>
+<span class="fc" id="L342">                    a.onError(new MissingBackpressureException(&quot;Could not deliver initial window due to lack of requests.&quot;));</span>
+<span class="fc" id="L343">                    return;</span>
+                }
+
+                Disposable task;
+<span class="fc" id="L347">                ConsumerIndexHolder consumerIndexHolder = new ConsumerIndexHolder(producerIndex, this);</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">                if (restartTimerOnMaxSize) {</span>
+<span class="fc" id="L349">                    task = worker.schedulePeriodically(consumerIndexHolder, timespan, timespan, unit);</span>
+                } else {
+<span class="fc" id="L351">                    task = scheduler.schedulePeriodicallyDirect(consumerIndexHolder, timespan, timespan, unit);</span>
+                }
+
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">                if (timer.replace(task)) {</span>
+<span class="fc" id="L355">                    s.request(Long.MAX_VALUE);</span>
+                }
+            }
+<span class="fc" id="L358">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">            if (terminated) {</span>
+<span class="nc" id="L363">                return;</span>
+            }
+
+<span class="fc bfc" id="L366" title="All 2 branches covered.">            if (fastEnter()) {</span>
+<span class="fc" id="L367">                UnicastProcessor&lt;T&gt; w = window;</span>
+<span class="fc" id="L368">                w.onNext(t);</span>
+
+<span class="fc" id="L370">                long c = count + 1;</span>
+
+<span class="fc bfc" id="L372" title="All 2 branches covered.">                if (c &gt;= maxSize) {</span>
+<span class="fc" id="L373">                    producerIndex++;</span>
+<span class="fc" id="L374">                    count = 0;</span>
+
+<span class="fc" id="L376">                    w.onComplete();</span>
+
+<span class="fc" id="L378">                    long r = requested();</span>
+
+<span class="fc bfc" id="L380" title="All 2 branches covered.">                    if (r != 0L) {</span>
+<span class="fc" id="L381">                        w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+<span class="fc" id="L382">                        window = w;</span>
+<span class="fc" id="L383">                        downstream.onNext(w);</span>
+<span class="fc bfc" id="L384" title="All 2 branches covered.">                        if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L385">                            produced(1);</span>
+                        }
+<span class="fc bfc" id="L387" title="All 2 branches covered.">                        if (restartTimerOnMaxSize) {</span>
+<span class="fc" id="L388">                            Disposable tm = timer.get();</span>
+
+<span class="fc" id="L390">                            tm.dispose();</span>
+<span class="fc" id="L391">                            Disposable task = worker.schedulePeriodically(</span>
+                                    new ConsumerIndexHolder(producerIndex, this), timespan, timespan, unit);
+<span class="fc" id="L393">                            timer.replace(task);</span>
+<span class="fc" id="L394">                        }</span>
+                    } else {
+<span class="fc" id="L396">                        window = null;</span>
+<span class="fc" id="L397">                        upstream.cancel();</span>
+<span class="fc" id="L398">                        downstream.onError(new MissingBackpressureException(&quot;Could not deliver window due to lack of requests&quot;));</span>
+<span class="fc" id="L399">                        dispose();</span>
+<span class="fc" id="L400">                        return;</span>
+                    }
+<span class="fc" id="L402">                } else {</span>
+<span class="fc" id="L403">                    count = c;</span>
+                }
+
+<span class="fc bfc" id="L406" title="All 2 branches covered.">                if (leave(-1) == 0) {</span>
+<span class="fc" id="L407">                    return;</span>
+                }
+<span class="fc" id="L409">            } else {</span>
+<span class="fc" id="L410">                queue.offer(NotificationLite.next(t));</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">                if (!enter()) {</span>
+<span class="fc" id="L412">                    return;</span>
+                }
+            }
+<span class="fc" id="L415">            drainLoop();</span>
+<span class="fc" id="L416">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L420">            error = t;</span>
+<span class="fc" id="L421">            done = true;</span>
+<span class="pc bpc" id="L422" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L423">                drainLoop();</span>
+            }
+
+<span class="fc" id="L426">            downstream.onError(t);</span>
+<span class="fc" id="L427">            dispose();</span>
+<span class="fc" id="L428">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L432">            done = true;</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">            if (enter()) {</span>
+<span class="fc" id="L434">                drainLoop();</span>
+            }
+
+<span class="fc" id="L437">            downstream.onComplete();</span>
+<span class="fc" id="L438">            dispose();</span>
+<span class="fc" id="L439">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L443">            requested(n);</span>
+<span class="fc" id="L444">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L448">            cancelled = true;</span>
+<span class="fc" id="L449">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L452">            DisposableHelper.dispose(timer);</span>
+<span class="fc" id="L453">            Worker w = worker;</span>
+<span class="fc bfc" id="L454" title="All 2 branches covered.">            if (w != null) {</span>
+<span class="fc" id="L455">                w.dispose();</span>
+            }
+<span class="fc" id="L457">        }</span>
+
+        void drainLoop() {
+<span class="fc" id="L460">            final SimplePlainQueue&lt;Object&gt; q = queue;</span>
+<span class="fc" id="L461">            final Subscriber&lt;? super Flowable&lt;T&gt;&gt; a = downstream;</span>
+<span class="fc" id="L462">            UnicastProcessor&lt;T&gt; w = window;</span>
+
+<span class="fc" id="L464">            int missed = 1;</span>
+            for (;;) {
+
+                for (;;) {
+<span class="fc bfc" id="L468" title="All 2 branches covered.">                    if (terminated) {</span>
+<span class="fc" id="L469">                        upstream.cancel();</span>
+<span class="fc" id="L470">                        q.clear();</span>
+<span class="fc" id="L471">                        dispose();</span>
+<span class="fc" id="L472">                        return;</span>
+                    }
+
+<span class="fc" id="L475">                    boolean d = done;</span>
+
+<span class="fc" id="L477">                    Object o = q.poll();</span>
+
+<span class="fc bfc" id="L479" title="All 2 branches covered.">                    boolean empty = o == null;</span>
+<span class="fc" id="L480">                    boolean isHolder = o instanceof ConsumerIndexHolder;</span>
+
+<span class="pc bpc" id="L482" title="1 of 6 branches missed.">                    if (d &amp;&amp; (empty || isHolder)) {</span>
+<span class="fc" id="L483">                        window = null;</span>
+<span class="fc" id="L484">                        q.clear();</span>
+<span class="fc" id="L485">                        Throwable err = error;</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">                        if (err != null) {</span>
+<span class="fc" id="L487">                            w.onError(err);</span>
+                        } else {
+<span class="fc" id="L489">                            w.onComplete();</span>
+                        }
+<span class="fc" id="L491">                        dispose();</span>
+<span class="fc" id="L492">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L495" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L496">                        break;</span>
+                    }
+
+<span class="fc bfc" id="L499" title="All 2 branches covered.">                    if (isHolder) {</span>
+<span class="fc" id="L500">                        ConsumerIndexHolder consumerIndexHolder = (ConsumerIndexHolder) o;</span>
+<span class="fc bfc" id="L501" title="All 4 branches covered.">                        if (restartTimerOnMaxSize || producerIndex == consumerIndexHolder.index) {</span>
+<span class="fc" id="L502">                            w.onComplete();</span>
+<span class="fc" id="L503">                            count = 0;</span>
+<span class="fc" id="L504">                            w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+<span class="fc" id="L505">                            window = w;</span>
+
+<span class="fc" id="L507">                            long r = requested();</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">                            if (r != 0L) {</span>
+<span class="fc" id="L509">                                a.onNext(w);</span>
+<span class="fc bfc" id="L510" title="All 2 branches covered.">                                if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L511">                                    produced(1);</span>
+                                }
+                            } else {
+<span class="fc" id="L514">                                window = null;</span>
+<span class="fc" id="L515">                                queue.clear();</span>
+<span class="fc" id="L516">                                upstream.cancel();</span>
+<span class="fc" id="L517">                                a.onError(new MissingBackpressureException(&quot;Could not deliver first window due to lack of requests.&quot;));</span>
+<span class="fc" id="L518">                                dispose();</span>
+<span class="fc" id="L519">                                return;</span>
+                            }
+<span class="fc" id="L521">                        }</span>
+                        continue;
+                    }
+
+<span class="fc" id="L525">                    w.onNext(NotificationLite.&lt;T&gt;getValue(o));</span>
+<span class="fc" id="L526">                    long c = count + 1;</span>
+
+<span class="fc bfc" id="L528" title="All 2 branches covered.">                    if (c &gt;= maxSize) {</span>
+<span class="fc" id="L529">                        producerIndex++;</span>
+<span class="fc" id="L530">                        count = 0;</span>
+
+<span class="fc" id="L532">                        w.onComplete();</span>
+
+<span class="fc" id="L534">                        long r = requested();</span>
+
+<span class="fc bfc" id="L536" title="All 2 branches covered.">                        if (r != 0L) {</span>
+<span class="fc" id="L537">                            w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+<span class="fc" id="L538">                            window = w;</span>
+<span class="fc" id="L539">                            downstream.onNext(w);</span>
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">                            if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L541">                                produced(1);</span>
+                            }
+
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">                            if (restartTimerOnMaxSize) {</span>
+<span class="fc" id="L545">                                Disposable tm = timer.get();</span>
+<span class="fc" id="L546">                                tm.dispose();</span>
+
+<span class="fc" id="L548">                                Disposable task = worker.schedulePeriodically(</span>
+                                        new ConsumerIndexHolder(producerIndex, this), timespan, timespan, unit);
+<span class="fc" id="L550">                                timer.replace(task);</span>
+<span class="fc" id="L551">                            }</span>
+
+                        } else {
+<span class="fc" id="L554">                            window = null;</span>
+<span class="fc" id="L555">                            upstream.cancel();</span>
+<span class="fc" id="L556">                            downstream.onError(new MissingBackpressureException(&quot;Could not deliver window due to lack of requests&quot;));</span>
+<span class="fc" id="L557">                            dispose();</span>
+<span class="fc" id="L558">                            return;</span>
+                        }
+<span class="fc" id="L560">                    } else {</span>
+<span class="fc" id="L561">                        count = c;</span>
+                    }
+<span class="fc" id="L563">                }</span>
+
+<span class="fc" id="L565">                missed = leave(-missed);</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L567">                    break;</span>
+                }
+            }
+<span class="fc" id="L570">        }</span>
+
+        static final class ConsumerIndexHolder implements Runnable {
+            final long index;
+            final WindowExactBoundedSubscriber&lt;?&gt; parent;
+<span class="fc" id="L575">            ConsumerIndexHolder(long index, WindowExactBoundedSubscriber&lt;?&gt; parent) {</span>
+<span class="fc" id="L576">                this.index = index;</span>
+<span class="fc" id="L577">                this.parent = parent;</span>
+<span class="fc" id="L578">            }</span>
+
+            @Override
+            public void run() {
+<span class="fc" id="L582">                WindowExactBoundedSubscriber&lt;?&gt; p = parent;</span>
+
+<span class="fc bfc" id="L584" title="All 2 branches covered.">                if (!p.cancelled) {</span>
+<span class="fc" id="L585">                    p.queue.offer(this);</span>
+                } else {
+<span class="fc" id="L587">                    p.terminated = true;</span>
+<span class="fc" id="L588">                    p.dispose();</span>
+                }
+<span class="fc bfc" id="L590" title="All 2 branches covered.">                if (p.enter()) {</span>
+<span class="fc" id="L591">                    p.drainLoop();</span>
+                }
+<span class="fc" id="L593">            }</span>
+        }
+    }
+
+    static final class WindowSkipSubscriber&lt;T&gt;
+    extends QueueDrainSubscriber&lt;T, Object, Flowable&lt;T&gt;&gt;
+    implements Subscription, Runnable {
+        final long timespan;
+        final long timeskip;
+        final TimeUnit unit;
+        final Scheduler.Worker worker;
+        final int bufferSize;
+
+        final List&lt;UnicastProcessor&lt;T&gt;&gt; windows;
+
+        Subscription upstream;
+
+        volatile boolean terminated;
+
+        WindowSkipSubscriber(Subscriber&lt;? super Flowable&lt;T&gt;&gt; actual,
+                long timespan, long timeskip, TimeUnit unit,
+                Worker worker, int bufferSize) {
+<span class="fc" id="L615">            super(actual, new MpscLinkedQueue&lt;Object&gt;());</span>
+<span class="fc" id="L616">            this.timespan = timespan;</span>
+<span class="fc" id="L617">            this.timeskip = timeskip;</span>
+<span class="fc" id="L618">            this.unit = unit;</span>
+<span class="fc" id="L619">            this.worker = worker;</span>
+<span class="fc" id="L620">            this.bufferSize = bufferSize;</span>
+<span class="fc" id="L621">            this.windows = new LinkedList&lt;UnicastProcessor&lt;T&gt;&gt;();</span>
+<span class="fc" id="L622">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="pc bpc" id="L626" title="1 of 2 branches missed.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+
+<span class="fc" id="L628">                this.upstream = s;</span>
+
+<span class="fc" id="L630">                downstream.onSubscribe(this);</span>
+
+<span class="fc bfc" id="L632" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L633">                    return;</span>
+                }
+
+<span class="fc" id="L636">                long r = requested();</span>
+<span class="fc bfc" id="L637" title="All 2 branches covered.">                if (r != 0L) {</span>
+<span class="fc" id="L638">                    final UnicastProcessor&lt;T&gt; w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+<span class="fc" id="L639">                    windows.add(w);</span>
+
+<span class="fc" id="L641">                    downstream.onNext(w);</span>
+<span class="pc bpc" id="L642" title="1 of 2 branches missed.">                    if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L643">                        produced(1);</span>
+                    }
+<span class="fc" id="L645">                    worker.schedule(new Completion(w), timespan, unit);</span>
+
+<span class="fc" id="L647">                    worker.schedulePeriodically(this, timeskip, timeskip, unit);</span>
+
+<span class="fc" id="L649">                    s.request(Long.MAX_VALUE);</span>
+
+<span class="fc" id="L651">                } else {</span>
+<span class="fc" id="L652">                    s.cancel();</span>
+<span class="fc" id="L653">                    downstream.onError(new MissingBackpressureException(&quot;Could not emit the first window due to lack of requests&quot;));</span>
+                }
+            }
+<span class="fc" id="L656">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L660" title="All 2 branches covered.">            if (fastEnter()) {</span>
+<span class="fc bfc" id="L661" title="All 2 branches covered.">                for (UnicastProcessor&lt;T&gt; w : windows) {</span>
+<span class="fc" id="L662">                    w.onNext(t);</span>
+<span class="fc" id="L663">                }</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">                if (leave(-1) == 0) {</span>
+<span class="fc" id="L665">                    return;</span>
+                }
+            } else {
+<span class="fc" id="L668">                queue.offer(t);</span>
+<span class="pc bpc" id="L669" title="1 of 2 branches missed.">                if (!enter()) {</span>
+<span class="fc" id="L670">                    return;</span>
+                }
+            }
+<span class="fc" id="L673">            drainLoop();</span>
+<span class="fc" id="L674">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L678">            error = t;</span>
+<span class="fc" id="L679">            done = true;</span>
+<span class="pc bpc" id="L680" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L681">                drainLoop();</span>
+            }
+
+<span class="fc" id="L684">            downstream.onError(t);</span>
+<span class="fc" id="L685">            dispose();</span>
+<span class="fc" id="L686">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L690">            done = true;</span>
+<span class="fc bfc" id="L691" title="All 2 branches covered.">            if (enter()) {</span>
+<span class="fc" id="L692">                drainLoop();</span>
+            }
+
+<span class="fc" id="L695">            downstream.onComplete();</span>
+<span class="fc" id="L696">            dispose();</span>
+<span class="fc" id="L697">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L701">            requested(n);</span>
+<span class="fc" id="L702">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L706">            cancelled = true;</span>
+<span class="fc" id="L707">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L710">            worker.dispose();</span>
+<span class="fc" id="L711">        }</span>
+
+        void complete(UnicastProcessor&lt;T&gt; w) {
+<span class="fc" id="L714">            queue.offer(new SubjectWork&lt;T&gt;(w, false));</span>
+<span class="pc bpc" id="L715" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L716">                drainLoop();</span>
+            }
+<span class="fc" id="L718">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        void drainLoop() {
+<span class="fc" id="L722">            final SimplePlainQueue&lt;Object&gt; q = queue;</span>
+<span class="fc" id="L723">            final Subscriber&lt;? super Flowable&lt;T&gt;&gt; a = downstream;</span>
+<span class="fc" id="L724">            final List&lt;UnicastProcessor&lt;T&gt;&gt; ws = windows;</span>
+
+<span class="fc" id="L726">            int missed = 1;</span>
+
+            for (;;) {
+
+                for (;;) {
+<span class="pc bpc" id="L731" title="1 of 2 branches missed.">                    if (terminated) {</span>
+<span class="nc" id="L732">                        upstream.cancel();</span>
+<span class="nc" id="L733">                        dispose();</span>
+<span class="nc" id="L734">                        q.clear();</span>
+<span class="nc" id="L735">                        ws.clear();</span>
+<span class="nc" id="L736">                        return;</span>
+                    }
+
+<span class="fc" id="L739">                    boolean d = done;</span>
+
+<span class="fc" id="L741">                    Object v = q.poll();</span>
+
+<span class="fc bfc" id="L743" title="All 2 branches covered.">                    boolean empty = v == null;</span>
+<span class="fc" id="L744">                    boolean sw = v instanceof SubjectWork;</span>
+
+<span class="pc bpc" id="L746" title="1 of 6 branches missed.">                    if (d &amp;&amp; (empty || sw)) {</span>
+<span class="fc" id="L747">                        q.clear();</span>
+<span class="fc" id="L748">                        Throwable e = error;</span>
+<span class="fc bfc" id="L749" title="All 2 branches covered.">                        if (e != null) {</span>
+<span class="fc bfc" id="L750" title="All 2 branches covered.">                            for (UnicastProcessor&lt;T&gt; w : ws) {</span>
+<span class="fc" id="L751">                                w.onError(e);</span>
+<span class="fc" id="L752">                            }</span>
+                        } else {
+<span class="fc bfc" id="L754" title="All 2 branches covered.">                            for (UnicastProcessor&lt;T&gt; w : ws) {</span>
+<span class="fc" id="L755">                                w.onComplete();</span>
+<span class="fc" id="L756">                            }</span>
+                        }
+<span class="fc" id="L758">                        ws.clear();</span>
+<span class="fc" id="L759">                        dispose();</span>
+<span class="fc" id="L760">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L763" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L764">                        break;</span>
+                    }
+
+<span class="fc bfc" id="L767" title="All 2 branches covered.">                    if (sw) {</span>
+<span class="fc" id="L768">                        SubjectWork&lt;T&gt; work = (SubjectWork&lt;T&gt;)v;</span>
+
+<span class="fc bfc" id="L770" title="All 2 branches covered.">                        if (work.open) {</span>
+<span class="pc bpc" id="L771" title="1 of 2 branches missed.">                            if (cancelled) {</span>
+<span class="nc" id="L772">                                continue;</span>
+                            }
+
+<span class="fc" id="L775">                            long r = requested();</span>
+<span class="fc bfc" id="L776" title="All 2 branches covered.">                            if (r != 0L) {</span>
+<span class="fc" id="L777">                                final UnicastProcessor&lt;T&gt; w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+<span class="fc" id="L778">                                ws.add(w);</span>
+<span class="fc" id="L779">                                a.onNext(w);</span>
+<span class="pc bpc" id="L780" title="1 of 2 branches missed.">                                if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L781">                                    produced(1);</span>
+                                }
+
+<span class="fc" id="L784">                                worker.schedule(new Completion(w), timespan, unit);</span>
+<span class="fc" id="L785">                            } else {</span>
+<span class="fc" id="L786">                                a.onError(new MissingBackpressureException(&quot;Can't emit window due to lack of requests&quot;));</span>
+                            }
+<span class="fc" id="L788">                        } else {</span>
+<span class="fc" id="L789">                            ws.remove(work.w);</span>
+<span class="fc" id="L790">                            work.w.onComplete();</span>
+<span class="pc bpc" id="L791" title="1 of 4 branches missed.">                            if (ws.isEmpty() &amp;&amp; cancelled) {</span>
+<span class="nc" id="L792">                                terminated = true;</span>
+                            }
+                        }
+<span class="fc" id="L795">                    } else {</span>
+<span class="fc bfc" id="L796" title="All 2 branches covered.">                        for (UnicastProcessor&lt;T&gt; w : ws) {</span>
+<span class="fc" id="L797">                            w.onNext((T)v);</span>
+<span class="fc" id="L798">                        }</span>
+                    }
+<span class="fc" id="L800">                }</span>
+
+<span class="fc" id="L802">                missed = leave(-missed);</span>
+<span class="pc bpc" id="L803" title="1 of 2 branches missed.">                if (missed == 0) {</span>
+<span class="fc" id="L804">                    break;</span>
+                }
+            }
+<span class="fc" id="L807">        }</span>
+
+        @Override
+        public void run() {
+
+<span class="fc" id="L812">            UnicastProcessor&lt;T&gt; w = UnicastProcessor.&lt;T&gt;create(bufferSize);</span>
+
+<span class="fc" id="L814">            SubjectWork&lt;T&gt; sw = new SubjectWork&lt;T&gt;(w, true);</span>
+<span class="pc bpc" id="L815" title="1 of 2 branches missed.">            if (!cancelled) {</span>
+<span class="fc" id="L816">                queue.offer(sw);</span>
+            }
+<span class="pc bpc" id="L818" title="1 of 2 branches missed.">            if (enter()) {</span>
+<span class="fc" id="L819">                drainLoop();</span>
+            }
+<span class="fc" id="L821">        }</span>
+
+        static final class SubjectWork&lt;T&gt; {
+            final UnicastProcessor&lt;T&gt; w;
+            final boolean open;
+<span class="fc" id="L826">            SubjectWork(UnicastProcessor&lt;T&gt; w, boolean open) {</span>
+<span class="fc" id="L827">                this.w = w;</span>
+<span class="fc" id="L828">                this.open = open;</span>
+<span class="fc" id="L829">            }</span>
+        }
+
+        final class Completion implements Runnable {
+            private final UnicastProcessor&lt;T&gt; processor;
+
+<span class="fc" id="L835">            Completion(UnicastProcessor&lt;T&gt; processor) {</span>
+<span class="fc" id="L836">                this.processor = processor;</span>
+<span class="fc" id="L837">            }</span>
+
+            @Override
+            public void run() {
+<span class="fc" id="L841">                complete(processor);</span>
+<span class="fc" id="L842">            }</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

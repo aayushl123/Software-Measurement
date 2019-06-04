@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OnNextValueTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.exceptions</a> &gt; <span class="el_source">OnNextValueTest.java</span></div><h1>OnNextValueTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.reactivex.exceptions;
+
+import static org.junit.Assert.*;
+
+import java.io.*;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Function;
+
+/**
+ * ```java
+ * public OnNextValue(Object value) {
+ *    super(&quot;OnError while emitting onNext value: &quot; + value);
+ *    this.value = value;
+ * }
+ * ```
+ * I know this is probably a helpful error message in some cases but this can be a really costly operation when an objects toString is an expensive call or contains a lot of output. I don't think we should be printing this in any case but if so it should be on demand (overload of getMessage()) rather than eagerly.
+ * &lt;p/&gt;
+ * In my case it is causing a toString of a large context object that is normally only used for debugging purposes which makes the exception logs hard to use and they are rolling over the log files very quickly.
+ * &lt;p/&gt;
+ * There is an added danger that if there is a bug in the toString method it will cause inconsistent exception creation. If the object throws an exception while rendering a string it will actually end up not seeing the real exception.
+ */
+<span class="nc" id="L41">public final class OnNextValueTest {</span>
+    private static final class BadToString {
+
+        private final boolean throwDuringToString;
+
+<span class="nc" id="L46">        private BadToString(boolean throwDuringToString) {</span>
+<span class="nc" id="L47">            this.throwDuringToString = throwDuringToString;</span>
+<span class="nc" id="L48">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc bnc" id="L52" title="All 2 branches missed.">            if (throwDuringToString) {</span>
+<span class="nc" id="L53">                throw new IllegalArgumentException(&quot;Error Making toString&quot;);</span>
+            } else {
+<span class="nc" id="L55">                return &quot;BadToString&quot;;</span>
+            }
+        }
+    }
+
+    private static class BadToStringObserver implements Observer&lt;BadToString&gt; {
+        @Override
+        public void onComplete() {
+<span class="nc" id="L63">            System.out.println(&quot;On Complete&quot;);</span>
+<span class="nc" id="L64">            fail(&quot;OnComplete shouldn't be reached&quot;);</span>
+<span class="nc" id="L65">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="nc" id="L69">            String trace = stackTraceAsString(e);</span>
+<span class="nc" id="L70">            System.out.println(&quot;On Error: &quot; + trace);</span>
+
+<span class="nc" id="L72">            assertTrue(trace, trace.contains(&quot;OnNextValue&quot;));</span>
+
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            assertTrue(&quot;No Cause on throwable&quot; + e, e.getCause() != null);</span>
+//            assertTrue(e.getCause().getClass().getSimpleName() + &quot; no OnNextValue&quot;,
+//                    e.getCause() instanceof OnErrorThrowable.OnNextValue);
+<span class="nc" id="L77">        }</span>
+
+        @Override
+        public void onNext(BadToString badToString) {
+<span class="nc" id="L81">            System.out.println(&quot;On Next&quot;);</span>
+<span class="nc" id="L82">            fail(&quot;OnNext shouldn't be reached&quot;);</span>
+
+<span class="nc" id="L84">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+
+<span class="nc" id="L89">        }</span>
+    }
+
+    public static String stackTraceAsString(Throwable e) {
+<span class="nc" id="L93">        StringWriter sw = new StringWriter();</span>
+<span class="nc" id="L94">        e.printStackTrace(new PrintWriter(sw));</span>
+<span class="nc" id="L95">        return sw.toString();</span>
+    }
+
+    @Ignore(&quot;Not sure what this does&quot;)
+    @Test
+    public void addOnNextValueExceptionAdded() throws Exception {
+<span class="nc" id="L101">        Observer&lt;BadToString&gt; observer = new BadToStringObserver();</span>
+
+<span class="nc" id="L103">        Observable.just(new BadToString(false))</span>
+<span class="nc" id="L104">                .map(new Function&lt;BadToString, BadToString&gt;() {</span>
+                    @Override
+                    public BadToString apply(BadToString badToString) {
+<span class="nc" id="L107">                        throw new IllegalArgumentException(&quot;Failure while handling&quot;);</span>
+                    }
+<span class="nc" id="L109">                }).subscribe(observer);</span>
+
+<span class="nc" id="L111">    }</span>
+
+    @Ignore(&quot;Not sure what this does&quot;)
+    @Test
+    public void addOnNextValueExceptionNotAddedWithBadString() throws Exception {
+<span class="nc" id="L116">        Observer&lt;BadToString&gt; observer = new BadToStringObserver();</span>
+
+<span class="nc" id="L118">        Observable.just(new BadToString(true))</span>
+<span class="nc" id="L119">                .map(new Function&lt;BadToString, BadToString&gt;() {</span>
+                    @Override
+                    public BadToString apply(BadToString badToString) {
+<span class="nc" id="L122">                        throw new IllegalArgumentException(&quot;Failure while handling&quot;);</span>
+                    }
+<span class="nc" id="L124">                }).subscribe(observer);</span>
+
+<span class="nc" id="L126">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderInteger() {
+//        assertEquals(&quot;123&quot;, OnNextValue.renderValue(123));
+<span class="nc" id="L132">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderByte() {
+//        assertEquals(&quot;10&quot;, OnNextValue.renderValue((byte) 10));
+<span class="nc" id="L138">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderBoolean() {
+//        assertEquals(&quot;true&quot;, OnNextValue.renderValue(true));
+<span class="nc" id="L144">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderShort() {
+//        assertEquals(&quot;10&quot;, OnNextValue.renderValue((short) 10));
+<span class="nc" id="L150">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderLong() {
+//        assertEquals(&quot;10&quot;, OnNextValue.renderValue(10L));
+<span class="nc" id="L156">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderCharacter() {
+//        assertEquals(&quot;10&quot;, OnNextValue.renderValue(10L));
+<span class="nc" id="L162">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderFloat() {
+//        assertEquals(&quot;10.0&quot;, OnNextValue.renderValue(10.0f));
+<span class="nc" id="L168">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderDouble() {
+//        assertEquals(&quot;10.0&quot;, OnNextValue.renderValue(10.0));
+<span class="nc" id="L174">    }</span>
+
+    @Ignore(&quot;OnNextValue not ported&quot;)
+    @Test
+    public void testRenderVoid() {
+//        assertEquals(&quot;null&quot;, OnNextValue.renderValue((Void) null));
+<span class="nc" id="L180">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

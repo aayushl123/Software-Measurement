@@ -1,0 +1,710 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableDoOnEachTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableDoOnEachTest.java</span></div><h1>ObservableDoOnEachTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.QueueFuseable;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.UnicastSubject;
+
+<span class="fc" id="L36">public class ObservableDoOnEachTest {</span>
+
+    Observer&lt;String&gt; subscribedObserver;
+    Observer&lt;String&gt; sideEffectObserver;
+
+    @Before
+    public void before() {
+<span class="fc" id="L43">        subscribedObserver = TestHelper.mockObserver();</span>
+<span class="fc" id="L44">        sideEffectObserver = TestHelper.mockObserver();</span>
+<span class="fc" id="L45">    }</span>
+
+    @Test
+    public void testDoOnEach() {
+<span class="fc" id="L49">        Observable&lt;String&gt; base = Observable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;);</span>
+<span class="fc" id="L50">        Observable&lt;String&gt; doOnEach = base.doOnEach(sideEffectObserver);</span>
+
+<span class="fc" id="L52">        doOnEach.subscribe(subscribedObserver);</span>
+
+        // ensure the leaf Observer is still getting called
+<span class="fc" id="L55">        verify(subscribedObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L56">        verify(subscribedObserver, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L57">        verify(subscribedObserver, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L58">        verify(subscribedObserver, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L59">        verify(subscribedObserver, times(1)).onComplete();</span>
+
+        // ensure our injected Observer is getting called
+<span class="fc" id="L62">        verify(sideEffectObserver, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L63">        verify(sideEffectObserver, times(1)).onNext(&quot;a&quot;);</span>
+<span class="fc" id="L64">        verify(sideEffectObserver, times(1)).onNext(&quot;b&quot;);</span>
+<span class="fc" id="L65">        verify(sideEffectObserver, times(1)).onNext(&quot;c&quot;);</span>
+<span class="fc" id="L66">        verify(sideEffectObserver, times(1)).onComplete();</span>
+<span class="fc" id="L67">    }</span>
+
+    @Test
+    public void testDoOnEachWithError() {
+<span class="fc" id="L71">        Observable&lt;String&gt; base = Observable.just(&quot;one&quot;, &quot;fail&quot;, &quot;two&quot;, &quot;three&quot;, &quot;fail&quot;);</span>
+<span class="fc" id="L72">        Observable&lt;String&gt; errs = base.map(new Function&lt;String, String&gt;() {</span>
+            @Override
+            public String apply(String s) {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                if (&quot;fail&quot;.equals(s)) {</span>
+<span class="fc" id="L76">                    throw new RuntimeException(&quot;Forced Failure&quot;);</span>
+                }
+<span class="fc" id="L78">                return s;</span>
+            }
+        });
+
+<span class="fc" id="L82">        Observable&lt;String&gt; doOnEach = errs.doOnEach(sideEffectObserver);</span>
+
+<span class="fc" id="L84">        doOnEach.subscribe(subscribedObserver);</span>
+<span class="fc" id="L85">        verify(subscribedObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L86">        verify(subscribedObserver, never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L87">        verify(subscribedObserver, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L88">        verify(subscribedObserver, never()).onComplete();</span>
+<span class="fc" id="L89">        verify(subscribedObserver, times(1)).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L91">        verify(sideEffectObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L92">        verify(sideEffectObserver, never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L93">        verify(sideEffectObserver, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L94">        verify(sideEffectObserver, never()).onComplete();</span>
+<span class="fc" id="L95">        verify(sideEffectObserver, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L96">    }</span>
+
+    @Test
+    public void testDoOnEachWithErrorInCallback() {
+<span class="fc" id="L100">        Observable&lt;String&gt; base = Observable.just(&quot;one&quot;, &quot;two&quot;, &quot;fail&quot;, &quot;three&quot;);</span>
+<span class="fc" id="L101">        Observable&lt;String&gt; doOnEach = base.doOnNext(new Consumer&lt;String&gt;() {</span>
+            @Override
+            public void accept(String s) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                if (&quot;fail&quot;.equals(s)) {</span>
+<span class="fc" id="L105">                    throw new RuntimeException(&quot;Forced Failure&quot;);</span>
+                }
+<span class="fc" id="L107">            }</span>
+        });
+
+<span class="fc" id="L110">        doOnEach.subscribe(subscribedObserver);</span>
+<span class="fc" id="L111">        verify(subscribedObserver, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L112">        verify(subscribedObserver, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L113">        verify(subscribedObserver, never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L114">        verify(subscribedObserver, never()).onComplete();</span>
+<span class="fc" id="L115">        verify(subscribedObserver, times(1)).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L117">    }</span>
+
+    @Test
+    public void testIssue1451Case1() {
+        // https://github.com/Netflix/RxJava/issues/1451
+<span class="fc" id="L122">        final int expectedCount = 3;</span>
+<span class="fc" id="L123">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        for (int i = 0; i &lt; expectedCount; i++) {</span>
+<span class="fc" id="L125">            Observable</span>
+<span class="fc" id="L126">                    .just(Boolean.TRUE, Boolean.FALSE)</span>
+<span class="fc" id="L127">                    .takeWhile(new Predicate&lt;Boolean&gt;() {</span>
+                        @Override
+                        public boolean test(Boolean value) {
+<span class="fc" id="L130">                            return value;</span>
+                        }
+                    })
+<span class="fc" id="L133">                    .toList()</span>
+<span class="fc" id="L134">                    .doOnSuccess(new Consumer&lt;List&lt;Boolean&gt;&gt;() {</span>
+                        @Override
+                        public void accept(List&lt;Boolean&gt; booleans) {
+<span class="fc" id="L137">                            count.incrementAndGet();</span>
+<span class="fc" id="L138">                        }</span>
+                    })
+<span class="fc" id="L140">                    .subscribe();</span>
+        }
+<span class="fc" id="L142">        assertEquals(expectedCount, count.get());</span>
+<span class="fc" id="L143">    }</span>
+
+    @Test
+    public void testIssue1451Case2() {
+        // https://github.com/Netflix/RxJava/issues/1451
+<span class="fc" id="L148">        final int expectedCount = 3;</span>
+<span class="fc" id="L149">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        for (int i = 0; i &lt; expectedCount; i++) {</span>
+<span class="fc" id="L151">            Observable</span>
+<span class="fc" id="L152">                    .just(Boolean.TRUE, Boolean.FALSE, Boolean.FALSE)</span>
+<span class="fc" id="L153">                    .takeWhile(new Predicate&lt;Boolean&gt;() {</span>
+                        @Override
+                        public boolean test(Boolean value) {
+<span class="fc" id="L156">                            return value;</span>
+                        }
+                    })
+<span class="fc" id="L159">                    .toList()</span>
+<span class="fc" id="L160">                    .doOnSuccess(new Consumer&lt;List&lt;Boolean&gt;&gt;() {</span>
+                        @Override
+                        public void accept(List&lt;Boolean&gt; booleans) {
+<span class="fc" id="L163">                            count.incrementAndGet();</span>
+<span class="fc" id="L164">                        }</span>
+                    })
+<span class="fc" id="L166">                    .subscribe();</span>
+        }
+<span class="fc" id="L168">        assertEquals(expectedCount, count.get());</span>
+<span class="fc" id="L169">    }</span>
+
+    // FIXME crashing ObservableSource can't propagate to an Observer
+//    @Test
+//    public void testFatalError() {
+//        try {
+//            Observable.just(1, 2, 3)
+//                    .flatMap(new Function&lt;Integer, Observable&lt;?&gt;&gt;() {
+//                        @Override
+//                        public Observable&lt;?&gt; apply(Integer integer) {
+//                            return Observable.create(new ObservableSource&lt;Object&gt;() {
+//                                @Override
+//                                public void accept(Observer&lt;Object&gt; o) {
+//                                    throw new NullPointerException(&quot;Test NPE&quot;);
+//                                }
+//                            });
+//                        }
+//                    })
+//                    .doOnNext(new Consumer&lt;Object&gt;() {
+//                        @Override
+//                        public void accept(Object o) {
+//                            System.out.println(&quot;Won't come here&quot;);
+//                        }
+//                    })
+//                    .subscribe();
+//            fail(&quot;should have thrown an exception&quot;);
+//        } catch (OnErrorNotImplementedException e) {
+//            assertTrue(e.getCause() instanceof NullPointerException);
+//            assertEquals(e.getCause().getMessage(), &quot;Test NPE&quot;);
+//            System.out.println(&quot;Received exception: &quot; + e);
+//        }
+//    }
+
+    @Test
+    public void onErrorThrows() {
+<span class="fc" id="L204">        TestObserver&lt;Object&gt; to = TestObserver.create();</span>
+
+<span class="fc" id="L206">        Observable.error(new TestException())</span>
+<span class="fc" id="L207">        .doOnError(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) {
+<span class="fc" id="L210">                throw new TestException();</span>
+            }
+<span class="fc" id="L212">        }).subscribe(to);</span>
+
+<span class="fc" id="L214">        to.assertNoValues();</span>
+<span class="fc" id="L215">        to.assertNotComplete();</span>
+<span class="fc" id="L216">        to.assertError(CompositeException.class);</span>
+
+<span class="fc" id="L218">        CompositeException ex = (CompositeException)to.errors().get(0);</span>
+
+<span class="fc" id="L220">        List&lt;Throwable&gt; exceptions = ex.getExceptions();</span>
+<span class="fc" id="L221">        assertEquals(2, exceptions.size());</span>
+<span class="fc" id="L222">        Assert.assertTrue(exceptions.get(0) instanceof TestException);</span>
+<span class="fc" id="L223">        Assert.assertTrue(exceptions.get(1) instanceof TestException);</span>
+<span class="fc" id="L224">    }</span>
+
+    @Test
+    public void ignoreCancel() {
+<span class="fc" id="L228">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L231">            Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L234">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L235">                    observer.onNext(1);</span>
+<span class="fc" id="L236">                    observer.onNext(2);</span>
+<span class="fc" id="L237">                    observer.onError(new IOException());</span>
+<span class="fc" id="L238">                    observer.onComplete();</span>
+<span class="fc" id="L239">                }</span>
+            })
+<span class="fc" id="L241">            .doOnNext(new Consumer&lt;Object&gt;() {</span>
+                @Override
+                public void accept(Object e) throws Exception {
+<span class="fc" id="L244">                    throw new TestException();</span>
+                }
+            })
+<span class="fc" id="L247">            .test()</span>
+<span class="fc" id="L248">            .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L250">            TestHelper.assertUndeliverable(errors, 0, IOException.class);</span>
+        } finally {
+<span class="fc" id="L252">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L254">    }</span>
+
+    @Test
+    public void onErrorAfterCrash() {
+<span class="fc" id="L258">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L261">            Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L264">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L265">                    observer.onError(new TestException());</span>
+<span class="fc" id="L266">                }</span>
+            })
+<span class="fc" id="L268">            .doAfterTerminate(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L271">                    throw new IOException();</span>
+                }
+            })
+<span class="fc" id="L274">            .test()</span>
+<span class="fc" id="L275">            .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L277">            TestHelper.assertUndeliverable(errors, 0, IOException.class);</span>
+        } finally {
+<span class="fc" id="L279">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L281">    }</span>
+
+    @Test
+    public void onCompleteAfterCrash() {
+<span class="fc" id="L285">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L288">            Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L291">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L292">                    observer.onComplete();</span>
+<span class="fc" id="L293">                }</span>
+            })
+<span class="fc" id="L295">            .doAfterTerminate(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L298">                    throw new IOException();</span>
+                }
+            })
+<span class="fc" id="L301">            .test()</span>
+<span class="fc" id="L302">            .assertResult();</span>
+
+<span class="fc" id="L304">            TestHelper.assertUndeliverable(errors, 0, IOException.class);</span>
+        } finally {
+<span class="fc" id="L306">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L308">    }</span>
+
+    @Test
+    public void onCompleteCrash() {
+<span class="fc" id="L312">        Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L315">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L316">                observer.onComplete();</span>
+<span class="fc" id="L317">            }</span>
+        })
+<span class="fc" id="L319">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L322">                throw new IOException();</span>
+            }
+        })
+<span class="fc" id="L325">        .test()</span>
+<span class="fc" id="L326">        .assertFailure(IOException.class);</span>
+<span class="fc" id="L327">    }</span>
+
+    @Test
+    public void ignoreCancelConditional() {
+<span class="fc" id="L331">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L334">            Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L337">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L338">                    observer.onNext(1);</span>
+<span class="fc" id="L339">                    observer.onNext(2);</span>
+<span class="fc" id="L340">                    observer.onError(new IOException());</span>
+<span class="fc" id="L341">                    observer.onComplete();</span>
+<span class="fc" id="L342">                }</span>
+            })
+<span class="fc" id="L344">            .doOnNext(new Consumer&lt;Object&gt;() {</span>
+                @Override
+                public void accept(Object e) throws Exception {
+<span class="fc" id="L347">                    throw new TestException();</span>
+                }
+            })
+<span class="fc" id="L350">            .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L351">            .test()</span>
+<span class="fc" id="L352">            .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L354">            TestHelper.assertUndeliverable(errors, 0, IOException.class);</span>
+        } finally {
+<span class="fc" id="L356">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L358">    }</span>
+
+    @Test
+    public void onErrorAfterCrashConditional() {
+<span class="fc" id="L362">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L365">            Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L368">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L369">                    observer.onError(new TestException());</span>
+<span class="fc" id="L370">                }</span>
+            })
+<span class="fc" id="L372">            .doAfterTerminate(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L375">                    throw new IOException();</span>
+                }
+            })
+<span class="fc" id="L378">            .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L379">            .test()</span>
+<span class="fc" id="L380">            .assertFailure(TestException.class);</span>
+
+<span class="fc" id="L382">            TestHelper.assertUndeliverable(errors, 0, IOException.class);</span>
+        } finally {
+<span class="fc" id="L384">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L386">    }</span>
+
+    @Test
+    public void onCompleteAfter() {
+<span class="fc" id="L390">        final int[] call = { 0 };</span>
+<span class="fc" id="L391">        Observable.just(1)</span>
+<span class="fc" id="L392">        .doAfterTerminate(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L395">                call[0]++;</span>
+<span class="fc" id="L396">            }</span>
+        })
+<span class="fc" id="L398">        .test()</span>
+<span class="fc" id="L399">        .assertResult(1);</span>
+
+<span class="fc" id="L401">        assertEquals(1, call[0]);</span>
+<span class="fc" id="L402">    }</span>
+
+    @Test
+    public void onCompleteAfterCrashConditional() {
+<span class="fc" id="L406">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L409">            Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+                @Override
+                public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L412">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L413">                    observer.onComplete();</span>
+<span class="fc" id="L414">                }</span>
+            })
+<span class="fc" id="L416">            .doAfterTerminate(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L419">                    throw new IOException();</span>
+                }
+            })
+<span class="fc" id="L422">            .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L423">            .test()</span>
+<span class="fc" id="L424">            .assertResult();</span>
+
+<span class="fc" id="L426">            TestHelper.assertUndeliverable(errors, 0, IOException.class);</span>
+        } finally {
+<span class="fc" id="L428">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L430">    }</span>
+
+    @Test
+    public void onCompleteCrashConditional() {
+<span class="fc" id="L434">        Observable.wrap(new ObservableSource&lt;Object&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L437">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L438">                observer.onComplete();</span>
+<span class="fc" id="L439">            }</span>
+        })
+<span class="fc" id="L441">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L444">                throw new IOException();</span>
+            }
+        })
+<span class="fc" id="L447">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L448">        .test()</span>
+<span class="fc" id="L449">        .assertFailure(IOException.class);</span>
+<span class="fc" id="L450">    }</span>
+
+    @Test
+    public void onErrorOnErrorCrashConditional() {
+<span class="fc" id="L454">        TestObserver&lt;Object&gt; to = Observable.error(new TestException(&quot;Outer&quot;))</span>
+<span class="fc" id="L455">        .doOnError(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable e) throws Exception {
+<span class="fc" id="L458">                throw new TestException(&quot;Inner&quot;);</span>
+            }
+        })
+<span class="fc" id="L461">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L462">        .test()</span>
+<span class="fc" id="L463">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L465">        List&lt;Throwable&gt; errors = TestHelper.compositeList(to.errors().get(0));</span>
+
+<span class="fc" id="L467">        TestHelper.assertError(errors, 0, TestException.class, &quot;Outer&quot;);</span>
+<span class="fc" id="L468">        TestHelper.assertError(errors, 1, TestException.class, &quot;Inner&quot;);</span>
+<span class="fc" id="L469">    }</span>
+
+    @Test
+    @Ignore(&quot;Fusion not supported yet&quot;) // TODO decide/implement fusion
+    public void fused() {
+<span class="nc" id="L474">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="nc" id="L476">        final int[] call = { 0, 0 };</span>
+
+<span class="nc" id="L478">        Observable.range(1, 5)</span>
+<span class="nc" id="L479">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L482">                call[0]++;</span>
+<span class="nc" id="L483">            }</span>
+        })
+<span class="nc" id="L485">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L488">                call[1]++;</span>
+<span class="nc" id="L489">            }</span>
+        })
+<span class="nc" id="L491">        .subscribe(to);</span>
+
+<span class="nc" id="L493">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="nc" id="L494">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.SYNC))</span>
+<span class="nc" id="L495">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L497">        assertEquals(5, call[0]);</span>
+<span class="nc" id="L498">        assertEquals(1, call[1]);</span>
+<span class="nc" id="L499">    }</span>
+
+    @Test
+    @Ignore(&quot;Fusion not supported yet&quot;) // TODO decide/implement fusion
+    public void fusedOnErrorCrash() {
+<span class="nc" id="L504">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="nc" id="L506">        final int[] call = { 0 };</span>
+
+<span class="nc" id="L508">        Observable.range(1, 5)</span>
+<span class="nc" id="L509">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L512">                throw new TestException();</span>
+            }
+        })
+<span class="nc" id="L515">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L518">                call[0]++;</span>
+<span class="nc" id="L519">            }</span>
+        })
+<span class="nc" id="L521">        .subscribe(to);</span>
+
+<span class="nc" id="L523">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="nc" id="L524">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.SYNC))</span>
+<span class="nc" id="L525">        .assertFailure(TestException.class);</span>
+
+<span class="nc" id="L527">        assertEquals(0, call[0]);</span>
+<span class="nc" id="L528">    }</span>
+
+    @Test
+    @Ignore(&quot;Fusion not supported yet&quot;) // TODO decide/implement fusion
+    public void fusedConditional() {
+<span class="nc" id="L533">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="nc" id="L535">        final int[] call = { 0, 0 };</span>
+
+<span class="nc" id="L537">        Observable.range(1, 5)</span>
+<span class="nc" id="L538">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L541">                call[0]++;</span>
+<span class="nc" id="L542">            }</span>
+        })
+<span class="nc" id="L544">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L547">                call[1]++;</span>
+<span class="nc" id="L548">            }</span>
+        })
+<span class="nc" id="L550">        .filter(Functions.alwaysTrue())</span>
+<span class="nc" id="L551">        .subscribe(to);</span>
+
+<span class="nc" id="L553">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="nc" id="L554">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.SYNC))</span>
+<span class="nc" id="L555">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L557">        assertEquals(5, call[0]);</span>
+<span class="nc" id="L558">        assertEquals(1, call[1]);</span>
+<span class="nc" id="L559">    }</span>
+
+    @Test
+    @Ignore(&quot;Fusion not supported yet&quot;) // TODO decide/implement fusion
+    public void fusedOnErrorCrashConditional() {
+<span class="nc" id="L564">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="nc" id="L566">        final int[] call = { 0 };</span>
+
+<span class="nc" id="L568">        Observable.range(1, 5)</span>
+<span class="nc" id="L569">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L572">                throw new TestException();</span>
+            }
+        })
+<span class="nc" id="L575">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L578">                call[0]++;</span>
+<span class="nc" id="L579">            }</span>
+        })
+<span class="nc" id="L581">        .filter(Functions.alwaysTrue())</span>
+<span class="nc" id="L582">        .subscribe(to);</span>
+
+<span class="nc" id="L584">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="nc" id="L585">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.SYNC))</span>
+<span class="nc" id="L586">        .assertFailure(TestException.class);</span>
+
+<span class="nc" id="L588">        assertEquals(0, call[0]);</span>
+<span class="nc" id="L589">    }</span>
+
+    @Test
+    @Ignore(&quot;Fusion not supported yet&quot;) // TODO decide/implement fusion
+    public void fusedAsync() {
+<span class="nc" id="L594">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="nc" id="L596">        final int[] call = { 0, 0 };</span>
+
+<span class="nc" id="L598">        UnicastSubject&lt;Integer&gt; up = UnicastSubject.create();</span>
+
+<span class="nc" id="L600">        up</span>
+<span class="nc" id="L601">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L604">                call[0]++;</span>
+<span class="nc" id="L605">            }</span>
+        })
+<span class="nc" id="L607">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L610">                call[1]++;</span>
+<span class="nc" id="L611">            }</span>
+        })
+<span class="nc" id="L613">        .subscribe(to);</span>
+
+<span class="nc" id="L615">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L617">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="nc" id="L618">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="nc" id="L619">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L621">        assertEquals(5, call[0]);</span>
+<span class="nc" id="L622">        assertEquals(1, call[1]);</span>
+<span class="nc" id="L623">    }</span>
+
+    @Test
+    @Ignore(&quot;Fusion not supported yet&quot;) // TODO decide/implement fusion
+    public void fusedAsyncConditional() {
+<span class="nc" id="L628">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="nc" id="L630">        final int[] call = { 0, 0 };</span>
+
+<span class="nc" id="L632">        UnicastSubject&lt;Integer&gt; up = UnicastSubject.create();</span>
+
+<span class="nc" id="L634">        up</span>
+<span class="nc" id="L635">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L638">                call[0]++;</span>
+<span class="nc" id="L639">            }</span>
+        })
+<span class="nc" id="L641">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L644">                call[1]++;</span>
+<span class="nc" id="L645">            }</span>
+        })
+<span class="nc" id="L647">        .filter(Functions.alwaysTrue())</span>
+<span class="nc" id="L648">        .subscribe(to);</span>
+
+<span class="nc" id="L650">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L652">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="nc" id="L653">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="nc" id="L654">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L656">        assertEquals(5, call[0]);</span>
+<span class="nc" id="L657">        assertEquals(1, call[1]);</span>
+<span class="nc" id="L658">    }</span>
+
+    @Test
+    @Ignore(&quot;Fusion not supported yet&quot;) // TODO decide/implement fusion
+    public void fusedAsyncConditional2() {
+<span class="nc" id="L663">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="nc" id="L665">        final int[] call = { 0, 0 };</span>
+
+<span class="nc" id="L667">        UnicastSubject&lt;Integer&gt; up = UnicastSubject.create();</span>
+
+<span class="nc" id="L669">        up.hide()</span>
+<span class="nc" id="L670">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="nc" id="L673">                call[0]++;</span>
+<span class="nc" id="L674">            }</span>
+        })
+<span class="nc" id="L676">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L679">                call[1]++;</span>
+<span class="nc" id="L680">            }</span>
+        })
+<span class="nc" id="L682">        .filter(Functions.alwaysTrue())</span>
+<span class="nc" id="L683">        .subscribe(to);</span>
+
+<span class="nc" id="L685">        TestHelper.emit(up, 1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L687">        to.assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="nc" id="L688">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.NONE))</span>
+<span class="nc" id="L689">        .assertResult(1, 2, 3, 4, 5);</span>
+
+<span class="nc" id="L691">        assertEquals(5, call[0]);</span>
+<span class="nc" id="L692">        assertEquals(1, call[1]);</span>
+<span class="nc" id="L693">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L697">        TestHelper.checkDisposed(Observable.just(1).doOnEach(new TestObserver&lt;Integer&gt;()));</span>
+<span class="fc" id="L698">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L702">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; apply(Observable&lt;Object&gt; o) throws Exception {
+<span class="fc" id="L705">                return o.doOnEach(new TestObserver&lt;Object&gt;());</span>
+            }
+        });
+<span class="fc" id="L708">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

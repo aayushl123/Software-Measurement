@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableFromArray.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableFromArray.java</span></div><h1>FlowableFromArray.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.Flowable;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.ConditionalSubscriber;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.BackpressureHelper;
+
+public final class FlowableFromArray&lt;T&gt; extends Flowable&lt;T&gt; {
+    final T[] array;
+
+<span class="fc" id="L28">    public FlowableFromArray(T[] array) {</span>
+<span class="fc" id="L29">        this.array = array;</span>
+<span class="fc" id="L30">    }</span>
+
+    @Override
+    public void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (s instanceof ConditionalSubscriber) {</span>
+<span class="fc" id="L35">            s.onSubscribe(new ArrayConditionalSubscription&lt;T&gt;(</span>
+                    (ConditionalSubscriber&lt;? super T&gt;)s, array));
+        } else {
+<span class="fc" id="L38">            s.onSubscribe(new ArraySubscription&lt;T&gt;(s, array));</span>
+        }
+<span class="fc" id="L40">    }</span>
+
+    abstract static class BaseArraySubscription&lt;T&gt; extends BasicQueueSubscription&lt;T&gt; {
+        private static final long serialVersionUID = -2252972430506210021L;
+
+        final T[] array;
+
+        int index;
+
+        volatile boolean cancelled;
+
+<span class="fc" id="L51">        BaseArraySubscription(T[] array) {</span>
+<span class="fc" id="L52">            this.array = array;</span>
+<span class="fc" id="L53">        }</span>
+
+        @Override
+        public final int requestFusion(int mode) {
+<span class="fc" id="L57">            return mode &amp; SYNC;</span>
+        }
+
+        @Nullable
+        @Override
+        public final T poll() {
+<span class="fc" id="L63">            int i = index;</span>
+<span class="fc" id="L64">            T[] arr = array;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (i == arr.length) {</span>
+<span class="fc" id="L66">                return null;</span>
+            }
+
+<span class="fc" id="L69">            index = i + 1;</span>
+<span class="fc" id="L70">            return ObjectHelper.requireNonNull(arr[i], &quot;array element is null&quot;);</span>
+        }
+
+        @Override
+        public final boolean isEmpty() {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            return index == array.length;</span>
+        }
+
+        @Override
+        public final void clear() {
+<span class="fc" id="L80">            index = array.length;</span>
+<span class="fc" id="L81">        }</span>
+
+        @Override
+        public final void request(long n) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                if (BackpressureHelper.add(this, n) == 0L) {</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                    if (n == Long.MAX_VALUE) {</span>
+<span class="fc" id="L88">                        fastPath();</span>
+                    } else {
+<span class="fc" id="L90">                        slowPath(n);</span>
+                    }
+                }
+            }
+<span class="fc" id="L94">        }</span>
+
+        @Override
+        public final void cancel() {
+<span class="fc" id="L98">            cancelled = true;</span>
+<span class="fc" id="L99">        }</span>
+
+        abstract void fastPath();
+
+        abstract void slowPath(long r);
+    }
+
+    static final class ArraySubscription&lt;T&gt; extends BaseArraySubscription&lt;T&gt; {
+
+        private static final long serialVersionUID = 2587302975077663557L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+
+        ArraySubscription(Subscriber&lt;? super T&gt; actual, T[] array) {
+<span class="fc" id="L113">            super(array);</span>
+<span class="fc" id="L114">            this.downstream = actual;</span>
+<span class="fc" id="L115">        }</span>
+
+        @Override
+        void fastPath() {
+<span class="fc" id="L119">            T[] arr = array;</span>
+<span class="fc" id="L120">            int f = arr.length;</span>
+<span class="fc" id="L121">            Subscriber&lt;? super T&gt; a = downstream;</span>
+
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            for (int i = index; i != f; i++) {</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L125">                    return;</span>
+                }
+<span class="fc" id="L127">                T t = arr[i];</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                if (t == null) {</span>
+<span class="fc" id="L129">                    a.onError(new NullPointerException(&quot;The element at index &quot; + i + &quot; is null&quot;));</span>
+<span class="fc" id="L130">                    return;</span>
+                } else {
+<span class="fc" id="L132">                    a.onNext(t);</span>
+                }
+            }
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L136">                return;</span>
+            }
+<span class="fc" id="L138">            a.onComplete();</span>
+<span class="fc" id="L139">        }</span>
+
+        @Override
+        void slowPath(long r) {
+<span class="fc" id="L143">            long e = 0;</span>
+<span class="fc" id="L144">            T[] arr = array;</span>
+<span class="fc" id="L145">            int f = arr.length;</span>
+<span class="fc" id="L146">            int i = index;</span>
+<span class="fc" id="L147">            Subscriber&lt;? super T&gt; a = downstream;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L151" title="All 4 branches covered.">                while (e != r &amp;&amp; i != f) {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L153">                        return;</span>
+                    }
+
+<span class="fc" id="L156">                    T t = arr[i];</span>
+
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                    if (t == null) {</span>
+<span class="fc" id="L159">                        a.onError(new NullPointerException(&quot;The element at index &quot; + i + &quot; is null&quot;));</span>
+<span class="fc" id="L160">                        return;</span>
+                    } else {
+<span class="fc" id="L162">                        a.onNext(t);</span>
+                    }
+
+<span class="fc" id="L165">                    e++;</span>
+<span class="fc" id="L166">                    i++;</span>
+<span class="fc" id="L167">                }</span>
+
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                if (i == f) {</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                    if (!cancelled) {</span>
+<span class="fc" id="L171">                        a.onComplete();</span>
+                    }
+<span class="fc" id="L173">                    return;</span>
+                }
+
+<span class="fc" id="L176">                r = get();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc" id="L178">                    index = i;</span>
+<span class="fc" id="L179">                    r = addAndGet(-e);</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                    if (r == 0L) {</span>
+<span class="fc" id="L181">                        return;</span>
+                    }
+<span class="nc" id="L183">                    e = 0L;</span>
+                }
+            }
+        }
+    }
+
+    static final class ArrayConditionalSubscription&lt;T&gt; extends BaseArraySubscription&lt;T&gt; {
+
+        private static final long serialVersionUID = 2587302975077663557L;
+
+        final ConditionalSubscriber&lt;? super T&gt; downstream;
+
+        ArrayConditionalSubscription(ConditionalSubscriber&lt;? super T&gt; actual, T[] array) {
+<span class="fc" id="L196">            super(array);</span>
+<span class="fc" id="L197">            this.downstream = actual;</span>
+<span class="fc" id="L198">        }</span>
+
+        @Override
+        void fastPath() {
+<span class="fc" id="L202">            T[] arr = array;</span>
+<span class="fc" id="L203">            int f = arr.length;</span>
+<span class="fc" id="L204">            ConditionalSubscriber&lt;? super T&gt; a = downstream;</span>
+
+<span class="fc bfc" id="L206" title="All 2 branches covered.">            for (int i = index; i != f; i++) {</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L208">                    return;</span>
+                }
+<span class="fc" id="L210">                T t = arr[i];</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                if (t == null) {</span>
+<span class="fc" id="L212">                    a.onError(new NullPointerException(&quot;The element at index &quot; + i + &quot; is null&quot;));</span>
+<span class="fc" id="L213">                    return;</span>
+                } else {
+<span class="fc" id="L215">                    a.tryOnNext(t);</span>
+                }
+            }
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L219">                return;</span>
+            }
+<span class="fc" id="L221">            a.onComplete();</span>
+<span class="fc" id="L222">        }</span>
+
+        @Override
+        void slowPath(long r) {
+<span class="fc" id="L226">            long e = 0;</span>
+<span class="fc" id="L227">            T[] arr = array;</span>
+<span class="fc" id="L228">            int f = arr.length;</span>
+<span class="fc" id="L229">            int i = index;</span>
+<span class="fc" id="L230">            ConditionalSubscriber&lt;? super T&gt; a = downstream;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L234" title="All 4 branches covered.">                while (e != r &amp;&amp; i != f) {</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L236">                        return;</span>
+                    }
+
+<span class="fc" id="L239">                    T t = arr[i];</span>
+
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                    if (t == null) {</span>
+<span class="fc" id="L242">                        a.onError(new NullPointerException(&quot;The element at index &quot; + i + &quot; is null&quot;));</span>
+<span class="fc" id="L243">                        return;</span>
+                    } else {
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">                        if (a.tryOnNext(t)) {</span>
+<span class="fc" id="L246">                            e++;</span>
+                        }
+
+<span class="fc" id="L249">                        i++;</span>
+                    }
+<span class="fc" id="L251">                }</span>
+
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                if (i == f) {</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">                    if (!cancelled) {</span>
+<span class="fc" id="L255">                        a.onComplete();</span>
+                    }
+<span class="fc" id="L257">                    return;</span>
+                }
+
+<span class="fc" id="L260">                r = get();</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc" id="L262">                    index = i;</span>
+<span class="fc" id="L263">                    r = addAndGet(-e);</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">                    if (r == 0L) {</span>
+<span class="fc" id="L265">                        return;</span>
+                    }
+<span class="nc" id="L267">                    e = 0L;</span>
+                }
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

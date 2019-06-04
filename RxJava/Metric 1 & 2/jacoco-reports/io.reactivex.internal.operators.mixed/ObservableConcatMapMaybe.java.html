@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableConcatMapMaybe.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.mixed</a> &gt; <span class="el_source">ObservableConcatMapMaybe.java</span></div><h1>ObservableConcatMapMaybe.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.mixed;
+
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.SimplePlainQueue;
+import io.reactivex.internal.queue.SpscLinkedArrayQueue;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Maps each upstream item into a {@link MaybeSource}, subscribes to them one after the other terminates
+ * and relays their success values, optionally delaying any errors till the main and inner sources
+ * terminate.
+ * &lt;p&gt;History: 2.1.11 - experimental
+ * @param &lt;T&gt; the upstream element type
+ * @param &lt;R&gt; the output element type
+ * @since 2.2
+ */
+public final class ObservableConcatMapMaybe&lt;T, R&gt; extends Observable&lt;R&gt; {
+
+    final Observable&lt;T&gt; source;
+
+    final Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper;
+
+    final ErrorMode errorMode;
+
+    final int prefetch;
+
+    public ObservableConcatMapMaybe(Observable&lt;T&gt; source,
+            Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper,
+<span class="fc" id="L50">                    ErrorMode errorMode, int prefetch) {</span>
+<span class="fc" id="L51">        this.source = source;</span>
+<span class="fc" id="L52">        this.mapper = mapper;</span>
+<span class="fc" id="L53">        this.errorMode = errorMode;</span>
+<span class="fc" id="L54">        this.prefetch = prefetch;</span>
+<span class="fc" id="L55">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super R&gt; observer) {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (!ScalarXMapZHelper.tryAsMaybe(source, mapper, observer)) {</span>
+<span class="fc" id="L60">            source.subscribe(new ConcatMapMaybeMainObserver&lt;T, R&gt;(observer, mapper, prefetch, errorMode));</span>
+        }
+<span class="fc" id="L62">    }</span>
+
+    static final class ConcatMapMaybeMainObserver&lt;T, R&gt;
+    extends AtomicInteger
+    implements Observer&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = -9140123220065488293L;
+
+        final Observer&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper;
+
+        final AtomicThrowable errors;
+
+        final ConcatMapMaybeObserver&lt;R&gt; inner;
+
+        final SimplePlainQueue&lt;T&gt; queue;
+
+        final ErrorMode errorMode;
+
+        Disposable upstream;
+
+        volatile boolean done;
+
+        volatile boolean cancelled;
+
+        R item;
+
+        volatile int state;
+
+        /** No inner MaybeSource is running. */
+        static final int STATE_INACTIVE = 0;
+        /** An inner MaybeSource is running but there are no results yet. */
+        static final int STATE_ACTIVE = 1;
+        /** The inner MaybeSource succeeded with a value in {@link #item}. */
+        static final int STATE_RESULT_VALUE = 2;
+
+        ConcatMapMaybeMainObserver(Observer&lt;? super R&gt; downstream,
+                Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; mapper,
+<span class="fc" id="L101">                        int prefetch, ErrorMode errorMode) {</span>
+<span class="fc" id="L102">            this.downstream = downstream;</span>
+<span class="fc" id="L103">            this.mapper = mapper;</span>
+<span class="fc" id="L104">            this.errorMode = errorMode;</span>
+<span class="fc" id="L105">            this.errors = new AtomicThrowable();</span>
+<span class="fc" id="L106">            this.inner = new ConcatMapMaybeObserver&lt;R&gt;(this);</span>
+<span class="fc" id="L107">            this.queue = new SpscLinkedArrayQueue&lt;T&gt;(prefetch);</span>
+<span class="fc" id="L108">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (DisposableHelper.validate(upstream, d)) {</span>
+<span class="fc" id="L113">                upstream = d;</span>
+<span class="fc" id="L114">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L116">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L120">            queue.offer(t);</span>
+<span class="fc" id="L121">            drain();</span>
+<span class="fc" id="L122">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (errors.addThrowable(t)) {</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                if (errorMode == ErrorMode.IMMEDIATE) {</span>
+<span class="fc" id="L128">                    inner.dispose();</span>
+                }
+<span class="fc" id="L130">                done = true;</span>
+<span class="fc" id="L131">                drain();</span>
+            } else {
+<span class="fc" id="L133">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L135">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L139">            done = true;</span>
+<span class="fc" id="L140">            drain();</span>
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L145">            cancelled = true;</span>
+<span class="fc" id="L146">            upstream.dispose();</span>
+<span class="fc" id="L147">            inner.dispose();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L149">                queue.clear();</span>
+<span class="fc" id="L150">                item = null;</span>
+            }
+<span class="fc" id="L152">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L156">            return cancelled;</span>
+        }
+
+        void innerSuccess(R item) {
+<span class="fc" id="L160">            this.item = item;</span>
+<span class="fc" id="L161">            this.state = STATE_RESULT_VALUE;</span>
+<span class="fc" id="L162">            drain();</span>
+<span class="fc" id="L163">        }</span>
+
+        void innerComplete() {
+<span class="fc" id="L166">            this.state = STATE_INACTIVE;</span>
+<span class="fc" id="L167">            drain();</span>
+<span class="fc" id="L168">        }</span>
+
+        void innerError(Throwable ex) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            if (errors.addThrowable(ex)) {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                if (errorMode != ErrorMode.END) {</span>
+<span class="fc" id="L173">                    upstream.dispose();</span>
+                }
+<span class="fc" id="L175">                this.state = STATE_INACTIVE;</span>
+<span class="fc" id="L176">                drain();</span>
+            } else {
+<span class="fc" id="L178">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L180">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L184">                return;</span>
+            }
+
+<span class="fc" id="L187">            int missed = 1;</span>
+<span class="fc" id="L188">            Observer&lt;? super R&gt; downstream = this.downstream;</span>
+<span class="fc" id="L189">            ErrorMode errorMode = this.errorMode;</span>
+<span class="fc" id="L190">            SimplePlainQueue&lt;T&gt; queue = this.queue;</span>
+<span class="fc" id="L191">            AtomicThrowable errors = this.errors;</span>
+
+            for (;;) {
+
+                for (;;) {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L197">                        queue.clear();</span>
+<span class="fc" id="L198">                        item = null;</span>
+<span class="fc" id="L199">                        break;</span>
+                    }
+
+<span class="fc" id="L202">                    int s = state;</span>
+
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                    if (errors.get() != null) {</span>
+<span class="fc bfc" id="L205" title="All 6 branches covered.">                        if (errorMode == ErrorMode.IMMEDIATE</span>
+                                || (errorMode == ErrorMode.BOUNDARY &amp;&amp; s == STATE_INACTIVE)) {
+<span class="fc" id="L207">                            queue.clear();</span>
+<span class="fc" id="L208">                            item = null;</span>
+<span class="fc" id="L209">                            Throwable ex = errors.terminate();</span>
+<span class="fc" id="L210">                            downstream.onError(ex);</span>
+<span class="fc" id="L211">                            return;</span>
+                        }
+                    }
+
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                    if (s == STATE_INACTIVE) {</span>
+<span class="fc" id="L216">                        boolean d = done;</span>
+<span class="fc" id="L217">                        T v = queue.poll();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">                        boolean empty = v == null;</span>
+
+<span class="fc bfc" id="L220" title="All 4 branches covered.">                        if (d &amp;&amp; empty) {</span>
+<span class="fc" id="L221">                            Throwable ex = errors.terminate();</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                            if (ex == null) {</span>
+<span class="fc" id="L223">                                downstream.onComplete();</span>
+                            } else {
+<span class="fc" id="L225">                                downstream.onError(ex);</span>
+                            }
+<span class="fc" id="L227">                            return;</span>
+                        }
+
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                        if (empty) {</span>
+<span class="fc" id="L231">                            break;</span>
+                        }
+
+                        MaybeSource&lt;? extends R&gt; ms;
+
+                        try {
+<span class="fc" id="L237">                            ms = ObjectHelper.requireNonNull(mapper.apply(v), &quot;The mapper returned a null MaybeSource&quot;);</span>
+<span class="fc" id="L238">                        } catch (Throwable ex) {</span>
+<span class="fc" id="L239">                            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L240">                            upstream.dispose();</span>
+<span class="fc" id="L241">                            queue.clear();</span>
+<span class="fc" id="L242">                            errors.addThrowable(ex);</span>
+<span class="fc" id="L243">                            ex = errors.terminate();</span>
+<span class="fc" id="L244">                            downstream.onError(ex);</span>
+<span class="fc" id="L245">                            return;</span>
+<span class="fc" id="L246">                        }</span>
+
+<span class="fc" id="L248">                        state = STATE_ACTIVE;</span>
+<span class="fc" id="L249">                        ms.subscribe(inner);</span>
+<span class="fc" id="L250">                        break;</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">                    } else if (s == STATE_RESULT_VALUE) {</span>
+<span class="fc" id="L252">                        R w = item;</span>
+<span class="fc" id="L253">                        item = null;</span>
+<span class="fc" id="L254">                        downstream.onNext(w);</span>
+
+<span class="fc" id="L256">                        state = STATE_INACTIVE;</span>
+                    } else {
+                        break;
+                    }
+<span class="fc" id="L260">                }</span>
+
+<span class="fc" id="L262">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L264">                    break;</span>
+                }
+            }
+<span class="fc" id="L267">        }</span>
+
+        static final class ConcatMapMaybeObserver&lt;R&gt;
+        extends AtomicReference&lt;Disposable&gt;
+        implements MaybeObserver&lt;R&gt; {
+
+            private static final long serialVersionUID = -3051469169682093892L;
+
+            final ConcatMapMaybeMainObserver&lt;?, R&gt; parent;
+
+<span class="fc" id="L277">            ConcatMapMaybeObserver(ConcatMapMaybeMainObserver&lt;?, R&gt; parent) {</span>
+<span class="fc" id="L278">                this.parent = parent;</span>
+<span class="fc" id="L279">            }</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L283">                DisposableHelper.replace(this, d);</span>
+<span class="fc" id="L284">            }</span>
+
+            @Override
+            public void onSuccess(R t) {
+<span class="fc" id="L288">                parent.innerSuccess(t);</span>
+<span class="fc" id="L289">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L293">                parent.innerError(e);</span>
+<span class="fc" id="L294">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L298">                parent.innerComplete();</span>
+<span class="fc" id="L299">            }</span>
+
+            void dispose() {
+<span class="fc" id="L302">                DisposableHelper.dispose(this);</span>
+<span class="fc" id="L303">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeSwitchIfEmptySingle.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeSwitchIfEmptySingle.java</span></div><h1>MaybeSwitchIfEmptySingle.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.fuseable.HasUpstreamMaybeSource;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Subscribes to the other source if the main source is empty.
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class MaybeSwitchIfEmptySingle&lt;T&gt; extends Single&lt;T&gt; implements HasUpstreamMaybeSource&lt;T&gt; {
+
+    final MaybeSource&lt;T&gt; source;
+    final SingleSource&lt;? extends T&gt; other;
+
+<span class="fc" id="L33">    public MaybeSwitchIfEmptySingle(MaybeSource&lt;T&gt; source, SingleSource&lt;? extends T&gt; other) {</span>
+<span class="fc" id="L34">        this.source = source;</span>
+<span class="fc" id="L35">        this.other = other;</span>
+<span class="fc" id="L36">    }</span>
+
+    @Override
+    public MaybeSource&lt;T&gt; source() {
+<span class="fc" id="L40">        return source;</span>
+    }
+
+    @Override
+    protected void subscribeActual(SingleObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L45">        source.subscribe(new SwitchIfEmptyMaybeObserver&lt;T&gt;(observer, other));</span>
+<span class="fc" id="L46">    }</span>
+
+    static final class SwitchIfEmptyMaybeObserver&lt;T&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements MaybeObserver&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = 4603919676453758899L;
+
+        final SingleObserver&lt;? super T&gt; downstream;
+
+        final SingleSource&lt;? extends T&gt; other;
+
+<span class="fc" id="L58">        SwitchIfEmptyMaybeObserver(SingleObserver&lt;? super T&gt; actual, SingleSource&lt;? extends T&gt; other) {</span>
+<span class="fc" id="L59">            this.downstream = actual;</span>
+<span class="fc" id="L60">            this.other = other;</span>
+<span class="fc" id="L61">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L65">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L66">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L70">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (DisposableHelper.setOnce(this, d)) {</span>
+<span class="fc" id="L76">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L78">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L82">            downstream.onSuccess(value);</span>
+<span class="fc" id="L83">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L87">            downstream.onError(e);</span>
+<span class="fc" id="L88">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L92">            Disposable d = get();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (d != DisposableHelper.DISPOSED) {</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                if (compareAndSet(d, null)) {</span>
+<span class="fc" id="L95">                    other.subscribe(new OtherSingleObserver&lt;T&gt;(downstream, this));</span>
+                }
+            }
+<span class="fc" id="L98">        }</span>
+
+        static final class OtherSingleObserver&lt;T&gt; implements SingleObserver&lt;T&gt; {
+
+            final SingleObserver&lt;? super T&gt; downstream;
+
+            final AtomicReference&lt;Disposable&gt; parent;
+<span class="fc" id="L105">            OtherSingleObserver(SingleObserver&lt;? super T&gt; actual, AtomicReference&lt;Disposable&gt; parent) {</span>
+<span class="fc" id="L106">                this.downstream = actual;</span>
+<span class="fc" id="L107">                this.parent = parent;</span>
+<span class="fc" id="L108">            }</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L112">                DisposableHelper.setOnce(parent, d);</span>
+<span class="fc" id="L113">            }</span>
+
+            @Override
+            public void onSuccess(T value) {
+<span class="fc" id="L117">                downstream.onSuccess(value);</span>
+<span class="fc" id="L118">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L122">                downstream.onError(e);</span>
+<span class="fc" id="L123">            }</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

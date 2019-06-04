@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleEquals.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleEquals.java</span></div><h1>SingleEquals.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class SingleEquals&lt;T&gt; extends Single&lt;Boolean&gt; {
+
+    final SingleSource&lt;? extends T&gt; first;
+    final SingleSource&lt;? extends T&gt; second;
+
+<span class="fc" id="L28">    public SingleEquals(SingleSource&lt;? extends T&gt; first, SingleSource&lt;? extends T&gt; second) {</span>
+<span class="fc" id="L29">        this.first = first;</span>
+<span class="fc" id="L30">        this.second = second;</span>
+<span class="fc" id="L31">    }</span>
+
+    @Override
+    protected void subscribeActual(final SingleObserver&lt;? super Boolean&gt; observer) {
+
+<span class="fc" id="L36">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc" id="L37">        final Object[] values = { null, null };</span>
+
+<span class="fc" id="L39">        final CompositeDisposable set = new CompositeDisposable();</span>
+<span class="fc" id="L40">        observer.onSubscribe(set);</span>
+
+<span class="fc" id="L42">        first.subscribe(new InnerObserver&lt;T&gt;(0, set, values, observer, count));</span>
+<span class="fc" id="L43">        second.subscribe(new InnerObserver&lt;T&gt;(1, set, values, observer, count));</span>
+<span class="fc" id="L44">    }</span>
+
+    static class InnerObserver&lt;T&gt; implements SingleObserver&lt;T&gt; {
+        final int index;
+        final CompositeDisposable set;
+        final Object[] values;
+        final SingleObserver&lt;? super Boolean&gt; downstream;
+        final AtomicInteger count;
+
+<span class="fc" id="L53">        InnerObserver(int index, CompositeDisposable set, Object[] values, SingleObserver&lt;? super Boolean&gt; observer, AtomicInteger count) {</span>
+<span class="fc" id="L54">            this.index = index;</span>
+<span class="fc" id="L55">            this.set = set;</span>
+<span class="fc" id="L56">            this.values = values;</span>
+<span class="fc" id="L57">            this.downstream = observer;</span>
+<span class="fc" id="L58">            this.count = count;</span>
+<span class="fc" id="L59">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L63">            set.add(d);</span>
+<span class="fc" id="L64">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L68">            values[index] = value;</span>
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (count.incrementAndGet() == 2) {</span>
+<span class="fc" id="L71">                downstream.onSuccess(ObjectHelper.equals(values[0], values[1]));</span>
+            }
+<span class="fc" id="L73">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+            for (;;) {
+<span class="fc" id="L78">                int state = count.get();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                if (state &gt;= 2) {</span>
+<span class="fc" id="L80">                    RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L81">                    return;</span>
+                }
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                if (count.compareAndSet(state, 2)) {</span>
+<span class="fc" id="L84">                    set.dispose();</span>
+<span class="fc" id="L85">                    downstream.onError(e);</span>
+<span class="fc" id="L86">                    return;</span>
+                }
+<span class="nc" id="L88">            }</span>
+        }
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleTimeoutTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleTimeoutTest.java</span></div><h1>SingleTimeoutTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import static io.reactivex.internal.util.ExceptionHelper.timeoutMessage;
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Action;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.TestScheduler;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L33">public class SingleTimeoutTest {</span>
+
+    @Test
+    public void shouldUnsubscribeFromUnderlyingSubscriptionOnDispose() {
+<span class="fc" id="L37">        final PublishSubject&lt;String&gt; subject = PublishSubject.create();</span>
+<span class="fc" id="L38">        final TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L40">        final TestObserver&lt;String&gt; observer = subject.single(&quot;&quot;)</span>
+<span class="fc" id="L41">                .timeout(100, TimeUnit.MILLISECONDS, scheduler)</span>
+<span class="fc" id="L42">                .test();</span>
+
+<span class="fc" id="L44">        assertTrue(subject.hasObservers());</span>
+
+<span class="fc" id="L46">        observer.dispose();</span>
+
+<span class="fc" id="L48">        assertFalse(subject.hasObservers());</span>
+<span class="fc" id="L49">    }</span>
+
+    @Test
+    public void otherErrors() {
+<span class="fc" id="L53">        Single.never()</span>
+<span class="fc" id="L54">        .timeout(1, TimeUnit.MILLISECONDS, Single.error(new TestException()))</span>
+<span class="fc" id="L55">        .test()</span>
+<span class="fc" id="L56">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L57">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L58">    }</span>
+
+    @Test
+    public void mainSuccess() {
+<span class="fc" id="L62">        Single.just(1)</span>
+<span class="fc" id="L63">        .timeout(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L64">        .test()</span>
+<span class="fc" id="L65">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L66">        .assertResult(1);</span>
+<span class="fc" id="L67">    }</span>
+
+    @Test
+    public void mainError() {
+<span class="fc" id="L71">        Single.error(new TestException())</span>
+<span class="fc" id="L72">        .timeout(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L73">        .test()</span>
+<span class="fc" id="L74">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L75">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L76">    }</span>
+
+    @Test
+    public void disposeWhenFallback() {
+<span class="fc" id="L80">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L82">        SingleSubject&lt;Integer&gt; subj = SingleSubject.create();</span>
+
+<span class="fc" id="L84">        subj.timeout(1, TimeUnit.SECONDS, sch, Single.just(1))</span>
+<span class="fc" id="L85">        .test(true)</span>
+<span class="fc" id="L86">        .assertEmpty();</span>
+
+<span class="fc" id="L88">        assertFalse(subj.hasObservers());</span>
+<span class="fc" id="L89">    }</span>
+
+    @Test
+    public void isDisposed() {
+<span class="fc" id="L93">        TestHelper.checkDisposed(SingleSubject.create().timeout(1, TimeUnit.DAYS));</span>
+<span class="fc" id="L94">    }</span>
+
+    @Test
+    public void fallbackDispose() {
+<span class="fc" id="L98">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L100">        SingleSubject&lt;Integer&gt; subj = SingleSubject.create();</span>
+
+<span class="fc" id="L102">        SingleSubject&lt;Integer&gt; fallback = SingleSubject.create();</span>
+
+<span class="fc" id="L104">        TestObserver&lt;Integer&gt; to = subj.timeout(1, TimeUnit.SECONDS, sch, fallback)</span>
+<span class="fc" id="L105">        .test();</span>
+
+<span class="fc" id="L107">        assertFalse(fallback.hasObservers());</span>
+
+<span class="fc" id="L109">        sch.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L111">        assertFalse(subj.hasObservers());</span>
+<span class="fc" id="L112">        assertTrue(fallback.hasObservers());</span>
+
+<span class="fc" id="L114">        to.cancel();</span>
+
+<span class="fc" id="L116">        assertFalse(fallback.hasObservers());</span>
+<span class="fc" id="L117">    }</span>
+
+    @Test
+    public void normalSuccessDoesntDisposeMain() {
+<span class="fc" id="L121">        final int[] calls = { 0 };</span>
+
+<span class="fc" id="L123">        Single.just(1)</span>
+<span class="fc" id="L124">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L127">                calls[0]++;</span>
+<span class="nc" id="L128">            }</span>
+        })
+<span class="fc" id="L130">        .timeout(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L131">        .test()</span>
+<span class="fc" id="L132">        .assertResult(1);</span>
+
+<span class="fc" id="L134">        assertEquals(0, calls[0]);</span>
+<span class="fc" id="L135">    }</span>
+
+    @Test
+    public void successTimeoutRace() {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L140">            final SingleSubject&lt;Integer&gt; subj = SingleSubject.create();</span>
+<span class="fc" id="L141">            SingleSubject&lt;Integer&gt; fallback = SingleSubject.create();</span>
+
+<span class="fc" id="L143">            final TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L145">            TestObserver&lt;Integer&gt; to = subj.timeout(1, TimeUnit.MILLISECONDS, sch, fallback).test();</span>
+
+<span class="fc" id="L147">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L150">                    subj.onSuccess(1);</span>
+<span class="fc" id="L151">                }</span>
+            };
+
+<span class="fc" id="L154">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L157">                    sch.advanceTimeBy(1, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L158">                }</span>
+            };
+
+<span class="fc" id="L161">            TestHelper.race(r1, r2);</span>
+
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (!fallback.hasObservers()) {</span>
+<span class="fc" id="L164">                to.assertResult(1);</span>
+            } else {
+<span class="fc" id="L166">                to.assertEmpty();</span>
+            }
+        }
+<span class="fc" id="L169">    }</span>
+
+    @Test
+    public void errorTimeoutRace() {
+<span class="fc" id="L173">        final TestException ex = new TestException();</span>
+<span class="fc" id="L174">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L178">                final SingleSubject&lt;Integer&gt; subj = SingleSubject.create();</span>
+<span class="fc" id="L179">                SingleSubject&lt;Integer&gt; fallback = SingleSubject.create();</span>
+
+<span class="fc" id="L181">                final TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L183">                TestObserver&lt;Integer&gt; to = subj.timeout(1, TimeUnit.MILLISECONDS, sch, fallback).test();</span>
+
+<span class="fc" id="L185">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L188">                        subj.onError(ex);</span>
+<span class="fc" id="L189">                    }</span>
+                };
+
+<span class="fc" id="L192">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L195">                        sch.advanceTimeBy(1, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L196">                    }</span>
+                };
+
+<span class="fc" id="L199">                TestHelper.race(r1, r2);</span>
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                if (!fallback.hasObservers()) {</span>
+<span class="fc" id="L202">                    to.assertFailure(TestException.class);</span>
+                } else {
+<span class="fc" id="L204">                    to.assertEmpty();</span>
+                }
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L207">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            }
+        } finally {
+<span class="fc" id="L211">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L213">    }</span>
+
+    @Test
+    public void mainTimedOut() {
+        Single
+<span class="fc" id="L218">                .never()</span>
+<span class="fc" id="L219">                .timeout(1, TimeUnit.NANOSECONDS)</span>
+<span class="fc" id="L220">                .test()</span>
+<span class="fc" id="L221">                .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L222">                .assertFailureAndMessage(TimeoutException.class, timeoutMessage(1, TimeUnit.NANOSECONDS));</span>
+<span class="fc" id="L223">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

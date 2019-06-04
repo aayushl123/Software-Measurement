@@ -1,0 +1,1899 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableZipTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableZipTest.java</span></div><h1>FlowableZipTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.mockito.InOrder;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.QueueSubscription;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L40">public class FlowableZipTest {</span>
+    BiFunction&lt;String, String, String&gt; concat2Strings;
+    PublishProcessor&lt;String&gt; s1;
+    PublishProcessor&lt;String&gt; s2;
+    Flowable&lt;String&gt; zipped;
+
+    Subscriber&lt;String&gt; subscriber;
+    InOrder inOrder;
+
+    @Before
+    public void setUp() {
+<span class="fc" id="L51">        concat2Strings = new BiFunction&lt;String, String, String&gt;() {</span>
+            @Override
+            public String apply(String t1, String t2) {
+<span class="fc" id="L54">                return t1 + &quot;-&quot; + t2;</span>
+            }
+        };
+
+<span class="fc" id="L58">        s1 = PublishProcessor.create();</span>
+<span class="fc" id="L59">        s2 = PublishProcessor.create();</span>
+<span class="fc" id="L60">        zipped = Flowable.zip(s1, s2, concat2Strings);</span>
+
+<span class="fc" id="L62">        subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L63">        inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L65">        zipped.subscribe(subscriber);</span>
+<span class="fc" id="L66">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void testCollectionSizeDifferentThanFunction() {
+<span class="fc" id="L71">        Function&lt;Object[], String&gt; zipr = Functions.toFunction(getConcatStringIntegerIntArrayZipr());</span>
+        //Function3&lt;String, Integer, int[], String&gt;
+
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L75">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+        @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L78">        Collection ws = java.util.Collections.singleton(Flowable.just(&quot;one&quot;, &quot;two&quot;));</span>
+<span class="fc" id="L79">        Flowable&lt;String&gt; w = Flowable.zip(ws, zipr);</span>
+<span class="fc" id="L80">        w.subscribe(subscriber);</span>
+
+<span class="fc" id="L82">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L83">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L84">        verify(subscriber, never()).onNext(any(String.class));</span>
+<span class="fc" id="L85">    }</span>
+
+    @Test
+    public void testStartpingDifferentLengthFlowableSequences1() {
+<span class="fc" id="L89">        Subscriber&lt;String&gt; w = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L91">        TestFlowable w1 = new TestFlowable();</span>
+<span class="fc" id="L92">        TestFlowable w2 = new TestFlowable();</span>
+<span class="fc" id="L93">        TestFlowable w3 = new TestFlowable();</span>
+
+<span class="fc" id="L95">        Flowable&lt;String&gt; zipW = Flowable.zip(</span>
+<span class="fc" id="L96">                Flowable.unsafeCreate(w1), Flowable.unsafeCreate(w2),</span>
+<span class="fc" id="L97">                Flowable.unsafeCreate(w3), getConcat3StringsZipr());</span>
+<span class="fc" id="L98">        zipW.subscribe(w);</span>
+
+        /* simulate sending data */
+        // once for w1
+<span class="fc" id="L102">        w1.subscriber.onNext(&quot;1a&quot;);</span>
+<span class="fc" id="L103">        w1.subscriber.onComplete();</span>
+        // twice for w2
+<span class="fc" id="L105">        w2.subscriber.onNext(&quot;2a&quot;);</span>
+<span class="fc" id="L106">        w2.subscriber.onNext(&quot;2b&quot;);</span>
+<span class="fc" id="L107">        w2.subscriber.onComplete();</span>
+        // 4 times for w3
+<span class="fc" id="L109">        w3.subscriber.onNext(&quot;3a&quot;);</span>
+<span class="fc" id="L110">        w3.subscriber.onNext(&quot;3b&quot;);</span>
+<span class="fc" id="L111">        w3.subscriber.onNext(&quot;3c&quot;);</span>
+<span class="fc" id="L112">        w3.subscriber.onNext(&quot;3d&quot;);</span>
+<span class="fc" id="L113">        w3.subscriber.onComplete();</span>
+
+        /* we should have been called 1 time on the Subscriber */
+<span class="fc" id="L116">        InOrder io = inOrder(w);</span>
+<span class="fc" id="L117">        io.verify(w).onNext(&quot;1a2a3a&quot;);</span>
+
+<span class="fc" id="L119">        io.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L120">    }</span>
+
+    @Test
+    public void testStartpingDifferentLengthFlowableSequences2() {
+<span class="fc" id="L124">        Subscriber&lt;String&gt; w = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L126">        TestFlowable w1 = new TestFlowable();</span>
+<span class="fc" id="L127">        TestFlowable w2 = new TestFlowable();</span>
+<span class="fc" id="L128">        TestFlowable w3 = new TestFlowable();</span>
+
+<span class="fc" id="L130">        Flowable&lt;String&gt; zipW = Flowable.zip(Flowable.unsafeCreate(w1), Flowable.unsafeCreate(w2), Flowable.unsafeCreate(w3), getConcat3StringsZipr());</span>
+<span class="fc" id="L131">        zipW.subscribe(w);</span>
+
+        /* simulate sending data */
+        // 4 times for w1
+<span class="fc" id="L135">        w1.subscriber.onNext(&quot;1a&quot;);</span>
+<span class="fc" id="L136">        w1.subscriber.onNext(&quot;1b&quot;);</span>
+<span class="fc" id="L137">        w1.subscriber.onNext(&quot;1c&quot;);</span>
+<span class="fc" id="L138">        w1.subscriber.onNext(&quot;1d&quot;);</span>
+<span class="fc" id="L139">        w1.subscriber.onComplete();</span>
+        // twice for w2
+<span class="fc" id="L141">        w2.subscriber.onNext(&quot;2a&quot;);</span>
+<span class="fc" id="L142">        w2.subscriber.onNext(&quot;2b&quot;);</span>
+<span class="fc" id="L143">        w2.subscriber.onComplete();</span>
+        // 1 times for w3
+<span class="fc" id="L145">        w3.subscriber.onNext(&quot;3a&quot;);</span>
+<span class="fc" id="L146">        w3.subscriber.onComplete();</span>
+
+        /* we should have been called 1 time on the Subscriber */
+<span class="fc" id="L149">        InOrder io = inOrder(w);</span>
+<span class="fc" id="L150">        io.verify(w).onNext(&quot;1a2a3a&quot;);</span>
+
+<span class="fc" id="L152">        io.verify(w, times(1)).onComplete();</span>
+
+<span class="fc" id="L154">    }</span>
+
+<span class="fc" id="L156">    BiFunction&lt;Object, Object, String&gt; zipr2 = new BiFunction&lt;Object, Object, String&gt;() {</span>
+
+        @Override
+        public String apply(Object t1, Object t2) {
+<span class="fc" id="L160">            return &quot;&quot; + t1 + t2;</span>
+        }
+
+    };
+<span class="fc" id="L164">    Function3&lt;Object, Object, Object, String&gt; zipr3 = new Function3&lt;Object, Object, Object, String&gt;() {</span>
+
+        @Override
+        public String apply(Object t1, Object t2, Object t3) {
+<span class="fc" id="L168">            return &quot;&quot; + t1 + t2 + t3;</span>
+        }
+
+    };
+
+    /**
+     * Testing internal private logic due to the complexity so I want to use TDD to test as a I build it rather than relying purely on the overall functionality expected by the public methods.
+     */
+    @Test
+    public void testAggregatorSimple() {
+<span class="fc" id="L178">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L179">        PublishProcessor&lt;String&gt; r2 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L181">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L183">        Flowable.zip(r1, r2, zipr2).subscribe(subscriber);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L186">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L187">        r2.onNext(&quot;world&quot;);</span>
+
+<span class="fc" id="L189">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L191">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L192">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L193">        inOrder.verify(subscriber, times(1)).onNext(&quot;helloworld&quot;);</span>
+
+<span class="fc" id="L195">        r1.onNext(&quot;hello &quot;);</span>
+<span class="fc" id="L196">        r2.onNext(&quot;again&quot;);</span>
+
+<span class="fc" id="L198">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L199">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L200">        inOrder.verify(subscriber, times(1)).onNext(&quot;hello again&quot;);</span>
+
+<span class="fc" id="L202">        r1.onComplete();</span>
+<span class="fc" id="L203">        r2.onComplete();</span>
+
+<span class="fc" id="L205">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L206">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L207">    }</span>
+
+    @Test
+    public void testAggregatorDifferentSizedResultsWithOnComplete() {
+        /* create the aggregator which will execute the zip function when all Flowables provide values */
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L213">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L214">        PublishProcessor&lt;String&gt; r2 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L216">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L217">        Flowable.zip(r1, r2, zipr2).subscribe(subscriber);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L220">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L221">        r2.onNext(&quot;world&quot;);</span>
+<span class="fc" id="L222">        r2.onComplete();</span>
+
+<span class="fc" id="L224">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L226">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L227">        inOrder.verify(subscriber, times(1)).onNext(&quot;helloworld&quot;);</span>
+<span class="fc" id="L228">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+
+<span class="fc" id="L230">        r1.onNext(&quot;hi&quot;);</span>
+<span class="fc" id="L231">        r1.onComplete();</span>
+
+<span class="fc" id="L233">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L234">        inOrder.verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L235">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L236">    }</span>
+
+    @Test
+    public void testAggregateMultipleTypes() {
+<span class="fc" id="L240">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L241">        PublishProcessor&lt;Integer&gt; r2 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L243">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L245">        Flowable.zip(r1, r2, zipr2).subscribe(subscriber);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L248">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L249">        r2.onNext(1);</span>
+<span class="fc" id="L250">        r2.onComplete();</span>
+
+<span class="fc" id="L252">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L254">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L255">        inOrder.verify(subscriber, times(1)).onNext(&quot;hello1&quot;);</span>
+<span class="fc" id="L256">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+
+<span class="fc" id="L258">        r1.onNext(&quot;hi&quot;);</span>
+<span class="fc" id="L259">        r1.onComplete();</span>
+
+<span class="fc" id="L261">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L262">        inOrder.verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L263">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L264">    }</span>
+
+    @Test
+    public void testAggregate3Types() {
+<span class="fc" id="L268">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L269">        PublishProcessor&lt;Integer&gt; r2 = PublishProcessor.create();</span>
+<span class="fc" id="L270">        PublishProcessor&lt;List&lt;Integer&gt;&gt; r3 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L272">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L274">        Flowable.zip(r1, r2, r3, zipr3).subscribe(subscriber);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L277">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L278">        r2.onNext(2);</span>
+<span class="fc" id="L279">        r3.onNext(Arrays.asList(5, 6, 7));</span>
+
+<span class="fc" id="L281">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L282">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L283">        verify(subscriber, times(1)).onNext(&quot;hello2[5, 6, 7]&quot;);</span>
+<span class="fc" id="L284">    }</span>
+
+    @Test
+    public void testAggregatorsWithDifferentSizesAndTiming() {
+<span class="fc" id="L288">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L289">        PublishProcessor&lt;String&gt; r2 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L291">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L293">        Flowable.zip(r1, r2, zipr2).subscribe(subscriber);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L296">        r1.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L297">        r1.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L298">        r1.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L299">        r2.onNext(&quot;A&quot;);</span>
+
+<span class="fc" id="L301">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L302">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L303">        verify(subscriber, times(1)).onNext(&quot;oneA&quot;);</span>
+
+<span class="fc" id="L305">        r1.onNext(&quot;four&quot;);</span>
+<span class="fc" id="L306">        r1.onComplete();</span>
+<span class="fc" id="L307">        r2.onNext(&quot;B&quot;);</span>
+<span class="fc" id="L308">        verify(subscriber, times(1)).onNext(&quot;twoB&quot;);</span>
+<span class="fc" id="L309">        r2.onNext(&quot;C&quot;);</span>
+<span class="fc" id="L310">        verify(subscriber, times(1)).onNext(&quot;threeC&quot;);</span>
+<span class="fc" id="L311">        r2.onNext(&quot;D&quot;);</span>
+<span class="fc" id="L312">        verify(subscriber, times(1)).onNext(&quot;fourD&quot;);</span>
+<span class="fc" id="L313">        r2.onNext(&quot;E&quot;);</span>
+<span class="fc" id="L314">        verify(subscriber, never()).onNext(&quot;E&quot;);</span>
+<span class="fc" id="L315">        r2.onComplete();</span>
+
+<span class="fc" id="L317">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L318">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L319">    }</span>
+
+    @Test
+    public void testAggregatorError() {
+<span class="fc" id="L323">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L324">        PublishProcessor&lt;String&gt; r2 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L326">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L328">        Flowable.zip(r1, r2, zipr2).subscribe(subscriber);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L331">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L332">        r2.onNext(&quot;world&quot;);</span>
+
+<span class="fc" id="L334">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L335">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L336">        verify(subscriber, times(1)).onNext(&quot;helloworld&quot;);</span>
+
+<span class="fc" id="L338">        r1.onError(new RuntimeException(&quot;&quot;));</span>
+<span class="fc" id="L339">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L340">        r2.onNext(&quot;again&quot;);</span>
+
+<span class="fc" id="L342">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L343">        verify(subscriber, never()).onComplete();</span>
+        // we don't want to be called again after an error
+<span class="fc" id="L345">        verify(subscriber, times(0)).onNext(&quot;helloagain&quot;);</span>
+<span class="fc" id="L346">    }</span>
+
+    @Test
+    public void testAggregatorUnsubscribe() {
+<span class="fc" id="L350">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L351">        PublishProcessor&lt;String&gt; r2 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L353">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L354">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;(subscriber);</span>
+
+<span class="fc" id="L356">        Flowable.zip(r1, r2, zipr2).subscribe(ts);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L359">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L360">        r2.onNext(&quot;world&quot;);</span>
+
+<span class="fc" id="L362">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L363">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L364">        verify(subscriber, times(1)).onNext(&quot;helloworld&quot;);</span>
+
+<span class="fc" id="L366">        ts.dispose();</span>
+<span class="fc" id="L367">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L368">        r2.onNext(&quot;again&quot;);</span>
+
+<span class="fc" id="L370">        verify(subscriber, times(0)).onError(any(Throwable.class));</span>
+<span class="fc" id="L371">        verify(subscriber, never()).onComplete();</span>
+        // we don't want to be called again after an error
+<span class="fc" id="L373">        verify(subscriber, times(0)).onNext(&quot;helloagain&quot;);</span>
+<span class="fc" id="L374">    }</span>
+
+    @Test
+    public void testAggregatorEarlyCompletion() {
+<span class="fc" id="L378">        PublishProcessor&lt;String&gt; r1 = PublishProcessor.create();</span>
+<span class="fc" id="L379">        PublishProcessor&lt;String&gt; r2 = PublishProcessor.create();</span>
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L381">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L383">        Flowable.zip(r1, r2, zipr2).subscribe(subscriber);</span>
+
+        /* simulate the Flowables pushing data into the aggregator */
+<span class="fc" id="L386">        r1.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L387">        r1.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L388">        r1.onComplete();</span>
+<span class="fc" id="L389">        r2.onNext(&quot;A&quot;);</span>
+
+<span class="fc" id="L391">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L393">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L394">        inOrder.verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L395">        inOrder.verify(subscriber, times(1)).onNext(&quot;oneA&quot;);</span>
+
+<span class="fc" id="L397">        r2.onComplete();</span>
+
+<span class="fc" id="L399">        inOrder.verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L400">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L401">        inOrder.verify(subscriber, never()).onNext(anyString());</span>
+<span class="fc" id="L402">    }</span>
+
+    @Test
+    public void testStart2Types() {
+<span class="fc" id="L406">        BiFunction&lt;String, Integer, String&gt; zipr = getConcatStringIntegerZipr();</span>
+
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L409">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L411">        Flowable&lt;String&gt; w = Flowable.zip(Flowable.just(&quot;one&quot;, &quot;two&quot;), Flowable.just(2, 3, 4), zipr);</span>
+<span class="fc" id="L412">        w.subscribe(subscriber);</span>
+
+<span class="fc" id="L414">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L415">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L416">        verify(subscriber, times(1)).onNext(&quot;one2&quot;);</span>
+<span class="fc" id="L417">        verify(subscriber, times(1)).onNext(&quot;two3&quot;);</span>
+<span class="fc" id="L418">        verify(subscriber, never()).onNext(&quot;4&quot;);</span>
+<span class="fc" id="L419">    }</span>
+
+    @Test
+    public void testStart3Types() {
+<span class="fc" id="L423">        Function3&lt;String, Integer, int[], String&gt; zipr = getConcatStringIntegerIntArrayZipr();</span>
+
+        /* define a Subscriber to receive aggregated events */
+<span class="fc" id="L426">        Subscriber&lt;String&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L428">        Flowable&lt;String&gt; w = Flowable.zip(Flowable.just(&quot;one&quot;, &quot;two&quot;), Flowable.just(2), Flowable.just(new int[] { 4, 5, 6 }), zipr);</span>
+<span class="fc" id="L429">        w.subscribe(subscriber);</span>
+
+<span class="fc" id="L431">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L432">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L433">        verify(subscriber, times(1)).onNext(&quot;one2[4, 5, 6]&quot;);</span>
+<span class="fc" id="L434">        verify(subscriber, never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L435">    }</span>
+
+    @Test
+    public void testOnNextExceptionInvokesOnError() {
+<span class="fc" id="L439">        BiFunction&lt;Integer, Integer, Integer&gt; zipr = getDivideZipr();</span>
+
+<span class="fc" id="L441">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L443">        Flowable&lt;Integer&gt; w = Flowable.zip(Flowable.just(10, 20, 30), Flowable.just(0, 1, 2), zipr);</span>
+<span class="fc" id="L444">        w.subscribe(subscriber);</span>
+
+<span class="fc" id="L446">        verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L447">    }</span>
+
+    @Test
+    public void testOnFirstCompletion() {
+<span class="fc" id="L451">        PublishProcessor&lt;String&gt; oA = PublishProcessor.create();</span>
+<span class="fc" id="L452">        PublishProcessor&lt;String&gt; oB = PublishProcessor.create();</span>
+
+<span class="fc" id="L454">        Subscriber&lt;String&gt; obs = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L456">        Flowable&lt;String&gt; f = Flowable.zip(oA, oB, getConcat2Strings());</span>
+<span class="fc" id="L457">        f.subscribe(obs);</span>
+
+<span class="fc" id="L459">        InOrder io = inOrder(obs);</span>
+
+<span class="fc" id="L461">        oA.onNext(&quot;a1&quot;);</span>
+<span class="fc" id="L462">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L463">        oB.onNext(&quot;b1&quot;);</span>
+<span class="fc" id="L464">        io.verify(obs, times(1)).onNext(&quot;a1-b1&quot;);</span>
+<span class="fc" id="L465">        oB.onNext(&quot;b2&quot;);</span>
+<span class="fc" id="L466">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L467">        oA.onNext(&quot;a2&quot;);</span>
+<span class="fc" id="L468">        io.verify(obs, times(1)).onNext(&quot;a2-b2&quot;);</span>
+
+<span class="fc" id="L470">        oA.onNext(&quot;a3&quot;);</span>
+<span class="fc" id="L471">        oA.onNext(&quot;a4&quot;);</span>
+<span class="fc" id="L472">        oA.onNext(&quot;a5&quot;);</span>
+<span class="fc" id="L473">        oA.onComplete();</span>
+
+        // SHOULD ONCOMPLETE BE EMITTED HERE INSTEAD OF WAITING
+        // FOR B3, B4, B5 TO BE EMITTED?
+
+<span class="fc" id="L478">        oB.onNext(&quot;b3&quot;);</span>
+<span class="fc" id="L479">        oB.onNext(&quot;b4&quot;);</span>
+<span class="fc" id="L480">        oB.onNext(&quot;b5&quot;);</span>
+
+<span class="fc" id="L482">        io.verify(obs, times(1)).onNext(&quot;a3-b3&quot;);</span>
+<span class="fc" id="L483">        io.verify(obs, times(1)).onNext(&quot;a4-b4&quot;);</span>
+<span class="fc" id="L484">        io.verify(obs, times(1)).onNext(&quot;a5-b5&quot;);</span>
+
+        // WE RECEIVE THE ONCOMPLETE HERE
+<span class="fc" id="L487">        io.verify(obs, times(1)).onComplete();</span>
+
+<span class="fc" id="L489">        oB.onNext(&quot;b6&quot;);</span>
+<span class="fc" id="L490">        oB.onNext(&quot;b7&quot;);</span>
+<span class="fc" id="L491">        oB.onNext(&quot;b8&quot;);</span>
+<span class="fc" id="L492">        oB.onNext(&quot;b9&quot;);</span>
+        // never completes (infinite stream for example)
+
+        // we should receive nothing else despite oB continuing after oA completed
+<span class="fc" id="L496">        io.verifyNoMoreInteractions();</span>
+<span class="fc" id="L497">    }</span>
+
+    @Test
+    public void testOnErrorTermination() {
+<span class="fc" id="L501">        PublishProcessor&lt;String&gt; oA = PublishProcessor.create();</span>
+<span class="fc" id="L502">        PublishProcessor&lt;String&gt; oB = PublishProcessor.create();</span>
+
+<span class="fc" id="L504">        Subscriber&lt;String&gt; obs = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L506">        Flowable&lt;String&gt; f = Flowable.zip(oA, oB, getConcat2Strings());</span>
+<span class="fc" id="L507">        f.subscribe(obs);</span>
+
+<span class="fc" id="L509">        InOrder io = inOrder(obs);</span>
+
+<span class="fc" id="L511">        oA.onNext(&quot;a1&quot;);</span>
+<span class="fc" id="L512">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L513">        oB.onNext(&quot;b1&quot;);</span>
+<span class="fc" id="L514">        io.verify(obs, times(1)).onNext(&quot;a1-b1&quot;);</span>
+<span class="fc" id="L515">        oB.onNext(&quot;b2&quot;);</span>
+<span class="fc" id="L516">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L517">        oA.onNext(&quot;a2&quot;);</span>
+<span class="fc" id="L518">        io.verify(obs, times(1)).onNext(&quot;a2-b2&quot;);</span>
+
+<span class="fc" id="L520">        oA.onNext(&quot;a3&quot;);</span>
+<span class="fc" id="L521">        oA.onNext(&quot;a4&quot;);</span>
+<span class="fc" id="L522">        oA.onNext(&quot;a5&quot;);</span>
+<span class="fc" id="L523">        oA.onError(new RuntimeException(&quot;forced failure&quot;));</span>
+
+        // it should emit failure immediately
+<span class="fc" id="L526">        io.verify(obs, times(1)).onError(any(RuntimeException.class));</span>
+
+<span class="fc" id="L528">        oB.onNext(&quot;b3&quot;);</span>
+<span class="fc" id="L529">        oB.onNext(&quot;b4&quot;);</span>
+<span class="fc" id="L530">        oB.onNext(&quot;b5&quot;);</span>
+<span class="fc" id="L531">        oB.onNext(&quot;b6&quot;);</span>
+<span class="fc" id="L532">        oB.onNext(&quot;b7&quot;);</span>
+<span class="fc" id="L533">        oB.onNext(&quot;b8&quot;);</span>
+<span class="fc" id="L534">        oB.onNext(&quot;b9&quot;);</span>
+        // never completes (infinite stream for example)
+
+        // we should receive nothing else despite oB continuing after oA completed
+<span class="fc" id="L538">        io.verifyNoMoreInteractions();</span>
+<span class="fc" id="L539">    }</span>
+
+    private BiFunction&lt;String, String, String&gt; getConcat2Strings() {
+<span class="fc" id="L542">        return new BiFunction&lt;String, String, String&gt;() {</span>
+
+            @Override
+            public String apply(String t1, String t2) {
+<span class="fc" id="L546">                return t1 + &quot;-&quot; + t2;</span>
+            }
+        };
+    }
+
+    private BiFunction&lt;Integer, Integer, Integer&gt; getDivideZipr() {
+<span class="fc" id="L552">        BiFunction&lt;Integer, Integer, Integer&gt; zipr = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer i1, Integer i2) {
+<span class="nc" id="L556">                return i1 / i2;</span>
+            }
+
+        };
+<span class="fc" id="L560">        return zipr;</span>
+    }
+
+    private Function3&lt;String, String, String, String&gt; getConcat3StringsZipr() {
+<span class="fc" id="L564">        Function3&lt;String, String, String, String&gt; zipr = new Function3&lt;String, String, String, String&gt;() {</span>
+
+            @Override
+            public String apply(String a1, String a2, String a3) {
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">                if (a1 == null) {</span>
+<span class="nc" id="L569">                    a1 = &quot;&quot;;</span>
+                }
+<span class="pc bpc" id="L571" title="1 of 2 branches missed.">                if (a2 == null) {</span>
+<span class="nc" id="L572">                    a2 = &quot;&quot;;</span>
+                }
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">                if (a3 == null) {</span>
+<span class="nc" id="L575">                    a3 = &quot;&quot;;</span>
+                }
+<span class="fc" id="L577">                return a1 + a2 + a3;</span>
+            }
+
+        };
+<span class="fc" id="L581">        return zipr;</span>
+    }
+
+    private BiFunction&lt;String, Integer, String&gt; getConcatStringIntegerZipr() {
+<span class="fc" id="L585">        BiFunction&lt;String, Integer, String&gt; zipr = new BiFunction&lt;String, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(String s, Integer i) {
+<span class="fc" id="L589">                return getStringValue(s) + getStringValue(i);</span>
+            }
+
+        };
+<span class="fc" id="L593">        return zipr;</span>
+    }
+
+    private Function3&lt;String, Integer, int[], String&gt; getConcatStringIntegerIntArrayZipr() {
+<span class="fc" id="L597">        Function3&lt;String, Integer, int[], String&gt; zipr = new Function3&lt;String, Integer, int[], String&gt;() {</span>
+
+            @Override
+            public String apply(String s, Integer i, int[] iArray) {
+<span class="fc" id="L601">                return getStringValue(s) + getStringValue(i) + getStringValue(iArray);</span>
+            }
+
+        };
+<span class="fc" id="L605">        return zipr;</span>
+    }
+
+    private static String getStringValue(Object o) {
+<span class="pc bpc" id="L609" title="1 of 2 branches missed.">        if (o == null) {</span>
+<span class="nc" id="L610">            return &quot;&quot;;</span>
+        } else {
+<span class="fc bfc" id="L612" title="All 2 branches covered.">            if (o instanceof int[]) {</span>
+<span class="fc" id="L613">                return Arrays.toString((int[]) o);</span>
+            } else {
+<span class="fc" id="L615">                return String.valueOf(o);</span>
+            }
+        }
+    }
+
+    private static class TestFlowable implements Publisher&lt;String&gt; {
+
+        Subscriber&lt;? super String&gt; subscriber;
+
+        @Override
+        public void subscribe(Subscriber&lt;? super String&gt; subscriber) {
+            // just store the variable where it can be accessed so we can manually trigger it
+<span class="fc" id="L627">            this.subscriber = subscriber;</span>
+<span class="fc" id="L628">            subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L629">        }</span>
+
+    }
+
+    @Test
+    public void testFirstCompletesThenSecondInfinite() {
+<span class="fc" id="L635">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L636">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L637">        s1.onComplete();</span>
+<span class="fc" id="L638">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L639">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L640">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L641">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L642">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L643">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L644">    }</span>
+
+    @Test
+    public void testSecondInfiniteThenFirstCompletes() {
+<span class="fc" id="L648">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L649">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L650">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L651">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L652">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L653">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L654">        s1.onComplete();</span>
+<span class="fc" id="L655">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L656">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L657">    }</span>
+
+    @Test
+    public void testSecondCompletesThenFirstInfinite() {
+<span class="fc" id="L661">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L662">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L663">        s2.onComplete();</span>
+<span class="fc" id="L664">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L665">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L666">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L667">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L668">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L669">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L670">    }</span>
+
+    @Test
+    public void testFirstInfiniteThenSecondCompletes() {
+<span class="fc" id="L674">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L675">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L676">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L677">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L678">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L679">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L680">        s2.onComplete();</span>
+<span class="fc" id="L681">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L682">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L683">    }</span>
+
+    @Test
+    public void testFirstFails() {
+<span class="fc" id="L687">        s2.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L688">        s1.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L690">        inOrder.verify(subscriber, times(1)).onError(any(RuntimeException.class));</span>
+
+<span class="fc" id="L692">        s2.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L693">        s1.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L694">        s1.onNext(&quot;2&quot;);</span>
+
+<span class="fc" id="L696">        inOrder.verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L697">        inOrder.verify(subscriber, never()).onNext(any(String.class));</span>
+<span class="fc" id="L698">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L699">    }</span>
+
+    @Test
+    public void testSecondFails() {
+<span class="fc" id="L703">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L704">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L705">        s2.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L707">        inOrder.verify(subscriber, times(1)).onError(any(RuntimeException.class));</span>
+
+<span class="fc" id="L709">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L710">        s2.onNext(&quot;2&quot;);</span>
+
+<span class="fc" id="L712">        inOrder.verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L713">        inOrder.verify(subscriber, never()).onNext(any(String.class));</span>
+<span class="fc" id="L714">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L715">    }</span>
+
+    @Test
+    public void testStartWithOnCompletedTwice() {
+        // issue: https://groups.google.com/forum/#!topic/rxjava/79cWTv3TFp0
+        // The problem is the original &quot;zip&quot; implementation does not wrap
+        // an internal subscriber with a SafeSubscriber. However, in the &quot;zip&quot;,
+        // it may calls &quot;onComplete&quot; twice. That breaks the Rx contract.
+
+        // This test tries to emulate this case.
+        // As &quot;TestHelper.mockSubscriber()&quot; will create an instance in the package &quot;rx&quot;,
+        // we need to wrap &quot;TestHelper.mockSubscriber()&quot; with an subscriber instance
+        // which is in the package &quot;rx.operators&quot;.
+<span class="fc" id="L728">        final Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L730">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L731">                Flowable.just(1), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer a, Integer b) {
+<span class="fc" id="L734">                        return a + b;</span>
+                    }
+<span class="fc" id="L736">                }).subscribe(new DefaultSubscriber&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L740">                subscriber.onComplete();</span>
+<span class="fc" id="L741">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L745">                subscriber.onError(e);</span>
+<span class="nc" id="L746">            }</span>
+
+            @Override
+            public void onNext(Integer args) {
+<span class="fc" id="L750">                subscriber.onNext(args);</span>
+<span class="fc" id="L751">            }</span>
+
+        });
+
+<span class="fc" id="L755">        InOrder inOrder = inOrder(subscriber);</span>
+<span class="fc" id="L756">        inOrder.verify(subscriber, times(1)).onNext(2);</span>
+<span class="fc" id="L757">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L758">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L759">    }</span>
+
+    @Test
+    public void testStart() {
+<span class="fc" id="L763">        Flowable&lt;String&gt; os = OBSERVABLE_OF_5_INTEGERS</span>
+<span class="fc" id="L764">                .zipWith(OBSERVABLE_OF_5_INTEGERS, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Integer a, Integer b) {
+<span class="fc" id="L768">                        return a + &quot;-&quot; + b;</span>
+                    }
+                });
+
+<span class="fc" id="L772">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L773">        os.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="fc" id="L777">                System.out.println(s);</span>
+<span class="fc" id="L778">                list.add(s);</span>
+<span class="fc" id="L779">            }</span>
+        });
+
+<span class="fc" id="L782">        assertEquals(5, list.size());</span>
+<span class="fc" id="L783">        assertEquals(&quot;1-1&quot;, list.get(0));</span>
+<span class="fc" id="L784">        assertEquals(&quot;2-2&quot;, list.get(1));</span>
+<span class="fc" id="L785">        assertEquals(&quot;5-5&quot;, list.get(4));</span>
+<span class="fc" id="L786">    }</span>
+
+    @Test
+    public void testStartAsync() throws InterruptedException {
+<span class="fc" id="L790">        Flowable&lt;String&gt; os = ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(new CountDownLatch(1)).onBackpressureBuffer()</span>
+<span class="fc" id="L791">                .zipWith(ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(new CountDownLatch(1)).onBackpressureBuffer(), new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Integer a, Integer b) {
+<span class="fc" id="L795">                        return a + &quot;-&quot; + b;</span>
+                    }
+<span class="fc" id="L797">                }).take(5);</span>
+
+<span class="fc" id="L799">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L800">        os.subscribe(ts);</span>
+
+<span class="fc" id="L802">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L803">        ts.assertNoErrors();</span>
+
+<span class="fc" id="L805">        assertEquals(5, ts.valueCount());</span>
+<span class="fc" id="L806">        assertEquals(&quot;1-1&quot;, ts.values().get(0));</span>
+<span class="fc" id="L807">        assertEquals(&quot;2-2&quot;, ts.values().get(1));</span>
+<span class="fc" id="L808">        assertEquals(&quot;5-5&quot;, ts.values().get(4));</span>
+<span class="fc" id="L809">    }</span>
+
+    @Test
+    public void testStartInfiniteAndFinite() throws InterruptedException {
+<span class="fc" id="L813">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L814">        final CountDownLatch infiniteFlowable = new CountDownLatch(1);</span>
+<span class="fc" id="L815">        Flowable&lt;String&gt; os = OBSERVABLE_OF_5_INTEGERS</span>
+<span class="fc" id="L816">                .zipWith(ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(infiniteFlowable), new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Integer a, Integer b) {
+<span class="fc" id="L820">                        return a + &quot;-&quot; + b;</span>
+                    }
+                });
+
+<span class="fc" id="L824">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L825">        os.subscribe(new DefaultSubscriber&lt;String&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L829">                latch.countDown();</span>
+<span class="fc" id="L830">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L834">                e.printStackTrace();</span>
+<span class="nc" id="L835">                latch.countDown();</span>
+<span class="nc" id="L836">            }</span>
+
+            @Override
+            public void onNext(String s) {
+<span class="fc" id="L840">                System.out.println(s);</span>
+<span class="fc" id="L841">                list.add(s);</span>
+<span class="fc" id="L842">            }</span>
+        });
+
+<span class="fc" id="L845">        latch.await(1000, TimeUnit.MILLISECONDS);</span>
+<span class="pc bpc" id="L846" title="1 of 2 branches missed.">        if (!infiniteFlowable.await(2000, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L847">            throw new RuntimeException(&quot;didn't unsubscribe&quot;);</span>
+        }
+
+<span class="fc" id="L850">        assertEquals(5, list.size());</span>
+<span class="fc" id="L851">        assertEquals(&quot;1-1&quot;, list.get(0));</span>
+<span class="fc" id="L852">        assertEquals(&quot;2-2&quot;, list.get(1));</span>
+<span class="fc" id="L853">        assertEquals(&quot;5-5&quot;, list.get(4));</span>
+<span class="fc" id="L854">    }</span>
+
+    @Test
+    @Ignore(&quot;Null values not allowed&quot;)
+    public void testEmitNull() {
+<span class="nc" id="L859">        Flowable&lt;Integer&gt; oi = Flowable.just(1, null, 3);</span>
+<span class="nc" id="L860">        Flowable&lt;String&gt; os = Flowable.just(&quot;a&quot;, &quot;b&quot;, null);</span>
+<span class="nc" id="L861">        Flowable&lt;String&gt; f = Flowable.zip(oi, os, new BiFunction&lt;Integer, String, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, String t2) {
+<span class="nc" id="L865">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+        });
+
+<span class="nc" id="L870">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L871">        f.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="nc" id="L875">                System.out.println(s);</span>
+<span class="nc" id="L876">                list.add(s);</span>
+<span class="nc" id="L877">            }</span>
+        });
+
+<span class="nc" id="L880">        assertEquals(3, list.size());</span>
+<span class="nc" id="L881">        assertEquals(&quot;1-a&quot;, list.get(0));</span>
+<span class="nc" id="L882">        assertEquals(&quot;null-b&quot;, list.get(1));</span>
+<span class="nc" id="L883">        assertEquals(&quot;3-null&quot;, list.get(2));</span>
+<span class="nc" id="L884">    }</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    static String kind(Notification notification) {
+<span class="pc bpc" id="L888" title="1 of 2 branches missed.">        if (notification.isOnError()) {</span>
+<span class="nc" id="L889">            return &quot;OnError&quot;;</span>
+        }
+<span class="fc bfc" id="L891" title="All 2 branches covered.">        if (notification.isOnNext()) {</span>
+<span class="fc" id="L892">            return &quot;OnNext&quot;;</span>
+        }
+<span class="fc" id="L894">        return &quot;OnComplete&quot;;</span>
+    }
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    static String value(Notification notification) {
+<span class="fc bfc" id="L899" title="All 2 branches covered.">        if (notification.isOnNext()) {</span>
+<span class="fc" id="L900">            return String.valueOf(notification.getValue());</span>
+        }
+<span class="fc" id="L902">        return &quot;null&quot;;</span>
+    }
+
+    @Test
+    public void testEmitMaterializedNotifications() {
+<span class="fc" id="L907">        Flowable&lt;Notification&lt;Integer&gt;&gt; oi = Flowable.just(1, 2, 3).materialize();</span>
+<span class="fc" id="L908">        Flowable&lt;Notification&lt;String&gt;&gt; os = Flowable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;).materialize();</span>
+<span class="fc" id="L909">        Flowable&lt;String&gt; f = Flowable.zip(oi, os, new BiFunction&lt;Notification&lt;Integer&gt;, Notification&lt;String&gt;, String&gt;() {</span>
+
+            @Override
+            public String apply(Notification&lt;Integer&gt; t1, Notification&lt;String&gt; t2) {
+<span class="fc" id="L913">                return kind(t1) + &quot;_&quot; + value(t1) + &quot;-&quot; + kind(t2) + &quot;_&quot; + value(t2);</span>
+            }
+
+        });
+
+<span class="fc" id="L918">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L919">        f.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="fc" id="L923">                System.out.println(s);</span>
+<span class="fc" id="L924">                list.add(s);</span>
+<span class="fc" id="L925">            }</span>
+        });
+
+<span class="fc" id="L928">        assertEquals(4, list.size());</span>
+<span class="fc" id="L929">        assertEquals(&quot;OnNext_1-OnNext_a&quot;, list.get(0));</span>
+<span class="fc" id="L930">        assertEquals(&quot;OnNext_2-OnNext_b&quot;, list.get(1));</span>
+<span class="fc" id="L931">        assertEquals(&quot;OnNext_3-OnNext_c&quot;, list.get(2));</span>
+<span class="fc" id="L932">        assertEquals(&quot;OnComplete_null-OnComplete_null&quot;, list.get(3));</span>
+<span class="fc" id="L933">    }</span>
+
+    @Test
+    public void testStartEmptyFlowables() {
+
+<span class="fc" id="L938">        Flowable&lt;String&gt; f = Flowable.zip(Flowable.&lt;Integer&gt; empty(), Flowable.&lt;String&gt; empty(), new BiFunction&lt;Integer, String, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, String t2) {
+<span class="nc" id="L942">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+        });
+
+<span class="fc" id="L947">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L948">        f.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="nc" id="L952">                System.out.println(s);</span>
+<span class="nc" id="L953">                list.add(s);</span>
+<span class="nc" id="L954">            }</span>
+        });
+
+<span class="fc" id="L957">        assertEquals(0, list.size());</span>
+<span class="fc" id="L958">    }</span>
+
+    @Test
+    public void testStartEmptyList() {
+
+<span class="fc" id="L963">        final Object invoked = new Object();</span>
+<span class="fc" id="L964">        Collection&lt;Flowable&lt;Object&gt;&gt; observables = Collections.emptyList();</span>
+
+<span class="fc" id="L966">        Flowable&lt;Object&gt; f = Flowable.zip(observables, new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(final Object[] args) {
+<span class="nc" id="L969">                assertEquals(&quot;No argument should have been passed&quot;, 0, args.length);</span>
+<span class="nc" id="L970">                return invoked;</span>
+            }
+        });
+
+<span class="fc" id="L974">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L975">        f.subscribe(ts);</span>
+<span class="fc" id="L976">        ts.awaitTerminalEvent(200, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L977">        ts.assertNoValues();</span>
+<span class="fc" id="L978">    }</span>
+
+    /**
+     * Expect NoSuchElementException instead of blocking forever as zip should emit onComplete and no onNext
+     * and last() expects at least a single response.
+     */
+    @Test(expected = NoSuchElementException.class)
+    public void testStartEmptyListBlocking() {
+
+<span class="fc" id="L987">        final Object invoked = new Object();</span>
+<span class="fc" id="L988">        Collection&lt;Flowable&lt;Object&gt;&gt; observables = Collections.emptyList();</span>
+
+<span class="fc" id="L990">        Flowable&lt;Object&gt; f = Flowable.zip(observables, new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(final Object[] args) {
+<span class="nc" id="L993">                assertEquals(&quot;No argument should have been passed&quot;, 0, args.length);</span>
+<span class="nc" id="L994">                return invoked;</span>
+            }
+        });
+
+<span class="nc" id="L998">        f.blockingLast();</span>
+<span class="nc" id="L999">    }</span>
+
+    @Test
+    public void testBackpressureSync() {
+<span class="fc" id="L1003">        AtomicInteger generatedA = new AtomicInteger();</span>
+<span class="fc" id="L1004">        AtomicInteger generatedB = new AtomicInteger();</span>
+<span class="fc" id="L1005">        Flowable&lt;Integer&gt; f1 = createInfiniteFlowable(generatedA);</span>
+<span class="fc" id="L1006">        Flowable&lt;Integer&gt; f2 = createInfiniteFlowable(generatedB);</span>
+
+<span class="fc" id="L1008">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L1009">        Flowable.zip(f1, f2, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, Integer t2) {
+<span class="fc" id="L1013">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+<span class="fc" id="L1016">        }).take(Flowable.bufferSize() * 2).subscribe(ts);</span>
+
+<span class="fc" id="L1018">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L1019">        ts.assertNoErrors();</span>
+<span class="fc" id="L1020">        assertEquals(Flowable.bufferSize() * 2, ts.valueCount());</span>
+<span class="pc bpc" id="L1021" title="1 of 2 branches missed.">        assertTrue(generatedA.get() &lt; (Flowable.bufferSize() * 3));</span>
+<span class="pc bpc" id="L1022" title="1 of 2 branches missed.">        assertTrue(generatedB.get() &lt; (Flowable.bufferSize() * 3));</span>
+<span class="fc" id="L1023">    }</span>
+
+    @Test
+    public void testBackpressureAsync() {
+<span class="fc" id="L1027">        AtomicInteger generatedA = new AtomicInteger();</span>
+<span class="fc" id="L1028">        AtomicInteger generatedB = new AtomicInteger();</span>
+<span class="fc" id="L1029">        Flowable&lt;Integer&gt; f1 = createInfiniteFlowable(generatedA).subscribeOn(Schedulers.computation());</span>
+<span class="fc" id="L1030">        Flowable&lt;Integer&gt; f2 = createInfiniteFlowable(generatedB).subscribeOn(Schedulers.computation());</span>
+
+<span class="fc" id="L1032">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L1033">        Flowable.zip(f1, f2, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, Integer t2) {
+<span class="fc" id="L1037">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+<span class="fc" id="L1040">        }).take(Flowable.bufferSize() * 2).subscribe(ts);</span>
+
+<span class="fc" id="L1042">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L1043">        ts.assertNoErrors();</span>
+<span class="fc" id="L1044">        assertEquals(Flowable.bufferSize() * 2, ts.valueCount());</span>
+<span class="pc bpc" id="L1045" title="1 of 2 branches missed.">        assertTrue(generatedA.get() &lt; (Flowable.bufferSize() * 3));</span>
+<span class="pc bpc" id="L1046" title="1 of 2 branches missed.">        assertTrue(generatedB.get() &lt; (Flowable.bufferSize() * 3));</span>
+<span class="fc" id="L1047">    }</span>
+
+    @Test
+    public void testDownstreamBackpressureRequestsWithFiniteSyncFlowables() {
+<span class="fc" id="L1051">        AtomicInteger generatedA = new AtomicInteger();</span>
+<span class="fc" id="L1052">        AtomicInteger generatedB = new AtomicInteger();</span>
+<span class="fc" id="L1053">        Flowable&lt;Integer&gt; f1 = createInfiniteFlowable(generatedA).take(Flowable.bufferSize() * 2);</span>
+<span class="fc" id="L1054">        Flowable&lt;Integer&gt; f2 = createInfiniteFlowable(generatedB).take(Flowable.bufferSize() * 2);</span>
+
+<span class="fc" id="L1056">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L1057">        Flowable.zip(f1, f2, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, Integer t2) {
+<span class="fc" id="L1061">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+<span class="fc" id="L1064">        }).observeOn(Schedulers.computation()).take(Flowable.bufferSize() * 2).subscribe(ts);</span>
+
+<span class="fc" id="L1066">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L1067">        ts.assertNoErrors();</span>
+<span class="fc" id="L1068">        assertEquals(Flowable.bufferSize() * 2, ts.valueCount());</span>
+<span class="fc" id="L1069">        System.out.println(&quot;Generated =&gt; A: &quot; + generatedA.get() + &quot; B: &quot; + generatedB.get());</span>
+<span class="pc bpc" id="L1070" title="1 of 2 branches missed.">        assertTrue(generatedA.get() &lt; (Flowable.bufferSize() * 3));</span>
+<span class="pc bpc" id="L1071" title="1 of 2 branches missed.">        assertTrue(generatedB.get() &lt; (Flowable.bufferSize() * 3));</span>
+<span class="fc" id="L1072">    }</span>
+
+    @Test
+    public void testDownstreamBackpressureRequestsWithInfiniteAsyncFlowables() {
+<span class="fc" id="L1076">        AtomicInteger generatedA = new AtomicInteger();</span>
+<span class="fc" id="L1077">        AtomicInteger generatedB = new AtomicInteger();</span>
+<span class="fc" id="L1078">        Flowable&lt;Integer&gt; f1 = createInfiniteFlowable(generatedA).subscribeOn(Schedulers.computation());</span>
+<span class="fc" id="L1079">        Flowable&lt;Integer&gt; f2 = createInfiniteFlowable(generatedB).subscribeOn(Schedulers.computation());</span>
+
+<span class="fc" id="L1081">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L1082">        Flowable.zip(f1, f2, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, Integer t2) {
+<span class="fc" id="L1086">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+<span class="fc" id="L1089">        }).observeOn(Schedulers.computation()).take(Flowable.bufferSize() * 2).subscribe(ts);</span>
+
+<span class="fc" id="L1091">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L1092">        ts.assertNoErrors();</span>
+<span class="fc" id="L1093">        assertEquals(Flowable.bufferSize() * 2, ts.valueCount());</span>
+<span class="fc" id="L1094">        System.out.println(&quot;Generated =&gt; A: &quot; + generatedA.get() + &quot; B: &quot; + generatedB.get());</span>
+<span class="pc bpc" id="L1095" title="1 of 2 branches missed.">        assertTrue(generatedA.get() &lt; (Flowable.bufferSize() * 4));</span>
+<span class="pc bpc" id="L1096" title="1 of 2 branches missed.">        assertTrue(generatedB.get() &lt; (Flowable.bufferSize() * 4));</span>
+<span class="fc" id="L1097">    }</span>
+
+    @Test
+    public void testDownstreamBackpressureRequestsWithInfiniteSyncFlowables() {
+<span class="fc" id="L1101">        AtomicInteger generatedA = new AtomicInteger();</span>
+<span class="fc" id="L1102">        AtomicInteger generatedB = new AtomicInteger();</span>
+<span class="fc" id="L1103">        Flowable&lt;Integer&gt; f1 = createInfiniteFlowable(generatedA);</span>
+<span class="fc" id="L1104">        Flowable&lt;Integer&gt; f2 = createInfiniteFlowable(generatedB);</span>
+
+<span class="fc" id="L1106">        TestSubscriber&lt;String&gt; ts = new TestSubscriber&lt;String&gt;();</span>
+<span class="fc" id="L1107">        Flowable.zip(f1, f2, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, Integer t2) {
+<span class="fc" id="L1111">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+<span class="fc" id="L1114">        }).observeOn(Schedulers.computation()).take(Flowable.bufferSize() * 2).subscribe(ts);</span>
+
+<span class="fc" id="L1116">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L1117">        ts.assertNoErrors();</span>
+<span class="fc" id="L1118">        assertEquals(Flowable.bufferSize() * 2, ts.valueCount());</span>
+<span class="fc" id="L1119">        System.out.println(&quot;Generated =&gt; A: &quot; + generatedA.get() + &quot; B: &quot; + generatedB.get());</span>
+<span class="pc bpc" id="L1120" title="1 of 2 branches missed.">        assertTrue(generatedA.get() &lt; (Flowable.bufferSize() * 4));</span>
+<span class="pc bpc" id="L1121" title="1 of 2 branches missed.">        assertTrue(generatedB.get() &lt; (Flowable.bufferSize() * 4));</span>
+<span class="fc" id="L1122">    }</span>
+
+    private Flowable&lt;Integer&gt; createInfiniteFlowable(final AtomicInteger generated) {
+<span class="fc" id="L1125">        Flowable&lt;Integer&gt; flowable = Flowable.fromIterable(new Iterable&lt;Integer&gt;() {</span>
+            @Override
+            public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L1128">                return new Iterator&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public void remove() {
+<span class="nc" id="L1132">                    }</span>
+
+                    @Override
+                    public Integer next() {
+<span class="fc" id="L1136">                        return generated.getAndIncrement();</span>
+                    }
+
+                    @Override
+                    public boolean hasNext() {
+<span class="fc" id="L1141">                        return true;</span>
+                    }
+                };
+            }
+        });
+<span class="fc" id="L1146">        return flowable;</span>
+    }
+
+<span class="fc" id="L1149">    Flowable&lt;Integer&gt; OBSERVABLE_OF_5_INTEGERS = OBSERVABLE_OF_5_INTEGERS(new AtomicInteger());</span>
+
+    Flowable&lt;Integer&gt; OBSERVABLE_OF_5_INTEGERS(final AtomicInteger numEmitted) {
+<span class="fc" id="L1152">        return Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(final Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L1156">                BooleanSubscription bs = new BooleanSubscription();</span>
+<span class="fc" id="L1157">                subscriber.onSubscribe(bs);</span>
+<span class="fc bfc" id="L1158" title="All 2 branches covered.">                for (int i = 1; i &lt;= 5; i++) {</span>
+<span class="pc bpc" id="L1159" title="1 of 2 branches missed.">                    if (bs.isCancelled()) {</span>
+<span class="nc" id="L1160">                        break;</span>
+                    }
+<span class="fc" id="L1162">                    numEmitted.incrementAndGet();</span>
+<span class="fc" id="L1163">                    subscriber.onNext(i);</span>
+<span class="fc" id="L1164">                    Thread.yield();</span>
+                }
+<span class="fc" id="L1166">                subscriber.onComplete();</span>
+<span class="fc" id="L1167">            }</span>
+
+        });
+    }
+
+    Flowable&lt;Integer&gt; ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(final CountDownLatch latch) {
+<span class="fc" id="L1173">        return Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(final Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L1177">                final BooleanSubscription bs = new BooleanSubscription();</span>
+<span class="fc" id="L1178">                subscriber.onSubscribe(bs);</span>
+<span class="fc" id="L1179">                Thread t = new Thread(new Runnable() {</span>
+
+                    @Override
+                    public void run() {
+<span class="fc" id="L1183">                        System.out.println(&quot;-------&gt; subscribe to infinite sequence&quot;);</span>
+<span class="fc" id="L1184">                        System.out.println(&quot;Starting thread: &quot; + Thread.currentThread());</span>
+<span class="fc" id="L1185">                        int i = 1;</span>
+<span class="fc bfc" id="L1186" title="All 2 branches covered.">                        while (!bs.isCancelled()) {</span>
+<span class="fc" id="L1187">                            subscriber.onNext(i++);</span>
+<span class="fc" id="L1188">                            Thread.yield();</span>
+                        }
+<span class="fc" id="L1190">                        subscriber.onComplete();</span>
+<span class="fc" id="L1191">                        latch.countDown();</span>
+<span class="fc" id="L1192">                        System.out.println(&quot;Ending thread: &quot; + Thread.currentThread());</span>
+<span class="fc" id="L1193">                    }</span>
+                });
+<span class="fc" id="L1195">                t.start();</span>
+
+<span class="fc" id="L1197">            }</span>
+
+        });
+    }
+
+    @Test(timeout = 30000)
+    public void testIssue1812() {
+        // https://github.com/ReactiveX/RxJava/issues/1812
+<span class="fc" id="L1205">        Flowable&lt;Integer&gt; zip1 = Flowable.zip(Flowable.range(0, 1026), Flowable.range(0, 1026),</span>
+<span class="fc" id="L1206">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+                    @Override
+                    public Integer apply(Integer i1, Integer i2) {
+<span class="fc" id="L1210">                        return i1 + i2;</span>
+                    }
+                });
+<span class="fc" id="L1213">        Flowable&lt;Integer&gt; zip2 = Flowable.zip(zip1, Flowable.range(0, 1026),</span>
+<span class="fc" id="L1214">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+                    @Override
+                    public Integer apply(Integer i1, Integer i2) {
+<span class="fc" id="L1218">                        return i1 + i2;</span>
+                    }
+                });
+<span class="fc" id="L1221">        List&lt;Integer&gt; expected = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc bfc" id="L1222" title="All 2 branches covered.">        for (int i = 0; i &lt; 1026; i++) {</span>
+<span class="fc" id="L1223">            expected.add(i * 3);</span>
+        }
+<span class="fc" id="L1225">        assertEquals(expected, zip2.toList().blockingGet());</span>
+<span class="fc" id="L1226">    }</span>
+
+    @Test
+    public void testUnboundedDownstreamOverrequesting() {
+<span class="fc" id="L1230">        Flowable&lt;Integer&gt; source = Flowable.range(1, 2).zipWith(Flowable.range(1, 2), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L1233">                return t1 + 10 * t2;</span>
+            }
+        });
+
+<span class="fc" id="L1237">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1240">                super.onNext(t);</span>
+<span class="fc" id="L1241">                request(5);</span>
+<span class="fc" id="L1242">            }</span>
+        };
+
+<span class="fc" id="L1245">        source.subscribe(ts);</span>
+
+<span class="fc" id="L1247">        ts.assertNoErrors();</span>
+<span class="fc" id="L1248">        ts.assertTerminated();</span>
+<span class="fc" id="L1249">        ts.assertValues(11, 22);</span>
+<span class="fc" id="L1250">    }</span>
+
+    @Test(timeout = 10000)
+    public void testZipRace() {
+<span class="fc" id="L1254">        long startTime = System.currentTimeMillis();</span>
+<span class="fc" id="L1255">        Flowable&lt;Integer&gt; src = Flowable.just(1).subscribeOn(Schedulers.computation());</span>
+
+        // now try and generate a hang by zipping src with itself repeatedly. A
+        // time limit of 9 seconds ( 1 second less than the test timeout) is
+        // used so that this test will not timeout on slow machines.
+<span class="fc" id="L1260">        int i = 0;</span>
+<span class="pc bpc" id="L1261" title="1 of 4 branches missed.">        while (System.currentTimeMillis() - startTime &lt; 9000 &amp;&amp; i++ &lt; 100000) {</span>
+<span class="fc" id="L1262">            int value = Flowable.zip(src, src, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                @Override
+                public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L1265">                    return t1 + t2 * 10;</span>
+                }
+<span class="fc" id="L1267">            }).blockingSingle(0);</span>
+
+<span class="fc" id="L1269">            Assert.assertEquals(11, value);</span>
+<span class="fc" id="L1270">        }</span>
+<span class="fc" id="L1271">    }</span>
+    /**
+     * Request only a single value and don't wait for another request just
+     * to emit an onComplete.
+     */
+    @Test
+    public void testZipRequest1() {
+<span class="fc" id="L1278">        Flowable&lt;Integer&gt; src = Flowable.just(1).subscribeOn(Schedulers.computation());</span>
+<span class="fc" id="L1279">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(1L);</span>
+
+<span class="fc" id="L1281">        Flowable.zip(src, src, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L1284">                return t1 + t2 * 10;</span>
+            }
+<span class="fc" id="L1286">        }).subscribe(ts);</span>
+
+<span class="fc" id="L1288">        ts.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L1289">        ts.assertNoErrors();</span>
+<span class="fc" id="L1290">        ts.assertValue(11);</span>
+<span class="fc" id="L1291">    }</span>
+
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    @Test
+    public void zipNArguments() throws Exception {
+<span class="fc" id="L1296">        Flowable source = Flowable.just(1);</span>
+
+<span class="fc bfc" id="L1298" title="All 2 branches covered.">        for (int i = 2; i &lt; 10; i++) {</span>
+<span class="fc" id="L1299">            Class&lt;?&gt;[] types = new Class[i + 1];</span>
+<span class="fc" id="L1300">            Arrays.fill(types, Publisher.class);</span>
+<span class="fc bfc" id="L1301" title="All 2 branches covered.">            types[i] = i == 2 ? BiFunction.class : Class.forName(&quot;io.reactivex.functions.Function&quot; + i);</span>
+
+<span class="fc" id="L1303">            Method m = Flowable.class.getMethod(&quot;zip&quot;, types);</span>
+
+<span class="fc" id="L1305">            Object[] params = new Object[i + 1];</span>
+<span class="fc" id="L1306">            Arrays.fill(params, source);</span>
+<span class="fc" id="L1307">            params[i] = ArgsToString.INSTANCE;</span>
+
+<span class="fc" id="L1309">            StringBuilder b = new StringBuilder();</span>
+<span class="fc bfc" id="L1310" title="All 2 branches covered.">            for (int j = 0; j &lt; i; j++) {</span>
+<span class="fc" id="L1311">                b.append('1');</span>
+            }
+
+<span class="fc" id="L1314">            ((Flowable)m.invoke(null, params)).test().assertResult(b.toString());</span>
+
+<span class="fc bfc" id="L1316" title="All 2 branches covered.">            for (int j = 0; j &lt; params.length; j++) {</span>
+<span class="fc" id="L1317">                Object[] params0 = params.clone();</span>
+<span class="fc" id="L1318">                params0[j] = null;</span>
+
+                try {
+<span class="nc" id="L1321">                    m.invoke(null, params0);</span>
+<span class="nc" id="L1322">                    fail(&quot;Should have thrown @ &quot; + m);</span>
+<span class="fc" id="L1323">                } catch (InvocationTargetException ex) {</span>
+<span class="fc" id="L1324">                    assertTrue(ex.toString(), ex.getCause() instanceof NullPointerException);</span>
+
+<span class="fc bfc" id="L1326" title="All 2 branches covered.">                    if (j &lt; i) {</span>
+<span class="fc" id="L1327">                        assertEquals(&quot;source&quot; + (j + 1) + &quot; is null&quot;, ex.getCause().getMessage());</span>
+                    } else {
+<span class="fc" id="L1329">                        assertEquals(&quot;f is null&quot;, ex.getCause().getMessage());</span>
+                    }
+<span class="nc" id="L1331">                }</span>
+            }
+        }
+<span class="fc" id="L1334">    }</span>
+
+    /**
+     * Implements all Function types which return a String concatenating their inputs.
+     */
+<span class="fc" id="L1339">    @SuppressWarnings(&quot;rawtypes&quot;)</span>
+    public enum ArgsToString implements Function, BiFunction, Function3, Function4, Function5, Function6, Function7, Function8, Function9 {
+<span class="fc" id="L1341">        INSTANCE;</span>
+
+        @Override
+        public Object apply(Object t1, Object t2, Object t3, Object t4, Object t5, Object t6, Object t7, Object t8,
+                Object t9) throws Exception {
+<span class="fc" id="L1346">            return &quot;&quot; + t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9;</span>
+        }
+
+        @Override
+        public Object apply(Object t1, Object t2, Object t3, Object t4, Object t5, Object t6, Object t7, Object t8)
+                throws Exception {
+<span class="fc" id="L1352">            return &quot;&quot; + t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;</span>
+        }
+
+        @Override
+        public Object apply(Object t1, Object t2, Object t3, Object t4, Object t5, Object t6, Object t7)
+                throws Exception {
+<span class="fc" id="L1358">            return &quot;&quot; + t1 + t2 + t3 + t4 + t5 + t6 + t7;</span>
+        }
+
+        @Override
+        public Object apply(Object t1, Object t2, Object t3, Object t4, Object t5, Object t6) throws Exception {
+<span class="fc" id="L1363">            return &quot;&quot; + t1 + t2 + t3 + t4 + t5 + t6;</span>
+        }
+
+        @Override
+        public Object apply(Object t1, Object t2, Object t3, Object t4, Object t5) throws Exception {
+<span class="fc" id="L1368">            return &quot;&quot; + t1 + t2 + t3 + t4 + t5;</span>
+        }
+
+        @Override
+        public Object apply(Object t1, Object t2, Object t3, Object t4) throws Exception {
+<span class="fc" id="L1373">            return &quot;&quot; + t1 + t2 + t3 + t4;</span>
+        }
+
+        @Override
+        public Object apply(Object t1, Object t2, Object t3) throws Exception {
+<span class="fc" id="L1378">            return &quot;&quot; + t1 + t2 + t3;</span>
+        }
+
+        @Override
+        public Object apply(Object t1, Object t2) throws Exception {
+<span class="fc" id="L1383">            return &quot;&quot; + t1 + t2;</span>
+        }
+
+        @Override
+        public Object apply(Object t1) throws Exception {
+<span class="nc" id="L1388">            return &quot;&quot; + t1;</span>
+        }
+    }
+
+    @Test
+    public void zip2DelayError() {
+<span class="fc" id="L1394">        Flowable&lt;Integer&gt; error1 = Flowable.error(new TestException(&quot;One&quot;));</span>
+<span class="fc" id="L1395">        Flowable&lt;Integer&gt; source1 = Flowable.range(1, 3).concatWith(error1);</span>
+
+<span class="fc" id="L1397">        Flowable&lt;Integer&gt; error2 = Flowable.error(new TestException(&quot;Two&quot;));</span>
+<span class="fc" id="L1398">        Flowable&lt;Integer&gt; source2 = Flowable.range(1, 2).concatWith(error2);</span>
+
+<span class="fc" id="L1400">        TestSubscriber&lt;Object&gt; ts = Flowable.zip(source1, source2, new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1403">                return &quot;&quot; + a + b;</span>
+            }
+        }, true)
+<span class="fc" id="L1406">        .test()</span>
+<span class="fc" id="L1407">        .assertFailure(CompositeException.class, &quot;11&quot;, &quot;22&quot;);</span>
+
+<span class="fc" id="L1409">        List&lt;Throwable&gt; errors = TestHelper.compositeList(ts.errors().get(0));</span>
+<span class="fc" id="L1410">        TestHelper.assertError(errors, 0, TestException.class, &quot;One&quot;);</span>
+<span class="fc" id="L1411">        TestHelper.assertError(errors, 1, TestException.class, &quot;Two&quot;);</span>
+<span class="fc" id="L1412">        assertEquals(2, errors.size());</span>
+<span class="fc" id="L1413">    }</span>
+
+    @Test
+    public void zip2DelayErrorPrefetch() {
+<span class="fc" id="L1417">        Flowable&lt;Integer&gt; error1 = Flowable.error(new TestException(&quot;One&quot;));</span>
+<span class="fc" id="L1418">        Flowable&lt;Integer&gt; source1 = Flowable.range(1, 3).concatWith(error1);</span>
+
+<span class="fc" id="L1420">        Flowable&lt;Integer&gt; error2 = Flowable.error(new TestException(&quot;Two&quot;));</span>
+<span class="fc" id="L1421">        Flowable&lt;Integer&gt; source2 = Flowable.range(1, 2).concatWith(error2);</span>
+
+<span class="fc" id="L1423">        TestSubscriber&lt;Object&gt; ts = Flowable.zip(source1, source2, new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1426">                return &quot;&quot; + a + b;</span>
+            }
+        }, true, 1)
+<span class="fc" id="L1429">        .test()</span>
+<span class="fc" id="L1430">        .assertFailure(CompositeException.class, &quot;11&quot;, &quot;22&quot;);</span>
+
+<span class="fc" id="L1432">        List&lt;Throwable&gt; errors = TestHelper.compositeList(ts.errors().get(0));</span>
+<span class="fc" id="L1433">        TestHelper.assertError(errors, 0, TestException.class, &quot;One&quot;);</span>
+<span class="fc" id="L1434">        TestHelper.assertError(errors, 1, TestException.class, &quot;Two&quot;);</span>
+<span class="fc" id="L1435">        assertEquals(2, errors.size());</span>
+<span class="fc" id="L1436">    }</span>
+
+    @Test
+    public void zip2Prefetch() {
+<span class="fc" id="L1440">        Flowable.zip(Flowable.range(1, 9),</span>
+<span class="fc" id="L1441">                Flowable.range(21, 9),</span>
+<span class="fc" id="L1442">            new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1445">                    return &quot;&quot; + a + b;</span>
+                }
+            }, false, 2
+        )
+<span class="fc" id="L1449">        .takeLast(1)</span>
+<span class="fc" id="L1450">        .test()</span>
+<span class="fc" id="L1451">        .assertResult(&quot;929&quot;);</span>
+<span class="fc" id="L1452">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void zipArrayEmpty() {
+<span class="fc" id="L1457">        assertSame(Flowable.empty(), Flowable.zipArray(Functions.&lt;Object[]&gt;identity(), false, 16));</span>
+<span class="fc" id="L1458">    }</span>
+
+    @Test
+    public void zip2() {
+<span class="fc" id="L1462">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1463">                Flowable.just(2),</span>
+<span class="fc" id="L1464">            new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1467">                    return &quot;&quot; + a + b;</span>
+                }
+            }
+        )
+<span class="fc" id="L1471">        .test()</span>
+<span class="fc" id="L1472">        .assertResult(&quot;12&quot;);</span>
+<span class="fc" id="L1473">    }</span>
+
+    @Test
+    public void zip3() {
+<span class="fc" id="L1477">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1478">                Flowable.just(2), Flowable.just(3),</span>
+<span class="fc" id="L1479">            new Function3&lt;Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c) throws Exception {
+<span class="fc" id="L1482">                    return &quot;&quot; + a + b + c;</span>
+                }
+            }
+        )
+<span class="fc" id="L1486">        .test()</span>
+<span class="fc" id="L1487">        .assertResult(&quot;123&quot;);</span>
+<span class="fc" id="L1488">    }</span>
+
+    @Test
+    public void zip4() {
+<span class="fc" id="L1492">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1493">                Flowable.just(2), Flowable.just(3),</span>
+<span class="fc" id="L1494">                Flowable.just(4),</span>
+<span class="fc" id="L1495">            new Function4&lt;Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d) throws Exception {
+<span class="fc" id="L1498">                    return &quot;&quot; + a + b + c + d;</span>
+                }
+            }
+        )
+<span class="fc" id="L1502">        .test()</span>
+<span class="fc" id="L1503">        .assertResult(&quot;1234&quot;);</span>
+<span class="fc" id="L1504">    }</span>
+
+    @Test
+    public void zip5() {
+<span class="fc" id="L1508">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1509">                Flowable.just(2), Flowable.just(3),</span>
+<span class="fc" id="L1510">                Flowable.just(4), Flowable.just(5),</span>
+<span class="fc" id="L1511">            new Function5&lt;Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e) throws Exception {
+<span class="fc" id="L1514">                    return &quot;&quot; + a + b + c + d + e;</span>
+                }
+            }
+        )
+<span class="fc" id="L1518">        .test()</span>
+<span class="fc" id="L1519">        .assertResult(&quot;12345&quot;);</span>
+<span class="fc" id="L1520">    }</span>
+
+    @Test
+    public void zip6() {
+<span class="fc" id="L1524">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1525">                Flowable.just(2), Flowable.just(3),</span>
+<span class="fc" id="L1526">                Flowable.just(4), Flowable.just(5),</span>
+<span class="fc" id="L1527">                Flowable.just(6),</span>
+<span class="fc" id="L1528">            new Function6&lt;Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f) throws Exception {
+<span class="fc" id="L1531">                    return &quot;&quot; + a + b + c + d + e + f;</span>
+                }
+            }
+        )
+<span class="fc" id="L1535">        .test()</span>
+<span class="fc" id="L1536">        .assertResult(&quot;123456&quot;);</span>
+<span class="fc" id="L1537">    }</span>
+
+    @Test
+    public void zip7() {
+<span class="fc" id="L1541">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1542">                Flowable.just(2), Flowable.just(3),</span>
+<span class="fc" id="L1543">                Flowable.just(4), Flowable.just(5),</span>
+<span class="fc" id="L1544">                Flowable.just(6), Flowable.just(7),</span>
+<span class="fc" id="L1545">            new Function7&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f, Integer g)
+                        throws Exception {
+<span class="fc" id="L1549">                    return &quot;&quot; + a + b + c + d + e + f + g;</span>
+                }
+            }
+        )
+<span class="fc" id="L1553">        .test()</span>
+<span class="fc" id="L1554">        .assertResult(&quot;1234567&quot;);</span>
+<span class="fc" id="L1555">    }</span>
+
+    @Test
+    public void zip8() {
+<span class="fc" id="L1559">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1560">                Flowable.just(2), Flowable.just(3),</span>
+<span class="fc" id="L1561">                Flowable.just(4), Flowable.just(5),</span>
+<span class="fc" id="L1562">                Flowable.just(6), Flowable.just(7),</span>
+<span class="fc" id="L1563">                Flowable.just(8),</span>
+<span class="fc" id="L1564">            new Function8&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f, Integer g,
+                        Integer h) throws Exception {
+<span class="fc" id="L1568">                    return &quot;&quot; + a + b + c + d + e + f + g + h;</span>
+                }
+            }
+        )
+<span class="fc" id="L1572">        .test()</span>
+<span class="fc" id="L1573">        .assertResult(&quot;12345678&quot;);</span>
+<span class="fc" id="L1574">    }</span>
+
+    @Test
+    public void zip9() {
+<span class="fc" id="L1578">        Flowable.zip(Flowable.just(1),</span>
+<span class="fc" id="L1579">                Flowable.just(2), Flowable.just(3),</span>
+<span class="fc" id="L1580">                Flowable.just(4), Flowable.just(5),</span>
+<span class="fc" id="L1581">                Flowable.just(6), Flowable.just(7),</span>
+<span class="fc" id="L1582">                Flowable.just(8), Flowable.just(9),</span>
+<span class="fc" id="L1583">            new Function9&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f, Integer g,
+                        Integer h, Integer i) throws Exception {
+<span class="fc" id="L1587">                    return &quot;&quot; + a + b + c + d + e + f + g + h + i;</span>
+                }
+            }
+        )
+<span class="fc" id="L1591">        .test()</span>
+<span class="fc" id="L1592">        .assertResult(&quot;123456789&quot;);</span>
+<span class="fc" id="L1593">    }</span>
+
+    @Test
+    public void zipArrayMany() {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L1598">        Flowable&lt;Integer&gt;[] arr = new Flowable[10];</span>
+
+<span class="fc" id="L1600">        Arrays.fill(arr, Flowable.just(1));</span>
+
+<span class="fc" id="L1602">        Flowable.zip(Arrays.asList(arr), new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L1605">                return Arrays.toString(a);</span>
+            }
+        })
+<span class="fc" id="L1608">        .test()</span>
+<span class="fc" id="L1609">        .assertResult(&quot;[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]&quot;);</span>
+<span class="fc" id="L1610">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L1614">        TestHelper.checkDisposed(Flowable.zip(Flowable.just(1), Flowable.just(1), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1617">                return a + b;</span>
+            }
+        }));
+<span class="fc" id="L1620">    }</span>
+
+    @Test
+    public void badRequest() {
+<span class="fc" id="L1624">        TestHelper.assertBadRequestReported(Flowable.zip(Flowable.just(1), Flowable.just(1), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1627">                return a + b;</span>
+            }
+        }));
+<span class="fc" id="L1630">    }</span>
+
+    @Test
+    public void multiError() {
+<span class="fc" id="L1634">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1636">            PublishProcessor&lt;Object&gt; pp = PublishProcessor.create();</span>
+
+            @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L1639">            final Subscriber[] sub = { null };</span>
+<span class="fc" id="L1640">            TestSubscriber&lt;Object&gt; ts = Flowable.zip(pp, new Flowable&lt;Object&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Object&gt; s) {
+<span class="fc" id="L1643">                    sub[0] = s;</span>
+<span class="fc" id="L1644">                }</span>
+<span class="fc" id="L1645">            }, new BiFunction&lt;Object, Object, Object&gt;() {</span>
+                @Override
+                public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L1648">                    return a;</span>
+                }
+            })
+<span class="fc" id="L1651">            .test();</span>
+
+<span class="fc" id="L1653">            pp.onError(new TestException(&quot;First&quot;));</span>
+
+<span class="fc" id="L1655">            ts</span>
+<span class="fc" id="L1656">            .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+
+<span class="fc" id="L1658">            sub[0].onError(new TestException(&quot;Second&quot;));</span>
+
+<span class="fc" id="L1660">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Second&quot;);</span>
+        } finally {
+<span class="fc" id="L1662">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1664">    }</span>
+
+    @Test
+    public void singleErrorDelayed() {
+<span class="fc" id="L1668">        PublishProcessor&lt;Object&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L1669">        PublishProcessor&lt;Object&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L1671">        TestSubscriber&lt;Object&gt; ts = Flowable.zip(pp1, pp2, new BiFunction&lt;Object, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L1674">                return a;</span>
+            }
+        }, true)
+<span class="fc" id="L1677">        .test();</span>
+
+<span class="fc" id="L1679">        pp1.onError(new TestException(&quot;First&quot;));</span>
+<span class="fc" id="L1680">        pp2.onComplete();</span>
+
+<span class="fc" id="L1682">        ts</span>
+<span class="fc" id="L1683">        .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+<span class="fc" id="L1684">    }</span>
+
+    @Test
+    public void singleErrorDelayedBackpressured() {
+<span class="fc" id="L1688">        PublishProcessor&lt;Object&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L1689">        PublishProcessor&lt;Object&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L1691">        TestSubscriber&lt;Object&gt; ts = Flowable.zip(pp1, pp2, new BiFunction&lt;Object, Object, Object&gt;() {</span>
+            @Override
+            public Object apply(Object a, Object b) throws Exception {
+<span class="nc" id="L1694">                return a;</span>
+            }
+        })
+<span class="fc" id="L1697">        .test(0L);</span>
+
+<span class="fc" id="L1699">        pp1.onError(new TestException(&quot;First&quot;));</span>
+<span class="fc" id="L1700">        pp2.onComplete();</span>
+
+<span class="fc" id="L1702">        ts</span>
+<span class="fc" id="L1703">        .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+<span class="fc" id="L1704">    }</span>
+
+    @Test
+    public void fusedInputThrows() {
+<span class="fc" id="L1708">        Flowable.zip(Flowable.just(1).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer v) throws Exception {
+<span class="fc" id="L1711">                throw new TestException();</span>
+            }
+<span class="fc" id="L1713">        }), Flowable.just(2), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1716">                return a + b;</span>
+            }
+        })
+<span class="fc" id="L1719">        .test()</span>
+<span class="fc" id="L1720">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1721">    }</span>
+
+    @Test
+    public void fusedInputThrowsDelayError() {
+<span class="fc" id="L1725">        Flowable.zip(Flowable.just(1).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer v) throws Exception {
+<span class="fc" id="L1728">                throw new TestException();</span>
+            }
+<span class="fc" id="L1730">        }), Flowable.just(2), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1733">                return a + b;</span>
+            }
+        }, true)
+<span class="fc" id="L1736">        .test()</span>
+<span class="fc" id="L1737">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1738">    }</span>
+
+    @Test
+    public void fusedInputThrowsBackpressured() {
+<span class="fc" id="L1742">        Flowable.zip(Flowable.just(1).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer v) throws Exception {
+<span class="fc" id="L1745">                throw new TestException();</span>
+            }
+<span class="fc" id="L1747">        }), Flowable.just(2), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1750">                return a + b;</span>
+            }
+        })
+<span class="fc" id="L1753">        .test(0L)</span>
+<span class="fc" id="L1754">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1755">    }</span>
+
+    @Test
+    public void fusedInputThrowsDelayErrorBackpressured() {
+<span class="fc" id="L1759">        Flowable.zip(Flowable.just(1).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer v) throws Exception {
+<span class="fc" id="L1762">                throw new TestException();</span>
+            }
+<span class="fc" id="L1764">        }), Flowable.just(2), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1767">                return a + b;</span>
+            }
+        }, true)
+<span class="fc" id="L1770">        .test(0L)</span>
+<span class="fc" id="L1771">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1772">    }</span>
+
+    @Test
+    public void noCrossBoundaryFusion() {
+<span class="fc bfc" id="L1776" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L1777">            TestSubscriber&lt;List&lt;Object&gt;&gt; ts = Flowable.zip(</span>
+<span class="fc" id="L1778">                    Flowable.just(1).observeOn(Schedulers.single()).map(new Function&lt;Integer, Object&gt;() {</span>
+                        @Override
+                        public Object apply(Integer v) throws Exception {
+<span class="fc" id="L1781">                            return Thread.currentThread().getName().substring(0, 4);</span>
+                        }
+                    }),
+<span class="fc" id="L1784">                    Flowable.just(1).observeOn(Schedulers.computation()).map(new Function&lt;Integer, Object&gt;() {</span>
+                        @Override
+                        public Object apply(Integer v) throws Exception {
+<span class="fc" id="L1787">                            return Thread.currentThread().getName().substring(0, 4);</span>
+                        }
+                    }),
+<span class="fc" id="L1790">                    new BiFunction&lt;Object, Object, List&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public List&lt;Object&gt; apply(Object t1, Object t2) throws Exception {
+<span class="fc" id="L1793">                            return Arrays.asList(t1, t2);</span>
+                        }
+                    }
+            )
+<span class="fc" id="L1797">            .test()</span>
+<span class="fc" id="L1798">            .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1799">            .assertValueCount(1);</span>
+
+<span class="fc" id="L1801">            List&lt;Object&gt; list = ts.values().get(0);</span>
+
+<span class="fc" id="L1803">            assertTrue(list.toString(), list.contains(&quot;RxSi&quot;));</span>
+<span class="fc" id="L1804">            assertTrue(list.toString(), list.contains(&quot;RxCo&quot;));</span>
+        }
+<span class="fc" id="L1806">    }</span>
+
+<span class="fc" id="L1808">    static final class ThrowingQueueSubscription implements QueueSubscription&lt;Integer&gt;, Publisher&lt;Integer&gt; {</span>
+
+        @Override
+        public int requestFusion(int mode) {
+<span class="fc" id="L1812">            return mode &amp; SYNC;</span>
+        }
+
+        @Override
+        public boolean offer(Integer value) {
+<span class="nc" id="L1817">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Override
+        public boolean offer(Integer v1, Integer v2) {
+<span class="nc" id="L1822">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Override
+        public Integer poll() throws Exception {
+<span class="fc" id="L1827">            throw new TestException();</span>
+        }
+
+        @Override
+        public boolean isEmpty() {
+<span class="nc" id="L1832">            return false;</span>
+        }
+
+        @Override
+        public void clear() {
+<span class="nc" id="L1837">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="nc" id="L1841">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L1845">        }</span>
+
+        @Override
+        public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L1849">            s.onSubscribe(this);</span>
+<span class="fc" id="L1850">        }</span>
+    }
+
+    @Test
+    public void fusedInputThrows2() {
+<span class="fc" id="L1855">        Flowable.zip(new ThrowingQueueSubscription(), Flowable.just(1), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1858">                return a + b;</span>
+            }
+        })
+<span class="fc" id="L1861">        .test()</span>
+<span class="fc" id="L1862">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1863">    }</span>
+
+    @Test
+    public void fusedInputThrows2Backpressured() {
+<span class="fc" id="L1867">        Flowable.zip(new ThrowingQueueSubscription(), Flowable.just(1), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1870">                return a + b;</span>
+            }
+        })
+<span class="fc" id="L1873">        .test(0)</span>
+<span class="fc" id="L1874">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1875">    }</span>
+
+    @Test
+    public void cancelOnBackpressureBoundary() {
+<span class="fc" id="L1879">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(1L) {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1882">                super.onNext(t);</span>
+<span class="fc" id="L1883">                cancel();</span>
+<span class="fc" id="L1884">                onComplete();</span>
+<span class="fc" id="L1885">            }</span>
+        };
+
+<span class="fc" id="L1888">        Flowable.zip(Flowable.range(1, 2), Flowable.range(3, 2), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1891">                return a + b;</span>
+            }
+        })
+<span class="fc" id="L1894">        .subscribe(ts);</span>
+
+<span class="fc" id="L1896">        ts.assertResult(4);</span>
+<span class="fc" id="L1897">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

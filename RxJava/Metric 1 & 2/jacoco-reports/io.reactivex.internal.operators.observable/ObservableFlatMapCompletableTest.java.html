@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableFlatMapCompletableTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableFlatMapCompletableTest.java</span></div><h1>ObservableFlatMapCompletableTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L32">public class ObservableFlatMapCompletableTest {</span>
+
+    @Test
+    public void normalObservable() {
+<span class="fc" id="L36">        Observable.range(1, 10)</span>
+<span class="fc" id="L37">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L40">                return Completable.complete();</span>
+            }
+<span class="fc" id="L42">        }).toObservable()</span>
+<span class="fc" id="L43">        .test()</span>
+<span class="fc" id="L44">        .assertResult();</span>
+<span class="fc" id="L45">    }</span>
+
+    @Test
+    public void mapperThrowsObservable() {
+<span class="fc" id="L49">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L51">        TestObserver&lt;Integer&gt; to = ps</span>
+<span class="fc" id="L52">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L55">                throw new TestException();</span>
+            }
+<span class="fc" id="L57">        }).&lt;Integer&gt;toObservable()</span>
+<span class="fc" id="L58">        .test();</span>
+
+<span class="fc" id="L60">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L62">        ps.onNext(1);</span>
+
+<span class="fc" id="L64">        to.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L66">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L67">    }</span>
+
+    @Test
+    public void mapperReturnsNullObservable() {
+<span class="fc" id="L71">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L73">        TestObserver&lt;Integer&gt; to = ps</span>
+<span class="fc" id="L74">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L77">                return null;</span>
+            }
+<span class="fc" id="L79">        }).&lt;Integer&gt;toObservable()</span>
+<span class="fc" id="L80">        .test();</span>
+
+<span class="fc" id="L82">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L84">        ps.onNext(1);</span>
+
+<span class="fc" id="L86">        to.assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L88">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L89">    }</span>
+
+    @Test
+    public void normalDelayErrorObservable() {
+<span class="fc" id="L93">        Observable.range(1, 10)</span>
+<span class="fc" id="L94">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L97">                return Completable.complete();</span>
+            }
+<span class="fc" id="L99">        }, true).toObservable()</span>
+<span class="fc" id="L100">        .test()</span>
+<span class="fc" id="L101">        .assertResult();</span>
+<span class="fc" id="L102">    }</span>
+
+    @Test
+    public void normalAsyncObservable() {
+<span class="fc" id="L106">        Observable.range(1, 1000)</span>
+<span class="fc" id="L107">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L110">                return Observable.range(1, 100).subscribeOn(Schedulers.computation()).ignoreElements();</span>
+            }
+<span class="fc" id="L112">        }).toObservable()</span>
+<span class="fc" id="L113">        .test()</span>
+<span class="fc" id="L114">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L115">        .assertResult();</span>
+<span class="fc" id="L116">    }</span>
+
+    @Test
+    public void normalDelayErrorAllObservable() {
+<span class="fc" id="L120">        TestObserver&lt;Integer&gt; to = Observable.range(1, 10).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L121">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L124">                return Completable.error(new TestException());</span>
+            }
+<span class="fc" id="L126">        }, true).&lt;Integer&gt;toObservable()</span>
+<span class="fc" id="L127">        .test()</span>
+<span class="fc" id="L128">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L130">        List&lt;Throwable&gt; errors = TestHelper.compositeList(to.errors().get(0));</span>
+
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (int i = 0; i &lt; 11; i++) {</span>
+<span class="fc" id="L133">            TestHelper.assertError(errors, i, TestException.class);</span>
+        }
+<span class="fc" id="L135">    }</span>
+
+    @Test
+    public void normalDelayInnerErrorAllObservable() {
+<span class="fc" id="L139">        TestObserver&lt;Integer&gt; to = Observable.range(1, 10)</span>
+<span class="fc" id="L140">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L143">                return Completable.error(new TestException());</span>
+            }
+<span class="fc" id="L145">        }, true).&lt;Integer&gt;toObservable()</span>
+<span class="fc" id="L146">        .test()</span>
+<span class="fc" id="L147">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L149">        List&lt;Throwable&gt; errors = TestHelper.compositeList(to.errors().get(0));</span>
+
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L152">            TestHelper.assertError(errors, i, TestException.class);</span>
+        }
+<span class="fc" id="L154">    }</span>
+
+    @Test
+    public void normalNonDelayErrorOuterObservable() {
+<span class="fc" id="L158">        Observable.range(1, 10).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L159">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L162">                return Completable.complete();</span>
+            }
+<span class="fc" id="L164">        }, false).toObservable()</span>
+<span class="fc" id="L165">        .test()</span>
+<span class="fc" id="L166">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L167">    }</span>
+
+    @Test
+    public void fusedObservable() {
+<span class="fc" id="L171">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L173">        Observable.range(1, 10)</span>
+<span class="fc" id="L174">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L177">                return Completable.complete();</span>
+            }
+<span class="fc" id="L179">        }).&lt;Integer&gt;toObservable()</span>
+<span class="fc" id="L180">        .subscribe(to);</span>
+
+<span class="fc" id="L182">        to</span>
+<span class="fc" id="L183">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L184">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L185">        .assertResult();</span>
+<span class="fc" id="L186">    }</span>
+
+    @Test
+    public void disposedObservable() {
+<span class="fc" id="L190">        TestHelper.checkDisposed(Observable.range(1, 10)</span>
+<span class="fc" id="L191">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="nc" id="L194">                return Completable.complete();</span>
+            }
+<span class="fc" id="L196">        }).toObservable());</span>
+<span class="fc" id="L197">    }</span>
+
+    @Test
+    public void normal() {
+<span class="fc" id="L201">        Observable.range(1, 10)</span>
+<span class="fc" id="L202">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L205">                return Completable.complete();</span>
+            }
+        })
+<span class="fc" id="L208">        .test()</span>
+<span class="fc" id="L209">        .assertResult();</span>
+<span class="fc" id="L210">    }</span>
+
+    @Test
+    public void mapperThrows() {
+<span class="fc" id="L214">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L216">        TestObserver&lt;Void&gt; to = ps</span>
+<span class="fc" id="L217">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L220">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L223">        .test();</span>
+
+<span class="fc" id="L225">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L227">        ps.onNext(1);</span>
+
+<span class="fc" id="L229">        to.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L231">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L232">    }</span>
+
+    @Test
+    public void mapperReturnsNull() {
+<span class="fc" id="L236">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L238">        TestObserver&lt;Void&gt; to = ps</span>
+<span class="fc" id="L239">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L242">                return null;</span>
+            }
+        })
+<span class="fc" id="L245">        .test();</span>
+
+<span class="fc" id="L247">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L249">        ps.onNext(1);</span>
+
+<span class="fc" id="L251">        to.assertFailure(NullPointerException.class);</span>
+
+<span class="fc" id="L253">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L254">    }</span>
+
+    @Test
+    public void normalDelayError() {
+<span class="fc" id="L258">        Observable.range(1, 10)</span>
+<span class="fc" id="L259">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L262">                return Completable.complete();</span>
+            }
+        }, true)
+<span class="fc" id="L265">        .test()</span>
+<span class="fc" id="L266">        .assertResult();</span>
+<span class="fc" id="L267">    }</span>
+
+    @Test
+    public void normalAsync() {
+<span class="fc" id="L271">        Observable.range(1, 1000)</span>
+<span class="fc" id="L272">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L275">                return Observable.range(1, 100).subscribeOn(Schedulers.computation()).ignoreElements();</span>
+            }
+        })
+<span class="fc" id="L278">        .test()</span>
+<span class="fc" id="L279">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L280">        .assertResult();</span>
+<span class="fc" id="L281">    }</span>
+
+    @Test
+    public void normalDelayErrorAll() {
+<span class="fc" id="L285">        TestObserver&lt;Void&gt; to = Observable.range(1, 10).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L286">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L289">                return Completable.error(new TestException());</span>
+            }
+        }, true)
+<span class="fc" id="L292">        .test()</span>
+<span class="fc" id="L293">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L295">        List&lt;Throwable&gt; errors = TestHelper.compositeList(to.errors().get(0));</span>
+
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        for (int i = 0; i &lt; 11; i++) {</span>
+<span class="fc" id="L298">            TestHelper.assertError(errors, i, TestException.class);</span>
+        }
+<span class="fc" id="L300">    }</span>
+
+    @Test
+    public void normalDelayInnerErrorAll() {
+<span class="fc" id="L304">        TestObserver&lt;Void&gt; to = Observable.range(1, 10)</span>
+<span class="fc" id="L305">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L308">                return Completable.error(new TestException());</span>
+            }
+        }, true)
+<span class="fc" id="L311">        .test()</span>
+<span class="fc" id="L312">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L314">        List&lt;Throwable&gt; errors = TestHelper.compositeList(to.errors().get(0));</span>
+
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L317">            TestHelper.assertError(errors, i, TestException.class);</span>
+        }
+<span class="fc" id="L319">    }</span>
+
+    @Test
+    public void normalNonDelayErrorOuter() {
+<span class="fc" id="L323">        Observable.range(1, 10).concatWith(Observable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L324">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L327">                return Completable.complete();</span>
+            }
+        }, false)
+<span class="fc" id="L330">        .test()</span>
+<span class="fc" id="L331">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L332">    }</span>
+
+    @Test
+    public void fused() {
+<span class="fc" id="L336">        TestObserver&lt;Integer&gt; to = ObserverFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L338">        Observable.range(1, 10)</span>
+<span class="fc" id="L339">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L342">                return Completable.complete();</span>
+            }
+        })
+<span class="fc" id="L345">        .&lt;Integer&gt;toObservable()</span>
+<span class="fc" id="L346">        .subscribe(to);</span>
+
+<span class="fc" id="L348">        to</span>
+<span class="fc" id="L349">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L350">        .assertOf(ObserverFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L351">        .assertResult();</span>
+<span class="fc" id="L352">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L356">        TestHelper.checkDisposed(Observable.range(1, 10)</span>
+<span class="fc" id="L357">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="nc" id="L360">                return Completable.complete();</span>
+            }
+        }));
+<span class="fc" id="L363">    }</span>
+
+    @Test
+    public void innerObserver() {
+<span class="fc" id="L367">        Observable.range(1, 3)</span>
+<span class="fc" id="L368">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L371">                return new Completable() {</span>
+                    @Override
+                    protected void subscribeActual(CompletableObserver observer) {
+<span class="fc" id="L374">                        observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L376">                        assertFalse(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L378">                        ((Disposable)observer).dispose();</span>
+
+<span class="fc" id="L380">                        assertTrue(((Disposable)observer).isDisposed());</span>
+<span class="fc" id="L381">                    }</span>
+                };
+            }
+        })
+<span class="fc" id="L385">        .test();</span>
+<span class="fc" id="L386">    }</span>
+
+    @Test
+    public void badSource() {
+<span class="fc" id="L390">        TestHelper.checkBadSourceObservable(new Function&lt;Observable&lt;Integer&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Observable&lt;Integer&gt; o) throws Exception {
+<span class="fc" id="L393">                return o.flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+                    @Override
+                    public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L396">                        return Completable.complete();</span>
+                    }
+                });
+            }
+<span class="fc" id="L400">        }, false, 1, null);</span>
+<span class="fc" id="L401">    }</span>
+
+    @Test
+    public void fusedInternalsObservable() {
+<span class="fc" id="L405">        Observable.range(1, 10)</span>
+<span class="fc" id="L406">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L409">                return Completable.complete();</span>
+            }
+        })
+<span class="fc" id="L412">        .toObservable()</span>
+<span class="fc" id="L413">        .subscribe(new Observer&lt;Object&gt;() {</span>
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L416">                QueueDisposable&lt;?&gt; qd = (QueueDisposable&lt;?&gt;)d;</span>
+                try {
+<span class="fc" id="L418">                    assertNull(qd.poll());</span>
+<span class="nc" id="L419">                } catch (Throwable ex) {</span>
+<span class="nc" id="L420">                    throw new RuntimeException(ex);</span>
+<span class="fc" id="L421">                }</span>
+<span class="fc" id="L422">                assertTrue(qd.isEmpty());</span>
+<span class="fc" id="L423">                qd.clear();</span>
+<span class="fc" id="L424">            }</span>
+
+            @Override
+            public void onNext(Object t) {
+<span class="nc" id="L428">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L432">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L436">            }</span>
+        });
+<span class="fc" id="L438">    }</span>
+
+    @Test
+    public void innerObserverObservable() {
+<span class="fc" id="L442">        Observable.range(1, 3)</span>
+<span class="fc" id="L443">        .flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L446">                return new Completable() {</span>
+                    @Override
+                    protected void subscribeActual(CompletableObserver observer) {
+<span class="fc" id="L449">                        observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L451">                        assertFalse(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L453">                        ((Disposable)observer).dispose();</span>
+
+<span class="fc" id="L455">                        assertTrue(((Disposable)observer).isDisposed());</span>
+<span class="fc" id="L456">                    }</span>
+                };
+            }
+        })
+<span class="fc" id="L460">        .toObservable()</span>
+<span class="fc" id="L461">        .test();</span>
+<span class="fc" id="L462">    }</span>
+
+    @Test
+    public void badSourceObservable() {
+<span class="fc" id="L466">        TestHelper.checkBadSourceObservable(new Function&lt;Observable&lt;Integer&gt;, Object&gt;() {</span>
+            @Override
+            public Object apply(Observable&lt;Integer&gt; o) throws Exception {
+<span class="fc" id="L469">                return o.flatMapCompletable(new Function&lt;Integer, CompletableSource&gt;() {</span>
+                    @Override
+                    public CompletableSource apply(Integer v) throws Exception {
+<span class="fc" id="L472">                        return Completable.complete();</span>
+                    }
+<span class="fc" id="L474">                }).toObservable();</span>
+            }
+<span class="fc" id="L476">        }, false, 1, null);</span>
+<span class="fc" id="L477">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

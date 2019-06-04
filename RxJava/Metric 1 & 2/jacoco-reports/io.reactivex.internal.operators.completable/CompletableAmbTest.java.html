@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompletableAmbTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.completable</a> &gt; <span class="el_source">CompletableAmbTest.java</span></div><h1>CompletableAmbTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.completable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.operators.completable.CompletableAmb.Amb;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L36">public class CompletableAmbTest {</span>
+
+    @Test
+    public void ambLots() {
+<span class="fc" id="L40">        List&lt;Completable&gt; ms = new ArrayList&lt;Completable&gt;();</span>
+
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (int i = 0; i &lt; 32; i++) {</span>
+<span class="fc" id="L43">            ms.add(Completable.never());</span>
+        }
+
+<span class="fc" id="L46">        ms.add(Completable.complete());</span>
+
+<span class="fc" id="L48">        Completable.amb(ms)</span>
+<span class="fc" id="L49">        .test()</span>
+<span class="fc" id="L50">        .assertResult();</span>
+<span class="fc" id="L51">    }</span>
+
+    @Test
+    public void ambFirstDone() {
+<span class="fc" id="L55">        Completable.amb(Arrays.asList(Completable.complete(), Completable.complete()))</span>
+<span class="fc" id="L56">        .test()</span>
+<span class="fc" id="L57">        .assertResult();</span>
+<span class="fc" id="L58">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L62">        PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L63">        PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L65">        TestObserver&lt;Void&gt; to = Completable.amb(Arrays.asList(pp1.ignoreElements(), pp2.ignoreElements()))</span>
+<span class="fc" id="L66">        .test();</span>
+
+<span class="fc" id="L68">        assertTrue(pp1.hasSubscribers());</span>
+<span class="fc" id="L69">        assertTrue(pp2.hasSubscribers());</span>
+
+<span class="fc" id="L71">        to.dispose();</span>
+
+<span class="fc" id="L73">        assertFalse(pp1.hasSubscribers());</span>
+<span class="fc" id="L74">        assertFalse(pp2.hasSubscribers());</span>
+<span class="fc" id="L75">    }</span>
+
+    @Test
+    public void innerErrorRace() {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L80">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L82">                final PublishProcessor&lt;Integer&gt; pp0 = PublishProcessor.create();</span>
+<span class="fc" id="L83">                final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+
+<span class="fc" id="L85">                final TestObserver&lt;Void&gt; to = Completable.amb(Arrays.asList(pp0.ignoreElements(), pp1.ignoreElements()))</span>
+<span class="fc" id="L86">                .test();</span>
+
+<span class="fc" id="L88">                final TestException ex = new TestException();</span>
+
+<span class="fc" id="L90">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L93">                        pp0.onError(ex);</span>
+<span class="fc" id="L94">                    }</span>
+                };
+
+<span class="fc" id="L97">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L100">                        pp1.onError(ex);</span>
+<span class="fc" id="L101">                    }</span>
+                };
+
+<span class="fc" id="L104">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L106">                to.assertFailure(TestException.class);</span>
+
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L109">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L112">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L115">    }</span>
+
+    @Test
+    public void nullSourceSuccessRace() {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L120">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+            try {
+
+<span class="fc" id="L124">                final Subject&lt;Integer&gt; ps = ReplaySubject.create();</span>
+<span class="fc" id="L125">                ps.onNext(1);</span>
+
+<span class="fc" id="L127">                final Completable source = Completable.ambArray(ps.ignoreElements(), Completable.never(), Completable.never(), null);</span>
+
+<span class="fc" id="L129">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L132">                        source.test();</span>
+<span class="fc" id="L133">                    }</span>
+                };
+
+<span class="fc" id="L136">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L139">                        ps.onComplete();</span>
+<span class="fc" id="L140">                    }</span>
+                };
+
+<span class="fc" id="L143">                TestHelper.race(r1, r2);</span>
+
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L146">                    TestHelper.assertError(errors, 0, NullPointerException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L149">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L152">    }</span>
+
+    @Test
+    public void ambWithOrder() {
+<span class="fc" id="L156">        Completable error = Completable.error(new RuntimeException());</span>
+<span class="fc" id="L157">        Completable.complete().ambWith(error).test().assertComplete();</span>
+<span class="fc" id="L158">    }</span>
+
+    @Test
+    public void ambIterableOrder() {
+<span class="fc" id="L162">        Completable error = Completable.error(new RuntimeException());</span>
+<span class="fc" id="L163">        Completable.amb(Arrays.asList(Completable.complete(), error)).test().assertComplete();</span>
+<span class="fc" id="L164">    }</span>
+
+    @Test
+    public void ambArrayOrder() {
+<span class="fc" id="L168">        Completable error = Completable.error(new RuntimeException());</span>
+<span class="fc" id="L169">        Completable.ambArray(Completable.complete(), error).test().assertComplete();</span>
+<span class="fc" id="L170">    }</span>
+
+    @Test
+    public void ambRace() {
+<span class="fc" id="L174">        TestObserver&lt;Void&gt; to = new TestObserver&lt;Void&gt;();</span>
+<span class="fc" id="L175">        to.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L177">        CompositeDisposable cd = new CompositeDisposable();</span>
+<span class="fc" id="L178">        AtomicBoolean once = new AtomicBoolean();</span>
+<span class="fc" id="L179">        Amb a = new Amb(once, cd, to);</span>
+<span class="fc" id="L180">        a.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L182">        a.onComplete();</span>
+<span class="fc" id="L183">        a.onComplete();</span>
+
+<span class="fc" id="L185">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L187">            a.onError(new TestException());</span>
+
+<span class="fc" id="L189">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L191">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L193">    }</span>
+
+    @Test
+    public void untilCompletableMainComplete() {
+<span class="fc" id="L197">        CompletableSubject main = CompletableSubject.create();</span>
+<span class="fc" id="L198">        CompletableSubject other = CompletableSubject.create();</span>
+
+<span class="fc" id="L200">        TestObserver&lt;Void&gt; to = main.ambWith(other).test();</span>
+
+<span class="fc" id="L202">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L203">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L205">        main.onComplete();</span>
+
+<span class="fc" id="L207">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L208">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L210">        to.assertResult();</span>
+<span class="fc" id="L211">    }</span>
+
+    @Test
+    public void untilCompletableMainError() {
+<span class="fc" id="L215">        CompletableSubject main = CompletableSubject.create();</span>
+<span class="fc" id="L216">        CompletableSubject other = CompletableSubject.create();</span>
+
+<span class="fc" id="L218">        TestObserver&lt;Void&gt; to = main.ambWith(other).test();</span>
+
+<span class="fc" id="L220">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L221">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L223">        main.onError(new TestException());</span>
+
+<span class="fc" id="L225">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L226">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L228">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L229">    }</span>
+
+    @Test
+    public void untilCompletableOtherOnComplete() {
+<span class="fc" id="L233">        CompletableSubject main = CompletableSubject.create();</span>
+<span class="fc" id="L234">        CompletableSubject other = CompletableSubject.create();</span>
+
+<span class="fc" id="L236">        TestObserver&lt;Void&gt; to = main.ambWith(other).test();</span>
+
+<span class="fc" id="L238">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L239">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L241">        other.onComplete();</span>
+
+<span class="fc" id="L243">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L244">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L246">        to.assertResult();</span>
+<span class="fc" id="L247">    }</span>
+
+    @Test
+    public void untilCompletableOtherError() {
+<span class="fc" id="L251">        CompletableSubject main = CompletableSubject.create();</span>
+<span class="fc" id="L252">        CompletableSubject other = CompletableSubject.create();</span>
+
+<span class="fc" id="L254">        TestObserver&lt;Void&gt; to = main.ambWith(other).test();</span>
+
+<span class="fc" id="L256">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L257">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L259">        other.onError(new TestException());</span>
+
+<span class="fc" id="L261">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L262">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L264">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L265">    }</span>
+
+    @Test
+    public void noWinnerErrorDispose() throws Exception {
+<span class="fc" id="L269">        final TestException ex = new TestException();</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L271">            final AtomicBoolean interrupted = new AtomicBoolean();</span>
+<span class="fc" id="L272">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L274">            Completable.ambArray(</span>
+<span class="fc" id="L275">                    Completable.error(ex)</span>
+<span class="fc" id="L276">                    .subscribeOn(Schedulers.single())</span>
+<span class="fc" id="L277">                    .observeOn(Schedulers.computation()),</span>
+<span class="fc" id="L278">                    Completable.never()</span>
+            )
+<span class="fc" id="L280">            .subscribe(Functions.EMPTY_ACTION, new Consumer&lt;Throwable&gt;() {</span>
+                @Override
+                public void accept(Throwable e) throws Exception {
+<span class="fc" id="L283">                    interrupted.set(Thread.currentThread().isInterrupted());</span>
+<span class="fc" id="L284">                    cdl.countDown();</span>
+<span class="fc" id="L285">                }</span>
+            });
+
+<span class="fc" id="L288">            assertTrue(cdl.await(500, TimeUnit.SECONDS));</span>
+<span class="fc" id="L289">            assertFalse(&quot;Interrupted!&quot;, interrupted.get());</span>
+        }
+<span class="fc" id="L291">    }</span>
+
+    @Test
+    public void noWinnerCompleteDispose() throws Exception {
+<span class="fc bfc" id="L295" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+<span class="fc" id="L296">            final AtomicBoolean interrupted = new AtomicBoolean();</span>
+<span class="fc" id="L297">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L299">            Completable.ambArray(</span>
+<span class="fc" id="L300">                Completable.complete()</span>
+<span class="fc" id="L301">                    .subscribeOn(Schedulers.single())</span>
+<span class="fc" id="L302">                    .observeOn(Schedulers.computation()),</span>
+<span class="fc" id="L303">                Completable.never()</span>
+            )
+<span class="fc" id="L305">            .subscribe(new Action() {</span>
+                @Override
+                public void run() throws Exception {
+<span class="fc" id="L308">                    interrupted.set(Thread.currentThread().isInterrupted());</span>
+<span class="fc" id="L309">                    cdl.countDown();</span>
+<span class="fc" id="L310">                }</span>
+            });
+
+<span class="fc" id="L313">            assertTrue(cdl.await(500, TimeUnit.SECONDS));</span>
+<span class="fc" id="L314">            assertFalse(&quot;Interrupted!&quot;, interrupted.get());</span>
+        }
+<span class="fc" id="L316">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

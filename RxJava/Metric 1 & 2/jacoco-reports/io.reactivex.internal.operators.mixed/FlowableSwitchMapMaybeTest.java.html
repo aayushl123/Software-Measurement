@@ -1,0 +1,649 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableSwitchMapMaybeTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.mixed</a> &gt; <span class="el_source">FlowableSwitchMapMaybeTest.java</span></div><h1>FlowableSwitchMapMaybeTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.mixed;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subjects.MaybeSubject;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L35">public class FlowableSwitchMapMaybeTest {</span>
+
+    @Test
+    public void simple() {
+<span class="fc" id="L39">        Flowable.range(1, 5)</span>
+<span class="fc" id="L40">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L44">                return Maybe.just(v);</span>
+            }
+        })
+<span class="fc" id="L47">        .test()</span>
+<span class="fc" id="L48">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L49">    }</span>
+
+    @Test
+    public void simpleEmpty() {
+<span class="fc" id="L53">        Flowable.range(1, 5)</span>
+<span class="fc" id="L54">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L58">                return Maybe.empty();</span>
+            }
+        })
+<span class="fc" id="L61">        .test()</span>
+<span class="fc" id="L62">        .assertResult();</span>
+<span class="fc" id="L63">    }</span>
+
+    @Test
+    public void simpleMixed() {
+<span class="fc" id="L67">        Flowable.range(1, 10)</span>
+<span class="fc" id="L68">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                if (v % 2 == 0) {</span>
+<span class="fc" id="L73">                    return Maybe.just(v);</span>
+                }
+<span class="fc" id="L75">                return Maybe.empty();</span>
+            }
+        })
+<span class="fc" id="L78">        .test()</span>
+<span class="fc" id="L79">        .assertResult(2, 4, 6, 8, 10);</span>
+<span class="fc" id="L80">    }</span>
+
+    @Test
+    public void backpressured() {
+<span class="fc" id="L84">        TestSubscriber&lt;Integer&gt; ts = Flowable.range(1, 1024)</span>
+<span class="fc" id="L85">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                if (v % 2 == 0) {</span>
+<span class="fc" id="L90">                    return Maybe.just(v);</span>
+                }
+<span class="fc" id="L92">                return Maybe.empty();</span>
+            }
+        })
+<span class="fc" id="L95">        .test(0L);</span>
+
+        // backpressure results items skipped
+<span class="fc" id="L98">        ts</span>
+<span class="fc" id="L99">        .requestMore(1)</span>
+<span class="fc" id="L100">        .assertResult(1024);</span>
+<span class="fc" id="L101">    }</span>
+
+    @Test
+    public void mainError() {
+<span class="fc" id="L105">        Flowable.error(new TestException())</span>
+<span class="fc" id="L106">        .switchMapMaybe(Functions.justFunction(Maybe.never()))</span>
+<span class="fc" id="L107">        .test()</span>
+<span class="fc" id="L108">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L109">    }</span>
+
+    @Test
+    public void innerError() {
+<span class="fc" id="L113">        Flowable.just(1)</span>
+<span class="fc" id="L114">        .switchMapMaybe(Functions.justFunction(Maybe.error(new TestException())))</span>
+<span class="fc" id="L115">        .test()</span>
+<span class="fc" id="L116">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L117">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L121">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Publisher&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Object&gt; apply(Flowable&lt;Object&gt; f)
+                    throws Exception {
+<span class="fc" id="L125">                return f</span>
+<span class="fc" id="L126">                        .switchMapMaybe(Functions.justFunction(Maybe.never()));</span>
+            }
+        }
+        );
+<span class="fc" id="L130">    }</span>
+
+    @Test
+    public void limit() {
+<span class="fc" id="L134">        Flowable.range(1, 5)</span>
+<span class="fc" id="L135">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L139">                return Maybe.just(v);</span>
+            }
+        })
+<span class="fc" id="L142">        .limit(3)</span>
+<span class="fc" id="L143">        .test()</span>
+<span class="fc" id="L144">        .assertResult(1, 2, 3);</span>
+<span class="fc" id="L145">    }</span>
+
+    @Test
+    public void switchOver() {
+<span class="fc" id="L149">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L151">        final MaybeSubject&lt;Integer&gt; ms1 = MaybeSubject.create();</span>
+<span class="fc" id="L152">        final MaybeSubject&lt;Integer&gt; ms2 = MaybeSubject.create();</span>
+
+<span class="fc" id="L154">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                        if (v == 1) {</span>
+<span class="fc" id="L159">                            return ms1;</span>
+                        }
+<span class="fc" id="L161">                        return ms2;</span>
+                    }
+<span class="fc" id="L163">        }).test();</span>
+
+<span class="fc" id="L165">        ts.assertEmpty();</span>
+
+<span class="fc" id="L167">        pp.onNext(1);</span>
+
+<span class="fc" id="L169">        ts.assertEmpty();</span>
+
+<span class="fc" id="L171">        assertTrue(ms1.hasObservers());</span>
+
+<span class="fc" id="L173">        pp.onNext(2);</span>
+
+<span class="fc" id="L175">        assertFalse(ms1.hasObservers());</span>
+<span class="fc" id="L176">        assertTrue(ms2.hasObservers());</span>
+
+<span class="fc" id="L178">        ms2.onError(new TestException());</span>
+
+<span class="fc" id="L180">        assertFalse(pp.hasSubscribers());</span>
+
+<span class="fc" id="L182">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L183">    }</span>
+
+    @Test
+    public void switchOverDelayError() {
+<span class="fc" id="L187">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L189">        final MaybeSubject&lt;Integer&gt; ms1 = MaybeSubject.create();</span>
+<span class="fc" id="L190">        final MaybeSubject&lt;Integer&gt; ms2 = MaybeSubject.create();</span>
+
+<span class="fc" id="L192">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                        if (v == 1) {</span>
+<span class="fc" id="L197">                            return ms1;</span>
+                        }
+<span class="fc" id="L199">                        return ms2;</span>
+                    }
+<span class="fc" id="L201">        }).test();</span>
+
+<span class="fc" id="L203">        ts.assertEmpty();</span>
+
+<span class="fc" id="L205">        pp.onNext(1);</span>
+
+<span class="fc" id="L207">        ts.assertEmpty();</span>
+
+<span class="fc" id="L209">        assertTrue(ms1.hasObservers());</span>
+
+<span class="fc" id="L211">        pp.onNext(2);</span>
+
+<span class="fc" id="L213">        assertFalse(ms1.hasObservers());</span>
+<span class="fc" id="L214">        assertTrue(ms2.hasObservers());</span>
+
+<span class="fc" id="L216">        ms2.onError(new TestException());</span>
+
+<span class="fc" id="L218">        ts.assertEmpty();</span>
+
+<span class="fc" id="L220">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L222">        pp.onComplete();</span>
+
+<span class="fc" id="L224">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L225">    }</span>
+
+    @Test
+    public void mainErrorInnerCompleteDelayError() {
+<span class="fc" id="L229">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L231">        final MaybeSubject&lt;Integer&gt; ms = MaybeSubject.create();</span>
+
+<span class="fc" id="L233">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L237">                        return ms;</span>
+                    }
+<span class="fc" id="L239">        }).test();</span>
+
+<span class="fc" id="L241">        ts.assertEmpty();</span>
+
+<span class="fc" id="L243">        pp.onNext(1);</span>
+
+<span class="fc" id="L245">        ts.assertEmpty();</span>
+
+<span class="fc" id="L247">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L249">        pp.onError(new TestException());</span>
+
+<span class="fc" id="L251">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L253">        ts.assertEmpty();</span>
+
+<span class="fc" id="L255">        ms.onComplete();</span>
+
+<span class="fc" id="L257">        ts.assertFailure(TestException.class);</span>
+<span class="fc" id="L258">    }</span>
+
+    @Test
+    public void mainErrorInnerSuccessDelayError() {
+<span class="fc" id="L262">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L264">        final MaybeSubject&lt;Integer&gt; ms = MaybeSubject.create();</span>
+
+<span class="fc" id="L266">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L270">                        return ms;</span>
+                    }
+<span class="fc" id="L272">        }).test();</span>
+
+<span class="fc" id="L274">        ts.assertEmpty();</span>
+
+<span class="fc" id="L276">        pp.onNext(1);</span>
+
+<span class="fc" id="L278">        ts.assertEmpty();</span>
+
+<span class="fc" id="L280">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L282">        pp.onError(new TestException());</span>
+
+<span class="fc" id="L284">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L286">        ts.assertEmpty();</span>
+
+<span class="fc" id="L288">        ms.onSuccess(1);</span>
+
+<span class="fc" id="L290">        ts.assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L291">    }</span>
+
+    @Test
+    public void mapperCrash() {
+<span class="fc" id="L295">        Flowable.just(1)</span>
+<span class="fc" id="L296">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;? extends Object&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;? extends Object&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L300">                        throw new TestException();</span>
+                    }
+        })
+<span class="fc" id="L303">        .test()</span>
+<span class="fc" id="L304">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L305">    }</span>
+
+    @Test
+    public void disposeBeforeSwitchInOnNext() {
+<span class="fc" id="L309">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L311">        Flowable.just(1)</span>
+<span class="fc" id="L312">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L316">                        ts.cancel();</span>
+<span class="fc" id="L317">                        return Maybe.just(1);</span>
+                    }
+<span class="fc" id="L319">        }).subscribe(ts);</span>
+
+<span class="fc" id="L321">        ts.assertEmpty();</span>
+<span class="fc" id="L322">    }</span>
+
+    @Test
+    public void disposeOnNextAfterFirst() {
+<span class="fc" id="L326">        final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L328">        Flowable.just(1, 2)</span>
+<span class="fc" id="L329">        .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">                if (v == 2) {</span>
+<span class="fc" id="L334">                    ts.cancel();</span>
+                }
+<span class="fc" id="L336">                return Maybe.just(1);</span>
+            }
+<span class="fc" id="L338">        }).subscribe(ts);</span>
+
+<span class="fc" id="L340">        ts.assertValue(1)</span>
+<span class="fc" id="L341">        .assertNoErrors()</span>
+<span class="fc" id="L342">        .assertNotComplete();</span>
+<span class="fc" id="L343">    }</span>
+
+    @Test
+    public void cancel() {
+<span class="fc" id="L347">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L349">        final MaybeSubject&lt;Integer&gt; ms = MaybeSubject.create();</span>
+
+<span class="fc" id="L351">        TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public MaybeSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L355">                        return ms;</span>
+                    }
+<span class="fc" id="L357">        }).test();</span>
+
+<span class="fc" id="L359">        ts.assertEmpty();</span>
+
+<span class="fc" id="L361">        pp.onNext(1);</span>
+
+<span class="fc" id="L363">        ts.assertEmpty();</span>
+
+<span class="fc" id="L365">        assertTrue(pp.hasSubscribers());</span>
+<span class="fc" id="L366">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L368">        ts.cancel();</span>
+
+<span class="fc" id="L370">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L371">        assertFalse(ms.hasObservers());</span>
+<span class="fc" id="L372">    }</span>
+
+    @Test
+    public void mainErrorAfterTermination() {
+<span class="fc" id="L376">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L378">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L381">                    s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L382">                    s.onNext(1);</span>
+<span class="fc" id="L383">                    s.onError(new TestException(&quot;outer&quot;));</span>
+<span class="fc" id="L384">                }</span>
+            }
+<span class="fc" id="L386">            .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public MaybeSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc" id="L390">                    return Maybe.error(new TestException(&quot;inner&quot;));</span>
+                }
+            })
+<span class="fc" id="L393">            .test()</span>
+<span class="fc" id="L394">            .assertFailureAndMessage(TestException.class, &quot;inner&quot;);</span>
+
+<span class="fc" id="L396">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;outer&quot;);</span>
+        } finally {
+<span class="fc" id="L398">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L400">    }</span>
+
+    @Test
+    public void innerErrorAfterTermination() {
+<span class="fc" id="L404">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L406">            final AtomicReference&lt;MaybeObserver&lt;? super Integer&gt;&gt; moRef = new AtomicReference&lt;MaybeObserver&lt;? super Integer&gt;&gt;();</span>
+
+<span class="fc" id="L408">            TestSubscriber&lt;Integer&gt; ts = new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L411">                    s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L412">                    s.onNext(1);</span>
+<span class="fc" id="L413">                    s.onError(new TestException(&quot;outer&quot;));</span>
+<span class="fc" id="L414">                }</span>
+            }
+<span class="fc" id="L416">            .switchMapMaybe(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public MaybeSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc" id="L420">                    return new Maybe&lt;Integer&gt;() {</span>
+                        @Override
+                        protected void subscribeActual(
+                                MaybeObserver&lt;? super Integer&gt; observer) {
+<span class="fc" id="L424">                            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L425">                            moRef.set(observer);</span>
+<span class="fc" id="L426">                        }</span>
+                    };
+                }
+            })
+<span class="fc" id="L430">            .test();</span>
+
+<span class="fc" id="L432">            ts.assertFailureAndMessage(TestException.class, &quot;outer&quot;);</span>
+
+<span class="fc" id="L434">            moRef.get().onError(new TestException(&quot;inner&quot;));</span>
+<span class="fc" id="L435">            moRef.get().onComplete();</span>
+
+<span class="fc" id="L437">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;inner&quot;);</span>
+        } finally {
+<span class="fc" id="L439">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L441">    }</span>
+
+    @Test
+    public void nextCancelRace() {
+<span class="fc bfc" id="L445" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L447">            final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L449">            final MaybeSubject&lt;Integer&gt; ms = MaybeSubject.create();</span>
+
+<span class="fc" id="L451">            final TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public MaybeSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc" id="L455">                            return ms;</span>
+                        }
+<span class="fc" id="L457">            }).test();</span>
+
+<span class="fc" id="L459">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L462">                    pp.onNext(1);</span>
+<span class="fc" id="L463">                }</span>
+            };
+
+<span class="fc" id="L466">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L469">                    ts.cancel();</span>
+<span class="fc" id="L470">                }</span>
+            };
+
+<span class="fc" id="L473">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L475">            ts.assertNoErrors()</span>
+<span class="fc" id="L476">            .assertNotComplete();</span>
+        }
+<span class="fc" id="L478">    }</span>
+
+    @Test
+    public void nextInnerErrorRace() {
+<span class="fc" id="L482">        final TestException ex = new TestException();</span>
+
+<span class="fc bfc" id="L484" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L486">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L488">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L490">                final MaybeSubject&lt;Integer&gt; ms = MaybeSubject.create();</span>
+
+<span class="fc" id="L492">                final TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public MaybeSource&lt;Integer&gt; apply(Integer v)
+                            throws Exception {
+<span class="fc bfc" id="L496" title="All 2 branches covered.">                        if (v == 1) {</span>
+<span class="fc" id="L497">                            return ms;</span>
+                        }
+<span class="fc" id="L499">                        return Maybe.never();</span>
+                    }
+<span class="fc" id="L501">                }).test();</span>
+
+<span class="fc" id="L503">                pp.onNext(1);</span>
+
+<span class="fc" id="L505">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L508">                        pp.onNext(2);</span>
+<span class="fc" id="L509">                    }</span>
+                };
+
+<span class="fc" id="L512">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L515">                        ms.onError(ex);</span>
+<span class="fc" id="L516">                    }</span>
+                };
+
+<span class="fc" id="L519">                TestHelper.race(r1, r2);</span>
+
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">                if (ts.errorCount() != 0) {</span>
+<span class="nc" id="L522">                    assertTrue(errors.isEmpty());</span>
+<span class="nc" id="L523">                    ts.assertFailure(TestException.class);</span>
+<span class="fc bfc" id="L524" title="All 2 branches covered.">                } else if (!errors.isEmpty()) {</span>
+<span class="fc" id="L525">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L528">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L531">    }</span>
+
+    @Test
+    public void mainErrorInnerErrorRace() {
+<span class="fc" id="L535">        final TestException ex = new TestException();</span>
+<span class="fc" id="L536">        final TestException ex2 = new TestException();</span>
+
+<span class="fc bfc" id="L538" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L540">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+            try {
+<span class="fc" id="L542">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L544">                final MaybeSubject&lt;Integer&gt; ms = MaybeSubject.create();</span>
+
+<span class="fc" id="L546">                final TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public MaybeSource&lt;Integer&gt; apply(Integer v)
+                            throws Exception {
+<span class="pc bpc" id="L550" title="1 of 2 branches missed.">                        if (v == 1) {</span>
+<span class="fc" id="L551">                            return ms;</span>
+                        }
+<span class="nc" id="L553">                        return Maybe.never();</span>
+                    }
+<span class="fc" id="L555">                }).test();</span>
+
+<span class="fc" id="L557">                pp.onNext(1);</span>
+
+<span class="fc" id="L559">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L562">                        pp.onError(ex);</span>
+<span class="fc" id="L563">                    }</span>
+                };
+
+<span class="fc" id="L566">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L569">                        ms.onError(ex2);</span>
+<span class="fc" id="L570">                    }</span>
+                };
+
+<span class="fc" id="L573">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L575">                ts.assertError(new Predicate&lt;Throwable&gt;() {</span>
+                    @Override
+                    public boolean test(Throwable e) throws Exception {
+<span class="pc bpc" id="L578" title="1 of 4 branches missed.">                        return e instanceof TestException || e instanceof CompositeException;</span>
+                    }
+                });
+
+<span class="fc bfc" id="L582" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L583">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L586">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L589">    }</span>
+
+    @Test
+    public void nextInnerSuccessRace() {
+<span class="fc bfc" id="L593" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L595">            final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L597">            final MaybeSubject&lt;Integer&gt; ms = MaybeSubject.create();</span>
+
+<span class="fc" id="L599">            final TestSubscriber&lt;Integer&gt; ts = pp.switchMapMaybeDelayError(new Function&lt;Integer, MaybeSource&lt;Integer&gt;&gt;() {</span>
+                @Override
+                public MaybeSource&lt;Integer&gt; apply(Integer v)
+                        throws Exception {
+<span class="fc bfc" id="L603" title="All 2 branches covered.">                    if (v == 1) {</span>
+<span class="fc" id="L604">                            return ms;</span>
+                    }
+<span class="fc" id="L606">                    return Maybe.empty();</span>
+                }
+<span class="fc" id="L608">            }).test();</span>
+
+<span class="fc" id="L610">            pp.onNext(1);</span>
+
+<span class="fc" id="L612">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L615">                    pp.onNext(2);</span>
+<span class="fc" id="L616">                }</span>
+            };
+
+<span class="fc" id="L619">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L622">                    ms.onSuccess(3);</span>
+<span class="fc" id="L623">                }</span>
+            };
+
+<span class="fc" id="L626">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L628">            ts.assertNoErrors()</span>
+<span class="fc" id="L629">            .assertNotComplete();</span>
+        }
+<span class="fc" id="L631">    }</span>
+
+    @Test
+    public void requestMoreOnNext() {
+<span class="fc" id="L635">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(1) {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L638">                super.onNext(t);</span>
+<span class="fc" id="L639">                requestMore(1);</span>
+<span class="fc" id="L640">            }</span>
+        };
+<span class="fc" id="L642">        Flowable.range(1, 5)</span>
+<span class="fc" id="L643">        .switchMapMaybe(Functions.justFunction(Maybe.just(1)))</span>
+<span class="fc" id="L644">        .subscribe(ts);</span>
+
+<span class="fc" id="L646">        ts.assertResult(1, 1, 1, 1, 1);</span>
+<span class="fc" id="L647">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

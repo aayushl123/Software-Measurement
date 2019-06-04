@@ -1,0 +1,512 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableRetryWithPredicateTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableRetryWithPredicateTest.java</span></div><h1>FlowableRetryWithPredicateTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.Test;
+import org.mockito.InOrder;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L39">public class FlowableRetryWithPredicateTest {</span>
+<span class="fc" id="L40">    BiPredicate&lt;Integer, Throwable&gt; retryTwice = new BiPredicate&lt;Integer, Throwable&gt;() {</span>
+        @Override
+        public boolean test(Integer t1, Throwable t2) {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            return t1 &lt;= 2;</span>
+        }
+    };
+<span class="fc" id="L46">    BiPredicate&lt;Integer, Throwable&gt; retry5 = new BiPredicate&lt;Integer, Throwable&gt;() {</span>
+        @Override
+        public boolean test(Integer t1, Throwable t2) {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            return t1 &lt;= 5;</span>
+        }
+    };
+<span class="fc" id="L52">    BiPredicate&lt;Integer, Throwable&gt; retryOnTestException = new BiPredicate&lt;Integer, Throwable&gt;() {</span>
+        @Override
+        public boolean test(Integer t1, Throwable t2) {
+<span class="fc" id="L55">            return t2 instanceof IOException;</span>
+        }
+    };
+    @Test
+    public void testWithNothingToRetry() {
+<span class="fc" id="L60">        Flowable&lt;Integer&gt; source = Flowable.range(0, 3);</span>
+
+<span class="fc" id="L62">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L63">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L65">        source.retry(retryTwice).subscribe(subscriber);</span>
+
+<span class="fc" id="L67">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L68">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L69">        inOrder.verify(subscriber).onNext(2);</span>
+<span class="fc" id="L70">        inOrder.verify(subscriber).onComplete();</span>
+<span class="fc" id="L71">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void testRetryTwice() {
+<span class="fc" id="L76">        Flowable&lt;Integer&gt; source = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            int count;
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; t1) {
+<span class="fc" id="L80">                t1.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L81">                count++;</span>
+<span class="fc" id="L82">                t1.onNext(0);</span>
+<span class="fc" id="L83">                t1.onNext(1);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                if (count == 1) {</span>
+<span class="fc" id="L85">                    t1.onError(new TestException());</span>
+<span class="fc" id="L86">                    return;</span>
+                }
+<span class="fc" id="L88">                t1.onNext(2);</span>
+<span class="fc" id="L89">                t1.onNext(3);</span>
+<span class="fc" id="L90">                t1.onComplete();</span>
+<span class="fc" id="L91">            }</span>
+        });
+
+<span class="fc" id="L94">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L95">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L97">        source.retry(retryTwice).subscribe(subscriber);</span>
+
+<span class="fc" id="L99">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L100">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L101">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L102">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L103">        inOrder.verify(subscriber).onNext(2);</span>
+<span class="fc" id="L104">        inOrder.verify(subscriber).onNext(3);</span>
+<span class="fc" id="L105">        inOrder.verify(subscriber).onComplete();</span>
+<span class="fc" id="L106">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L108">    }</span>
+
+    @Test
+    public void testRetryTwiceAndGiveUp() {
+<span class="fc" id="L112">        Flowable&lt;Integer&gt; source = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; t1) {
+<span class="fc" id="L115">                t1.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L116">                t1.onNext(0);</span>
+<span class="fc" id="L117">                t1.onNext(1);</span>
+<span class="fc" id="L118">                t1.onError(new TestException());</span>
+<span class="fc" id="L119">            }</span>
+        });
+
+<span class="fc" id="L122">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L123">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L125">        source.retry(retryTwice).subscribe(subscriber);</span>
+
+<span class="fc" id="L127">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L128">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L129">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L130">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L131">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L132">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L133">        inOrder.verify(subscriber).onError(any(TestException.class));</span>
+<span class="fc" id="L134">        verify(subscriber, never()).onComplete();</span>
+
+<span class="fc" id="L136">    }</span>
+
+    @Test
+    public void testRetryOnSpecificException() {
+<span class="fc" id="L140">        Flowable&lt;Integer&gt; source = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            int count;
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; t1) {
+<span class="fc" id="L144">                t1.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L145">                count++;</span>
+<span class="fc" id="L146">                t1.onNext(0);</span>
+<span class="fc" id="L147">                t1.onNext(1);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                if (count == 1) {</span>
+<span class="fc" id="L149">                    t1.onError(new IOException());</span>
+<span class="fc" id="L150">                    return;</span>
+                }
+<span class="fc" id="L152">                t1.onNext(2);</span>
+<span class="fc" id="L153">                t1.onNext(3);</span>
+<span class="fc" id="L154">                t1.onComplete();</span>
+<span class="fc" id="L155">            }</span>
+        });
+
+<span class="fc" id="L158">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L159">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L161">        source.retry(retryOnTestException).subscribe(subscriber);</span>
+
+<span class="fc" id="L163">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L164">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L165">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L166">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L167">        inOrder.verify(subscriber).onNext(2);</span>
+<span class="fc" id="L168">        inOrder.verify(subscriber).onNext(3);</span>
+<span class="fc" id="L169">        inOrder.verify(subscriber).onComplete();</span>
+<span class="fc" id="L170">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L171">    }</span>
+
+    @Test
+    public void testRetryOnSpecificExceptionAndNotOther() {
+<span class="fc" id="L175">        final IOException ioe = new IOException();</span>
+<span class="fc" id="L176">        final TestException te = new TestException();</span>
+<span class="fc" id="L177">        Flowable&lt;Integer&gt; source = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+            int count;
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; t1) {
+<span class="fc" id="L181">                t1.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L182">                count++;</span>
+<span class="fc" id="L183">                t1.onNext(0);</span>
+<span class="fc" id="L184">                t1.onNext(1);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (count == 1) {</span>
+<span class="fc" id="L186">                    t1.onError(ioe);</span>
+<span class="fc" id="L187">                    return;</span>
+                }
+<span class="fc" id="L189">                t1.onNext(2);</span>
+<span class="fc" id="L190">                t1.onNext(3);</span>
+<span class="fc" id="L191">                t1.onError(te);</span>
+<span class="fc" id="L192">            }</span>
+        });
+
+<span class="fc" id="L195">        Subscriber&lt;Integer&gt; subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L196">        InOrder inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L198">        source.retry(retryOnTestException).subscribe(subscriber);</span>
+
+<span class="fc" id="L200">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L201">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L202">        inOrder.verify(subscriber).onNext(0);</span>
+<span class="fc" id="L203">        inOrder.verify(subscriber).onNext(1);</span>
+<span class="fc" id="L204">        inOrder.verify(subscriber).onNext(2);</span>
+<span class="fc" id="L205">        inOrder.verify(subscriber).onNext(3);</span>
+<span class="fc" id="L206">        inOrder.verify(subscriber).onError(te);</span>
+<span class="fc" id="L207">        verify(subscriber, never()).onError(ioe);</span>
+<span class="fc" id="L208">        verify(subscriber, never()).onComplete();</span>
+<span class="fc" id="L209">    }</span>
+
+    @Test
+    public void testUnsubscribeFromRetry() {
+<span class="fc" id="L213">        PublishProcessor&lt;Integer&gt; processor = PublishProcessor.create();</span>
+<span class="fc" id="L214">        final AtomicInteger count = new AtomicInteger(0);</span>
+<span class="fc" id="L215">        Disposable sub = processor.retry(retryTwice).subscribe(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer n) {
+<span class="fc" id="L218">                count.incrementAndGet();</span>
+<span class="fc" id="L219">            }</span>
+        });
+<span class="fc" id="L221">        processor.onNext(1);</span>
+<span class="fc" id="L222">        sub.dispose();</span>
+<span class="fc" id="L223">        processor.onNext(2);</span>
+<span class="fc" id="L224">        assertEquals(1, count.get());</span>
+<span class="fc" id="L225">    }</span>
+
+    @Test(timeout = 10000)
+    public void testUnsubscribeAfterError() {
+
+<span class="fc" id="L230">        Subscriber&lt;Long&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+        // Flowable that always fails after 100ms
+<span class="fc" id="L233">        FlowableRetryTest.SlowFlowable so = new FlowableRetryTest.SlowFlowable(100, 0, &quot;testUnsubscribeAfterError&quot;);</span>
+<span class="fc" id="L234">        Flowable&lt;Long&gt; f = Flowable</span>
+<span class="fc" id="L235">                .unsafeCreate(so)</span>
+<span class="fc" id="L236">                .retry(retry5);</span>
+
+<span class="fc" id="L238">        FlowableRetryTest.AsyncSubscriber&lt;Long&gt; async = new FlowableRetryTest.AsyncSubscriber&lt;Long&gt;(subscriber);</span>
+
+<span class="fc" id="L240">        f.subscribe(async);</span>
+
+<span class="fc" id="L242">        async.await();</span>
+
+<span class="fc" id="L244">        InOrder inOrder = inOrder(subscriber);</span>
+        // Should fail once
+<span class="fc" id="L246">        inOrder.verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L247">        inOrder.verify(subscriber, never()).onComplete();</span>
+
+<span class="fc" id="L249">        assertEquals(&quot;Start 6 threads, retry 5 then fail on 6&quot;, 6, so.efforts.get());</span>
+<span class="fc" id="L250">        assertEquals(&quot;Only 1 active subscription&quot;, 1, so.maxActive.get());</span>
+<span class="fc" id="L251">    }</span>
+
+    @Test(timeout = 10000)
+    public void testTimeoutWithRetry() {
+
+<span class="fc" id="L256">        Subscriber&lt;Long&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+        // Flowable that sends every 100ms (timeout fails instead)
+<span class="fc" id="L259">        FlowableRetryTest.SlowFlowable so = new FlowableRetryTest.SlowFlowable(100, 10, &quot;testTimeoutWithRetry&quot;);</span>
+<span class="fc" id="L260">        Flowable&lt;Long&gt; f = Flowable</span>
+<span class="fc" id="L261">                .unsafeCreate(so)</span>
+<span class="fc" id="L262">                .timeout(80, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L263">                .retry(retry5);</span>
+
+<span class="fc" id="L265">        FlowableRetryTest.AsyncSubscriber&lt;Long&gt; async = new FlowableRetryTest.AsyncSubscriber&lt;Long&gt;(subscriber);</span>
+
+<span class="fc" id="L267">        f.subscribe(async);</span>
+
+<span class="fc" id="L269">        async.await();</span>
+
+<span class="fc" id="L271">        InOrder inOrder = inOrder(subscriber);</span>
+        // Should fail once
+<span class="fc" id="L273">        inOrder.verify(subscriber, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L274">        inOrder.verify(subscriber, never()).onComplete();</span>
+
+<span class="fc" id="L276">        assertEquals(&quot;Start 6 threads, retry 5 then fail on 6&quot;, 6, so.efforts.get());</span>
+<span class="fc" id="L277">    }</span>
+
+    @Test
+    public void testIssue2826() {
+<span class="fc" id="L281">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L282">        final RuntimeException e = new RuntimeException(&quot;You shall not pass&quot;);</span>
+<span class="fc" id="L283">        final AtomicInteger c = new AtomicInteger();</span>
+<span class="fc" id="L284">        Flowable.just(1).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1) {
+<span class="fc" id="L287">                c.incrementAndGet();</span>
+<span class="fc" id="L288">                throw e;</span>
+            }
+<span class="fc" id="L290">        }).retry(retry5).subscribe(ts);</span>
+
+<span class="fc" id="L292">        ts.assertTerminated();</span>
+<span class="fc" id="L293">        assertEquals(6, c.get());</span>
+<span class="fc" id="L294">        assertEquals(Collections.singletonList(e), ts.errors());</span>
+<span class="fc" id="L295">    }</span>
+
+    @Test
+    public void testJustAndRetry() throws Exception {
+<span class="fc" id="L299">        final AtomicBoolean throwException = new AtomicBoolean(true);</span>
+<span class="fc" id="L300">        int value = Flowable.just(1).map(new Function&lt;Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1) {
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                if (throwException.compareAndSet(true, false)) {</span>
+<span class="fc" id="L304">                    throw new TestException();</span>
+                }
+<span class="fc" id="L306">                return t1;</span>
+            }
+<span class="fc" id="L308">        }).retry(1).blockingSingle();</span>
+
+<span class="fc" id="L310">        assertEquals(1, value);</span>
+<span class="fc" id="L311">    }</span>
+
+    @Test
+    public void testIssue3008RetryWithPredicate() {
+<span class="fc" id="L315">        final List&lt;Long&gt; list = new CopyOnWriteArrayList&lt;Long&gt;();</span>
+<span class="fc" id="L316">        final AtomicBoolean isFirst = new AtomicBoolean(true);</span>
+<span class="fc" id="L317">        Flowable.&lt;Long&gt; just(1L, 2L, 3L).map(new Function&lt;Long, Long&gt;() {</span>
+            @Override
+            public Long apply(Long x) {
+<span class="fc" id="L320">                System.out.println(&quot;map &quot; + x);</span>
+<span class="fc bfc" id="L321" title="All 4 branches covered.">                if (x == 2 &amp;&amp; isFirst.getAndSet(false)) {</span>
+<span class="fc" id="L322">                    throw new RuntimeException(&quot;retryable error&quot;);</span>
+                }
+<span class="fc" id="L324">                return x;</span>
+            }})
+<span class="fc" id="L326">        .retry(new BiPredicate&lt;Integer, Throwable&gt;() {</span>
+            @Override
+            public boolean test(Integer t1, Throwable t2) {
+<span class="fc" id="L329">                return true;</span>
+            }})
+<span class="fc" id="L331">        .forEach(new Consumer&lt;Long&gt;() {</span>
+
+            @Override
+            public void accept(Long t) {
+<span class="fc" id="L335">                System.out.println(t);</span>
+<span class="fc" id="L336">                list.add(t);</span>
+<span class="fc" id="L337">            }});</span>
+<span class="fc" id="L338">        assertEquals(Arrays.asList(1L, 1L, 2L, 3L), list);</span>
+<span class="fc" id="L339">    }</span>
+
+    @Test
+    public void testIssue3008RetryInfinite() {
+<span class="fc" id="L343">        final List&lt;Long&gt; list = new CopyOnWriteArrayList&lt;Long&gt;();</span>
+<span class="fc" id="L344">        final AtomicBoolean isFirst = new AtomicBoolean(true);</span>
+<span class="fc" id="L345">        Flowable.&lt;Long&gt; just(1L, 2L, 3L).map(new Function&lt;Long, Long&gt;() {</span>
+            @Override
+            public Long apply(Long x) {
+<span class="fc" id="L348">                System.out.println(&quot;map &quot; + x);</span>
+<span class="fc bfc" id="L349" title="All 4 branches covered.">                if (x == 2 &amp;&amp; isFirst.getAndSet(false)) {</span>
+<span class="fc" id="L350">                    throw new RuntimeException(&quot;retryable error&quot;);</span>
+                }
+<span class="fc" id="L352">                return x;</span>
+            }})
+<span class="fc" id="L354">        .retry()</span>
+<span class="fc" id="L355">        .forEach(new Consumer&lt;Long&gt;() {</span>
+
+            @Override
+            public void accept(Long t) {
+<span class="fc" id="L359">                System.out.println(t);</span>
+<span class="fc" id="L360">                list.add(t);</span>
+<span class="fc" id="L361">            }});</span>
+<span class="fc" id="L362">        assertEquals(Arrays.asList(1L, 1L, 2L, 3L), list);</span>
+<span class="fc" id="L363">    }</span>
+
+    @Test
+    public void testBackpressure() {
+<span class="fc" id="L367">        final List&lt;Long&gt; requests = new ArrayList&lt;Long&gt;();</span>
+
+<span class="fc" id="L369">        Flowable&lt;Integer&gt; source = Flowable</span>
+<span class="fc" id="L370">                .just(1)</span>
+<span class="fc" id="L371">                .concatWith(Flowable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L372">                .doOnRequest(new LongConsumer() {</span>
+                    @Override
+                    public void accept(long t) {
+<span class="fc" id="L375">                        requests.add(t);</span>
+<span class="fc" id="L376">                    }</span>
+                });
+
+<span class="fc" id="L379">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(3L);</span>
+<span class="fc" id="L380">        source</span>
+<span class="fc" id="L381">        .retry(new BiPredicate&lt;Integer, Throwable&gt;() {</span>
+            @Override
+            public boolean test(Integer t1, Throwable t2) {
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">                return t1 &lt; 4; // FIXME was 3 in 1.x for some reason</span>
+            }
+<span class="fc" id="L386">        }).subscribe(ts);</span>
+
+<span class="fc" id="L388">        assertEquals(Arrays.asList(3L, 2L, 1L), requests);</span>
+<span class="fc" id="L389">        ts.assertValues(1, 1, 1);</span>
+<span class="fc" id="L390">        ts.assertNotComplete();</span>
+<span class="fc" id="L391">        ts.assertNoErrors();</span>
+<span class="fc" id="L392">    }</span>
+
+    @Test
+    public void predicateThrows() {
+
+<span class="fc" id="L397">        TestSubscriber&lt;Object&gt; ts = Flowable.error(new TestException(&quot;Outer&quot;))</span>
+<span class="fc" id="L398">        .retry(new Predicate&lt;Throwable&gt;() {</span>
+            @Override
+            public boolean test(Throwable e) throws Exception {
+<span class="fc" id="L401">                throw new TestException(&quot;Inner&quot;);</span>
+            }
+        })
+<span class="fc" id="L404">        .test()</span>
+<span class="fc" id="L405">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L407">        List&lt;Throwable&gt; errors = TestHelper.compositeList(ts.errors().get(0));</span>
+
+<span class="fc" id="L409">        TestHelper.assertError(errors, 0, TestException.class, &quot;Outer&quot;);</span>
+<span class="fc" id="L410">        TestHelper.assertError(errors, 1, TestException.class, &quot;Inner&quot;);</span>
+<span class="fc" id="L411">    }</span>
+
+    @Test
+    public void dontRetry() {
+<span class="fc" id="L415">        Flowable.error(new TestException(&quot;Outer&quot;))</span>
+<span class="fc" id="L416">        .retry(Functions.alwaysFalse())</span>
+<span class="fc" id="L417">        .test()</span>
+<span class="fc" id="L418">        .assertFailureAndMessage(TestException.class, &quot;Outer&quot;);</span>
+<span class="fc" id="L419">    }</span>
+
+    @Test
+    public void retryDisposeRace() {
+<span class="fc" id="L423">        final TestException ex = new TestException();</span>
+<span class="fc" id="L424">        RxJavaPlugins.setErrorHandler(Functions.emptyConsumer());</span>
+        try {
+<span class="fc bfc" id="L426" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L427">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L429">                final TestSubscriber&lt;Integer&gt; ts = pp.retry(Functions.alwaysTrue()).test();</span>
+
+<span class="fc" id="L431">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L434">                        pp.onError(ex);</span>
+<span class="fc" id="L435">                    }</span>
+                };
+
+<span class="fc" id="L438">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L441">                        ts.cancel();</span>
+<span class="fc" id="L442">                    }</span>
+                };
+
+<span class="fc" id="L445">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L447">                ts.assertEmpty();</span>
+            }
+        } finally {
+<span class="fc" id="L450">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L452">    }</span>
+
+    @Test
+    public void bipredicateThrows() {
+
+<span class="fc" id="L457">        TestSubscriber&lt;Object&gt; ts = Flowable.error(new TestException(&quot;Outer&quot;))</span>
+<span class="fc" id="L458">        .retry(new BiPredicate&lt;Integer, Throwable&gt;() {</span>
+            @Override
+            public boolean test(Integer n, Throwable e) throws Exception {
+<span class="fc" id="L461">                throw new TestException(&quot;Inner&quot;);</span>
+            }
+        })
+<span class="fc" id="L464">        .test()</span>
+<span class="fc" id="L465">        .assertFailure(CompositeException.class);</span>
+
+<span class="fc" id="L467">        List&lt;Throwable&gt; errors = TestHelper.compositeList(ts.errors().get(0));</span>
+
+<span class="fc" id="L469">        TestHelper.assertError(errors, 0, TestException.class, &quot;Outer&quot;);</span>
+<span class="fc" id="L470">        TestHelper.assertError(errors, 1, TestException.class, &quot;Inner&quot;);</span>
+<span class="fc" id="L471">    }</span>
+
+    @Test
+    public void retryBiPredicateDisposeRace() {
+<span class="fc" id="L475">        RxJavaPlugins.setErrorHandler(Functions.emptyConsumer());</span>
+        try {
+<span class="fc bfc" id="L477" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L478">                final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L480">                final TestSubscriber&lt;Integer&gt; ts = pp.retry(new BiPredicate&lt;Object, Object&gt;() {</span>
+                    @Override
+                    public boolean test(Object t1, Object t2) throws Exception {
+<span class="fc" id="L483">                        return true;</span>
+                    }
+<span class="fc" id="L485">                }).test();</span>
+
+<span class="fc" id="L487">                final TestException ex = new TestException();</span>
+
+<span class="fc" id="L489">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L492">                        pp.onError(ex);</span>
+<span class="fc" id="L493">                    }</span>
+                };
+
+<span class="fc" id="L496">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L499">                        ts.cancel();</span>
+<span class="fc" id="L500">                    }</span>
+                };
+
+<span class="fc" id="L503">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L505">                ts.assertEmpty();</span>
+            }
+        } finally {
+<span class="fc" id="L508">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L510">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

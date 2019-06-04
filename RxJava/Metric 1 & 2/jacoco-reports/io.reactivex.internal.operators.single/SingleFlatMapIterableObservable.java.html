@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleFlatMapIterableObservable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleFlatMapIterableObservable.java</span></div><h1>SingleFlatMapIterableObservable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.Iterator;
+
+import io.reactivex.*;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.observers.BasicIntQueueDisposable;
+
+/**
+ * Maps a success value into an Iterable and streams it back as an Observable.
+ *
+ * @param &lt;T&gt; the source value type
+ * @param &lt;R&gt; the element type of the Iterable
+ */
+public final class SingleFlatMapIterableObservable&lt;T, R&gt; extends Observable&lt;R&gt; {
+
+    final SingleSource&lt;T&gt; source;
+
+    final Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper;
+
+    public SingleFlatMapIterableObservable(SingleSource&lt;T&gt; source,
+<span class="fc" id="L40">            Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper) {</span>
+<span class="fc" id="L41">        this.source = source;</span>
+<span class="fc" id="L42">        this.mapper = mapper;</span>
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super R&gt; observer) {
+<span class="fc" id="L47">        source.subscribe(new FlatMapIterableObserver&lt;T, R&gt;(observer, mapper));</span>
+<span class="fc" id="L48">    }</span>
+
+    static final class FlatMapIterableObserver&lt;T, R&gt;
+    extends BasicIntQueueDisposable&lt;R&gt;
+    implements SingleObserver&lt;T&gt; {
+
+        private static final long serialVersionUID = -8938804753851907758L;
+
+        final Observer&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper;
+
+        Disposable upstream;
+
+        volatile Iterator&lt;? extends R&gt; it;
+
+        volatile boolean cancelled;
+
+        boolean outputFused;
+
+        FlatMapIterableObserver(Observer&lt;? super R&gt; actual,
+<span class="fc" id="L69">                Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper) {</span>
+<span class="fc" id="L70">            this.downstream = actual;</span>
+<span class="fc" id="L71">            this.mapper = mapper;</span>
+<span class="fc" id="L72">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (DisposableHelper.validate(this.upstream, d)) {</span>
+<span class="fc" id="L77">                this.upstream = d;</span>
+
+<span class="fc" id="L79">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L81">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L85">            Observer&lt;? super R&gt; a = downstream;</span>
+            Iterator&lt;? extends R&gt; iterator;
+            boolean has;
+            try {
+<span class="fc" id="L89">                iterator = mapper.apply(value).iterator();</span>
+
+<span class="fc" id="L91">                has = iterator.hasNext();</span>
+<span class="fc" id="L92">            } catch (Throwable ex) {</span>
+<span class="fc" id="L93">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L94">                downstream.onError(ex);</span>
+<span class="fc" id="L95">                return;</span>
+<span class="fc" id="L96">            }</span>
+
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            if (!has) {</span>
+<span class="fc" id="L99">                a.onComplete();</span>
+<span class="fc" id="L100">                return;</span>
+            }
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            if (outputFused) {</span>
+<span class="fc" id="L104">                it = iterator;</span>
+<span class="fc" id="L105">                a.onNext(null);</span>
+<span class="fc" id="L106">                a.onComplete();</span>
+            } else {
+                for (;;) {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L110">                        return;</span>
+                    }
+
+                    R v;
+
+                    try {
+<span class="fc" id="L116">                        v = iterator.next();</span>
+<span class="fc" id="L117">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L118">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L119">                        a.onError(ex);</span>
+<span class="fc" id="L120">                        return;</span>
+<span class="fc" id="L121">                    }</span>
+
+<span class="fc" id="L123">                    a.onNext(v);</span>
+
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L126">                        return;</span>
+                    }
+
+                    boolean b;
+
+                    try {
+<span class="fc" id="L132">                        b = iterator.hasNext();</span>
+<span class="fc" id="L133">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L134">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L135">                        a.onError(ex);</span>
+<span class="fc" id="L136">                        return;</span>
+<span class="fc" id="L137">                    }</span>
+
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                    if (!b) {</span>
+<span class="fc" id="L140">                        a.onComplete();</span>
+<span class="fc" id="L141">                        return;</span>
+                    }
+<span class="fc" id="L143">                }</span>
+            }
+<span class="fc" id="L145">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L149">            upstream = DisposableHelper.DISPOSED;</span>
+<span class="fc" id="L150">            downstream.onError(e);</span>
+<span class="fc" id="L151">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L155">            cancelled = true;</span>
+<span class="fc" id="L156">            upstream.dispose();</span>
+<span class="fc" id="L157">            upstream = DisposableHelper.DISPOSED;</span>
+<span class="fc" id="L158">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L162">            return cancelled;</span>
+        }
+
+        @Override
+        public int requestFusion(int mode) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if ((mode &amp; ASYNC) != 0) {</span>
+<span class="fc" id="L168">                outputFused = true;</span>
+<span class="fc" id="L169">                return ASYNC;</span>
+            }
+<span class="fc" id="L171">            return NONE;</span>
+        }
+
+        @Override
+        public void clear() {
+<span class="fc" id="L176">            it = null;</span>
+<span class="fc" id="L177">        }</span>
+
+        @Override
+        public boolean isEmpty() {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            return it == null;</span>
+        }
+
+        @Nullable
+        @Override
+        public R poll() throws Exception {
+<span class="fc" id="L187">            Iterator&lt;? extends R&gt; iterator = it;</span>
+
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (iterator != null) {</span>
+<span class="fc" id="L190">                R v = ObjectHelper.requireNonNull(iterator.next(), &quot;The iterator returned a null value&quot;);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                if (!iterator.hasNext()) {</span>
+<span class="fc" id="L192">                    it = null;</span>
+                }
+<span class="fc" id="L194">                return v;</span>
+            }
+<span class="fc" id="L196">            return null;</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

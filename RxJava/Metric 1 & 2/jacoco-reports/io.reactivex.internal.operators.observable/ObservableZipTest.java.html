@@ -1,0 +1,1432 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableZipTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableZipTest.java</span></div><h1>ObservableZipTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.mockito.InOrder;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L38">public class ObservableZipTest {</span>
+    BiFunction&lt;String, String, String&gt; concat2Strings;
+    PublishSubject&lt;String&gt; s1;
+    PublishSubject&lt;String&gt; s2;
+    Observable&lt;String&gt; zipped;
+
+    Observer&lt;String&gt; observer;
+    InOrder inOrder;
+
+    @Before
+    public void setUp() {
+<span class="fc" id="L49">        concat2Strings = new BiFunction&lt;String, String, String&gt;() {</span>
+            @Override
+            public String apply(String t1, String t2) {
+<span class="fc" id="L52">                return t1 + &quot;-&quot; + t2;</span>
+            }
+        };
+
+<span class="fc" id="L56">        s1 = PublishSubject.create();</span>
+<span class="fc" id="L57">        s2 = PublishSubject.create();</span>
+<span class="fc" id="L58">        zipped = Observable.zip(s1, s2, concat2Strings);</span>
+
+<span class="fc" id="L60">        observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L61">        inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L63">        zipped.subscribe(observer);</span>
+<span class="fc" id="L64">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void testCollectionSizeDifferentThanFunction() {
+<span class="fc" id="L69">        Function&lt;Object[], String&gt; zipr = Functions.toFunction(getConcatStringIntegerIntArrayZipr());</span>
+        //Function3&lt;String, Integer, int[], String&gt;
+
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L73">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+        @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L76">        Collection ws = java.util.Collections.singleton(Observable.just(&quot;one&quot;, &quot;two&quot;));</span>
+<span class="fc" id="L77">        Observable&lt;String&gt; w = Observable.zip(ws, zipr);</span>
+<span class="fc" id="L78">        w.subscribe(observer);</span>
+
+<span class="fc" id="L80">        verify(observer, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L81">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L82">        verify(observer, never()).onNext(any(String.class));</span>
+<span class="fc" id="L83">    }</span>
+
+    @Test
+    public void testStartpingDifferentLengthObservableSequences1() {
+<span class="fc" id="L87">        Observer&lt;String&gt; w = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L89">        TestObservable w1 = new TestObservable();</span>
+<span class="fc" id="L90">        TestObservable w2 = new TestObservable();</span>
+<span class="fc" id="L91">        TestObservable w3 = new TestObservable();</span>
+
+<span class="fc" id="L93">        Observable&lt;String&gt; zipW = Observable.zip(</span>
+<span class="fc" id="L94">                Observable.unsafeCreate(w1), Observable.unsafeCreate(w2),</span>
+<span class="fc" id="L95">                Observable.unsafeCreate(w3), getConcat3StringsZipr());</span>
+<span class="fc" id="L96">        zipW.subscribe(w);</span>
+
+        /* simulate sending data */
+        // once for w1
+<span class="fc" id="L100">        w1.observer.onNext(&quot;1a&quot;);</span>
+<span class="fc" id="L101">        w1.observer.onComplete();</span>
+        // twice for w2
+<span class="fc" id="L103">        w2.observer.onNext(&quot;2a&quot;);</span>
+<span class="fc" id="L104">        w2.observer.onNext(&quot;2b&quot;);</span>
+<span class="fc" id="L105">        w2.observer.onComplete();</span>
+        // 4 times for w3
+<span class="fc" id="L107">        w3.observer.onNext(&quot;3a&quot;);</span>
+<span class="fc" id="L108">        w3.observer.onNext(&quot;3b&quot;);</span>
+<span class="fc" id="L109">        w3.observer.onNext(&quot;3c&quot;);</span>
+<span class="fc" id="L110">        w3.observer.onNext(&quot;3d&quot;);</span>
+<span class="fc" id="L111">        w3.observer.onComplete();</span>
+
+        /* we should have been called 1 time on the Observer */
+<span class="fc" id="L114">        InOrder io = inOrder(w);</span>
+<span class="fc" id="L115">        io.verify(w).onNext(&quot;1a2a3a&quot;);</span>
+
+<span class="fc" id="L117">        io.verify(w, times(1)).onComplete();</span>
+<span class="fc" id="L118">    }</span>
+
+    @Test
+    public void testStartpingDifferentLengthObservableSequences2() {
+<span class="fc" id="L122">        Observer&lt;String&gt; w = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L124">        TestObservable w1 = new TestObservable();</span>
+<span class="fc" id="L125">        TestObservable w2 = new TestObservable();</span>
+<span class="fc" id="L126">        TestObservable w3 = new TestObservable();</span>
+
+<span class="fc" id="L128">        Observable&lt;String&gt; zipW = Observable.zip(Observable.unsafeCreate(w1), Observable.unsafeCreate(w2), Observable.unsafeCreate(w3), getConcat3StringsZipr());</span>
+<span class="fc" id="L129">        zipW.subscribe(w);</span>
+
+        /* simulate sending data */
+        // 4 times for w1
+<span class="fc" id="L133">        w1.observer.onNext(&quot;1a&quot;);</span>
+<span class="fc" id="L134">        w1.observer.onNext(&quot;1b&quot;);</span>
+<span class="fc" id="L135">        w1.observer.onNext(&quot;1c&quot;);</span>
+<span class="fc" id="L136">        w1.observer.onNext(&quot;1d&quot;);</span>
+<span class="fc" id="L137">        w1.observer.onComplete();</span>
+        // twice for w2
+<span class="fc" id="L139">        w2.observer.onNext(&quot;2a&quot;);</span>
+<span class="fc" id="L140">        w2.observer.onNext(&quot;2b&quot;);</span>
+<span class="fc" id="L141">        w2.observer.onComplete();</span>
+        // 1 times for w3
+<span class="fc" id="L143">        w3.observer.onNext(&quot;3a&quot;);</span>
+<span class="fc" id="L144">        w3.observer.onComplete();</span>
+
+        /* we should have been called 1 time on the Observer */
+<span class="fc" id="L147">        InOrder io = inOrder(w);</span>
+<span class="fc" id="L148">        io.verify(w).onNext(&quot;1a2a3a&quot;);</span>
+
+<span class="fc" id="L150">        io.verify(w, times(1)).onComplete();</span>
+
+<span class="fc" id="L152">    }</span>
+
+<span class="fc" id="L154">    BiFunction&lt;Object, Object, String&gt; zipr2 = new BiFunction&lt;Object, Object, String&gt;() {</span>
+
+        @Override
+        public String apply(Object t1, Object t2) {
+<span class="fc" id="L158">            return &quot;&quot; + t1 + t2;</span>
+        }
+
+    };
+<span class="fc" id="L162">    Function3&lt;Object, Object, Object, String&gt; zipr3 = new Function3&lt;Object, Object, Object, String&gt;() {</span>
+
+        @Override
+        public String apply(Object t1, Object t2, Object t3) {
+<span class="fc" id="L166">            return &quot;&quot; + t1 + t2 + t3;</span>
+        }
+
+    };
+
+    /**
+     * Testing internal private logic due to the complexity so I want to use TDD to test as a I build it rather than relying purely on the overall functionality expected by the public methods.
+     */
+    @Test
+    public void testAggregatorSimple() {
+<span class="fc" id="L176">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L177">        PublishSubject&lt;String&gt; r2 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L179">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L181">        Observable.zip(r1, r2, zipr2).subscribe(observer);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L184">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L185">        r2.onNext(&quot;world&quot;);</span>
+
+<span class="fc" id="L187">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L189">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L190">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L191">        inOrder.verify(observer, times(1)).onNext(&quot;helloworld&quot;);</span>
+
+<span class="fc" id="L193">        r1.onNext(&quot;hello &quot;);</span>
+<span class="fc" id="L194">        r2.onNext(&quot;again&quot;);</span>
+
+<span class="fc" id="L196">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L197">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L198">        inOrder.verify(observer, times(1)).onNext(&quot;hello again&quot;);</span>
+
+<span class="fc" id="L200">        r1.onComplete();</span>
+<span class="fc" id="L201">        r2.onComplete();</span>
+
+<span class="fc" id="L203">        inOrder.verify(observer, never()).onNext(anyString());</span>
+<span class="fc" id="L204">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L205">    }</span>
+
+    @Test
+    public void testAggregatorDifferentSizedResultsWithOnComplete() {
+        /* create the aggregator which will execute the zip function when all Observables provide values */
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L211">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L212">        PublishSubject&lt;String&gt; r2 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L214">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L215">        Observable.zip(r1, r2, zipr2).subscribe(observer);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L218">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L219">        r2.onNext(&quot;world&quot;);</span>
+<span class="fc" id="L220">        r2.onComplete();</span>
+
+<span class="fc" id="L222">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L224">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L225">        inOrder.verify(observer, times(1)).onNext(&quot;helloworld&quot;);</span>
+<span class="fc" id="L226">        inOrder.verify(observer, times(1)).onComplete();</span>
+
+<span class="fc" id="L228">        r1.onNext(&quot;hi&quot;);</span>
+<span class="fc" id="L229">        r1.onComplete();</span>
+
+<span class="fc" id="L231">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L232">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L233">        inOrder.verify(observer, never()).onNext(anyString());</span>
+<span class="fc" id="L234">    }</span>
+
+    @Test
+    public void testAggregateMultipleTypes() {
+<span class="fc" id="L238">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L239">        PublishSubject&lt;Integer&gt; r2 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L241">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L243">        Observable.zip(r1, r2, zipr2).subscribe(observer);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L246">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L247">        r2.onNext(1);</span>
+<span class="fc" id="L248">        r2.onComplete();</span>
+
+<span class="fc" id="L250">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L252">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L253">        inOrder.verify(observer, times(1)).onNext(&quot;hello1&quot;);</span>
+<span class="fc" id="L254">        inOrder.verify(observer, times(1)).onComplete();</span>
+
+<span class="fc" id="L256">        r1.onNext(&quot;hi&quot;);</span>
+<span class="fc" id="L257">        r1.onComplete();</span>
+
+<span class="fc" id="L259">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L260">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L261">        inOrder.verify(observer, never()).onNext(anyString());</span>
+<span class="fc" id="L262">    }</span>
+
+    @Test
+    public void testAggregate3Types() {
+<span class="fc" id="L266">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L267">        PublishSubject&lt;Integer&gt; r2 = PublishSubject.create();</span>
+<span class="fc" id="L268">        PublishSubject&lt;List&lt;Integer&gt;&gt; r3 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L270">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L272">        Observable.zip(r1, r2, r3, zipr3).subscribe(observer);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L275">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L276">        r2.onNext(2);</span>
+<span class="fc" id="L277">        r3.onNext(Arrays.asList(5, 6, 7));</span>
+
+<span class="fc" id="L279">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L280">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L281">        verify(observer, times(1)).onNext(&quot;hello2[5, 6, 7]&quot;);</span>
+<span class="fc" id="L282">    }</span>
+
+    @Test
+    public void testAggregatorsWithDifferentSizesAndTiming() {
+<span class="fc" id="L286">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L287">        PublishSubject&lt;String&gt; r2 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L289">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L291">        Observable.zip(r1, r2, zipr2).subscribe(observer);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L294">        r1.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L295">        r1.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L296">        r1.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L297">        r2.onNext(&quot;A&quot;);</span>
+
+<span class="fc" id="L299">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L300">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L301">        verify(observer, times(1)).onNext(&quot;oneA&quot;);</span>
+
+<span class="fc" id="L303">        r1.onNext(&quot;four&quot;);</span>
+<span class="fc" id="L304">        r1.onComplete();</span>
+<span class="fc" id="L305">        r2.onNext(&quot;B&quot;);</span>
+<span class="fc" id="L306">        verify(observer, times(1)).onNext(&quot;twoB&quot;);</span>
+<span class="fc" id="L307">        r2.onNext(&quot;C&quot;);</span>
+<span class="fc" id="L308">        verify(observer, times(1)).onNext(&quot;threeC&quot;);</span>
+<span class="fc" id="L309">        r2.onNext(&quot;D&quot;);</span>
+<span class="fc" id="L310">        verify(observer, times(1)).onNext(&quot;fourD&quot;);</span>
+<span class="fc" id="L311">        r2.onNext(&quot;E&quot;);</span>
+<span class="fc" id="L312">        verify(observer, never()).onNext(&quot;E&quot;);</span>
+<span class="fc" id="L313">        r2.onComplete();</span>
+
+<span class="fc" id="L315">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L316">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L317">    }</span>
+
+    @Test
+    public void testAggregatorError() {
+<span class="fc" id="L321">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L322">        PublishSubject&lt;String&gt; r2 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L324">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L326">        Observable.zip(r1, r2, zipr2).subscribe(observer);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L329">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L330">        r2.onNext(&quot;world&quot;);</span>
+
+<span class="fc" id="L332">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L333">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L334">        verify(observer, times(1)).onNext(&quot;helloworld&quot;);</span>
+
+<span class="fc" id="L336">        r1.onError(new RuntimeException(&quot;&quot;));</span>
+<span class="fc" id="L337">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L338">        r2.onNext(&quot;again&quot;);</span>
+
+<span class="fc" id="L340">        verify(observer, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L341">        verify(observer, never()).onComplete();</span>
+        // we don't want to be called again after an error
+<span class="fc" id="L343">        verify(observer, times(0)).onNext(&quot;helloagain&quot;);</span>
+<span class="fc" id="L344">    }</span>
+
+    @Test
+    public void testAggregatorUnsubscribe() {
+<span class="fc" id="L348">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L349">        PublishSubject&lt;String&gt; r2 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L351">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L352">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+
+<span class="fc" id="L354">        Observable.zip(r1, r2, zipr2).subscribe(to);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L357">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L358">        r2.onNext(&quot;world&quot;);</span>
+
+<span class="fc" id="L360">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L361">        verify(observer, never()).onComplete();</span>
+<span class="fc" id="L362">        verify(observer, times(1)).onNext(&quot;helloworld&quot;);</span>
+
+<span class="fc" id="L364">        to.dispose();</span>
+<span class="fc" id="L365">        r1.onNext(&quot;hello&quot;);</span>
+<span class="fc" id="L366">        r2.onNext(&quot;again&quot;);</span>
+
+<span class="fc" id="L368">        verify(observer, times(0)).onError(any(Throwable.class));</span>
+<span class="fc" id="L369">        verify(observer, never()).onComplete();</span>
+        // we don't want to be called again after an error
+<span class="fc" id="L371">        verify(observer, times(0)).onNext(&quot;helloagain&quot;);</span>
+<span class="fc" id="L372">    }</span>
+
+    @Test
+    public void testAggregatorEarlyCompletion() {
+<span class="fc" id="L376">        PublishSubject&lt;String&gt; r1 = PublishSubject.create();</span>
+<span class="fc" id="L377">        PublishSubject&lt;String&gt; r2 = PublishSubject.create();</span>
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L379">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L381">        Observable.zip(r1, r2, zipr2).subscribe(observer);</span>
+
+        /* simulate the Observables pushing data into the aggregator */
+<span class="fc" id="L384">        r1.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L385">        r1.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L386">        r1.onComplete();</span>
+<span class="fc" id="L387">        r2.onNext(&quot;A&quot;);</span>
+
+<span class="fc" id="L389">        InOrder inOrder = inOrder(observer);</span>
+
+<span class="fc" id="L391">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L392">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L393">        inOrder.verify(observer, times(1)).onNext(&quot;oneA&quot;);</span>
+
+<span class="fc" id="L395">        r2.onComplete();</span>
+
+<span class="fc" id="L397">        inOrder.verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L398">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L399">        inOrder.verify(observer, never()).onNext(anyString());</span>
+<span class="fc" id="L400">    }</span>
+
+    @Test
+    public void testStart2Types() {
+<span class="fc" id="L404">        BiFunction&lt;String, Integer, String&gt; zipr = getConcatStringIntegerZipr();</span>
+
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L407">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L409">        Observable&lt;String&gt; w = Observable.zip(Observable.just(&quot;one&quot;, &quot;two&quot;), Observable.just(2, 3, 4), zipr);</span>
+<span class="fc" id="L410">        w.subscribe(observer);</span>
+
+<span class="fc" id="L412">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L413">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L414">        verify(observer, times(1)).onNext(&quot;one2&quot;);</span>
+<span class="fc" id="L415">        verify(observer, times(1)).onNext(&quot;two3&quot;);</span>
+<span class="fc" id="L416">        verify(observer, never()).onNext(&quot;4&quot;);</span>
+<span class="fc" id="L417">    }</span>
+
+    @Test
+    public void testStart3Types() {
+<span class="fc" id="L421">        Function3&lt;String, Integer, int[], String&gt; zipr = getConcatStringIntegerIntArrayZipr();</span>
+
+        /* define an Observer to receive aggregated events */
+<span class="fc" id="L424">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L426">        Observable&lt;String&gt; w = Observable.zip(Observable.just(&quot;one&quot;, &quot;two&quot;), Observable.just(2), Observable.just(new int[] { 4, 5, 6 }), zipr);</span>
+<span class="fc" id="L427">        w.subscribe(observer);</span>
+
+<span class="fc" id="L429">        verify(observer, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L430">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L431">        verify(observer, times(1)).onNext(&quot;one2[4, 5, 6]&quot;);</span>
+<span class="fc" id="L432">        verify(observer, never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L433">    }</span>
+
+    @Test
+    public void testOnNextExceptionInvokesOnError() {
+<span class="fc" id="L437">        BiFunction&lt;Integer, Integer, Integer&gt; zipr = getDivideZipr();</span>
+
+<span class="fc" id="L439">        Observer&lt;Integer&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L441">        Observable&lt;Integer&gt; w = Observable.zip(Observable.just(10, 20, 30), Observable.just(0, 1, 2), zipr);</span>
+<span class="fc" id="L442">        w.subscribe(observer);</span>
+
+<span class="fc" id="L444">        verify(observer, times(1)).onError(any(Throwable.class));</span>
+<span class="fc" id="L445">    }</span>
+
+    @Test
+    public void testOnFirstCompletion() {
+<span class="fc" id="L449">        PublishSubject&lt;String&gt; oA = PublishSubject.create();</span>
+<span class="fc" id="L450">        PublishSubject&lt;String&gt; oB = PublishSubject.create();</span>
+
+<span class="fc" id="L452">        Observer&lt;String&gt; obs = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L454">        Observable&lt;String&gt; o = Observable.zip(oA, oB, getConcat2Strings());</span>
+<span class="fc" id="L455">        o.subscribe(obs);</span>
+
+<span class="fc" id="L457">        InOrder io = inOrder(obs);</span>
+
+<span class="fc" id="L459">        oA.onNext(&quot;a1&quot;);</span>
+<span class="fc" id="L460">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L461">        oB.onNext(&quot;b1&quot;);</span>
+<span class="fc" id="L462">        io.verify(obs, times(1)).onNext(&quot;a1-b1&quot;);</span>
+<span class="fc" id="L463">        oB.onNext(&quot;b2&quot;);</span>
+<span class="fc" id="L464">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L465">        oA.onNext(&quot;a2&quot;);</span>
+<span class="fc" id="L466">        io.verify(obs, times(1)).onNext(&quot;a2-b2&quot;);</span>
+
+<span class="fc" id="L468">        oA.onNext(&quot;a3&quot;);</span>
+<span class="fc" id="L469">        oA.onNext(&quot;a4&quot;);</span>
+<span class="fc" id="L470">        oA.onNext(&quot;a5&quot;);</span>
+<span class="fc" id="L471">        oA.onComplete();</span>
+
+        // SHOULD ONCOMPLETE BE EMITTED HERE INSTEAD OF WAITING
+        // FOR B3, B4, B5 TO BE EMITTED?
+
+<span class="fc" id="L476">        oB.onNext(&quot;b3&quot;);</span>
+<span class="fc" id="L477">        oB.onNext(&quot;b4&quot;);</span>
+<span class="fc" id="L478">        oB.onNext(&quot;b5&quot;);</span>
+
+<span class="fc" id="L480">        io.verify(obs, times(1)).onNext(&quot;a3-b3&quot;);</span>
+<span class="fc" id="L481">        io.verify(obs, times(1)).onNext(&quot;a4-b4&quot;);</span>
+<span class="fc" id="L482">        io.verify(obs, times(1)).onNext(&quot;a5-b5&quot;);</span>
+
+        // WE RECEIVE THE ONCOMPLETE HERE
+<span class="fc" id="L485">        io.verify(obs, times(1)).onComplete();</span>
+
+<span class="fc" id="L487">        oB.onNext(&quot;b6&quot;);</span>
+<span class="fc" id="L488">        oB.onNext(&quot;b7&quot;);</span>
+<span class="fc" id="L489">        oB.onNext(&quot;b8&quot;);</span>
+<span class="fc" id="L490">        oB.onNext(&quot;b9&quot;);</span>
+        // never completes (infinite stream for example)
+
+        // we should receive nothing else despite oB continuing after oA completed
+<span class="fc" id="L494">        io.verifyNoMoreInteractions();</span>
+<span class="fc" id="L495">    }</span>
+
+    @Test
+    public void testOnErrorTermination() {
+<span class="fc" id="L499">        PublishSubject&lt;String&gt; oA = PublishSubject.create();</span>
+<span class="fc" id="L500">        PublishSubject&lt;String&gt; oB = PublishSubject.create();</span>
+
+<span class="fc" id="L502">        Observer&lt;String&gt; obs = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L504">        Observable&lt;String&gt; o = Observable.zip(oA, oB, getConcat2Strings());</span>
+<span class="fc" id="L505">        o.subscribe(obs);</span>
+
+<span class="fc" id="L507">        InOrder io = inOrder(obs);</span>
+
+<span class="fc" id="L509">        oA.onNext(&quot;a1&quot;);</span>
+<span class="fc" id="L510">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L511">        oB.onNext(&quot;b1&quot;);</span>
+<span class="fc" id="L512">        io.verify(obs, times(1)).onNext(&quot;a1-b1&quot;);</span>
+<span class="fc" id="L513">        oB.onNext(&quot;b2&quot;);</span>
+<span class="fc" id="L514">        io.verify(obs, never()).onNext(anyString());</span>
+<span class="fc" id="L515">        oA.onNext(&quot;a2&quot;);</span>
+<span class="fc" id="L516">        io.verify(obs, times(1)).onNext(&quot;a2-b2&quot;);</span>
+
+<span class="fc" id="L518">        oA.onNext(&quot;a3&quot;);</span>
+<span class="fc" id="L519">        oA.onNext(&quot;a4&quot;);</span>
+<span class="fc" id="L520">        oA.onNext(&quot;a5&quot;);</span>
+<span class="fc" id="L521">        oA.onError(new RuntimeException(&quot;forced failure&quot;));</span>
+
+        // it should emit failure immediately
+<span class="fc" id="L524">        io.verify(obs, times(1)).onError(any(RuntimeException.class));</span>
+
+<span class="fc" id="L526">        oB.onNext(&quot;b3&quot;);</span>
+<span class="fc" id="L527">        oB.onNext(&quot;b4&quot;);</span>
+<span class="fc" id="L528">        oB.onNext(&quot;b5&quot;);</span>
+<span class="fc" id="L529">        oB.onNext(&quot;b6&quot;);</span>
+<span class="fc" id="L530">        oB.onNext(&quot;b7&quot;);</span>
+<span class="fc" id="L531">        oB.onNext(&quot;b8&quot;);</span>
+<span class="fc" id="L532">        oB.onNext(&quot;b9&quot;);</span>
+        // never completes (infinite stream for example)
+
+        // we should receive nothing else despite oB continuing after oA completed
+<span class="fc" id="L536">        io.verifyNoMoreInteractions();</span>
+<span class="fc" id="L537">    }</span>
+
+    private BiFunction&lt;String, String, String&gt; getConcat2Strings() {
+<span class="fc" id="L540">        return new BiFunction&lt;String, String, String&gt;() {</span>
+
+            @Override
+            public String apply(String t1, String t2) {
+<span class="fc" id="L544">                return t1 + &quot;-&quot; + t2;</span>
+            }
+        };
+    }
+
+    private BiFunction&lt;Integer, Integer, Integer&gt; getDivideZipr() {
+<span class="fc" id="L550">        BiFunction&lt;Integer, Integer, Integer&gt; zipr = new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer i1, Integer i2) {
+<span class="nc" id="L554">                return i1 / i2;</span>
+            }
+
+        };
+<span class="fc" id="L558">        return zipr;</span>
+    }
+
+    private Function3&lt;String, String, String, String&gt; getConcat3StringsZipr() {
+<span class="fc" id="L562">        Function3&lt;String, String, String, String&gt; zipr = new Function3&lt;String, String, String, String&gt;() {</span>
+
+            @Override
+            public String apply(String a1, String a2, String a3) {
+<span class="pc bpc" id="L566" title="1 of 2 branches missed.">                if (a1 == null) {</span>
+<span class="nc" id="L567">                    a1 = &quot;&quot;;</span>
+                }
+<span class="pc bpc" id="L569" title="1 of 2 branches missed.">                if (a2 == null) {</span>
+<span class="nc" id="L570">                    a2 = &quot;&quot;;</span>
+                }
+<span class="pc bpc" id="L572" title="1 of 2 branches missed.">                if (a3 == null) {</span>
+<span class="nc" id="L573">                    a3 = &quot;&quot;;</span>
+                }
+<span class="fc" id="L575">                return a1 + a2 + a3;</span>
+            }
+
+        };
+<span class="fc" id="L579">        return zipr;</span>
+    }
+
+    private BiFunction&lt;String, Integer, String&gt; getConcatStringIntegerZipr() {
+<span class="fc" id="L583">        BiFunction&lt;String, Integer, String&gt; zipr = new BiFunction&lt;String, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(String s, Integer i) {
+<span class="fc" id="L587">                return getStringValue(s) + getStringValue(i);</span>
+            }
+
+        };
+<span class="fc" id="L591">        return zipr;</span>
+    }
+
+    private Function3&lt;String, Integer, int[], String&gt; getConcatStringIntegerIntArrayZipr() {
+<span class="fc" id="L595">        Function3&lt;String, Integer, int[], String&gt; zipr = new Function3&lt;String, Integer, int[], String&gt;() {</span>
+
+            @Override
+            public String apply(String s, Integer i, int[] iArray) {
+<span class="fc" id="L599">                return getStringValue(s) + getStringValue(i) + getStringValue(iArray);</span>
+            }
+
+        };
+<span class="fc" id="L603">        return zipr;</span>
+    }
+
+    private static String getStringValue(Object o) {
+<span class="pc bpc" id="L607" title="1 of 2 branches missed.">        if (o == null) {</span>
+<span class="nc" id="L608">            return &quot;&quot;;</span>
+        } else {
+<span class="fc bfc" id="L610" title="All 2 branches covered.">            if (o instanceof int[]) {</span>
+<span class="fc" id="L611">                return Arrays.toString((int[]) o);</span>
+            } else {
+<span class="fc" id="L613">                return String.valueOf(o);</span>
+            }
+        }
+    }
+
+    private static class TestObservable implements ObservableSource&lt;String&gt; {
+
+        Observer&lt;? super String&gt; observer;
+
+        @Override
+        public void subscribe(Observer&lt;? super String&gt; observer) {
+            // just store the variable where it can be accessed so we can manually trigger it
+<span class="fc" id="L625">            this.observer = observer;</span>
+<span class="fc" id="L626">            observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L627">        }</span>
+
+    }
+
+    @Test
+    public void testFirstCompletesThenSecondInfinite() {
+<span class="fc" id="L633">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L634">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L635">        s1.onComplete();</span>
+<span class="fc" id="L636">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L637">        inOrder.verify(observer, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L638">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L639">        inOrder.verify(observer, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L640">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L641">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L642">    }</span>
+
+    @Test
+    public void testSecondInfiniteThenFirstCompletes() {
+<span class="fc" id="L646">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L647">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L648">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L649">        inOrder.verify(observer, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L650">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L651">        inOrder.verify(observer, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L652">        s1.onComplete();</span>
+<span class="fc" id="L653">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L654">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L655">    }</span>
+
+    @Test
+    public void testSecondCompletesThenFirstInfinite() {
+<span class="fc" id="L659">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L660">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L661">        s2.onComplete();</span>
+<span class="fc" id="L662">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L663">        inOrder.verify(observer, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L664">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L665">        inOrder.verify(observer, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L666">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L667">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L668">    }</span>
+
+    @Test
+    public void testFirstInfiniteThenSecondCompletes() {
+<span class="fc" id="L672">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L673">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L674">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L675">        inOrder.verify(observer, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L676">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L677">        inOrder.verify(observer, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L678">        s2.onComplete();</span>
+<span class="fc" id="L679">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L680">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L681">    }</span>
+
+    @Test
+    public void testFirstFails() {
+<span class="fc" id="L685">        s2.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L686">        s1.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L688">        inOrder.verify(observer, times(1)).onError(any(RuntimeException.class));</span>
+
+<span class="fc" id="L690">        s2.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L691">        s1.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L692">        s1.onNext(&quot;2&quot;);</span>
+
+<span class="fc" id="L694">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L695">        inOrder.verify(observer, never()).onNext(any(String.class));</span>
+<span class="fc" id="L696">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L697">    }</span>
+
+    @Test
+    public void testSecondFails() {
+<span class="fc" id="L701">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L702">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L703">        s2.onError(new RuntimeException(&quot;Forced failure&quot;));</span>
+
+<span class="fc" id="L705">        inOrder.verify(observer, times(1)).onError(any(RuntimeException.class));</span>
+
+<span class="fc" id="L707">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L708">        s2.onNext(&quot;2&quot;);</span>
+
+<span class="fc" id="L710">        inOrder.verify(observer, never()).onComplete();</span>
+<span class="fc" id="L711">        inOrder.verify(observer, never()).onNext(any(String.class));</span>
+<span class="fc" id="L712">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L713">    }</span>
+
+    @Test
+    public void testStartWithOnCompletedTwice() {
+        // issue: https://groups.google.com/forum/#!topic/rxjava/79cWTv3TFp0
+        // The problem is the original &quot;zip&quot; implementation does not wrap
+        // an internal observer with a SafeSubscriber. However, in the &quot;zip&quot;,
+        // it may calls &quot;onComplete&quot; twice. That breaks the Rx contract.
+
+        // This test tries to emulate this case.
+        // As &quot;TestHelper.mockObserver()&quot; will create an instance in the package &quot;rx&quot;,
+        // we need to wrap &quot;TestHelper.mockObserver()&quot; with an observer instance
+        // which is in the package &quot;rx.operators&quot;.
+<span class="fc" id="L726">        final Observer&lt;Integer&gt; observer = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L728">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L729">                Observable.just(1), new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                    @Override
+                    public Integer apply(Integer a, Integer b) {
+<span class="fc" id="L732">                        return a + b;</span>
+                    }
+<span class="fc" id="L734">                }).subscribe(new DefaultObserver&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L738">                observer.onComplete();</span>
+<span class="fc" id="L739">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L743">                observer.onError(e);</span>
+<span class="nc" id="L744">            }</span>
+
+            @Override
+            public void onNext(Integer args) {
+<span class="fc" id="L748">                observer.onNext(args);</span>
+<span class="fc" id="L749">            }</span>
+
+        });
+
+<span class="fc" id="L753">        InOrder inOrder = inOrder(observer);</span>
+<span class="fc" id="L754">        inOrder.verify(observer, times(1)).onNext(2);</span>
+<span class="fc" id="L755">        inOrder.verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L756">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L757">    }</span>
+
+    @Test
+    public void testStart() {
+<span class="fc" id="L761">        Observable&lt;String&gt; os = OBSERVABLE_OF_5_INTEGERS</span>
+<span class="fc" id="L762">                .zipWith(OBSERVABLE_OF_5_INTEGERS, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Integer a, Integer b) {
+<span class="fc" id="L766">                        return a + &quot;-&quot; + b;</span>
+                    }
+                });
+
+<span class="fc" id="L770">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L771">        os.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="fc" id="L775">                System.out.println(s);</span>
+<span class="fc" id="L776">                list.add(s);</span>
+<span class="fc" id="L777">            }</span>
+        });
+
+<span class="fc" id="L780">        assertEquals(5, list.size());</span>
+<span class="fc" id="L781">        assertEquals(&quot;1-1&quot;, list.get(0));</span>
+<span class="fc" id="L782">        assertEquals(&quot;2-2&quot;, list.get(1));</span>
+<span class="fc" id="L783">        assertEquals(&quot;5-5&quot;, list.get(4));</span>
+<span class="fc" id="L784">    }</span>
+
+    @Test
+    public void testStartAsync() throws InterruptedException {
+<span class="fc" id="L788">        Observable&lt;String&gt; os = ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(new CountDownLatch(1))</span>
+<span class="fc" id="L789">                .zipWith(ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(new CountDownLatch(1)), new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Integer a, Integer b) {
+<span class="fc" id="L793">                        return a + &quot;-&quot; + b;</span>
+                    }
+<span class="fc" id="L795">                }).take(5);</span>
+
+<span class="fc" id="L797">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+<span class="fc" id="L798">        os.subscribe(to);</span>
+
+<span class="fc" id="L800">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L801">        to.assertNoErrors();</span>
+
+<span class="fc" id="L803">        assertEquals(5, to.valueCount());</span>
+<span class="fc" id="L804">        assertEquals(&quot;1-1&quot;, to.values().get(0));</span>
+<span class="fc" id="L805">        assertEquals(&quot;2-2&quot;, to.values().get(1));</span>
+<span class="fc" id="L806">        assertEquals(&quot;5-5&quot;, to.values().get(4));</span>
+<span class="fc" id="L807">    }</span>
+
+    @Test
+    public void testStartInfiniteAndFinite() throws InterruptedException {
+<span class="fc" id="L811">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L812">        final CountDownLatch infiniteObservable = new CountDownLatch(1);</span>
+<span class="fc" id="L813">        Observable&lt;String&gt; os = OBSERVABLE_OF_5_INTEGERS</span>
+<span class="fc" id="L814">                .zipWith(ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(infiniteObservable), new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Integer a, Integer b) {
+<span class="fc" id="L818">                        return a + &quot;-&quot; + b;</span>
+                    }
+                });
+
+<span class="fc" id="L822">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L823">        os.subscribe(new DefaultObserver&lt;String&gt;() {</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L827">                latch.countDown();</span>
+<span class="fc" id="L828">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L832">                e.printStackTrace();</span>
+<span class="nc" id="L833">                latch.countDown();</span>
+<span class="nc" id="L834">            }</span>
+
+            @Override
+            public void onNext(String s) {
+<span class="fc" id="L838">                System.out.println(s);</span>
+<span class="fc" id="L839">                list.add(s);</span>
+<span class="fc" id="L840">            }</span>
+        });
+
+<span class="fc" id="L843">        latch.await(1000, TimeUnit.MILLISECONDS);</span>
+<span class="pc bpc" id="L844" title="1 of 2 branches missed.">        if (!infiniteObservable.await(2000, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L845">            throw new RuntimeException(&quot;didn't unsubscribe&quot;);</span>
+        }
+
+<span class="fc" id="L848">        assertEquals(5, list.size());</span>
+<span class="fc" id="L849">        assertEquals(&quot;1-1&quot;, list.get(0));</span>
+<span class="fc" id="L850">        assertEquals(&quot;2-2&quot;, list.get(1));</span>
+<span class="fc" id="L851">        assertEquals(&quot;5-5&quot;, list.get(4));</span>
+<span class="fc" id="L852">    }</span>
+
+    @Test
+    @Ignore(&quot;Null values not allowed&quot;)
+    public void testEmitNull() {
+<span class="nc" id="L857">        Observable&lt;Integer&gt; oi = Observable.just(1, null, 3);</span>
+<span class="nc" id="L858">        Observable&lt;String&gt; os = Observable.just(&quot;a&quot;, &quot;b&quot;, null);</span>
+<span class="nc" id="L859">        Observable&lt;String&gt; o = Observable.zip(oi, os, new BiFunction&lt;Integer, String, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, String t2) {
+<span class="nc" id="L863">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+        });
+
+<span class="nc" id="L868">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L869">        o.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="nc" id="L873">                System.out.println(s);</span>
+<span class="nc" id="L874">                list.add(s);</span>
+<span class="nc" id="L875">            }</span>
+        });
+
+<span class="nc" id="L878">        assertEquals(3, list.size());</span>
+<span class="nc" id="L879">        assertEquals(&quot;1-a&quot;, list.get(0));</span>
+<span class="nc" id="L880">        assertEquals(&quot;null-b&quot;, list.get(1));</span>
+<span class="nc" id="L881">        assertEquals(&quot;3-null&quot;, list.get(2));</span>
+<span class="nc" id="L882">    }</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    static String kind(Notification notification) {
+<span class="pc bpc" id="L886" title="1 of 2 branches missed.">        if (notification.isOnError()) {</span>
+<span class="nc" id="L887">            return &quot;OnError&quot;;</span>
+        }
+<span class="fc bfc" id="L889" title="All 2 branches covered.">        if (notification.isOnNext()) {</span>
+<span class="fc" id="L890">            return &quot;OnNext&quot;;</span>
+        }
+<span class="fc" id="L892">        return &quot;OnComplete&quot;;</span>
+    }
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    static String value(Notification notification) {
+<span class="fc bfc" id="L897" title="All 2 branches covered.">        if (notification.isOnNext()) {</span>
+<span class="fc" id="L898">            return String.valueOf(notification.getValue());</span>
+        }
+<span class="fc" id="L900">        return &quot;null&quot;;</span>
+    }
+
+    @Test
+    public void testEmitMaterializedNotifications() {
+<span class="fc" id="L905">        Observable&lt;Notification&lt;Integer&gt;&gt; oi = Observable.just(1, 2, 3).materialize();</span>
+<span class="fc" id="L906">        Observable&lt;Notification&lt;String&gt;&gt; os = Observable.just(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;).materialize();</span>
+<span class="fc" id="L907">        Observable&lt;String&gt; o = Observable.zip(oi, os, new BiFunction&lt;Notification&lt;Integer&gt;, Notification&lt;String&gt;, String&gt;() {</span>
+
+            @Override
+            public String apply(Notification&lt;Integer&gt; t1, Notification&lt;String&gt; t2) {
+<span class="fc" id="L911">                return kind(t1) + &quot;_&quot; + value(t1) + &quot;-&quot; + kind(t2) + &quot;_&quot; + value(t2);</span>
+            }
+
+        });
+
+<span class="fc" id="L916">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L917">        o.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="fc" id="L921">                System.out.println(s);</span>
+<span class="fc" id="L922">                list.add(s);</span>
+<span class="fc" id="L923">            }</span>
+        });
+
+<span class="fc" id="L926">        assertEquals(4, list.size());</span>
+<span class="fc" id="L927">        assertEquals(&quot;OnNext_1-OnNext_a&quot;, list.get(0));</span>
+<span class="fc" id="L928">        assertEquals(&quot;OnNext_2-OnNext_b&quot;, list.get(1));</span>
+<span class="fc" id="L929">        assertEquals(&quot;OnNext_3-OnNext_c&quot;, list.get(2));</span>
+<span class="fc" id="L930">        assertEquals(&quot;OnComplete_null-OnComplete_null&quot;, list.get(3));</span>
+<span class="fc" id="L931">    }</span>
+
+    @Test
+    public void testStartEmptyObservables() {
+
+<span class="fc" id="L936">        Observable&lt;String&gt; o = Observable.zip(Observable.&lt;Integer&gt; empty(), Observable.&lt;String&gt; empty(), new BiFunction&lt;Integer, String, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, String t2) {
+<span class="nc" id="L940">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+        });
+
+<span class="fc" id="L945">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L946">        o.subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String s) {
+<span class="nc" id="L950">                System.out.println(s);</span>
+<span class="nc" id="L951">                list.add(s);</span>
+<span class="nc" id="L952">            }</span>
+        });
+
+<span class="fc" id="L955">        assertEquals(0, list.size());</span>
+<span class="fc" id="L956">    }</span>
+
+    @Test
+    public void testStartEmptyList() {
+
+<span class="fc" id="L961">        final Object invoked = new Object();</span>
+<span class="fc" id="L962">        Collection&lt;Observable&lt;Object&gt;&gt; observables = Collections.emptyList();</span>
+
+<span class="fc" id="L964">        Observable&lt;Object&gt; o = Observable.zip(observables, new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(final Object[] args) {
+<span class="nc" id="L967">                assertEquals(&quot;No argument should have been passed&quot;, 0, args.length);</span>
+<span class="nc" id="L968">                return invoked;</span>
+            }
+        });
+
+<span class="fc" id="L972">        TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+<span class="fc" id="L973">        o.subscribe(to);</span>
+<span class="fc" id="L974">        to.awaitTerminalEvent(200, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L975">        to.assertNoValues();</span>
+<span class="fc" id="L976">    }</span>
+
+    /**
+     * Expect NoSuchElementException instead of blocking forever as zip should emit onComplete and no onNext
+     * and last() expects at least a single response.
+     */
+    @Test(expected = NoSuchElementException.class)
+    public void testStartEmptyListBlocking() {
+
+<span class="fc" id="L985">        final Object invoked = new Object();</span>
+<span class="fc" id="L986">        Collection&lt;Observable&lt;Object&gt;&gt; observables = Collections.emptyList();</span>
+
+<span class="fc" id="L988">        Observable&lt;Object&gt; o = Observable.zip(observables, new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(final Object[] args) {
+<span class="nc" id="L991">                assertEquals(&quot;No argument should have been passed&quot;, 0, args.length);</span>
+<span class="nc" id="L992">                return invoked;</span>
+            }
+        });
+
+<span class="nc" id="L996">        o.blockingLast();</span>
+<span class="nc" id="L997">    }</span>
+
+    @Test
+    public void testDownstreamBackpressureRequestsWithFiniteSyncObservables() {
+<span class="fc" id="L1001">        AtomicInteger generatedA = new AtomicInteger();</span>
+<span class="fc" id="L1002">        AtomicInteger generatedB = new AtomicInteger();</span>
+<span class="fc" id="L1003">        Observable&lt;Integer&gt; o1 = createInfiniteObservable(generatedA).take(Observable.bufferSize() * 2);</span>
+<span class="fc" id="L1004">        Observable&lt;Integer&gt; o2 = createInfiniteObservable(generatedB).take(Observable.bufferSize() * 2);</span>
+
+<span class="fc" id="L1006">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();</span>
+<span class="fc" id="L1007">        Observable.zip(o1, o2, new BiFunction&lt;Integer, Integer, String&gt;() {</span>
+
+            @Override
+            public String apply(Integer t1, Integer t2) {
+<span class="fc" id="L1011">                return t1 + &quot;-&quot; + t2;</span>
+            }
+
+<span class="fc" id="L1014">        }).observeOn(Schedulers.computation()).take(Observable.bufferSize() * 2).subscribe(to);</span>
+
+<span class="fc" id="L1016">        to.awaitTerminalEvent();</span>
+<span class="fc" id="L1017">        to.assertNoErrors();</span>
+<span class="fc" id="L1018">        assertEquals(Observable.bufferSize() * 2, to.valueCount());</span>
+<span class="fc" id="L1019">        System.out.println(&quot;Generated =&gt; A: &quot; + generatedA.get() + &quot; B: &quot; + generatedB.get());</span>
+<span class="pc bpc" id="L1020" title="1 of 2 branches missed.">        assertTrue(generatedA.get() &lt; (Observable.bufferSize() * 3));</span>
+<span class="pc bpc" id="L1021" title="1 of 2 branches missed.">        assertTrue(generatedB.get() &lt; (Observable.bufferSize() * 3));</span>
+<span class="fc" id="L1022">    }</span>
+
+    private Observable&lt;Integer&gt; createInfiniteObservable(final AtomicInteger generated) {
+<span class="fc" id="L1025">        Observable&lt;Integer&gt; o = Observable.fromIterable(new Iterable&lt;Integer&gt;() {</span>
+            @Override
+            public Iterator&lt;Integer&gt; iterator() {
+<span class="fc" id="L1028">                return new Iterator&lt;Integer&gt;() {</span>
+
+                    @Override
+                    public void remove() {
+<span class="nc" id="L1032">                    }</span>
+
+                    @Override
+                    public Integer next() {
+<span class="fc" id="L1036">                        return generated.getAndIncrement();</span>
+                    }
+
+                    @Override
+                    public boolean hasNext() {
+<span class="fc" id="L1041">                        return true;</span>
+                    }
+                };
+            }
+        });
+<span class="fc" id="L1046">        return o;</span>
+    }
+
+<span class="fc" id="L1049">    Observable&lt;Integer&gt; OBSERVABLE_OF_5_INTEGERS = OBSERVABLE_OF_5_INTEGERS(new AtomicInteger());</span>
+
+    Observable&lt;Integer&gt; OBSERVABLE_OF_5_INTEGERS(final AtomicInteger numEmitted) {
+<span class="fc" id="L1052">        return Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(final Observer&lt;? super Integer&gt; o) {
+<span class="fc" id="L1056">                Disposable d = Disposables.empty();</span>
+<span class="fc" id="L1057">                o.onSubscribe(d);</span>
+<span class="fc bfc" id="L1058" title="All 2 branches covered.">                for (int i = 1; i &lt;= 5; i++) {</span>
+<span class="pc bpc" id="L1059" title="1 of 2 branches missed.">                    if (d.isDisposed()) {</span>
+<span class="nc" id="L1060">                        break;</span>
+                    }
+<span class="fc" id="L1062">                    numEmitted.incrementAndGet();</span>
+<span class="fc" id="L1063">                    o.onNext(i);</span>
+<span class="fc" id="L1064">                    Thread.yield();</span>
+                }
+<span class="fc" id="L1066">                o.onComplete();</span>
+<span class="fc" id="L1067">            }</span>
+
+        });
+    }
+
+    Observable&lt;Integer&gt; ASYNC_OBSERVABLE_OF_INFINITE_INTEGERS(final CountDownLatch latch) {
+<span class="fc" id="L1073">        return Observable.unsafeCreate(new ObservableSource&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(final Observer&lt;? super Integer&gt; o) {
+<span class="fc" id="L1077">                final Disposable d = Disposables.empty();</span>
+<span class="fc" id="L1078">                o.onSubscribe(d);</span>
+<span class="fc" id="L1079">                Thread t = new Thread(new Runnable() {</span>
+
+                    @Override
+                    public void run() {
+<span class="fc" id="L1083">                        System.out.println(&quot;-------&gt; subscribe to infinite sequence&quot;);</span>
+<span class="fc" id="L1084">                        System.out.println(&quot;Starting thread: &quot; + Thread.currentThread());</span>
+<span class="fc" id="L1085">                        int i = 1;</span>
+<span class="fc bfc" id="L1086" title="All 2 branches covered.">                        while (!d.isDisposed()) {</span>
+<span class="fc" id="L1087">                            o.onNext(i++);</span>
+<span class="fc" id="L1088">                            Thread.yield();</span>
+                        }
+<span class="fc" id="L1090">                        o.onComplete();</span>
+<span class="fc" id="L1091">                        latch.countDown();</span>
+<span class="fc" id="L1092">                        System.out.println(&quot;Ending thread: &quot; + Thread.currentThread());</span>
+<span class="fc" id="L1093">                    }</span>
+                });
+<span class="fc" id="L1095">                t.start();</span>
+
+<span class="fc" id="L1097">            }</span>
+
+        });
+    }
+
+    @Test(timeout = 30000)
+    public void testIssue1812() {
+        // https://github.com/ReactiveX/RxJava/issues/1812
+<span class="fc" id="L1105">        Observable&lt;Integer&gt; zip1 = Observable.zip(Observable.range(0, 1026), Observable.range(0, 1026),</span>
+<span class="fc" id="L1106">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+                    @Override
+                    public Integer apply(Integer i1, Integer i2) {
+<span class="fc" id="L1110">                        return i1 + i2;</span>
+                    }
+                });
+<span class="fc" id="L1113">        Observable&lt;Integer&gt; zip2 = Observable.zip(zip1, Observable.range(0, 1026),</span>
+<span class="fc" id="L1114">                new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+
+                    @Override
+                    public Integer apply(Integer i1, Integer i2) {
+<span class="fc" id="L1118">                        return i1 + i2;</span>
+                    }
+                });
+<span class="fc" id="L1121">        List&lt;Integer&gt; expected = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc bfc" id="L1122" title="All 2 branches covered.">        for (int i = 0; i &lt; 1026; i++) {</span>
+<span class="fc" id="L1123">            expected.add(i * 3);</span>
+        }
+<span class="fc" id="L1125">        assertEquals(expected, zip2.toList().blockingGet());</span>
+<span class="fc" id="L1126">    }</span>
+
+    @Test(timeout = 10000)
+    public void testZipRace() {
+<span class="fc" id="L1130">        long startTime = System.currentTimeMillis();</span>
+<span class="fc" id="L1131">        Observable&lt;Integer&gt; src = Observable.just(1).subscribeOn(Schedulers.computation());</span>
+
+        // now try and generate a hang by zipping src with itself repeatedly. A
+        // time limit of 9 seconds ( 1 second less than the test timeout) is
+        // used so that this test will not timeout on slow machines.
+<span class="fc" id="L1136">        int i = 0;</span>
+<span class="pc bpc" id="L1137" title="1 of 4 branches missed.">        while (System.currentTimeMillis() - startTime &lt; 9000 &amp;&amp; i++ &lt; 100000) {</span>
+<span class="fc" id="L1138">            int value = Observable.zip(src, src, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+                @Override
+                public Integer apply(Integer t1, Integer t2) {
+<span class="fc" id="L1141">                    return t1 + t2 * 10;</span>
+                }
+<span class="fc" id="L1143">            }).blockingSingle(0);</span>
+
+<span class="fc" id="L1145">            Assert.assertEquals(11, value);</span>
+<span class="fc" id="L1146">        }</span>
+<span class="fc" id="L1147">    }</span>
+
+    @Test
+    public void zip2() {
+<span class="fc" id="L1151">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1152">                Observable.just(2),</span>
+<span class="fc" id="L1153">            new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1156">                    return &quot;&quot; + a + b;</span>
+                }
+            }
+        )
+<span class="fc" id="L1160">        .test()</span>
+<span class="fc" id="L1161">        .assertResult(&quot;12&quot;);</span>
+<span class="fc" id="L1162">    }</span>
+
+    @Test
+    public void zip3() {
+<span class="fc" id="L1166">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1167">                Observable.just(2), Observable.just(3),</span>
+<span class="fc" id="L1168">            new Function3&lt;Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c) throws Exception {
+<span class="fc" id="L1171">                    return &quot;&quot; + a + b + c;</span>
+                }
+            }
+        )
+<span class="fc" id="L1175">        .test()</span>
+<span class="fc" id="L1176">        .assertResult(&quot;123&quot;);</span>
+<span class="fc" id="L1177">    }</span>
+
+    @Test
+    public void zip4() {
+<span class="fc" id="L1181">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1182">                Observable.just(2), Observable.just(3),</span>
+<span class="fc" id="L1183">                Observable.just(4),</span>
+<span class="fc" id="L1184">            new Function4&lt;Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d) throws Exception {
+<span class="fc" id="L1187">                    return &quot;&quot; + a + b + c + d;</span>
+                }
+            }
+        )
+<span class="fc" id="L1191">        .test()</span>
+<span class="fc" id="L1192">        .assertResult(&quot;1234&quot;);</span>
+<span class="fc" id="L1193">    }</span>
+
+    @Test
+    public void zip5() {
+<span class="fc" id="L1197">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1198">                Observable.just(2), Observable.just(3),</span>
+<span class="fc" id="L1199">                Observable.just(4), Observable.just(5),</span>
+<span class="fc" id="L1200">            new Function5&lt;Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e) throws Exception {
+<span class="fc" id="L1203">                    return &quot;&quot; + a + b + c + d + e;</span>
+                }
+            }
+        )
+<span class="fc" id="L1207">        .test()</span>
+<span class="fc" id="L1208">        .assertResult(&quot;12345&quot;);</span>
+<span class="fc" id="L1209">    }</span>
+
+    @Test
+    public void zip6() {
+<span class="fc" id="L1213">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1214">                Observable.just(2), Observable.just(3),</span>
+<span class="fc" id="L1215">                Observable.just(4), Observable.just(5),</span>
+<span class="fc" id="L1216">                Observable.just(6),</span>
+<span class="fc" id="L1217">            new Function6&lt;Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f) throws Exception {
+<span class="fc" id="L1220">                    return &quot;&quot; + a + b + c + d + e + f;</span>
+                }
+            }
+        )
+<span class="fc" id="L1224">        .test()</span>
+<span class="fc" id="L1225">        .assertResult(&quot;123456&quot;);</span>
+<span class="fc" id="L1226">    }</span>
+
+    @Test
+    public void zip7() {
+<span class="fc" id="L1230">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1231">                Observable.just(2), Observable.just(3),</span>
+<span class="fc" id="L1232">                Observable.just(4), Observable.just(5),</span>
+<span class="fc" id="L1233">                Observable.just(6), Observable.just(7),</span>
+<span class="fc" id="L1234">            new Function7&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f, Integer g)
+                        throws Exception {
+<span class="fc" id="L1238">                    return &quot;&quot; + a + b + c + d + e + f + g;</span>
+                }
+            }
+        )
+<span class="fc" id="L1242">        .test()</span>
+<span class="fc" id="L1243">        .assertResult(&quot;1234567&quot;);</span>
+<span class="fc" id="L1244">    }</span>
+
+    @Test
+    public void zip8() {
+<span class="fc" id="L1248">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1249">                Observable.just(2), Observable.just(3),</span>
+<span class="fc" id="L1250">                Observable.just(4), Observable.just(5),</span>
+<span class="fc" id="L1251">                Observable.just(6), Observable.just(7),</span>
+<span class="fc" id="L1252">                Observable.just(8),</span>
+<span class="fc" id="L1253">            new Function8&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f, Integer g,
+                        Integer h) throws Exception {
+<span class="fc" id="L1257">                    return &quot;&quot; + a + b + c + d + e + f + g + h;</span>
+                }
+            }
+        )
+<span class="fc" id="L1261">        .test()</span>
+<span class="fc" id="L1262">        .assertResult(&quot;12345678&quot;);</span>
+<span class="fc" id="L1263">    }</span>
+
+    @Test
+    public void zip9() {
+<span class="fc" id="L1267">        Observable.zip(Observable.just(1),</span>
+<span class="fc" id="L1268">                Observable.just(2), Observable.just(3),</span>
+<span class="fc" id="L1269">                Observable.just(4), Observable.just(5),</span>
+<span class="fc" id="L1270">                Observable.just(6), Observable.just(7),</span>
+<span class="fc" id="L1271">                Observable.just(8), Observable.just(9),</span>
+<span class="fc" id="L1272">            new Function9&lt;Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b, Integer c, Integer d, Integer e, Integer f, Integer g,
+                        Integer h, Integer i) throws Exception {
+<span class="fc" id="L1276">                    return &quot;&quot; + a + b + c + d + e + f + g + h + i;</span>
+                }
+            }
+        )
+<span class="fc" id="L1280">        .test()</span>
+<span class="fc" id="L1281">        .assertResult(&quot;123456789&quot;);</span>
+<span class="fc" id="L1282">    }</span>
+
+    @Test
+    public void zip2DelayError() {
+<span class="fc" id="L1286">        Observable.zip(Observable.just(1).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L1287">                Observable.just(2),</span>
+<span class="fc" id="L1288">            new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1291">                    return &quot;&quot; + a + b;</span>
+                }
+            }, true
+        )
+<span class="fc" id="L1295">        .test()</span>
+<span class="fc" id="L1296">        .assertFailure(TestException.class, &quot;12&quot;);</span>
+<span class="fc" id="L1297">    }</span>
+
+    @Test
+    public void zip2Prefetch() {
+<span class="fc" id="L1301">        Observable.zip(Observable.range(1, 9),</span>
+<span class="fc" id="L1302">                Observable.range(21, 9),</span>
+<span class="fc" id="L1303">            new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1306">                    return &quot;&quot; + a + b;</span>
+                }
+            }, false, 2
+        )
+<span class="fc" id="L1310">        .takeLast(1)</span>
+<span class="fc" id="L1311">        .test()</span>
+<span class="fc" id="L1312">        .assertResult(&quot;929&quot;);</span>
+<span class="fc" id="L1313">    }</span>
+
+    @Test
+    public void zip2DelayErrorPrefetch() {
+<span class="fc" id="L1317">        Observable.zip(Observable.range(1, 9).concatWith(Observable.&lt;Integer&gt;error(new TestException())),</span>
+<span class="fc" id="L1318">                Observable.range(21, 9),</span>
+<span class="fc" id="L1319">            new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+                @Override
+                public Object apply(Integer a, Integer b) throws Exception {
+<span class="fc" id="L1322">                    return &quot;&quot; + a + b;</span>
+                }
+            }, true, 2
+        )
+<span class="fc" id="L1326">        .skip(8)</span>
+<span class="fc" id="L1327">        .test()</span>
+<span class="fc" id="L1328">        .assertFailure(TestException.class, &quot;929&quot;);</span>
+<span class="fc" id="L1329">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void zipArrayEmpty() {
+<span class="fc" id="L1334">        assertSame(Observable.empty(), Observable.zipArray(Functions.&lt;Object[]&gt;identity(), false, 16));</span>
+<span class="fc" id="L1335">    }</span>
+
+    @Test
+    public void zipArrayMany() {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L1340">        Observable&lt;Integer&gt;[] arr = new Observable[10];</span>
+
+<span class="fc" id="L1342">        Arrays.fill(arr, Observable.just(1));</span>
+
+<span class="fc" id="L1344">        Observable.zip(Arrays.asList(arr), new Function&lt;Object[], Object&gt;() {</span>
+            @Override
+            public Object apply(Object[] a) throws Exception {
+<span class="fc" id="L1347">                return Arrays.toString(a);</span>
+            }
+        })
+<span class="fc" id="L1350">        .test()</span>
+<span class="fc" id="L1351">        .assertResult(&quot;[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]&quot;);</span>
+<span class="fc" id="L1352">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L1356">        TestHelper.checkDisposed(Observable.zip(Observable.just(1), Observable.just(1), new BiFunction&lt;Integer, Integer, Object&gt;() {</span>
+            @Override
+            public Object apply(Integer a, Integer b) throws Exception {
+<span class="nc" id="L1359">                return a + b;</span>
+            }
+        }));
+<span class="fc" id="L1362">    }</span>
+
+    @Test
+    public void noCrossBoundaryFusion() {
+<span class="fc bfc" id="L1366" title="All 2 branches covered.">        for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L1367">            TestObserver&lt;List&lt;Object&gt;&gt; to = Observable.zip(</span>
+<span class="fc" id="L1368">                    Observable.just(1).observeOn(Schedulers.single()).map(new Function&lt;Integer, Object&gt;() {</span>
+                        @Override
+                        public Object apply(Integer v) throws Exception {
+<span class="fc" id="L1371">                            return Thread.currentThread().getName().substring(0, 4);</span>
+                        }
+                    }),
+<span class="fc" id="L1374">                    Observable.just(1).observeOn(Schedulers.computation()).map(new Function&lt;Integer, Object&gt;() {</span>
+                        @Override
+                        public Object apply(Integer v) throws Exception {
+<span class="fc" id="L1377">                            return Thread.currentThread().getName().substring(0, 4);</span>
+                        }
+                    }),
+<span class="fc" id="L1380">                    new BiFunction&lt;Object, Object, List&lt;Object&gt;&gt;() {</span>
+                        @Override
+                        public List&lt;Object&gt; apply(Object t1, Object t2) throws Exception {
+<span class="fc" id="L1383">                            return Arrays.asList(t1, t2);</span>
+                        }
+                    }
+            )
+<span class="fc" id="L1387">            .test()</span>
+<span class="fc" id="L1388">            .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1389">            .assertValueCount(1);</span>
+
+<span class="fc" id="L1391">            List&lt;Object&gt; list = to.values().get(0);</span>
+
+<span class="fc" id="L1393">            assertTrue(list.toString(), list.contains(&quot;RxSi&quot;));</span>
+<span class="fc" id="L1394">            assertTrue(list.toString(), list.contains(&quot;RxCo&quot;));</span>
+        }
+<span class="fc" id="L1396">    }</span>
+
+    @Test
+    public void eagerDispose() {
+<span class="fc" id="L1400">        final PublishSubject&lt;Integer&gt; ps1 = PublishSubject.create();</span>
+<span class="fc" id="L1401">        final PublishSubject&lt;Integer&gt; ps2 = PublishSubject.create();</span>
+
+<span class="fc" id="L1403">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L1406">                super.onNext(t);</span>
+<span class="fc" id="L1407">                cancel();</span>
+<span class="pc bpc" id="L1408" title="1 of 2 branches missed.">                if (ps1.hasObservers()) {</span>
+<span class="nc" id="L1409">                    onError(new IllegalStateException(&quot;ps1 not disposed&quot;));</span>
+                } else
+<span class="pc bpc" id="L1411" title="1 of 2 branches missed.">                if (ps2.hasObservers()) {</span>
+<span class="nc" id="L1412">                    onError(new IllegalStateException(&quot;ps2 not disposed&quot;));</span>
+                } else {
+<span class="fc" id="L1414">                    onComplete();</span>
+                }
+<span class="fc" id="L1416">            }</span>
+        };
+
+<span class="fc" id="L1419">        Observable.zip(ps1, ps2, new BiFunction&lt;Integer, Integer, Integer&gt;() {</span>
+            @Override
+            public Integer apply(Integer t1, Integer t2) throws Exception {
+<span class="fc" id="L1422">                return t1 + t2;</span>
+            }
+        })
+<span class="fc" id="L1425">        .subscribe(to);</span>
+
+<span class="fc" id="L1427">        ps1.onNext(1);</span>
+<span class="fc" id="L1428">        ps2.onNext(2);</span>
+<span class="fc" id="L1429">        to.assertResult(3);</span>
+<span class="fc" id="L1430">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

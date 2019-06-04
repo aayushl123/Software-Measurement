@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestObserver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.observers</a> &gt; <span class="el_source">TestObserver.java</span></div><h1>TestObserver.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.observers;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Consumer;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.util.ExceptionHelper;
+
+/**
+ * An Observer that records events and allows making assertions about them.
+ *
+ * &lt;p&gt;You can override the onSubscribe, onNext, onError, onComplete, onSuccess and
+ * cancel methods but not the others (this is by design).
+ *
+ * &lt;p&gt;The TestObserver implements Disposable for convenience where dispose calls cancel.
+ *
+ * @param &lt;T&gt; the value type
+ */
+public class TestObserver&lt;T&gt;
+extends BaseTestConsumer&lt;T, TestObserver&lt;T&gt;&gt;
+implements Observer&lt;T&gt;, Disposable, MaybeObserver&lt;T&gt;, SingleObserver&lt;T&gt;, CompletableObserver {
+    /** The actual observer to forward events to. */
+    private final Observer&lt;? super T&gt; downstream;
+
+    /** Holds the current subscription if any. */
+<span class="fc" id="L41">    private final AtomicReference&lt;Disposable&gt; upstream = new AtomicReference&lt;Disposable&gt;();</span>
+
+    private QueueDisposable&lt;T&gt; qd;
+
+    /**
+     * Constructs a non-forwarding TestObserver.
+     * @param &lt;T&gt; the value type received
+     * @return the new TestObserver instance
+     */
+    public static &lt;T&gt; TestObserver&lt;T&gt; create() {
+<span class="fc" id="L51">        return new TestObserver&lt;T&gt;();</span>
+    }
+
+    /**
+     * Constructs a forwarding TestObserver.
+     * @param &lt;T&gt; the value type received
+     * @param delegate the actual Observer to forward events to
+     * @return the new TestObserver instance
+     */
+    public static &lt;T&gt; TestObserver&lt;T&gt; create(Observer&lt;? super T&gt; delegate) {
+<span class="fc" id="L61">        return new TestObserver&lt;T&gt;(delegate);</span>
+    }
+
+    /**
+     * Constructs a non-forwarding TestObserver.
+     */
+    public TestObserver() {
+<span class="fc" id="L68">        this(EmptyObserver.INSTANCE);</span>
+<span class="fc" id="L69">    }</span>
+
+    /**
+     * Constructs a forwarding TestObserver.
+     * @param downstream the actual Observer to forward events to
+     */
+<span class="fc" id="L75">    public TestObserver(Observer&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L76">        this.downstream = downstream;</span>
+<span class="fc" id="L77">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onSubscribe(Disposable d) {
+<span class="fc" id="L82">        lastThread = Thread.currentThread();</span>
+
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (d == null) {</span>
+<span class="fc" id="L85">            errors.add(new NullPointerException(&quot;onSubscribe received a null Subscription&quot;));</span>
+<span class="fc" id="L86">            return;</span>
+        }
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (!upstream.compareAndSet(null, d)) {</span>
+<span class="fc" id="L89">            d.dispose();</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (upstream.get() != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L91">                errors.add(new IllegalStateException(&quot;onSubscribe received multiple subscriptions: &quot; + d));</span>
+            }
+<span class="fc" id="L93">            return;</span>
+        }
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (initialFusionMode != 0) {</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (d instanceof QueueDisposable) {</span>
+<span class="fc" id="L98">                qd = (QueueDisposable&lt;T&gt;)d;</span>
+
+<span class="fc" id="L100">                int m = qd.requestFusion(initialFusionMode);</span>
+<span class="fc" id="L101">                establishedFusionMode = m;</span>
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (m == QueueDisposable.SYNC) {</span>
+<span class="fc" id="L104">                    checkSubscriptionOnce = true;</span>
+<span class="fc" id="L105">                    lastThread = Thread.currentThread();</span>
+                    try {
+                        T t;
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                        while ((t = qd.poll()) != null) {</span>
+<span class="fc" id="L109">                            values.add(t);</span>
+                        }
+<span class="fc" id="L111">                        completions++;</span>
+
+<span class="fc" id="L113">                        upstream.lazySet(DisposableHelper.DISPOSED);</span>
+<span class="fc" id="L114">                    } catch (Throwable ex) {</span>
+                        // Exceptions.throwIfFatal(e); TODO add fatal exceptions?
+<span class="fc" id="L116">                        errors.add(ex);</span>
+<span class="fc" id="L117">                    }</span>
+<span class="fc" id="L118">                    return;</span>
+                }
+            }
+        }
+
+<span class="fc" id="L123">        downstream.onSubscribe(d);</span>
+<span class="fc" id="L124">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (!checkSubscriptionOnce) {</span>
+<span class="fc" id="L129">            checkSubscriptionOnce = true;</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (upstream.get() == null) {</span>
+<span class="fc" id="L131">                errors.add(new IllegalStateException(&quot;onSubscribe not called in proper order&quot;));</span>
+            }
+        }
+
+<span class="fc" id="L135">        lastThread = Thread.currentThread();</span>
+
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (establishedFusionMode == QueueDisposable.ASYNC) {</span>
+            try {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                while ((t = qd.poll()) != null) {</span>
+<span class="fc" id="L140">                    values.add(t);</span>
+                }
+<span class="fc" id="L142">            } catch (Throwable ex) {</span>
+                // Exceptions.throwIfFatal(e); TODO add fatal exceptions?
+<span class="fc" id="L144">                errors.add(ex);</span>
+<span class="fc" id="L145">                qd.dispose();</span>
+<span class="fc" id="L146">            }</span>
+<span class="fc" id="L147">            return;</span>
+        }
+
+<span class="fc" id="L150">        values.add(t);</span>
+
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (t == null) {</span>
+<span class="fc" id="L153">            errors.add(new NullPointerException(&quot;onNext received a null value&quot;));</span>
+        }
+
+<span class="fc" id="L156">        downstream.onNext(t);</span>
+<span class="fc" id="L157">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (!checkSubscriptionOnce) {</span>
+<span class="fc" id="L162">            checkSubscriptionOnce = true;</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (upstream.get() == null) {</span>
+<span class="fc" id="L164">                errors.add(new IllegalStateException(&quot;onSubscribe not called in proper order&quot;));</span>
+            }
+        }
+
+        try {
+<span class="fc" id="L169">            lastThread = Thread.currentThread();</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (t == null) {</span>
+<span class="fc" id="L171">                errors.add(new NullPointerException(&quot;onError received a null Throwable&quot;));</span>
+            } else {
+<span class="fc" id="L173">                errors.add(t);</span>
+            }
+
+<span class="fc" id="L176">            downstream.onError(t);</span>
+        } finally {
+<span class="fc" id="L178">            done.countDown();</span>
+        }
+<span class="fc" id="L180">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (!checkSubscriptionOnce) {</span>
+<span class="fc" id="L185">            checkSubscriptionOnce = true;</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">            if (upstream.get() == null) {</span>
+<span class="fc" id="L187">                errors.add(new IllegalStateException(&quot;onSubscribe not called in proper order&quot;));</span>
+            }
+        }
+
+        try {
+<span class="fc" id="L192">            lastThread = Thread.currentThread();</span>
+<span class="fc" id="L193">            completions++;</span>
+
+<span class="fc" id="L195">            downstream.onComplete();</span>
+        } finally {
+<span class="fc" id="L197">            done.countDown();</span>
+        }
+<span class="fc" id="L199">    }</span>
+
+    /**
+     * Returns true if this TestObserver has been cancelled.
+     * @return true if this TestObserver has been cancelled
+     */
+    public final boolean isCancelled() {
+<span class="fc" id="L206">        return isDisposed();</span>
+    }
+
+    /**
+     * Cancels the TestObserver (before or after the subscription happened).
+     * &lt;p&gt;This operation is thread-safe.
+     * &lt;p&gt;This method is provided as a convenience when converting Flowable tests that cancel.
+     */
+    public final void cancel() {
+<span class="fc" id="L215">        dispose();</span>
+<span class="fc" id="L216">    }</span>
+
+    @Override
+    public final void dispose() {
+<span class="fc" id="L220">        DisposableHelper.dispose(upstream);</span>
+<span class="fc" id="L221">    }</span>
+
+    @Override
+    public final boolean isDisposed() {
+<span class="fc" id="L225">        return DisposableHelper.isDisposed(upstream.get());</span>
+    }
+
+    // state retrieval methods
+    /**
+     * Returns true if this TestObserver received a subscription.
+     * @return true if this TestObserver received a subscription
+     */
+    public final boolean hasSubscription() {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        return upstream.get() != null;</span>
+    }
+
+    /**
+     * Assert that the onSubscribe method was called exactly once.
+     * @return this;
+     */
+    @Override
+    public final TestObserver&lt;T&gt; assertSubscribed() {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (upstream.get() == null) {</span>
+<span class="fc" id="L244">            throw fail(&quot;Not subscribed!&quot;);</span>
+        }
+<span class="fc" id="L246">        return this;</span>
+    }
+
+    /**
+     * Assert that the onSubscribe method hasn't been called at all.
+     * @return this;
+     */
+    @Override
+    public final TestObserver&lt;T&gt; assertNotSubscribed() {
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        if (upstream.get() != null) {</span>
+<span class="fc" id="L256">            throw fail(&quot;Subscribed!&quot;);</span>
+        } else
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (!errors.isEmpty()) {</span>
+<span class="fc" id="L259">            throw fail(&quot;Not subscribed but errors found&quot;);</span>
+        }
+<span class="fc" id="L261">        return this;</span>
+    }
+
+    /**
+     * Run a check consumer with this TestObserver instance.
+     * @param check the check consumer to run
+     * @return this
+     */
+    public final TestObserver&lt;T&gt; assertOf(Consumer&lt;? super TestObserver&lt;T&gt;&gt; check) {
+        try {
+<span class="fc" id="L271">            check.accept(this);</span>
+<span class="fc" id="L272">        } catch (Throwable ex) {</span>
+<span class="fc" id="L273">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L274">        }</span>
+<span class="fc" id="L275">        return this;</span>
+    }
+
+    /**
+     * Sets the initial fusion mode if the upstream supports fusion.
+     * &lt;p&gt;Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @param mode the mode to establish, see the {@link QueueDisposable} constants
+     * @return this
+     */
+    final TestObserver&lt;T&gt; setInitialFusionMode(int mode) {
+<span class="fc" id="L286">        this.initialFusionMode = mode;</span>
+<span class="fc" id="L287">        return this;</span>
+    }
+
+    /**
+     * Asserts that the given fusion mode has been established
+     * &lt;p&gt;Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @param mode the expected mode
+     * @return this
+     */
+    final TestObserver&lt;T&gt; assertFusionMode(int mode) {
+<span class="fc" id="L298">        int m = establishedFusionMode;</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">        if (m != mode) {</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">            if (qd != null) {</span>
+<span class="fc" id="L301">                throw new AssertionError(&quot;Fusion mode different. Expected: &quot; + fusionModeToString(mode)</span>
+<span class="fc" id="L302">                + &quot;, actual: &quot; + fusionModeToString(m));</span>
+            } else {
+<span class="fc" id="L304">                throw fail(&quot;Upstream is not fuseable&quot;);</span>
+            }
+        }
+<span class="fc" id="L307">        return this;</span>
+    }
+
+    static String fusionModeToString(int mode) {
+<span class="fc bfc" id="L311" title="All 4 branches covered.">        switch (mode) {</span>
+<span class="fc" id="L312">        case QueueFuseable.NONE : return &quot;NONE&quot;;</span>
+<span class="fc" id="L313">        case QueueFuseable.SYNC : return &quot;SYNC&quot;;</span>
+<span class="fc" id="L314">        case QueueFuseable.ASYNC : return &quot;ASYNC&quot;;</span>
+<span class="fc" id="L315">        default: return &quot;Unknown(&quot; + mode + &quot;)&quot;;</span>
+        }
+    }
+
+    /**
+     * Assert that the upstream is a fuseable source.
+     * &lt;p&gt;Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @return this
+     */
+    final TestObserver&lt;T&gt; assertFuseable() {
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (qd == null) {</span>
+<span class="fc" id="L327">            throw new AssertionError(&quot;Upstream is not fuseable.&quot;);</span>
+        }
+<span class="fc" id="L329">        return this;</span>
+    }
+
+    /**
+     * Assert that the upstream is not a fuseable source.
+     * &lt;p&gt;Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @return this
+     */
+    final TestObserver&lt;T&gt; assertNotFuseable() {
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (qd != null) {</span>
+<span class="fc" id="L340">            throw new AssertionError(&quot;Upstream is fuseable.&quot;);</span>
+        }
+<span class="fc" id="L342">        return this;</span>
+    }
+
+    @Override
+    public void onSuccess(T value) {
+<span class="fc" id="L347">        onNext(value);</span>
+<span class="fc" id="L348">        onComplete();</span>
+<span class="fc" id="L349">    }</span>
+
+    /**
+     * An observer that ignores all events and does not report errors.
+     */
+<span class="fc" id="L354">    enum EmptyObserver implements Observer&lt;Object&gt; {</span>
+<span class="fc" id="L355">        INSTANCE;</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L359">        }</span>
+
+        @Override
+        public void onNext(Object t) {
+<span class="fc" id="L363">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L367">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L371">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableOnBackpressureBufferTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableOnBackpressureBufferTest.java</span></div><h1>FlowableOnBackpressureBufferTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.Flowable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.fuseable.QueueFuseable;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L32">public class FlowableOnBackpressureBufferTest {</span>
+
+    @Test
+    public void testNoBackpressureSupport() {
+<span class="fc" id="L36">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+        // this will be ignored
+<span class="fc" id="L38">        ts.request(100);</span>
+        // we take 500 so it unsubscribes
+<span class="fc" id="L40">        infinite.take(500).subscribe(ts);</span>
+        // it completely ignores the `request(100)` and we get 500
+<span class="fc" id="L42">        assertEquals(500, ts.values().size());</span>
+<span class="fc" id="L43">        ts.assertNoErrors();</span>
+<span class="fc" id="L44">    }</span>
+
+    @Test(timeout = 2000)
+    public void testFixBackpressureWithBuffer() throws InterruptedException {
+<span class="fc" id="L48">        final CountDownLatch l1 = new CountDownLatch(100);</span>
+<span class="fc" id="L49">        final CountDownLatch l2 = new CountDownLatch(150);</span>
+<span class="fc" id="L50">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(new DefaultSubscriber&lt;Long&gt;() {</span>
+
+            @Override
+            protected void onStart() {
+<span class="fc" id="L54">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L58">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L62">            }</span>
+
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L66">                l1.countDown();</span>
+<span class="fc" id="L67">                l2.countDown();</span>
+<span class="fc" id="L68">            }</span>
+
+        }, 0L);
+        // this will be ignored
+<span class="fc" id="L72">        ts.request(100);</span>
+        // we take 500 so it unsubscribes
+<span class="fc" id="L74">        infinite.subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L75">        .onBackpressureBuffer()</span>
+<span class="fc" id="L76">        .take(500)</span>
+<span class="fc" id="L77">        .subscribe(ts);</span>
+
+        // it completely ignores the `request(100)` and we get 500
+<span class="fc" id="L80">        l1.await();</span>
+<span class="fc" id="L81">        assertEquals(100, ts.values().size());</span>
+<span class="fc" id="L82">        ts.request(50);</span>
+<span class="fc" id="L83">        l2.await();</span>
+<span class="fc" id="L84">        assertEquals(150, ts.values().size());</span>
+<span class="fc" id="L85">        ts.request(350);</span>
+<span class="fc" id="L86">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L87">        assertEquals(500, ts.values().size());</span>
+<span class="fc" id="L88">        ts.assertNoErrors();</span>
+<span class="fc" id="L89">        assertEquals(0, ts.values().get(0).intValue());</span>
+<span class="fc" id="L90">        assertEquals(499, ts.values().get(499).intValue());</span>
+<span class="fc" id="L91">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testFixBackpressureBufferNegativeCapacity() throws InterruptedException {
+<span class="nc" id="L95">        Flowable.empty().onBackpressureBuffer(-1);</span>
+<span class="nc" id="L96">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testFixBackpressureBufferZeroCapacity() throws InterruptedException {
+<span class="nc" id="L100">        Flowable.empty().onBackpressureBuffer(0);</span>
+<span class="nc" id="L101">    }</span>
+
+    @Test
+    public void testFixBackpressureBoundedBuffer() throws InterruptedException {
+<span class="fc" id="L105">        final CountDownLatch l1 = new CountDownLatch(100);</span>
+<span class="fc" id="L106">        final CountDownLatch backpressureCallback = new CountDownLatch(1);</span>
+<span class="fc" id="L107">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(new DefaultSubscriber&lt;Long&gt;() {</span>
+
+            @Override
+            protected void onStart() {
+<span class="fc" id="L111">            }</span>
+
+            @Override
+<span class="nc" id="L114">            public void onComplete() { }</span>
+
+            @Override
+<span class="fc" id="L117">            public void onError(Throwable e) { }</span>
+
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L121">                l1.countDown();</span>
+<span class="fc" id="L122">            }</span>
+
+        }, 0L);
+
+<span class="fc" id="L126">        ts.request(100);</span>
+<span class="fc" id="L127">        infinite.subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L128">             .onBackpressureBuffer(500, new Action() {</span>
+                 @Override
+                 public void run() {
+<span class="fc" id="L131">                     backpressureCallback.countDown();</span>
+<span class="fc" id="L132">                 }</span>
+             })
+             /*.take(1000)*/
+<span class="fc" id="L135">             .subscribe(ts);</span>
+<span class="fc" id="L136">        l1.await();</span>
+
+<span class="fc" id="L138">        ts.request(50);</span>
+
+<span class="fc" id="L140">        assertTrue(backpressureCallback.await(500, TimeUnit.MILLISECONDS));</span>
+<span class="fc" id="L141">        ts.awaitTerminalEvent(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L142">        ts.assertError(MissingBackpressureException.class);</span>
+
+<span class="fc" id="L144">        int size = ts.values().size();</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        assertTrue(size &lt;= 150);  // will get up to 50 more</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        assertTrue(ts.values().get(size - 1) == size - 1);</span>
+<span class="fc" id="L147">    }</span>
+
+<span class="fc" id="L149">    static final Flowable&lt;Long&gt; infinite = Flowable.unsafeCreate(new Publisher&lt;Long&gt;() {</span>
+
+        @Override
+        public void subscribe(Subscriber&lt;? super Long&gt; s) {
+<span class="fc" id="L153">            BooleanSubscription bs = new BooleanSubscription();</span>
+<span class="fc" id="L154">            s.onSubscribe(bs);</span>
+<span class="fc" id="L155">            long i = 0;</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            while (!bs.isCancelled()) {</span>
+<span class="fc" id="L157">                s.onNext(i++);</span>
+            }
+<span class="fc" id="L159">        }</span>
+
+    });
+
+<span class="fc" id="L163">    private static final Action THROWS_NON_FATAL = new Action() {</span>
+
+        @Override
+        public void run() {
+<span class="fc" id="L167">            throw new RuntimeException();</span>
+        }
+    };
+
+    @Test
+    public void nonFatalExceptionThrownByOnOverflowIsNotReportedByUpstream() {
+<span class="fc" id="L173">         final AtomicBoolean errorOccurred = new AtomicBoolean(false);</span>
+<span class="fc" id="L174">         TestSubscriber&lt;Long&gt; ts = TestSubscriber.create(0);</span>
+<span class="fc" id="L175">         infinite</span>
+<span class="fc" id="L176">           .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L177">           .doOnError(new Consumer&lt;Throwable&gt;() {</span>
+                 @Override
+                 public void accept(Throwable t) {
+<span class="nc" id="L180">                     errorOccurred.set(true);</span>
+<span class="nc" id="L181">                 }</span>
+             })
+<span class="fc" id="L183">           .onBackpressureBuffer(1, THROWS_NON_FATAL)</span>
+<span class="fc" id="L184">           .subscribe(ts);</span>
+<span class="fc" id="L185">         ts.awaitTerminalEvent();</span>
+<span class="fc" id="L186">         assertFalse(errorOccurred.get());</span>
+<span class="fc" id="L187">    }</span>
+
+    @Test
+    public void maxSize() {
+<span class="fc" id="L191">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create(0);</span>
+
+<span class="fc" id="L193">        Flowable.range(1, 10).onBackpressureBuffer(1).subscribe(ts);</span>
+
+<span class="fc" id="L195">        ts.assertNoValues();</span>
+<span class="fc" id="L196">        ts.assertError(MissingBackpressureException.class);</span>
+<span class="fc" id="L197">        ts.assertNotComplete();</span>
+<span class="fc" id="L198">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void fixBackpressureBufferNegativeCapacity() throws InterruptedException {
+<span class="nc" id="L202">        Flowable.empty().onBackpressureBuffer(-1);</span>
+<span class="nc" id="L203">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void fixBackpressureBufferZeroCapacity() throws InterruptedException {
+<span class="nc" id="L207">        Flowable.empty().onBackpressureBuffer(0);</span>
+<span class="nc" id="L208">    }</span>
+
+    @Test(expected = NullPointerException.class)
+    public void fixBackpressureBufferNullStrategy() throws InterruptedException {
+<span class="pc" id="L212">        Flowable.empty().onBackpressureBuffer(10, new Action() {</span>
+            @Override
+<span class="nc" id="L214">            public void run() { }</span>
+        }, null);
+<span class="nc" id="L216">    }</span>
+
+    @Test
+    public void noDelayError() {
+
+<span class="fc" id="L221">        Flowable.just(1).concatWith(Flowable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L222">        .onBackpressureBuffer(false)</span>
+<span class="fc" id="L223">        .test(0L)</span>
+<span class="fc" id="L224">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L225">    }</span>
+
+    @Test
+    public void delayError() {
+<span class="fc" id="L229">        TestSubscriber&lt;Integer&gt; ts = Flowable.just(1).concatWith(Flowable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L230">        .onBackpressureBuffer(true)</span>
+<span class="fc" id="L231">        .test(0L)</span>
+<span class="fc" id="L232">        .assertEmpty();</span>
+
+<span class="fc" id="L234">        ts.request(1);</span>
+<span class="fc" id="L235">        ts.assertFailure(TestException.class, 1);</span>
+
+<span class="fc" id="L237">    }</span>
+
+    @Test
+    public void delayErrorBuffer() {
+<span class="fc" id="L241">        TestSubscriber&lt;Integer&gt; ts = Flowable.just(1).concatWith(Flowable.&lt;Integer&gt;error(new TestException()))</span>
+<span class="fc" id="L242">        .onBackpressureBuffer(16, true)</span>
+<span class="fc" id="L243">        .test(0L)</span>
+<span class="fc" id="L244">        .assertEmpty();</span>
+
+<span class="fc" id="L246">        ts.request(1);</span>
+<span class="fc" id="L247">        ts.assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L248">    }</span>
+
+    @Test
+    public void fusedNormal() {
+<span class="fc" id="L252">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L254">        Flowable.range(1, 10).onBackpressureBuffer().subscribe(ts);</span>
+
+<span class="fc" id="L256">        ts.assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L257">          .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L258">          .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L259">    }</span>
+
+    @Test
+    public void fusedError() {
+<span class="fc" id="L263">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L265">        Flowable.&lt;Integer&gt;error(new TestException()).onBackpressureBuffer().subscribe(ts);</span>
+
+<span class="fc" id="L267">        ts.assertOf(SubscriberFusion.&lt;Integer&gt;assertFuseable())</span>
+<span class="fc" id="L268">          .assertOf(SubscriberFusion.&lt;Integer&gt;assertFusionMode(QueueFuseable.ASYNC))</span>
+<span class="fc" id="L269">          .assertFailure(TestException.class);</span>
+<span class="fc" id="L270">    }</span>
+
+    @Test
+    public void fusedPreconsume() throws Exception {
+
+<span class="fc" id="L275">        TestSubscriber&lt;Integer&gt; ts = Flowable.range(1, 1000 * 1000)</span>
+<span class="fc" id="L276">        .onBackpressureBuffer()</span>
+<span class="fc" id="L277">        .observeOn(Schedulers.single())</span>
+<span class="fc" id="L278">        .test(0L);</span>
+
+<span class="fc" id="L280">        ts.assertEmpty();</span>
+
+<span class="fc" id="L282">        Thread.sleep(100);</span>
+
+<span class="fc" id="L284">        ts.request(1000 * 1000);</span>
+
+<span class="fc" id="L286">        ts</span>
+<span class="fc" id="L287">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L288">        .assertValueCount(1000 * 1000)</span>
+<span class="fc" id="L289">        .assertNoErrors()</span>
+<span class="fc" id="L290">        .assertComplete();</span>
+<span class="fc" id="L291">    }</span>
+
+    @Test
+    public void emptyDelayError() {
+<span class="fc" id="L295">        Flowable.empty()</span>
+<span class="fc" id="L296">        .onBackpressureBuffer(true)</span>
+<span class="fc" id="L297">        .test()</span>
+<span class="fc" id="L298">        .assertResult();</span>
+<span class="fc" id="L299">    }</span>
+
+    @Test
+    public void fusionRejected() {
+<span class="fc" id="L303">        TestSubscriber&lt;Integer&gt; ts = SubscriberFusion.newTest(QueueFuseable.SYNC);</span>
+
+<span class="fc" id="L305">        Flowable.&lt;Integer&gt;never().onBackpressureBuffer().subscribe(ts);</span>
+
+<span class="fc" id="L307">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L308">        .assertEmpty();</span>
+<span class="fc" id="L309">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

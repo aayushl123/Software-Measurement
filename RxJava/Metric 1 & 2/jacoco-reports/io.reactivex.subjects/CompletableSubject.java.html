@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompletableSubject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subjects</a> &gt; <span class="el_source">CompletableSubject.java</span></div><h1>CompletableSubject.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subjects;
+
+import io.reactivex.annotations.Nullable;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.annotations.CheckReturnValue;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Represents a hot Completable-like source and consumer of events similar to Subjects.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;243&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/CompletableSubject.png&quot; alt=&quot;&quot;&gt;
+ * &lt;p&gt;
+ * This subject does not have a public constructor by design; a new non-terminated instance of this
+ * {@code CompletableSubject} can be created via the {@link #create()} method.
+ * &lt;p&gt;
+ * Since the {@code CompletableSubject} is conceptionally derived from the {@code Processor} type in the Reactive Streams specification,
+ * {@code null}s are not allowed (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.13&quot;&gt;Rule 2.13&lt;/a&gt;)
+ * as parameters to {@link #onError(Throwable)}.
+ * &lt;p&gt;
+ * Even though {@code CompletableSubject} implements the {@code CompletableObserver} interface, calling
+ * {@code onSubscribe} is not required (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.12&quot;&gt;Rule 2.12&lt;/a&gt;)
+ * if the subject is used as a standalone source. However, calling {@code onSubscribe}
+ * after the {@code CompletableSubject} reached its terminal state will result in the
+ * given {@code Disposable} being disposed immediately.
+ * &lt;p&gt;
+ * All methods are thread safe. Calling {@link #onComplete()} multiple
+ * times has no effect. Calling {@link #onError(Throwable)} multiple times relays the {@code Throwable} to
+ * the {@link io.reactivex.plugins.RxJavaPlugins#onError(Throwable)} global error handler.
+ * &lt;p&gt;
+ * This {@code CompletableSubject} supports the standard state-peeking methods {@link #hasComplete()},
+ * {@link #hasThrowable()}, {@link #getThrowable()} and {@link #hasObservers()}.
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;{@code CompletableSubject} does not operate by default on a particular {@link io.reactivex.Scheduler} and
+ *  the {@code CompletableObserver}s get notified on the thread where the terminating {@code onError} or {@code onComplete}
+ *  methods were invoked.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Error handling:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;When the {@link #onError(Throwable)} is called, the {@code CompletableSubject} enters into a terminal state
+ *  and emits the same {@code Throwable} instance to the last set of {@code CompletableObserver}s. During this emission,
+ *  if one or more {@code CompletableObserver}s dispose their respective {@code Disposable}s, the
+ *  {@code Throwable} is delivered to the global error handler via
+ *  {@link io.reactivex.plugins.RxJavaPlugins#onError(Throwable)} (multiple times if multiple {@code CompletableObserver}s
+ *  cancel at once).
+ *  If there were no {@code CompletableObserver}s subscribed to this {@code CompletableSubject} when the {@code onError()}
+ *  was called, the global error handler is not invoked.
+ *  &lt;/dd&gt;
+ * &lt;/dl&gt;
+ * &lt;p&gt;
+ * Example usage:
+ * &lt;pre&gt;&lt;code&gt;
+ * CompletableSubject subject = CompletableSubject.create();
+ *
+ * TestObserver&amp;lt;Void&amp;gt; to1 = subject.test();
+ *
+ * // a fresh CompletableSubject is empty
+ * to1.assertEmpty();
+ *
+ * subject.onComplete();
+ *
+ * // a CompletableSubject is always void of items
+ * to1.assertResult();
+ *
+ * TestObserver&amp;lt;Void&amp;gt; to2 = subject.test()
+ *
+ * // late CompletableObservers receive the terminal event
+ * to2.assertResult();
+ * &lt;/code&gt;&lt;/pre&gt;
+ * &lt;p&gt;History: 2.0.5 - experimental
+ * @since 2.1
+ */
+public final class CompletableSubject extends Completable implements CompletableObserver {
+
+    final AtomicReference&lt;CompletableDisposable[]&gt; observers;
+
+<span class="fc" id="L93">    static final CompletableDisposable[] EMPTY = new CompletableDisposable[0];</span>
+
+<span class="fc" id="L95">    static final CompletableDisposable[] TERMINATED = new CompletableDisposable[0];</span>
+
+    final AtomicBoolean once;
+    Throwable error;
+
+    /**
+     * Creates a fresh CompletableSubject.
+     * @return the new CompletableSubject instance
+     */
+    @CheckReturnValue
+    @NonNull
+    public static CompletableSubject create() {
+<span class="fc" id="L107">        return new CompletableSubject();</span>
+    }
+
+<span class="fc" id="L110">    CompletableSubject() {</span>
+<span class="fc" id="L111">        once = new AtomicBoolean();</span>
+<span class="fc" id="L112">        observers = new AtomicReference&lt;CompletableDisposable[]&gt;(EMPTY);</span>
+<span class="fc" id="L113">    }</span>
+
+    @Override
+    public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (observers.get() == TERMINATED) {</span>
+<span class="fc" id="L118">            d.dispose();</span>
+        }
+<span class="fc" id="L120">    }</span>
+
+    @Override
+    public void onError(Throwable e) {
+<span class="fc" id="L124">        ObjectHelper.requireNonNull(e, &quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (once.compareAndSet(false, true)) {</span>
+<span class="fc" id="L126">            this.error = e;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            for (CompletableDisposable md : observers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L128">                md.downstream.onError(e);</span>
+            }
+        } else {
+<span class="fc" id="L131">            RxJavaPlugins.onError(e);</span>
+        }
+<span class="fc" id="L133">    }</span>
+
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (once.compareAndSet(false, true)) {</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            for (CompletableDisposable md : observers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L139">                md.downstream.onComplete();</span>
+            }
+        }
+<span class="fc" id="L142">    }</span>
+
+    @Override
+    protected void subscribeActual(CompletableObserver observer) {
+<span class="fc" id="L146">        CompletableDisposable md = new CompletableDisposable(observer, this);</span>
+<span class="fc" id="L147">        observer.onSubscribe(md);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (add(md)) {</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (md.isDisposed()) {</span>
+<span class="fc" id="L150">                remove(md);</span>
+            }
+        } else {
+<span class="fc" id="L153">            Throwable ex = error;</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            if (ex != null) {</span>
+<span class="fc" id="L155">                observer.onError(ex);</span>
+            } else {
+<span class="fc" id="L157">                observer.onComplete();</span>
+            }
+        }
+<span class="fc" id="L160">    }</span>
+
+    boolean add(CompletableDisposable inner) {
+        for (;;) {
+<span class="fc" id="L164">            CompletableDisposable[] a = observers.get();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (a == TERMINATED) {</span>
+<span class="fc" id="L166">                return false;</span>
+            }
+
+<span class="fc" id="L169">            int n = a.length;</span>
+
+<span class="fc" id="L171">            CompletableDisposable[] b = new CompletableDisposable[n + 1];</span>
+<span class="fc" id="L172">            System.arraycopy(a, 0, b, 0, n);</span>
+<span class="fc" id="L173">            b[n] = inner;</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            if (observers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L175">                return true;</span>
+            }
+<span class="fc" id="L177">        }</span>
+    }
+
+    void remove(CompletableDisposable inner) {
+        for (;;) {
+<span class="fc" id="L182">            CompletableDisposable[] a = observers.get();</span>
+<span class="fc" id="L183">            int n = a.length;</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            if (n == 0) {</span>
+<span class="fc" id="L185">                return;</span>
+            }
+
+<span class="fc" id="L188">            int j = -1;</span>
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                if (a[i] == inner) {</span>
+<span class="fc" id="L192">                    j = i;</span>
+<span class="fc" id="L193">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L197" title="All 2 branches covered.">            if (j &lt; 0) {</span>
+<span class="fc" id="L198">                return;</span>
+            }
+            CompletableDisposable[] b;
+<span class="fc bfc" id="L201" title="All 2 branches covered.">            if (n == 1) {</span>
+<span class="fc" id="L202">                b = EMPTY;</span>
+            } else {
+<span class="fc" id="L204">                b = new CompletableDisposable[n - 1];</span>
+<span class="fc" id="L205">                System.arraycopy(a, 0, b, 0, j);</span>
+<span class="fc" id="L206">                System.arraycopy(a, j + 1, b, j, n - j - 1);</span>
+            }
+
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (observers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L210">                return;</span>
+            }
+<span class="fc" id="L212">        }</span>
+    }
+
+    /**
+     * Returns the terminal error if this CompletableSubject has been terminated with an error, null otherwise.
+     * @return the terminal error or null if not terminated or not with an error
+     */
+    @Nullable
+    public Throwable getThrowable() {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (observers.get() == TERMINATED) {</span>
+<span class="fc" id="L222">            return error;</span>
+        }
+<span class="fc" id="L224">        return null;</span>
+    }
+
+    /**
+     * Returns true if this CompletableSubject has been terminated with an error.
+     * @return true if this CompletableSubject has been terminated with an error
+     */
+    public boolean hasThrowable() {
+<span class="fc bfc" id="L232" title="All 4 branches covered.">        return observers.get() == TERMINATED &amp;&amp; error != null;</span>
+    }
+
+    /**
+     * Returns true if this CompletableSubject has been completed.
+     * @return true if this CompletableSubject has been completed
+     */
+    public boolean hasComplete() {
+<span class="fc bfc" id="L240" title="All 4 branches covered.">        return observers.get() == TERMINATED &amp;&amp; error == null;</span>
+    }
+
+    /**
+     * Returns true if this CompletableSubject has observers.
+     * @return true if this CompletableSubject has observers
+     */
+    public boolean hasObservers() {
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        return observers.get().length != 0;</span>
+    }
+
+    /**
+     * Returns the number of current observers.
+     * @return the number of current observers
+     */
+    /* test */ int observerCount() {
+<span class="fc" id="L256">        return observers.get().length;</span>
+    }
+
+    static final class CompletableDisposable
+    extends AtomicReference&lt;CompletableSubject&gt; implements Disposable {
+        private static final long serialVersionUID = -7650903191002190468L;
+
+        final CompletableObserver downstream;
+
+<span class="fc" id="L265">        CompletableDisposable(CompletableObserver actual, CompletableSubject parent) {</span>
+<span class="fc" id="L266">            this.downstream = actual;</span>
+<span class="fc" id="L267">            lazySet(parent);</span>
+<span class="fc" id="L268">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L272">            CompletableSubject parent = getAndSet(null);</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            if (parent != null) {</span>
+<span class="fc" id="L274">                parent.remove(this);</span>
+            }
+<span class="fc" id="L276">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc bfc" id="L280" title="All 2 branches covered.">            return get() == null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

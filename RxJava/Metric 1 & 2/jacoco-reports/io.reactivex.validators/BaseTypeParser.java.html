@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseTypeParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.validators</a> &gt; <span class="el_source">BaseTypeParser.java</span></div><h1>BaseTypeParser.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.validators;
+
+import java.io.File;
+import java.util.*;
+
+/**
+ * Parses the java file of a reactive base type to allow discovering Javadoc mistakes algorithmically.
+ */
+public final class BaseTypeParser {
+
+<span class="nc" id="L24">    private BaseTypeParser() {</span>
+<span class="nc" id="L25">        throw new IllegalStateException(&quot;No instances!&quot;);</span>
+    }
+
+<span class="fc" id="L28">    public static class RxMethod {</span>
+        public String signature;
+
+        public String backpressureKind;
+
+        public String schedulerKind;
+
+        public String javadoc;
+
+        public String backpressureDocumentation;
+
+        public String schedulerDocumentation;
+
+        public int javadocLine;
+
+        public int methodLine;
+
+        public int backpressureDocLine;
+
+        public int schedulerDocLine;
+    }
+
+    public static List&lt;RxMethod&gt; parse(File f, String baseClassName) throws Exception {
+<span class="fc" id="L51">        List&lt;RxMethod&gt; list = new ArrayList&lt;RxMethod&gt;();</span>
+
+<span class="fc" id="L53">        StringBuilder b = JavadocForAnnotations.readFile(f);</span>
+
+<span class="fc" id="L55">        int baseIndex = b.indexOf(&quot;public abstract class &quot; + baseClassName);</span>
+
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (baseIndex &lt; 0) {</span>
+<span class="nc" id="L58">            throw new AssertionError(&quot;Wrong base class file: &quot; + baseClassName);</span>
+        }
+
+        for (;;) {
+<span class="fc" id="L62">            RxMethod m = new RxMethod();</span>
+
+<span class="fc" id="L64">            int javadocStart = b.indexOf(&quot;/**&quot;, baseIndex);</span>
+
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (javadocStart &lt; 0) {</span>
+<span class="fc" id="L67">                break;</span>
+            }
+
+<span class="fc" id="L70">            int javadocEnd = b.indexOf(&quot;*/&quot;, javadocStart + 2);</span>
+
+<span class="fc" id="L72">            m.javadoc = b.substring(javadocStart, javadocEnd + 2);</span>
+<span class="fc" id="L73">            m.javadocLine = JavadocForAnnotations.lineNumber(b, javadocStart);</span>
+
+<span class="fc" id="L75">            int backpressureDoc = b.indexOf(&quot;&lt;dt&gt;&lt;b&gt;Backpressure:&lt;/b&gt;&lt;/dt&gt;&quot;, javadocStart);</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">            if (backpressureDoc &gt; 0 &amp;&amp; backpressureDoc &lt; javadocEnd) {</span>
+<span class="fc" id="L77">                m.backpressureDocLine = JavadocForAnnotations.lineNumber(b, backpressureDoc);</span>
+<span class="fc" id="L78">                int nextDD = b.indexOf(&quot;&lt;/dd&gt;&quot;, backpressureDoc);</span>
+<span class="pc bpc" id="L79" title="2 of 4 branches missed.">                if (nextDD &gt; 0 &amp;&amp; nextDD &lt; javadocEnd) {</span>
+<span class="fc" id="L80">                    m.backpressureDocumentation = b.substring(backpressureDoc, nextDD + 5);</span>
+                }
+            }
+
+<span class="fc" id="L84">            int schedulerDoc = b.indexOf(&quot;&lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;&quot;, javadocStart);</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">            if (schedulerDoc &gt; 0 &amp;&amp; schedulerDoc &lt; javadocEnd) {</span>
+<span class="fc" id="L86">                m.schedulerDocLine = JavadocForAnnotations.lineNumber(b, schedulerDoc);</span>
+<span class="fc" id="L87">                int nextDD = b.indexOf(&quot;&lt;/dd&gt;&quot;, schedulerDoc);</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">                if (nextDD &gt; 0 &amp;&amp; nextDD &lt; javadocEnd) {</span>
+<span class="fc" id="L89">                    m.schedulerDocumentation = b.substring(schedulerDoc, nextDD + 5);</span>
+                }
+            }
+
+<span class="fc" id="L93">            int staticMethodDef = b.indexOf(&quot;public static &quot;, javadocEnd + 2);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (staticMethodDef &lt; 0) {</span>
+<span class="fc" id="L95">                staticMethodDef = Integer.MAX_VALUE;</span>
+            }
+<span class="fc" id="L97">            int instanceMethodDef = b.indexOf(&quot;public final &quot;, javadocEnd + 2);</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (instanceMethodDef &lt; 0) {</span>
+<span class="nc" id="L99">                instanceMethodDef = Integer.MAX_VALUE;</span>
+            }
+
+<span class="fc" id="L102">            int javadocStartNext = b.indexOf(&quot;/**&quot;, javadocEnd + 2);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            if (javadocStartNext &lt; 0) {</span>
+<span class="fc" id="L104">                javadocStartNext = Integer.MAX_VALUE;</span>
+            }
+
+<span class="fc" id="L107">            int definitionStart = -1;</span>
+
+<span class="pc bpc" id="L109" title="2 of 6 branches missed.">            if (staticMethodDef &gt; 0 &amp;&amp; staticMethodDef &lt; javadocStartNext &amp;&amp; staticMethodDef &lt; instanceMethodDef) {</span>
+<span class="fc" id="L110">                definitionStart = staticMethodDef;</span>
+            }
+<span class="pc bpc" id="L112" title="2 of 6 branches missed.">            if (instanceMethodDef &gt; 0 &amp;&amp; instanceMethodDef &lt; javadocStartNext &amp;&amp; instanceMethodDef &lt; staticMethodDef) {</span>
+<span class="fc" id="L113">                definitionStart = instanceMethodDef;</span>
+            }
+
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (definitionStart &gt; 0) {</span>
+<span class="fc" id="L117">                int methodDefEnd = b.indexOf(&quot;{&quot;, definitionStart);</span>
+
+<span class="fc" id="L119">                m.signature = b.substring(definitionStart, methodDefEnd + 1);</span>
+
+<span class="fc" id="L121">                m.methodLine = JavadocForAnnotations.lineNumber(b, definitionStart);</span>
+
+<span class="fc" id="L123">                int backpressureSpec = b.indexOf(&quot;@BackpressureSupport(&quot;, javadocEnd);</span>
+<span class="fc bfc" id="L124" title="All 4 branches covered.">                if (backpressureSpec &gt; 0 &amp;&amp; backpressureSpec &lt; definitionStart) {</span>
+<span class="fc" id="L125">                    int backpressureSpecEnd = b.indexOf(&quot;)&quot;, backpressureSpec + 21);</span>
+<span class="fc" id="L126">                    m.backpressureKind = b.substring(backpressureSpec + 21, backpressureSpecEnd);</span>
+                }
+
+<span class="fc" id="L129">                int schhedulerSpec = b.indexOf(&quot;@SchedulerSupport(&quot;, javadocEnd);</span>
+<span class="pc bpc" id="L130" title="1 of 4 branches missed.">                if (schhedulerSpec &gt; 0 &amp;&amp; schhedulerSpec &lt; definitionStart) {</span>
+<span class="fc" id="L131">                    int schedulerSpecEnd = b.indexOf(&quot;)&quot;, schhedulerSpec + 18);</span>
+<span class="fc" id="L132">                    m.schedulerKind = b.substring(schhedulerSpec + 18, schedulerSpecEnd);</span>
+                }
+
+<span class="fc" id="L135">                list.add(m);</span>
+<span class="fc" id="L136">                baseIndex = methodDefEnd;</span>
+<span class="fc" id="L137">            } else {</span>
+<span class="fc" id="L138">                baseIndex = javadocEnd + 2;</span>
+            }
+
+<span class="fc" id="L141">        }</span>
+
+<span class="fc" id="L143">        return list;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

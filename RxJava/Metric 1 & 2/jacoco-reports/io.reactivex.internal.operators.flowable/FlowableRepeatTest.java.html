@@ -1,0 +1,498 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableRepeatTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableRepeatTest.java</span></div><h1>FlowableRepeatTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L37">public class FlowableRepeatTest {</span>
+
+    @Test(timeout = 2000)
+    public void testRepetition() {
+<span class="fc" id="L41">        int num = 10;</span>
+<span class="fc" id="L42">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc" id="L43">        int value = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(final Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L47">                subscriber.onNext(count.incrementAndGet());</span>
+<span class="fc" id="L48">                subscriber.onComplete();</span>
+<span class="fc" id="L49">            }</span>
+<span class="fc" id="L50">        }).repeat().subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L51">        .take(num).blockingLast();</span>
+
+<span class="fc" id="L53">        assertEquals(num, value);</span>
+<span class="fc" id="L54">    }</span>
+
+    @Test(timeout = 2000)
+    public void testRepeatTake() {
+<span class="fc" id="L58">        Flowable&lt;Integer&gt; xs = Flowable.just(1, 2);</span>
+<span class="fc" id="L59">        Object[] ys = xs.repeat().subscribeOn(Schedulers.newThread()).take(4).toList().blockingGet().toArray();</span>
+<span class="fc" id="L60">        assertArrayEquals(new Object[] { 1, 2, 1, 2 }, ys);</span>
+<span class="fc" id="L61">    }</span>
+
+    @Test(timeout = 20000)
+    public void testNoStackOverFlow() {
+<span class="fc" id="L65">        Flowable.just(1).repeat().subscribeOn(Schedulers.newThread()).take(100000).blockingLast();</span>
+<span class="fc" id="L66">    }</span>
+
+    @Test
+    public void testRepeatTakeWithSubscribeOn() throws InterruptedException {
+
+<span class="fc" id="L71">        final AtomicInteger counter = new AtomicInteger();</span>
+<span class="fc" id="L72">        Flowable&lt;Integer&gt; oi = Flowable.unsafeCreate(new Publisher&lt;Integer&gt;() {</span>
+
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; sub) {
+<span class="fc" id="L76">                sub.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L77">                counter.incrementAndGet();</span>
+<span class="fc" id="L78">                sub.onNext(1);</span>
+<span class="fc" id="L79">                sub.onNext(2);</span>
+<span class="fc" id="L80">                sub.onComplete();</span>
+<span class="fc" id="L81">            }</span>
+<span class="fc" id="L82">        }).subscribeOn(Schedulers.newThread());</span>
+
+<span class="fc" id="L84">        Object[] ys = oi.repeat().subscribeOn(Schedulers.newThread()).map(new Function&lt;Integer, Integer&gt;() {</span>
+
+            @Override
+            public Integer apply(Integer t1) {
+                try {
+<span class="fc" id="L89">                    Thread.sleep(50);</span>
+<span class="nc" id="L90">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L91">                    e.printStackTrace();</span>
+<span class="fc" id="L92">                }</span>
+<span class="fc" id="L93">                return t1;</span>
+            }
+
+<span class="fc" id="L96">        }).take(4).toList().blockingGet().toArray();</span>
+
+<span class="fc" id="L98">        assertEquals(2, counter.get());</span>
+<span class="fc" id="L99">        assertArrayEquals(new Object[] { 1, 2, 1, 2 }, ys);</span>
+<span class="fc" id="L100">    }</span>
+
+    @Test(timeout = 2000)
+    public void testRepeatAndTake() {
+<span class="fc" id="L104">        Subscriber&lt;Object&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L106">        Flowable.just(1).repeat().take(10).subscribe(subscriber);</span>
+
+<span class="fc" id="L108">        verify(subscriber, times(10)).onNext(1);</span>
+<span class="fc" id="L109">        verify(subscriber).onComplete();</span>
+<span class="fc" id="L110">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L111">    }</span>
+
+    @Test(timeout = 2000)
+    public void testRepeatLimited() {
+<span class="fc" id="L115">        Subscriber&lt;Object&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L117">        Flowable.just(1).repeat(10).subscribe(subscriber);</span>
+
+<span class="fc" id="L119">        verify(subscriber, times(10)).onNext(1);</span>
+<span class="fc" id="L120">        verify(subscriber).onComplete();</span>
+<span class="fc" id="L121">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L122">    }</span>
+
+    @Test(timeout = 2000)
+    public void testRepeatError() {
+<span class="fc" id="L126">        Subscriber&lt;Object&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L128">        Flowable.error(new TestException()).repeat(10).subscribe(subscriber);</span>
+
+<span class="fc" id="L130">        verify(subscriber).onError(any(TestException.class));</span>
+<span class="fc" id="L131">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L132">        verify(subscriber, never()).onComplete();</span>
+
+<span class="fc" id="L134">    }</span>
+
+    @Test(timeout = 2000)
+    public void testRepeatZero() {
+<span class="fc" id="L138">        Subscriber&lt;Object&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L140">        Flowable.just(1).repeat(0).subscribe(subscriber);</span>
+
+<span class="fc" id="L142">        verify(subscriber).onComplete();</span>
+<span class="fc" id="L143">        verify(subscriber, never()).onNext(any());</span>
+<span class="fc" id="L144">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L145">    }</span>
+
+    @Test(timeout = 2000)
+    public void testRepeatOne() {
+<span class="fc" id="L149">        Subscriber&lt;Object&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L151">        Flowable.just(1).repeat(1).subscribe(subscriber);</span>
+
+<span class="fc" id="L153">        verify(subscriber).onComplete();</span>
+<span class="fc" id="L154">        verify(subscriber, times(1)).onNext(any());</span>
+<span class="fc" id="L155">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L156">    }</span>
+
+    /** Issue #2587. */
+    @Test
+    public void testRepeatAndDistinctUnbounded() {
+<span class="fc" id="L161">        Flowable&lt;Integer&gt; src = Flowable.fromIterable(Arrays.asList(1, 2, 3, 4, 5))</span>
+<span class="fc" id="L162">                .take(3)</span>
+<span class="fc" id="L163">                .repeat(3)</span>
+<span class="fc" id="L164">                .distinct();</span>
+
+<span class="fc" id="L166">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L168">        src.subscribe(ts);</span>
+
+<span class="fc" id="L170">        ts.assertNoErrors();</span>
+<span class="fc" id="L171">        ts.assertTerminated();</span>
+<span class="fc" id="L172">        ts.assertValues(1, 2, 3);</span>
+<span class="fc" id="L173">    }</span>
+
+    /** Issue #2844: wrong target of request. */
+    @Test(timeout = 3000)
+    public void testRepeatRetarget() {
+<span class="fc" id="L178">        final List&lt;Integer&gt; concatBase = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc" id="L179">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+<span class="fc" id="L180">        Flowable.just(1, 2)</span>
+<span class="fc" id="L181">        .repeat(5)</span>
+<span class="fc" id="L182">        .concatMap(new Function&lt;Integer, Flowable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Integer&gt; apply(Integer x) {
+<span class="fc" id="L185">                System.out.println(&quot;testRepeatRetarget -&gt; &quot; + x);</span>
+<span class="fc" id="L186">                concatBase.add(x);</span>
+<span class="fc" id="L187">                return Flowable.&lt;Integer&gt;empty()</span>
+<span class="fc" id="L188">                        .delay(200, TimeUnit.MILLISECONDS);</span>
+            }
+        })
+<span class="fc" id="L191">        .subscribe(ts);</span>
+
+<span class="fc" id="L193">        ts.awaitTerminalEvent();</span>
+<span class="fc" id="L194">        ts.assertNoErrors();</span>
+<span class="fc" id="L195">        ts.assertNoValues();</span>
+
+<span class="fc" id="L197">        assertEquals(Arrays.asList(1, 2, 1, 2, 1, 2, 1, 2, 1, 2), concatBase);</span>
+<span class="fc" id="L198">    }</span>
+
+    @Test
+    public void repeatScheduled() {
+
+<span class="fc" id="L203">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L205">        Flowable.just(1).subscribeOn(Schedulers.computation()).repeat(5).subscribe(ts);</span>
+
+<span class="fc" id="L207">        ts.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L208">        ts.assertValues(1, 1, 1, 1, 1);</span>
+<span class="fc" id="L209">        ts.assertNoErrors();</span>
+<span class="fc" id="L210">        ts.assertComplete();</span>
+<span class="fc" id="L211">    }</span>
+
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @Test
+    public void repeatWhenDefaultScheduler() {
+<span class="fc" id="L216">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L218">        Flowable.just(1).repeatWhen((Function)new Function&lt;Flowable, Flowable&gt;() {</span>
+            @Override
+            public Flowable apply(Flowable f) {
+<span class="fc" id="L221">                return f.take(2);</span>
+            }
+<span class="fc" id="L223">        }).subscribe(ts);</span>
+
+<span class="fc" id="L225">        ts.assertValues(1, 1);</span>
+<span class="fc" id="L226">        ts.assertNoErrors();</span>
+<span class="fc" id="L227">        ts.assertComplete();</span>
+
+<span class="fc" id="L229">    }</span>
+
+    @SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    @Test
+    public void repeatWhenTrampolineScheduler() {
+<span class="fc" id="L234">        TestSubscriber&lt;Integer&gt; ts = TestSubscriber.create();</span>
+
+<span class="fc" id="L236">        Flowable.just(1).subscribeOn(Schedulers.trampoline())</span>
+<span class="fc" id="L237">        .repeatWhen((Function)new Function&lt;Flowable, Flowable&gt;() {</span>
+            @Override
+            public Flowable apply(Flowable f) {
+<span class="fc" id="L240">                return f.take(2);</span>
+            }
+<span class="fc" id="L242">        }).subscribe(ts);</span>
+
+<span class="fc" id="L244">        ts.assertValues(1, 1);</span>
+<span class="fc" id="L245">        ts.assertNoErrors();</span>
+<span class="fc" id="L246">        ts.assertComplete();</span>
+<span class="fc" id="L247">    }</span>
+
+    @Test
+    public void repeatUntil() {
+<span class="fc" id="L251">        Flowable.just(1)</span>
+<span class="fc" id="L252">        .repeatUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="fc" id="L255">                return false;</span>
+            }
+        })
+<span class="fc" id="L258">        .take(5)</span>
+<span class="fc" id="L259">        .test()</span>
+<span class="fc" id="L260">        .assertResult(1, 1, 1, 1, 1);</span>
+<span class="fc" id="L261">    }</span>
+
+    @Test
+    public void repeatUntilCancel() {
+<span class="fc" id="L265">        Flowable.just(1)</span>
+<span class="fc" id="L266">        .repeatUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="nc" id="L269">                return true;</span>
+            }
+        })
+<span class="fc" id="L272">        .test(2L, true)</span>
+<span class="fc" id="L273">        .assertEmpty();</span>
+<span class="fc" id="L274">    }</span>
+
+    @Test
+    public void repeatLongPredicateInvalid() {
+        try {
+<span class="nc" id="L279">            Flowable.just(1).repeat(-99);</span>
+<span class="nc" id="L280">            fail(&quot;Should have thrown&quot;);</span>
+<span class="fc" id="L281">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L282">            assertEquals(&quot;times &gt;= 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L283">        }</span>
+<span class="fc" id="L284">    }</span>
+
+    @Test
+    public void repeatUntilError() {
+<span class="fc" id="L288">        Flowable.error(new TestException())</span>
+<span class="fc" id="L289">        .repeatUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="nc" id="L292">                return true;</span>
+            }
+        })
+<span class="fc" id="L295">        .test()</span>
+<span class="fc" id="L296">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L297">    }</span>
+
+    @Test
+    public void repeatUntilFalse() {
+<span class="fc" id="L301">        Flowable.just(1)</span>
+<span class="fc" id="L302">        .repeatUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="fc" id="L305">                return true;</span>
+            }
+        })
+<span class="fc" id="L308">        .test()</span>
+<span class="fc" id="L309">        .assertResult(1);</span>
+<span class="fc" id="L310">    }</span>
+
+    @Test
+    public void repeatUntilSupplierCrash() {
+<span class="fc" id="L314">        Flowable.just(1)</span>
+<span class="fc" id="L315">        .repeatUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="fc" id="L318">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L321">        .test()</span>
+<span class="fc" id="L322">        .assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L323">    }</span>
+
+    @Test
+    public void shouldDisposeInnerObservable() {
+<span class="fc" id="L327">      final PublishProcessor&lt;Object&gt; processor = PublishProcessor.create();</span>
+<span class="fc" id="L328">      final Disposable disposable = Flowable.just(&quot;Leak&quot;)</span>
+<span class="fc" id="L329">          .repeatWhen(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Object&gt; apply(Flowable&lt;Object&gt; completions) throws Exception {
+<span class="fc" id="L332">                return completions.switchMap(new Function&lt;Object, Flowable&lt;Object&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Object&gt; apply(Object ignore) throws Exception {
+<span class="fc" id="L335">                        return processor;</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L340">          .subscribe();</span>
+
+<span class="fc" id="L342">      assertTrue(processor.hasSubscribers());</span>
+<span class="fc" id="L343">      disposable.dispose();</span>
+<span class="fc" id="L344">      assertFalse(processor.hasSubscribers());</span>
+<span class="fc" id="L345">    }</span>
+
+    @Test
+    public void testRepeatWhen() {
+<span class="fc" id="L349">        Flowable.error(new TestException())</span>
+<span class="fc" id="L350">        .repeatWhen(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Object&gt; apply(Flowable&lt;Object&gt; v) throws Exception {
+<span class="fc" id="L353">                return v.delay(10, TimeUnit.SECONDS);</span>
+            }
+        })
+<span class="fc" id="L356">        .test()</span>
+<span class="fc" id="L357">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L358">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L359">    }</span>
+
+    @Test
+    public void whenTake() {
+<span class="fc" id="L363">        Flowable.range(1, 3).repeatWhen(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;Object&gt; apply(Flowable&lt;Object&gt; handler) throws Exception {
+<span class="fc" id="L366">                return handler.take(2);</span>
+            }
+        })
+<span class="fc" id="L369">        .test()</span>
+<span class="fc" id="L370">        .assertResult(1, 2, 3, 1, 2, 3);</span>
+<span class="fc" id="L371">    }</span>
+
+    @Test
+    public void noCancelPreviousRepeat() {
+<span class="fc" id="L375">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L377">        Flowable&lt;Integer&gt; source = Flowable.just(1).doOnCancel(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L380">                counter.getAndIncrement();</span>
+<span class="nc" id="L381">            }</span>
+        });
+
+<span class="fc" id="L384">        source.repeat(5)</span>
+<span class="fc" id="L385">        .test()</span>
+<span class="fc" id="L386">        .assertResult(1, 1, 1, 1, 1);</span>
+
+<span class="fc" id="L388">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L389">    }</span>
+
+    @Test
+    public void noCancelPreviousRepeatUntil() {
+<span class="fc" id="L393">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L395">        Flowable&lt;Integer&gt; source = Flowable.just(1).doOnCancel(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L398">                counter.getAndIncrement();</span>
+<span class="nc" id="L399">            }</span>
+        });
+
+<span class="fc" id="L402">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L404">        source.repeatUntil(new BooleanSupplier() {</span>
+            @Override
+            public boolean getAsBoolean() throws Exception {
+<span class="fc bfc" id="L407" title="All 2 branches covered.">                return times.getAndIncrement() == 4;</span>
+            }
+        })
+<span class="fc" id="L410">        .test()</span>
+<span class="fc" id="L411">        .assertResult(1, 1, 1, 1, 1);</span>
+
+<span class="fc" id="L413">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L414">    }</span>
+
+    @Test
+    public void noCancelPreviousRepeatWhen() {
+<span class="fc" id="L418">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L420">        Flowable&lt;Integer&gt; source = Flowable.just(1).doOnCancel(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L423">                counter.getAndIncrement();</span>
+<span class="nc" id="L424">            }</span>
+        });
+
+<span class="fc" id="L427">        final AtomicInteger times = new AtomicInteger();</span>
+
+<span class="fc" id="L429">        source.repeatWhen(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;?&gt;&gt;() {</span>
+            @Override
+            public Flowable&lt;?&gt; apply(Flowable&lt;Object&gt; e) throws Exception {
+<span class="fc" id="L432">                return e.takeWhile(new Predicate&lt;Object&gt;() {</span>
+                    @Override
+                    public boolean test(Object v) throws Exception {
+<span class="fc bfc" id="L435" title="All 2 branches covered.">                        return times.getAndIncrement() &lt; 4;</span>
+                    }
+                });
+            }
+        })
+<span class="fc" id="L440">        .test()</span>
+<span class="fc" id="L441">        .assertResult(1, 1, 1, 1, 1);</span>
+
+<span class="fc" id="L443">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L444">    }</span>
+
+    @Test
+    public void repeatFloodNoSubscriptionError() {
+<span class="fc" id="L448">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L451">            final PublishProcessor&lt;Integer&gt; source = PublishProcessor.create();</span>
+<span class="fc" id="L452">            final PublishProcessor&lt;Integer&gt; signaller = PublishProcessor.create();</span>
+
+<span class="fc bfc" id="L454" title="All 2 branches covered.">            for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L456">                TestSubscriber&lt;Integer&gt; ts = source.take(1)</span>
+<span class="fc" id="L457">                .repeatWhen(new Function&lt;Flowable&lt;Object&gt;, Flowable&lt;Integer&gt;&gt;() {</span>
+                    @Override
+                    public Flowable&lt;Integer&gt; apply(Flowable&lt;Object&gt; v)
+                            throws Exception {
+<span class="fc" id="L461">                        return signaller;</span>
+                    }
+<span class="fc" id="L463">                }).test();</span>
+
+<span class="fc" id="L465">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L468" title="All 2 branches covered.">                        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L469">                            source.onNext(1);</span>
+                        }
+<span class="fc" id="L471">                    }</span>
+                };
+<span class="fc" id="L473">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc bfc" id="L476" title="All 2 branches covered.">                        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L477">                            signaller.offer(1);</span>
+                        }
+<span class="fc" id="L479">                    }</span>
+                };
+
+<span class="fc" id="L482">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L484">                ts.dispose();</span>
+            }
+
+<span class="pc bpc" id="L487" title="1 of 2 branches missed.">            if (!errors.isEmpty()) {</span>
+<span class="nc bnc" id="L488" title="All 2 branches missed.">                for (Throwable e : errors) {</span>
+<span class="nc" id="L489">                    e.printStackTrace();</span>
+<span class="nc" id="L490">                }</span>
+<span class="nc" id="L491">                fail(errors + &quot;&quot;);</span>
+            }
+        } finally {
+<span class="fc" id="L494">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L496">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,407 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableTakeUntilTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableTakeUntilTest.java</span></div><h1>ObservableTakeUntilTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.subjects.PublishSubject;
+
+<span class="fc" id="L28">public class ObservableTakeUntilTest {</span>
+
+    @Test
+    public void testTakeUntil() {
+<span class="fc" id="L32">        Disposable sSource = mock(Disposable.class);</span>
+<span class="fc" id="L33">        Disposable sOther = mock(Disposable.class);</span>
+<span class="fc" id="L34">        TestObservable source = new TestObservable(sSource);</span>
+<span class="fc" id="L35">        TestObservable other = new TestObservable(sOther);</span>
+
+<span class="fc" id="L37">        Observer&lt;String&gt; result = TestHelper.mockObserver();</span>
+<span class="fc" id="L38">        Observable&lt;String&gt; stringObservable = Observable.unsafeCreate(source)</span>
+<span class="fc" id="L39">                .takeUntil(Observable.unsafeCreate(other));</span>
+<span class="fc" id="L40">        stringObservable.subscribe(result);</span>
+<span class="fc" id="L41">        source.sendOnNext(&quot;one&quot;);</span>
+<span class="fc" id="L42">        source.sendOnNext(&quot;two&quot;);</span>
+<span class="fc" id="L43">        other.sendOnNext(&quot;three&quot;);</span>
+<span class="fc" id="L44">        source.sendOnNext(&quot;four&quot;);</span>
+<span class="fc" id="L45">        source.sendOnCompleted();</span>
+<span class="fc" id="L46">        other.sendOnCompleted();</span>
+
+<span class="fc" id="L48">        verify(result, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L49">        verify(result, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L50">        verify(result, times(0)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L51">        verify(result, times(0)).onNext(&quot;four&quot;);</span>
+<span class="fc" id="L52">        verify(sSource, times(1)).dispose();</span>
+<span class="fc" id="L53">        verify(sOther, times(1)).dispose();</span>
+
+<span class="fc" id="L55">    }</span>
+
+    @Test
+    public void testTakeUntilSourceCompleted() {
+<span class="fc" id="L59">        Disposable sSource = mock(Disposable.class);</span>
+<span class="fc" id="L60">        Disposable sOther = mock(Disposable.class);</span>
+<span class="fc" id="L61">        TestObservable source = new TestObservable(sSource);</span>
+<span class="fc" id="L62">        TestObservable other = new TestObservable(sOther);</span>
+
+<span class="fc" id="L64">        Observer&lt;String&gt; result = TestHelper.mockObserver();</span>
+<span class="fc" id="L65">        Observable&lt;String&gt; stringObservable = Observable.unsafeCreate(source).takeUntil(Observable.unsafeCreate(other));</span>
+<span class="fc" id="L66">        stringObservable.subscribe(result);</span>
+<span class="fc" id="L67">        source.sendOnNext(&quot;one&quot;);</span>
+<span class="fc" id="L68">        source.sendOnNext(&quot;two&quot;);</span>
+<span class="fc" id="L69">        source.sendOnCompleted();</span>
+
+<span class="fc" id="L71">        verify(result, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L72">        verify(result, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L73">        verify(sSource, never()).dispose(); // no longer disposing itself on terminal events</span>
+<span class="fc" id="L74">        verify(sOther, times(1)).dispose();</span>
+
+<span class="fc" id="L76">    }</span>
+
+    @Test
+    public void testTakeUntilSourceError() {
+<span class="fc" id="L80">        Disposable sSource = mock(Disposable.class);</span>
+<span class="fc" id="L81">        Disposable sOther = mock(Disposable.class);</span>
+<span class="fc" id="L82">        TestObservable source = new TestObservable(sSource);</span>
+<span class="fc" id="L83">        TestObservable other = new TestObservable(sOther);</span>
+<span class="fc" id="L84">        Throwable error = new Throwable();</span>
+
+<span class="fc" id="L86">        Observer&lt;String&gt; result = TestHelper.mockObserver();</span>
+<span class="fc" id="L87">        Observable&lt;String&gt; stringObservable = Observable.unsafeCreate(source).takeUntil(Observable.unsafeCreate(other));</span>
+<span class="fc" id="L88">        stringObservable.subscribe(result);</span>
+<span class="fc" id="L89">        source.sendOnNext(&quot;one&quot;);</span>
+<span class="fc" id="L90">        source.sendOnNext(&quot;two&quot;);</span>
+<span class="fc" id="L91">        source.sendOnError(error);</span>
+<span class="fc" id="L92">        source.sendOnNext(&quot;three&quot;);</span>
+
+<span class="fc" id="L94">        verify(result, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L95">        verify(result, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L96">        verify(result, times(0)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L97">        verify(result, times(1)).onError(error);</span>
+<span class="fc" id="L98">        verify(sSource, never()).dispose(); // no longer disposing itself on terminal events</span>
+<span class="fc" id="L99">        verify(sOther, times(1)).dispose();</span>
+
+<span class="fc" id="L101">    }</span>
+
+    @Test
+    public void testTakeUntilOtherError() {
+<span class="fc" id="L105">        Disposable sSource = mock(Disposable.class);</span>
+<span class="fc" id="L106">        Disposable sOther = mock(Disposable.class);</span>
+<span class="fc" id="L107">        TestObservable source = new TestObservable(sSource);</span>
+<span class="fc" id="L108">        TestObservable other = new TestObservable(sOther);</span>
+<span class="fc" id="L109">        Throwable error = new Throwable();</span>
+
+<span class="fc" id="L111">        Observer&lt;String&gt; result = TestHelper.mockObserver();</span>
+<span class="fc" id="L112">        Observable&lt;String&gt; stringObservable = Observable.unsafeCreate(source).takeUntil(Observable.unsafeCreate(other));</span>
+<span class="fc" id="L113">        stringObservable.subscribe(result);</span>
+<span class="fc" id="L114">        source.sendOnNext(&quot;one&quot;);</span>
+<span class="fc" id="L115">        source.sendOnNext(&quot;two&quot;);</span>
+<span class="fc" id="L116">        other.sendOnError(error);</span>
+<span class="fc" id="L117">        source.sendOnNext(&quot;three&quot;);</span>
+
+<span class="fc" id="L119">        verify(result, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L120">        verify(result, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L121">        verify(result, times(0)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L122">        verify(result, times(1)).onError(error);</span>
+<span class="fc" id="L123">        verify(result, times(0)).onComplete();</span>
+<span class="fc" id="L124">        verify(sSource, times(1)).dispose();</span>
+<span class="fc" id="L125">        verify(sOther, never()).dispose(); // no longer disposing itself on termination</span>
+
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * If the 'other' onCompletes then we unsubscribe from the source and onComplete.
+     */
+    @Test
+    public void testTakeUntilOtherCompleted() {
+<span class="fc" id="L134">        Disposable sSource = mock(Disposable.class);</span>
+<span class="fc" id="L135">        Disposable sOther = mock(Disposable.class);</span>
+<span class="fc" id="L136">        TestObservable source = new TestObservable(sSource);</span>
+<span class="fc" id="L137">        TestObservable other = new TestObservable(sOther);</span>
+
+<span class="fc" id="L139">        Observer&lt;String&gt; result = TestHelper.mockObserver();</span>
+<span class="fc" id="L140">        Observable&lt;String&gt; stringObservable = Observable.unsafeCreate(source).takeUntil(Observable.unsafeCreate(other));</span>
+<span class="fc" id="L141">        stringObservable.subscribe(result);</span>
+<span class="fc" id="L142">        source.sendOnNext(&quot;one&quot;);</span>
+<span class="fc" id="L143">        source.sendOnNext(&quot;two&quot;);</span>
+<span class="fc" id="L144">        other.sendOnCompleted();</span>
+<span class="fc" id="L145">        source.sendOnNext(&quot;three&quot;);</span>
+
+<span class="fc" id="L147">        verify(result, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L148">        verify(result, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L149">        verify(result, times(0)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L150">        verify(result, times(1)).onComplete();</span>
+<span class="fc" id="L151">        verify(sSource, times(1)).dispose();</span>
+<span class="fc" id="L152">        verify(sOther, never()).dispose(); // no longer disposing itself on terminal events</span>
+
+<span class="fc" id="L154">    }</span>
+
+    private static class TestObservable implements ObservableSource&lt;String&gt; {
+
+        Observer&lt;? super String&gt; observer;
+        Disposable upstream;
+
+<span class="fc" id="L161">        TestObservable(Disposable d) {</span>
+<span class="fc" id="L162">            this.upstream = d;</span>
+<span class="fc" id="L163">        }</span>
+
+        /* used to simulate subscription */
+        public void sendOnCompleted() {
+<span class="fc" id="L167">            observer.onComplete();</span>
+<span class="fc" id="L168">        }</span>
+
+        /* used to simulate subscription */
+        public void sendOnNext(String value) {
+<span class="fc" id="L172">            observer.onNext(value);</span>
+<span class="fc" id="L173">        }</span>
+
+        /* used to simulate subscription */
+        public void sendOnError(Throwable e) {
+<span class="fc" id="L177">            observer.onError(e);</span>
+<span class="fc" id="L178">        }</span>
+
+        @Override
+        public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L182">            this.observer = observer;</span>
+<span class="fc" id="L183">            observer.onSubscribe(upstream);</span>
+<span class="fc" id="L184">        }</span>
+    }
+
+    @Test
+    public void testUntilFires() {
+<span class="fc" id="L189">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L190">        PublishSubject&lt;Integer&gt; until = PublishSubject.create();</span>
+
+<span class="fc" id="L192">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L194">        source.takeUntil(until).subscribe(to);</span>
+
+<span class="fc" id="L196">        assertTrue(source.hasObservers());</span>
+<span class="fc" id="L197">        assertTrue(until.hasObservers());</span>
+
+<span class="fc" id="L199">        source.onNext(1);</span>
+
+<span class="fc" id="L201">        to.assertValue(1);</span>
+<span class="fc" id="L202">        until.onNext(1);</span>
+
+<span class="fc" id="L204">        to.assertValue(1);</span>
+<span class="fc" id="L205">        to.assertNoErrors();</span>
+<span class="fc" id="L206">        to.assertTerminated();</span>
+
+<span class="fc" id="L208">        assertFalse(&quot;Source still has observers&quot;, source.hasObservers());</span>
+<span class="fc" id="L209">        assertFalse(&quot;Until still has observers&quot;, until.hasObservers());</span>
+        // 2.0.2 - not anymore
+//        assertTrue(&quot;Not cancelled!&quot;, ts.isCancelled());
+<span class="fc" id="L212">    }</span>
+
+    @Test
+    public void testMainCompletes() {
+<span class="fc" id="L216">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L217">        PublishSubject&lt;Integer&gt; until = PublishSubject.create();</span>
+
+<span class="fc" id="L219">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L221">        source.takeUntil(until).subscribe(to);</span>
+
+<span class="fc" id="L223">        assertTrue(source.hasObservers());</span>
+<span class="fc" id="L224">        assertTrue(until.hasObservers());</span>
+
+<span class="fc" id="L226">        source.onNext(1);</span>
+<span class="fc" id="L227">        source.onComplete();</span>
+
+<span class="fc" id="L229">        to.assertValue(1);</span>
+<span class="fc" id="L230">        to.assertNoErrors();</span>
+<span class="fc" id="L231">        to.assertTerminated();</span>
+
+<span class="fc" id="L233">        assertFalse(&quot;Source still has observers&quot;, source.hasObservers());</span>
+<span class="fc" id="L234">        assertFalse(&quot;Until still has observers&quot;, until.hasObservers());</span>
+        // 2.0.2 - not anymore
+//        assertTrue(&quot;Not cancelled!&quot;, ts.isCancelled());
+<span class="fc" id="L237">    }</span>
+
+    @Test
+    public void testDownstreamUnsubscribes() {
+<span class="fc" id="L241">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L242">        PublishSubject&lt;Integer&gt; until = PublishSubject.create();</span>
+
+<span class="fc" id="L244">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L246">        source.takeUntil(until).take(1).subscribe(to);</span>
+
+<span class="fc" id="L248">        assertTrue(source.hasObservers());</span>
+<span class="fc" id="L249">        assertTrue(until.hasObservers());</span>
+
+<span class="fc" id="L251">        source.onNext(1);</span>
+
+<span class="fc" id="L253">        to.assertValue(1);</span>
+<span class="fc" id="L254">        to.assertNoErrors();</span>
+<span class="fc" id="L255">        to.assertTerminated();</span>
+
+<span class="fc" id="L257">        assertFalse(&quot;Source still has observers&quot;, source.hasObservers());</span>
+<span class="fc" id="L258">        assertFalse(&quot;Until still has observers&quot;, until.hasObservers());</span>
+        // 2.0.2 - not anymore
+//        assertTrue(&quot;Not cancelled!&quot;, ts.isCancelled());
+<span class="fc" id="L261">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L265">        TestHelper.checkDisposed(PublishSubject.create().takeUntil(Observable.never()));</span>
+<span class="fc" id="L266">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L270">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Integer&gt;, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Observable&lt;Integer&gt; o) throws Exception {
+<span class="fc" id="L273">                return o.takeUntil(Observable.never());</span>
+            }
+        });
+<span class="fc" id="L276">    }</span>
+
+    @Test
+    public void untilPublisherMainSuccess() {
+<span class="fc" id="L280">        PublishSubject&lt;Integer&gt; main = PublishSubject.create();</span>
+<span class="fc" id="L281">        PublishSubject&lt;Integer&gt; other = PublishSubject.create();</span>
+
+<span class="fc" id="L283">        TestObserver&lt;Integer&gt; to = main.takeUntil(other).test();</span>
+
+<span class="fc" id="L285">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L286">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L288">        main.onNext(1);</span>
+<span class="fc" id="L289">        main.onNext(2);</span>
+<span class="fc" id="L290">        main.onComplete();</span>
+
+<span class="fc" id="L292">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L293">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L295">        to.assertResult(1, 2);</span>
+<span class="fc" id="L296">    }</span>
+
+    @Test
+    public void untilPublisherMainComplete() {
+<span class="fc" id="L300">        PublishSubject&lt;Integer&gt; main = PublishSubject.create();</span>
+<span class="fc" id="L301">        PublishSubject&lt;Integer&gt; other = PublishSubject.create();</span>
+
+<span class="fc" id="L303">        TestObserver&lt;Integer&gt; to = main.takeUntil(other).test();</span>
+
+<span class="fc" id="L305">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L306">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L308">        main.onComplete();</span>
+
+<span class="fc" id="L310">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L311">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L313">        to.assertResult();</span>
+<span class="fc" id="L314">    }</span>
+
+    @Test
+    public void untilPublisherMainError() {
+<span class="fc" id="L318">        PublishSubject&lt;Integer&gt; main = PublishSubject.create();</span>
+<span class="fc" id="L319">        PublishSubject&lt;Integer&gt; other = PublishSubject.create();</span>
+
+<span class="fc" id="L321">        TestObserver&lt;Integer&gt; to = main.takeUntil(other).test();</span>
+
+<span class="fc" id="L323">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L324">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L326">        main.onError(new TestException());</span>
+
+<span class="fc" id="L328">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L329">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L331">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L332">    }</span>
+
+    @Test
+    public void untilPublisherOtherOnNext() {
+<span class="fc" id="L336">        PublishSubject&lt;Integer&gt; main = PublishSubject.create();</span>
+<span class="fc" id="L337">        PublishSubject&lt;Integer&gt; other = PublishSubject.create();</span>
+
+<span class="fc" id="L339">        TestObserver&lt;Integer&gt; to = main.takeUntil(other).test();</span>
+
+<span class="fc" id="L341">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L342">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L344">        other.onNext(1);</span>
+
+<span class="fc" id="L346">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L347">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L349">        to.assertResult();</span>
+<span class="fc" id="L350">    }</span>
+
+    @Test
+    public void untilPublisherOtherOnComplete() {
+<span class="fc" id="L354">        PublishSubject&lt;Integer&gt; main = PublishSubject.create();</span>
+<span class="fc" id="L355">        PublishSubject&lt;Integer&gt; other = PublishSubject.create();</span>
+
+<span class="fc" id="L357">        TestObserver&lt;Integer&gt; to = main.takeUntil(other).test();</span>
+
+<span class="fc" id="L359">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L360">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L362">        other.onComplete();</span>
+
+<span class="fc" id="L364">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L365">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L367">        to.assertResult();</span>
+<span class="fc" id="L368">    }</span>
+
+    @Test
+    public void untilPublisherOtherError() {
+<span class="fc" id="L372">        PublishSubject&lt;Integer&gt; main = PublishSubject.create();</span>
+<span class="fc" id="L373">        PublishSubject&lt;Integer&gt; other = PublishSubject.create();</span>
+
+<span class="fc" id="L375">        TestObserver&lt;Integer&gt; to = main.takeUntil(other).test();</span>
+
+<span class="fc" id="L377">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L378">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L380">        other.onError(new TestException());</span>
+
+<span class="fc" id="L382">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L383">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L385">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L386">    }</span>
+
+    @Test
+    public void untilPublisherDispose() {
+<span class="fc" id="L390">        PublishSubject&lt;Integer&gt; main = PublishSubject.create();</span>
+<span class="fc" id="L391">        PublishSubject&lt;Integer&gt; other = PublishSubject.create();</span>
+
+<span class="fc" id="L393">        TestObserver&lt;Integer&gt; to = main.takeUntil(other).test();</span>
+
+<span class="fc" id="L395">        assertTrue(&quot;Main no observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L396">        assertTrue(&quot;Other no observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L398">        to.dispose();</span>
+
+<span class="fc" id="L400">        assertFalse(&quot;Main has observers?&quot;, main.hasObservers());</span>
+<span class="fc" id="L401">        assertFalse(&quot;Other has observers?&quot;, other.hasObservers());</span>
+
+<span class="fc" id="L403">        to.assertEmpty();</span>
+<span class="fc" id="L404">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,692 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PublishSubjectTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subjects</a> &gt; <span class="el_source">PublishSubjectTest.java</span></div><h1>PublishSubjectTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subjects;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+import org.mockito.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.observers.*;
+
+<span class="fc" id="L33">public class PublishSubjectTest extends SubjectTest&lt;Integer&gt; {</span>
+
+    @Override
+    protected Subject&lt;Integer&gt; create() {
+<span class="fc" id="L37">        return PublishSubject.create();</span>
+    }
+
+    @Test
+    public void testCompleted() {
+<span class="fc" id="L42">        PublishSubject&lt;String&gt; subject = PublishSubject.create();</span>
+
+<span class="fc" id="L44">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L45">        subject.subscribe(observer);</span>
+
+<span class="fc" id="L47">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L48">        subject.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L49">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L50">        subject.onComplete();</span>
+
+<span class="fc" id="L52">        Observer&lt;String&gt; anotherSubscriber = TestHelper.mockObserver();</span>
+<span class="fc" id="L53">        subject.subscribe(anotherSubscriber);</span>
+
+<span class="fc" id="L55">        subject.onNext(&quot;four&quot;);</span>
+<span class="fc" id="L56">        subject.onComplete();</span>
+<span class="fc" id="L57">        subject.onError(new Throwable());</span>
+
+<span class="fc" id="L59">        assertCompletedSubscriber(observer);</span>
+        // todo bug?            assertNeverSubscriber(anotherSubscriber);
+<span class="fc" id="L61">    }</span>
+
+    @Test
+    public void testCompletedStopsEmittingData() {
+<span class="fc" id="L65">        PublishSubject&lt;Object&gt; channel = PublishSubject.create();</span>
+<span class="fc" id="L66">        Observer&lt;Object&gt; observerA = TestHelper.mockObserver();</span>
+<span class="fc" id="L67">        Observer&lt;Object&gt; observerB = TestHelper.mockObserver();</span>
+<span class="fc" id="L68">        Observer&lt;Object&gt; observerC = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L70">        TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;(observerA);</span>
+
+<span class="fc" id="L72">        channel.subscribe(to);</span>
+<span class="fc" id="L73">        channel.subscribe(observerB);</span>
+
+<span class="fc" id="L75">        InOrder inOrderA = inOrder(observerA);</span>
+<span class="fc" id="L76">        InOrder inOrderB = inOrder(observerB);</span>
+<span class="fc" id="L77">        InOrder inOrderC = inOrder(observerC);</span>
+
+<span class="fc" id="L79">        channel.onNext(42);</span>
+
+<span class="fc" id="L81">        inOrderA.verify(observerA).onNext(42);</span>
+<span class="fc" id="L82">        inOrderB.verify(observerB).onNext(42);</span>
+
+<span class="fc" id="L84">        to.dispose();</span>
+<span class="fc" id="L85">        inOrderA.verifyNoMoreInteractions();</span>
+
+<span class="fc" id="L87">        channel.onNext(4711);</span>
+
+<span class="fc" id="L89">        inOrderB.verify(observerB).onNext(4711);</span>
+
+<span class="fc" id="L91">        channel.onComplete();</span>
+
+<span class="fc" id="L93">        inOrderB.verify(observerB).onComplete();</span>
+
+<span class="fc" id="L95">        channel.subscribe(observerC);</span>
+
+<span class="fc" id="L97">        inOrderC.verify(observerC).onComplete();</span>
+
+<span class="fc" id="L99">        channel.onNext(13);</span>
+
+<span class="fc" id="L101">        inOrderB.verifyNoMoreInteractions();</span>
+<span class="fc" id="L102">        inOrderC.verifyNoMoreInteractions();</span>
+<span class="fc" id="L103">    }</span>
+
+    private void assertCompletedSubscriber(Observer&lt;String&gt; observer) {
+<span class="fc" id="L106">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L107">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L108">        verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L109">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L110">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L111">    }</span>
+
+    @Test
+    public void testError() {
+<span class="fc" id="L115">        PublishSubject&lt;String&gt; subject = PublishSubject.create();</span>
+
+<span class="fc" id="L117">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L118">        subject.subscribe(observer);</span>
+
+<span class="fc" id="L120">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L121">        subject.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L122">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L123">        subject.onError(testException);</span>
+
+<span class="fc" id="L125">        Observer&lt;String&gt; anotherSubscriber = TestHelper.mockObserver();</span>
+<span class="fc" id="L126">        subject.subscribe(anotherSubscriber);</span>
+
+<span class="fc" id="L128">        subject.onNext(&quot;four&quot;);</span>
+<span class="fc" id="L129">        subject.onError(new Throwable());</span>
+<span class="fc" id="L130">        subject.onComplete();</span>
+
+<span class="fc" id="L132">        assertErrorSubscriber(observer);</span>
+        // todo bug?            assertNeverSubscriber(anotherSubscriber);
+<span class="fc" id="L134">    }</span>
+
+    private void assertErrorSubscriber(Observer&lt;String&gt; observer) {
+<span class="fc" id="L137">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L138">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L139">        verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L140">        verify(observer, times(1)).onError(testException);</span>
+<span class="fc" id="L141">        verify(observer, Mockito.never()).onComplete();</span>
+<span class="fc" id="L142">    }</span>
+
+    @Test
+    public void testSubscribeMidSequence() {
+<span class="fc" id="L146">        PublishSubject&lt;String&gt; subject = PublishSubject.create();</span>
+
+<span class="fc" id="L148">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L149">        subject.subscribe(observer);</span>
+
+<span class="fc" id="L151">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L152">        subject.onNext(&quot;two&quot;);</span>
+
+<span class="fc" id="L154">        assertObservedUntilTwo(observer);</span>
+
+<span class="fc" id="L156">        Observer&lt;String&gt; anotherSubscriber = TestHelper.mockObserver();</span>
+<span class="fc" id="L157">        subject.subscribe(anotherSubscriber);</span>
+
+<span class="fc" id="L159">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L160">        subject.onComplete();</span>
+
+<span class="fc" id="L162">        assertCompletedSubscriber(observer);</span>
+<span class="fc" id="L163">        assertCompletedStartingWithThreeSubscriber(anotherSubscriber);</span>
+<span class="fc" id="L164">    }</span>
+
+    private void assertCompletedStartingWithThreeSubscriber(Observer&lt;String&gt; observer) {
+<span class="fc" id="L167">        verify(observer, Mockito.never()).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L168">        verify(observer, Mockito.never()).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L169">        verify(observer, times(1)).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L170">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L171">        verify(observer, times(1)).onComplete();</span>
+<span class="fc" id="L172">    }</span>
+
+    @Test
+    public void testUnsubscribeFirstSubscriber() {
+<span class="fc" id="L176">        PublishSubject&lt;String&gt; subject = PublishSubject.create();</span>
+
+<span class="fc" id="L178">        Observer&lt;String&gt; observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L179">        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;(observer);</span>
+<span class="fc" id="L180">        subject.subscribe(to);</span>
+
+<span class="fc" id="L182">        subject.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L183">        subject.onNext(&quot;two&quot;);</span>
+
+<span class="fc" id="L185">        to.dispose();</span>
+<span class="fc" id="L186">        assertObservedUntilTwo(observer);</span>
+
+<span class="fc" id="L188">        Observer&lt;String&gt; anotherSubscriber = TestHelper.mockObserver();</span>
+<span class="fc" id="L189">        subject.subscribe(anotherSubscriber);</span>
+
+<span class="fc" id="L191">        subject.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L192">        subject.onComplete();</span>
+
+<span class="fc" id="L194">        assertObservedUntilTwo(observer);</span>
+<span class="fc" id="L195">        assertCompletedStartingWithThreeSubscriber(anotherSubscriber);</span>
+<span class="fc" id="L196">    }</span>
+
+    private void assertObservedUntilTwo(Observer&lt;String&gt; observer) {
+<span class="fc" id="L199">        verify(observer, times(1)).onNext(&quot;one&quot;);</span>
+<span class="fc" id="L200">        verify(observer, times(1)).onNext(&quot;two&quot;);</span>
+<span class="fc" id="L201">        verify(observer, Mockito.never()).onNext(&quot;three&quot;);</span>
+<span class="fc" id="L202">        verify(observer, Mockito.never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L203">        verify(observer, Mockito.never()).onComplete();</span>
+<span class="fc" id="L204">    }</span>
+
+    @Test
+    public void testNestedSubscribe() {
+<span class="fc" id="L208">        final PublishSubject&lt;Integer&gt; s = PublishSubject.create();</span>
+
+<span class="fc" id="L210">        final AtomicInteger countParent = new AtomicInteger();</span>
+<span class="fc" id="L211">        final AtomicInteger countChildren = new AtomicInteger();</span>
+<span class="fc" id="L212">        final AtomicInteger countTotal = new AtomicInteger();</span>
+
+<span class="fc" id="L214">        final ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+<span class="fc" id="L216">        s.flatMap(new Function&lt;Integer, Observable&lt;String&gt;&gt;() {</span>
+
+            @Override
+            public Observable&lt;String&gt; apply(final Integer v) {
+<span class="fc" id="L220">                countParent.incrementAndGet();</span>
+
+                // then subscribe to subject again (it will not receive the previous value)
+<span class="fc" id="L223">                return s.map(new Function&lt;Integer, String&gt;() {</span>
+
+                    @Override
+                    public String apply(Integer v2) {
+<span class="fc" id="L227">                        countChildren.incrementAndGet();</span>
+<span class="fc" id="L228">                        return &quot;Parent: &quot; + v + &quot; Child: &quot; + v2;</span>
+                    }
+
+                });
+            }
+
+<span class="fc" id="L234">        }).subscribe(new Consumer&lt;String&gt;() {</span>
+
+            @Override
+            public void accept(String v) {
+<span class="fc" id="L238">                countTotal.incrementAndGet();</span>
+<span class="fc" id="L239">                list.add(v);</span>
+<span class="fc" id="L240">            }</span>
+
+        });
+
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L245">            s.onNext(i);</span>
+        }
+<span class="fc" id="L247">        s.onComplete();</span>
+
+        //            System.out.println(&quot;countParent: &quot; + countParent.get());
+        //            System.out.println(&quot;countChildren: &quot; + countChildren.get());
+        //            System.out.println(&quot;countTotal: &quot; + countTotal.get());
+
+        // 9+8+7+6+5+4+3+2+1+0 == 45
+<span class="fc" id="L254">        assertEquals(45, list.size());</span>
+<span class="fc" id="L255">    }</span>
+
+    /**
+     * Should be able to unsubscribe all Subscribers, have it stop emitting, then subscribe new ones and it start emitting again.
+     */
+    @Test
+    public void testReSubscribe() {
+<span class="fc" id="L262">        final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L264">        Observer&lt;Integer&gt; o1 = TestHelper.mockObserver();</span>
+<span class="fc" id="L265">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;(o1);</span>
+<span class="fc" id="L266">        ps.subscribe(to);</span>
+
+        // emit
+<span class="fc" id="L269">        ps.onNext(1);</span>
+
+        // validate we got it
+<span class="fc" id="L272">        InOrder inOrder1 = inOrder(o1);</span>
+<span class="fc" id="L273">        inOrder1.verify(o1, times(1)).onNext(1);</span>
+<span class="fc" id="L274">        inOrder1.verifyNoMoreInteractions();</span>
+
+        // unsubscribe
+<span class="fc" id="L277">        to.dispose();</span>
+
+        // emit again but nothing will be there to receive it
+<span class="fc" id="L280">        ps.onNext(2);</span>
+
+<span class="fc" id="L282">        Observer&lt;Integer&gt; o2 = TestHelper.mockObserver();</span>
+<span class="fc" id="L283">        TestObserver&lt;Integer&gt; to2 = new TestObserver&lt;Integer&gt;(o2);</span>
+<span class="fc" id="L284">        ps.subscribe(to2);</span>
+
+        // emit
+<span class="fc" id="L287">        ps.onNext(3);</span>
+
+        // validate we got it
+<span class="fc" id="L290">        InOrder inOrder2 = inOrder(o2);</span>
+<span class="fc" id="L291">        inOrder2.verify(o2, times(1)).onNext(3);</span>
+<span class="fc" id="L292">        inOrder2.verifyNoMoreInteractions();</span>
+
+<span class="fc" id="L294">        to2.dispose();</span>
+<span class="fc" id="L295">    }</span>
+
+<span class="fc" id="L297">    private final Throwable testException = new Throwable();</span>
+
+    @Test(timeout = 1000)
+    public void testUnsubscriptionCase() {
+<span class="fc" id="L301">        PublishSubject&lt;String&gt; src = PublishSubject.create();</span>
+
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L304">            final Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L305">            InOrder inOrder = inOrder(o);</span>
+<span class="fc" id="L306">            String v = &quot;&quot; + i;</span>
+<span class="fc" id="L307">            System.out.printf(&quot;Turn: %d%n&quot;, i);</span>
+<span class="fc" id="L308">            src.firstElement()</span>
+<span class="fc" id="L309">                .toObservable()</span>
+<span class="fc" id="L310">                .flatMap(new Function&lt;String, Observable&lt;String&gt;&gt;() {</span>
+
+                    @Override
+                    public Observable&lt;String&gt; apply(String t1) {
+<span class="fc" id="L314">                        return Observable.just(t1 + &quot;, &quot; + t1);</span>
+                    }
+                })
+<span class="fc" id="L317">                .subscribe(new DefaultObserver&lt;String&gt;() {</span>
+                    @Override
+                    public void onNext(String t) {
+<span class="fc" id="L320">                        o.onNext(t);</span>
+<span class="fc" id="L321">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L325">                        o.onError(e);</span>
+<span class="nc" id="L326">                    }</span>
+
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L330">                        o.onComplete();</span>
+<span class="fc" id="L331">                    }</span>
+                });
+<span class="fc" id="L333">            src.onNext(v);</span>
+
+<span class="fc" id="L335">            inOrder.verify(o).onNext(v + &quot;, &quot; + v);</span>
+<span class="fc" id="L336">            inOrder.verify(o).onComplete();</span>
+<span class="fc" id="L337">            verify(o, never()).onError(any(Throwable.class));</span>
+        }
+<span class="fc" id="L339">    }</span>
+
+    // FIXME RS subscribers are not allowed to throw
+//    @Test
+//    public void testOnErrorThrowsDoesntPreventDelivery() {
+//        PublishSubject&lt;String&gt; ps = PublishSubject.create();
+//
+//        ps.subscribe();
+//        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();
+//        ps.subscribe(to);
+//
+//        try {
+//            ps.onError(new RuntimeException(&quot;an exception&quot;));
+//            fail(&quot;expect OnErrorNotImplementedException&quot;);
+//        } catch (OnErrorNotImplementedException e) {
+//            // ignore
+//        }
+//        // even though the onError above throws we should still receive it on the other subscriber
+//        assertEquals(1, to.getOnErrorEvents().size());
+//    }
+
+    // FIXME RS subscribers are not allowed to throw
+//    /**
+//     * This one has multiple failures so should get a CompositeException
+//     */
+//    @Test
+//    public void testOnErrorThrowsDoesntPreventDelivery2() {
+//        PublishSubject&lt;String&gt; ps = PublishSubject.create();
+//
+//        ps.subscribe();
+//        ps.subscribe();
+//        TestObserver&lt;String&gt; to = new TestObserver&lt;String&gt;();
+//        ps.subscribe(to);
+//        ps.subscribe();
+//        ps.subscribe();
+//        ps.subscribe();
+//
+//        try {
+//            ps.onError(new RuntimeException(&quot;an exception&quot;));
+//            fail(&quot;expect OnErrorNotImplementedException&quot;);
+//        } catch (CompositeException e) {
+//            // we should have 5 of them
+//            assertEquals(5, e.getExceptions().size());
+//        }
+//        // even though the onError above throws we should still receive it on the other subscriber
+//        assertEquals(1, to.getOnErrorEvents().size());
+//    }
+
+    @Test
+    public void testCurrentStateMethodsNormal() {
+<span class="fc" id="L389">        PublishSubject&lt;Object&gt; as = PublishSubject.create();</span>
+
+<span class="fc" id="L391">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L392">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L393">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L395">        as.onNext(1);</span>
+
+<span class="fc" id="L397">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L398">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L399">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L401">        as.onComplete();</span>
+
+<span class="fc" id="L403">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L404">        assertTrue(as.hasComplete());</span>
+<span class="fc" id="L405">        assertNull(as.getThrowable());</span>
+<span class="fc" id="L406">    }</span>
+
+    @Test
+    public void testCurrentStateMethodsEmpty() {
+<span class="fc" id="L410">        PublishSubject&lt;Object&gt; as = PublishSubject.create();</span>
+
+<span class="fc" id="L412">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L413">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L414">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L416">        as.onComplete();</span>
+
+<span class="fc" id="L418">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L419">        assertTrue(as.hasComplete());</span>
+<span class="fc" id="L420">        assertNull(as.getThrowable());</span>
+<span class="fc" id="L421">    }</span>
+
+    @Test
+    public void testCurrentStateMethodsError() {
+<span class="fc" id="L425">        PublishSubject&lt;Object&gt; as = PublishSubject.create();</span>
+
+<span class="fc" id="L427">        assertFalse(as.hasThrowable());</span>
+<span class="fc" id="L428">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L429">        assertNull(as.getThrowable());</span>
+
+<span class="fc" id="L431">        as.onError(new TestException());</span>
+
+<span class="fc" id="L433">        assertTrue(as.hasThrowable());</span>
+<span class="fc" id="L434">        assertFalse(as.hasComplete());</span>
+<span class="fc" id="L435">        assertTrue(as.getThrowable() instanceof TestException);</span>
+<span class="fc" id="L436">    }</span>
+
+    @Ignore(&quot;Observable doesn't do backpressure&quot;)
+    @Test
+    public void requestValidation() {
+//        TestHelper.assertBadRequestReported(PublishSubject.create());
+<span class="nc" id="L442">    }</span>
+
+    @Test
+    public void crossCancel() {
+<span class="fc" id="L446">        final TestObserver&lt;Integer&gt; to1 = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L447">        TestObserver&lt;Integer&gt; to2 = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L450">                super.onNext(t);</span>
+<span class="fc" id="L451">                to1.cancel();</span>
+<span class="fc" id="L452">            }</span>
+        };
+
+<span class="fc" id="L455">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L457">        ps.subscribe(to2);</span>
+<span class="fc" id="L458">        ps.subscribe(to1);</span>
+
+<span class="fc" id="L460">        ps.onNext(1);</span>
+
+<span class="fc" id="L462">        to2.assertValue(1);</span>
+
+<span class="fc" id="L464">        to1.assertNoValues();</span>
+<span class="fc" id="L465">    }</span>
+
+    @Test
+    public void crossCancelOnError() {
+<span class="fc" id="L469">        final TestObserver&lt;Integer&gt; to1 = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L470">        TestObserver&lt;Integer&gt; to2 = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onError(Throwable t) {
+<span class="fc" id="L473">                super.onError(t);</span>
+<span class="fc" id="L474">                to1.cancel();</span>
+<span class="fc" id="L475">            }</span>
+        };
+
+<span class="fc" id="L478">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L480">        ps.subscribe(to2);</span>
+<span class="fc" id="L481">        ps.subscribe(to1);</span>
+
+<span class="fc" id="L483">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L485">        to2.assertError(TestException.class);</span>
+
+<span class="fc" id="L487">        to1.assertNoErrors();</span>
+<span class="fc" id="L488">    }</span>
+
+    @Test
+    public void crossCancelOnComplete() {
+<span class="fc" id="L492">        final TestObserver&lt;Integer&gt; to1 = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L493">        TestObserver&lt;Integer&gt; to2 = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onComplete() {
+<span class="fc" id="L496">                super.onComplete();</span>
+<span class="fc" id="L497">                to1.cancel();</span>
+<span class="fc" id="L498">            }</span>
+        };
+
+<span class="fc" id="L501">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L503">        ps.subscribe(to2);</span>
+<span class="fc" id="L504">        ps.subscribe(to1);</span>
+
+<span class="fc" id="L506">        ps.onComplete();</span>
+
+<span class="fc" id="L508">        to2.assertComplete();</span>
+
+<span class="fc" id="L510">        to1.assertNotComplete();</span>
+<span class="fc" id="L511">    }</span>
+
+    @Test
+    @Ignore(&quot;Observable doesn't do backpressure&quot;)
+    public void backpressureOverflow() {
+//        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();
+//
+//        TestObserver&lt;Integer&gt; to = ps.test(0L);
+//
+//        ps.onNext(1);
+//
+//        to.assertNoValues()
+//        .assertNotComplete()
+//        .assertError(MissingBackpressureException.class)
+//        ;
+<span class="nc" id="L526">    }</span>
+
+    @Test
+    public void onSubscribeCancelsImmediately() {
+<span class="fc" id="L530">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L532">        TestObserver&lt;Integer&gt; to = ps.test();</span>
+
+<span class="fc" id="L534">        ps.subscribe(new Observer&lt;Integer&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L538">                d.dispose();</span>
+<span class="fc" id="L539">                d.dispose();</span>
+<span class="fc" id="L540">            }</span>
+
+            @Override
+            public void onNext(Integer t) {
+
+<span class="nc" id="L545">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+
+<span class="nc" id="L550">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L555">            }</span>
+
+        });
+
+<span class="fc" id="L559">        to.cancel();</span>
+
+<span class="fc" id="L561">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L562">    }</span>
+
+    @Test
+    public void terminateRace() throws Exception {
+
+<span class="fc bfc" id="L567" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L568">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L570">            TestObserver&lt;Integer&gt; to = ps.test();</span>
+
+<span class="fc" id="L572">            Runnable task = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L575">                    ps.onComplete();</span>
+<span class="fc" id="L576">                }</span>
+            };
+
+<span class="fc" id="L579">            TestHelper.race(task, task);</span>
+
+<span class="fc" id="L581">            to</span>
+<span class="fc" id="L582">            .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L583">            .assertResult();</span>
+        }
+<span class="fc" id="L585">    }</span>
+
+    @Test
+    public void addRemoveRance() throws Exception {
+
+<span class="fc bfc" id="L590" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L591">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L593">            final TestObserver&lt;Integer&gt; to = ps.test();</span>
+
+<span class="fc" id="L595">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L598">                    ps.subscribe();</span>
+<span class="fc" id="L599">                }</span>
+            };
+<span class="fc" id="L601">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L604">                    to.cancel();</span>
+<span class="fc" id="L605">                }</span>
+            };
+
+<span class="fc" id="L608">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L610">    }</span>
+
+    @Test
+    public void addTerminateRance() throws Exception {
+
+<span class="fc bfc" id="L615" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L616">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L618">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L621">                    ps.subscribe();</span>
+<span class="fc" id="L622">                }</span>
+            };
+<span class="fc" id="L624">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L627">                    ps.onComplete();</span>
+<span class="fc" id="L628">                }</span>
+            };
+
+<span class="fc" id="L631">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L633">    }</span>
+
+    @Test
+    public void addCompleteRance() throws Exception {
+
+<span class="fc bfc" id="L638" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L639">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L641">            final TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L643">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L646">                    ps.subscribe(to);</span>
+<span class="fc" id="L647">                }</span>
+            };
+<span class="fc" id="L649">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L652">                    ps.onComplete();</span>
+<span class="fc" id="L653">                }</span>
+            };
+
+<span class="fc" id="L656">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L658">            to.awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L659">            .assertResult();</span>
+        }
+<span class="fc" id="L661">    }</span>
+
+    @Test
+    public void subscribeToAfterComplete() {
+<span class="fc" id="L665">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L667">        ps.onComplete();</span>
+
+<span class="fc" id="L669">        PublishSubject&lt;Integer&gt; ps2 = PublishSubject.create();</span>
+
+<span class="fc" id="L671">        ps2.subscribe(ps);</span>
+
+<span class="fc" id="L673">        assertFalse(ps2.hasObservers());</span>
+<span class="fc" id="L674">    }</span>
+
+    @Test
+    public void subscribedTo() {
+<span class="fc" id="L678">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+<span class="fc" id="L679">        PublishSubject&lt;Integer&gt; ps2 = PublishSubject.create();</span>
+
+<span class="fc" id="L681">        ps.subscribe(ps2);</span>
+
+<span class="fc" id="L683">        TestObserver&lt;Integer&gt; to = ps2.test();</span>
+
+<span class="fc" id="L685">        ps.onNext(1);</span>
+<span class="fc" id="L686">        ps.onNext(2);</span>
+<span class="fc" id="L687">        ps.onComplete();</span>
+
+<span class="fc" id="L689">        to.assertResult(1, 2);</span>
+<span class="fc" id="L690">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

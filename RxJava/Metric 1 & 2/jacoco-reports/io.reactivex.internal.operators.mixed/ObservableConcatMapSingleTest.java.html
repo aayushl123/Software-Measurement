@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableConcatMapSingleTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.mixed</a> &gt; <span class="el_source">ObservableConcatMapSingleTest.java</span></div><h1>ObservableConcatMapSingleTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.mixed;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.Test;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.operators.mixed.ObservableConcatMapSingle.ConcatMapSingleMainObserver;
+import io.reactivex.internal.util.ErrorMode;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L34">public class ObservableConcatMapSingleTest {</span>
+
+    @Test
+    public void simple() {
+<span class="fc" id="L38">        Observable.range(1, 5)</span>
+<span class="fc" id="L39">        .concatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L43">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L46">        .test()</span>
+<span class="fc" id="L47">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L48">    }</span>
+
+    @Test
+    public void simpleLong() {
+<span class="fc" id="L52">        Observable.range(1, 1024)</span>
+<span class="fc" id="L53">        .concatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L57">                return Single.just(v);</span>
+            }
+        }, 32)
+<span class="fc" id="L60">        .test()</span>
+<span class="fc" id="L61">        .assertValueCount(1024)</span>
+<span class="fc" id="L62">        .assertNoErrors()</span>
+<span class="fc" id="L63">        .assertComplete();</span>
+<span class="fc" id="L64">    }</span>
+
+    @Test
+    public void mainError() {
+<span class="fc" id="L68">        Observable.error(new TestException())</span>
+<span class="fc" id="L69">        .concatMapSingle(Functions.justFunction(Single.just(1)))</span>
+<span class="fc" id="L70">        .test()</span>
+<span class="fc" id="L71">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L72">    }</span>
+
+    @Test
+    public void innerError() {
+<span class="fc" id="L76">        Observable.just(1)</span>
+<span class="fc" id="L77">        .concatMapSingle(Functions.justFunction(Single.error(new TestException())))</span>
+<span class="fc" id="L78">        .test()</span>
+<span class="fc" id="L79">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L80">    }</span>
+
+    @Test
+    public void mainBoundaryErrorInnerSuccess() {
+<span class="fc" id="L84">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+<span class="fc" id="L85">        SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L87">        TestObserver&lt;Integer&gt; to = ps.concatMapSingleDelayError(Functions.justFunction(ms), false).test();</span>
+
+<span class="fc" id="L89">        to.assertEmpty();</span>
+
+<span class="fc" id="L91">        ps.onNext(1);</span>
+
+<span class="fc" id="L93">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L95">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L97">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L99">        to.assertEmpty();</span>
+
+<span class="fc" id="L101">        ms.onSuccess(1);</span>
+
+<span class="fc" id="L103">        to.assertFailure(TestException.class, 1);</span>
+<span class="fc" id="L104">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L108">        TestHelper.checkDoubleOnSubscribeObservable(</span>
+<span class="fc" id="L109">                new Function&lt;Observable&lt;Object&gt;, Observable&lt;Object&gt;&gt;() {</span>
+                    @Override
+                    public Observable&lt;Object&gt; apply(Observable&lt;Object&gt; f)
+                            throws Exception {
+<span class="fc" id="L113">                        return f.concatMapSingleDelayError(</span>
+<span class="fc" id="L114">                                Functions.justFunction(Single.never()));</span>
+                    }
+                }
+        );
+<span class="fc" id="L118">    }</span>
+
+    @Test
+    public void take() {
+<span class="fc" id="L122">        Observable.range(1, 5)</span>
+<span class="fc" id="L123">        .concatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L127">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L130">        .take(3)</span>
+<span class="fc" id="L131">        .test()</span>
+<span class="fc" id="L132">        .assertResult(1, 2, 3);</span>
+<span class="fc" id="L133">    }</span>
+
+    @Test
+    public void cancel() {
+<span class="fc" id="L137">        Observable.range(1, 5).concatWith(Observable.&lt;Integer&gt;never())</span>
+<span class="fc" id="L138">        .concatMapSingle(new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;Integer&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L142">                return Single.just(v);</span>
+            }
+        })
+<span class="fc" id="L145">        .test()</span>
+<span class="fc" id="L146">        .assertValues(1, 2, 3, 4, 5)</span>
+<span class="fc" id="L147">        .assertNoErrors()</span>
+<span class="fc" id="L148">        .assertNotComplete()</span>
+<span class="fc" id="L149">        .cancel();</span>
+<span class="fc" id="L150">    }</span>
+
+    @Test
+    public void mainErrorAfterInnerError() {
+<span class="fc" id="L154">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L156">            new Observable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L159">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L160">                    observer.onNext(1);</span>
+<span class="fc" id="L161">                    observer.onError(new TestException(&quot;outer&quot;));</span>
+<span class="fc" id="L162">                }</span>
+            }
+<span class="fc" id="L164">            .concatMapSingle(</span>
+<span class="fc" id="L165">                    Functions.justFunction(Single.error(new TestException(&quot;inner&quot;))), 1</span>
+            )
+<span class="fc" id="L167">            .test()</span>
+<span class="fc" id="L168">            .assertFailureAndMessage(TestException.class, &quot;inner&quot;);</span>
+
+<span class="fc" id="L170">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;outer&quot;);</span>
+        } finally {
+<span class="fc" id="L172">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L174">    }</span>
+
+    @Test
+    public void innerErrorAfterMainError() {
+<span class="fc" id="L178">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L180">            final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L182">            final AtomicReference&lt;SingleObserver&lt;? super Integer&gt;&gt; obs = new AtomicReference&lt;SingleObserver&lt;? super Integer&gt;&gt;();</span>
+
+<span class="fc" id="L184">            TestObserver&lt;Integer&gt; to = ps.concatMapSingle(</span>
+<span class="fc" id="L185">                    new Function&lt;Integer, SingleSource&lt;Integer&gt;&gt;() {</span>
+                        @Override
+                        public SingleSource&lt;Integer&gt; apply(Integer v)
+                                throws Exception {
+<span class="fc" id="L189">                            return new Single&lt;Integer&gt;() {</span>
+                                    @Override
+                                    protected void subscribeActual(
+                                            SingleObserver&lt;? super Integer&gt; observer) {
+<span class="fc" id="L193">                                        observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L194">                                        obs.set(observer);</span>
+<span class="fc" id="L195">                                    }</span>
+                            };
+                        }
+                    }
+<span class="fc" id="L199">            ).test();</span>
+
+<span class="fc" id="L201">            ps.onNext(1);</span>
+
+<span class="fc" id="L203">            ps.onError(new TestException(&quot;outer&quot;));</span>
+<span class="fc" id="L204">            obs.get().onError(new TestException(&quot;inner&quot;));</span>
+
+<span class="fc" id="L206">            to.assertFailureAndMessage(TestException.class, &quot;outer&quot;);</span>
+
+<span class="fc" id="L208">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;inner&quot;);</span>
+        } finally {
+<span class="fc" id="L210">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L212">    }</span>
+
+    @Test
+    public void delayAllErrors() {
+<span class="fc" id="L216">        Observable.range(1, 5)</span>
+<span class="fc" id="L217">        .concatMapSingleDelayError(new Function&lt;Integer, SingleSource&lt;? extends Object&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;? extends Object&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L221">                return Single.error(new TestException());</span>
+            }
+        })
+<span class="fc" id="L224">        .test()</span>
+<span class="fc" id="L225">        .assertFailure(CompositeException.class)</span>
+<span class="fc" id="L226">        .assertOf(new Consumer&lt;TestObserver&lt;Object&gt;&gt;() {</span>
+            @Override
+            public void accept(TestObserver&lt;Object&gt; to) throws Exception {
+<span class="fc" id="L229">                CompositeException ce = (CompositeException)to.errors().get(0);</span>
+<span class="fc" id="L230">                assertEquals(5, ce.getExceptions().size());</span>
+<span class="fc" id="L231">            }</span>
+        });
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void mapperCrash() {
+<span class="fc" id="L237">        final PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L239">        TestObserver&lt;Object&gt; to = ps</span>
+<span class="fc" id="L240">        .concatMapSingle(new Function&lt;Integer, SingleSource&lt;? extends Object&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;? extends Object&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L244">                        throw new TestException();</span>
+                    }
+        })
+<span class="fc" id="L247">        .test();</span>
+
+<span class="fc" id="L249">        to.assertEmpty();</span>
+
+<span class="fc" id="L251">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L253">        ps.onNext(1);</span>
+
+<span class="fc" id="L255">        to.assertFailure(TestException.class);</span>
+
+<span class="fc" id="L257">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L258">    }</span>
+
+    @Test
+    public void mapperCrashScalar() {
+<span class="fc" id="L262">        TestObserver&lt;Object&gt; to = Observable.just(1)</span>
+<span class="fc" id="L263">        .concatMapSingle(new Function&lt;Integer, SingleSource&lt;? extends Object&gt;&gt;() {</span>
+            @Override
+            public SingleSource&lt;? extends Object&gt; apply(Integer v)
+                    throws Exception {
+<span class="fc" id="L267">                        throw new TestException();</span>
+                    }
+        })
+<span class="fc" id="L270">        .test();</span>
+
+<span class="fc" id="L272">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L273">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L277">        TestHelper.checkDisposed(Observable.just(1).hide()</span>
+<span class="fc" id="L278">                .concatMapSingle(Functions.justFunction(Single.never()))</span>
+        );
+<span class="fc" id="L280">    }</span>
+
+    @Test
+    public void mainCompletesWhileInnerActive() {
+<span class="fc" id="L284">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+<span class="fc" id="L285">        SingleSubject&lt;Integer&gt; ms = SingleSubject.create();</span>
+
+<span class="fc" id="L287">        TestObserver&lt;Integer&gt; to = ps.concatMapSingleDelayError(Functions.justFunction(ms), false).test();</span>
+
+<span class="fc" id="L289">        to.assertEmpty();</span>
+
+<span class="fc" id="L291">        ps.onNext(1);</span>
+<span class="fc" id="L292">        ps.onNext(2);</span>
+<span class="fc" id="L293">        ps.onComplete();</span>
+
+<span class="fc" id="L295">        assertTrue(ms.hasObservers());</span>
+
+<span class="fc" id="L297">        to.assertEmpty();</span>
+
+<span class="fc" id="L299">        ms.onSuccess(1);</span>
+
+<span class="fc" id="L301">        to.assertResult(1, 1);</span>
+<span class="fc" id="L302">    }</span>
+
+    @Test
+    public void scalarEmptySource() {
+<span class="fc" id="L306">        SingleSubject&lt;Integer&gt; ss = SingleSubject.create();</span>
+
+<span class="fc" id="L308">        Observable.empty()</span>
+<span class="fc" id="L309">        .concatMapSingle(Functions.justFunction(ss))</span>
+<span class="fc" id="L310">        .test()</span>
+<span class="fc" id="L311">        .assertResult();</span>
+
+<span class="fc" id="L313">        assertFalse(ss.hasObservers());</span>
+<span class="fc" id="L314">    }</span>
+
+    @Test(timeout = 10000)
+    public void cancelNoConcurrentClean() {
+<span class="fc" id="L318">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+<span class="fc" id="L319">        ConcatMapSingleMainObserver&lt;Integer, Integer&gt; operator =</span>
+                new ConcatMapSingleMainObserver&lt;Integer, Integer&gt;(
+<span class="fc" id="L321">                        to, Functions.justFunction(Single.&lt;Integer&gt;never()), 16, ErrorMode.IMMEDIATE);</span>
+
+<span class="fc" id="L323">        operator.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L325">        operator.queue.offer(1);</span>
+
+<span class="fc" id="L327">        operator.getAndIncrement();</span>
+
+<span class="fc" id="L329">        to.cancel();</span>
+
+<span class="fc" id="L331">        assertFalse(operator.queue.isEmpty());</span>
+
+<span class="fc" id="L333">        operator.addAndGet(-2);</span>
+
+<span class="fc" id="L335">        operator.dispose();</span>
+
+<span class="fc" id="L337">        assertTrue(operator.queue.isEmpty());</span>
+<span class="fc" id="L338">    }</span>
+
+    @Test
+    public void checkUnboundedInnerQueue() {
+<span class="fc" id="L342">        SingleSubject&lt;Integer&gt; ss = SingleSubject.create();</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L345">        TestObserver&lt;Integer&gt; to = Observable</span>
+<span class="fc" id="L346">                .fromArray(ss, Single.just(2), Single.just(3), Single.just(4))</span>
+<span class="fc" id="L347">                .concatMapSingle(Functions.&lt;Single&lt;Integer&gt;&gt;identity(), 2)</span>
+<span class="fc" id="L348">                .test();</span>
+
+<span class="fc" id="L350">        to.assertEmpty();</span>
+
+<span class="fc" id="L352">        ss.onSuccess(1);</span>
+
+<span class="fc" id="L354">        to.assertResult(1, 2, 3, 4);</span>
+<span class="fc" id="L355">    }</span>
+
+    @Test
+    public void innerSuccessDisposeRace() {
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_LONG_LOOPS; i++) {</span>
+
+<span class="fc" id="L361">            final SingleSubject&lt;Integer&gt; ss = SingleSubject.create();</span>
+
+<span class="fc" id="L363">            final TestObserver&lt;Integer&gt; to = Observable.just(1)</span>
+<span class="fc" id="L364">                    .hide()</span>
+<span class="fc" id="L365">                    .concatMapSingle(Functions.justFunction(ss))</span>
+<span class="fc" id="L366">                    .test();</span>
+
+<span class="fc" id="L368">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L371">                    ss.onSuccess(1);</span>
+<span class="fc" id="L372">                }</span>
+            };
+<span class="fc" id="L374">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L377">                    to.dispose();</span>
+<span class="fc" id="L378">                }</span>
+            };
+
+<span class="fc" id="L381">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L383">            to.assertNoErrors();</span>
+        }
+<span class="fc" id="L385">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

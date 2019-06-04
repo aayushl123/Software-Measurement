@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableZipCompletionTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableZipCompletionTest.java</span></div><h1>FlowableZipCompletionTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.mockito.Mockito.*;
+
+import org.junit.*;
+import org.mockito.InOrder;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.processors.PublishProcessor;
+
+/**
+ * Systematically tests that when zipping an infinite and a finite Observable,
+ * the resulting Observable is finite.
+ *
+ */
+<span class="fc" id="L31">public class FlowableZipCompletionTest {</span>
+    BiFunction&lt;String, String, String&gt; concat2Strings;
+
+    PublishProcessor&lt;String&gt; s1;
+    PublishProcessor&lt;String&gt; s2;
+    Flowable&lt;String&gt; zipped;
+
+    Subscriber&lt;String&gt; subscriber;
+    InOrder inOrder;
+
+    @Before
+    public void setUp() {
+<span class="fc" id="L43">        concat2Strings = new BiFunction&lt;String, String, String&gt;() {</span>
+            @Override
+            public String apply(String t1, String t2) {
+<span class="fc" id="L46">                return t1 + &quot;-&quot; + t2;</span>
+            }
+        };
+
+<span class="fc" id="L50">        s1 = PublishProcessor.create();</span>
+<span class="fc" id="L51">        s2 = PublishProcessor.create();</span>
+<span class="fc" id="L52">        zipped = Flowable.zip(s1, s2, concat2Strings);</span>
+
+<span class="fc" id="L54">        subscriber = TestHelper.mockSubscriber();</span>
+<span class="fc" id="L55">        inOrder = inOrder(subscriber);</span>
+
+<span class="fc" id="L57">        zipped.subscribe(subscriber);</span>
+<span class="fc" id="L58">    }</span>
+
+    @Test
+    public void testFirstCompletesThenSecondInfinite() {
+<span class="fc" id="L62">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L63">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L64">        s1.onComplete();</span>
+<span class="fc" id="L65">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L66">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L67">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L68">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L69">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L70">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L71">    }</span>
+
+    @Test
+    public void testSecondInfiniteThenFirstCompletes() {
+<span class="fc" id="L75">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L76">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L77">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L78">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L79">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L80">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L81">        s1.onComplete();</span>
+<span class="fc" id="L82">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L83">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L84">    }</span>
+
+    @Test
+    public void testSecondCompletesThenFirstInfinite() {
+<span class="fc" id="L88">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L89">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L90">        s2.onComplete();</span>
+<span class="fc" id="L91">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L92">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L93">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L94">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L95">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L96">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L97">    }</span>
+
+    @Test
+    public void testFirstInfiniteThenSecondCompletes() {
+<span class="fc" id="L101">        s1.onNext(&quot;a&quot;);</span>
+<span class="fc" id="L102">        s1.onNext(&quot;b&quot;);</span>
+<span class="fc" id="L103">        s2.onNext(&quot;1&quot;);</span>
+<span class="fc" id="L104">        inOrder.verify(subscriber, times(1)).onNext(&quot;a-1&quot;);</span>
+<span class="fc" id="L105">        s2.onNext(&quot;2&quot;);</span>
+<span class="fc" id="L106">        inOrder.verify(subscriber, times(1)).onNext(&quot;b-2&quot;);</span>
+<span class="fc" id="L107">        s2.onComplete();</span>
+<span class="fc" id="L108">        inOrder.verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L109">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L110">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeFlatMapNotification.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeFlatMapNotification.java</span></div><h1>MaybeFlatMapNotification.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+
+/**
+ * Maps a value into a MaybeSource and relays its signal.
+ *
+ * @param &lt;T&gt; the source value type
+ * @param &lt;R&gt; the result value type
+ */
+public final class MaybeFlatMapNotification&lt;T, R&gt; extends AbstractMaybeWithUpstream&lt;T, R&gt; {
+
+    final Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; onSuccessMapper;
+
+    final Function&lt;? super Throwable, ? extends MaybeSource&lt;? extends R&gt;&gt; onErrorMapper;
+
+    final Callable&lt;? extends MaybeSource&lt;? extends R&gt;&gt; onCompleteSupplier;
+
+    public MaybeFlatMapNotification(MaybeSource&lt;T&gt; source,
+            Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; onSuccessMapper,
+            Function&lt;? super Throwable, ? extends MaybeSource&lt;? extends R&gt;&gt; onErrorMapper,
+            Callable&lt;? extends MaybeSource&lt;? extends R&gt;&gt; onCompleteSupplier) {
+<span class="fc" id="L44">        super(source);</span>
+<span class="fc" id="L45">        this.onSuccessMapper = onSuccessMapper;</span>
+<span class="fc" id="L46">        this.onErrorMapper = onErrorMapper;</span>
+<span class="fc" id="L47">        this.onCompleteSupplier = onCompleteSupplier;</span>
+<span class="fc" id="L48">    }</span>
+
+    @Override
+    protected void subscribeActual(MaybeObserver&lt;? super R&gt; observer) {
+<span class="fc" id="L52">        source.subscribe(new FlatMapMaybeObserver&lt;T, R&gt;(observer, onSuccessMapper, onErrorMapper, onCompleteSupplier));</span>
+<span class="fc" id="L53">    }</span>
+
+    static final class FlatMapMaybeObserver&lt;T, R&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements MaybeObserver&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = 4375739915521278546L;
+
+        final MaybeObserver&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; onSuccessMapper;
+
+        final Function&lt;? super Throwable, ? extends MaybeSource&lt;? extends R&gt;&gt; onErrorMapper;
+
+        final Callable&lt;? extends MaybeSource&lt;? extends R&gt;&gt; onCompleteSupplier;
+
+        Disposable upstream;
+
+        FlatMapMaybeObserver(MaybeObserver&lt;? super R&gt; actual,
+                Function&lt;? super T, ? extends MaybeSource&lt;? extends R&gt;&gt; onSuccessMapper,
+                Function&lt;? super Throwable, ? extends MaybeSource&lt;? extends R&gt;&gt; onErrorMapper,
+<span class="fc" id="L74">                Callable&lt;? extends MaybeSource&lt;? extends R&gt;&gt; onCompleteSupplier) {</span>
+<span class="fc" id="L75">            this.downstream = actual;</span>
+<span class="fc" id="L76">            this.onSuccessMapper = onSuccessMapper;</span>
+<span class="fc" id="L77">            this.onErrorMapper = onErrorMapper;</span>
+<span class="fc" id="L78">            this.onCompleteSupplier = onCompleteSupplier;</span>
+<span class="fc" id="L79">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L83">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L84">            upstream.dispose();</span>
+<span class="fc" id="L85">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L89">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (DisposableHelper.validate(this.upstream, d)) {</span>
+<span class="fc" id="L95">                this.upstream = d;</span>
+
+<span class="fc" id="L97">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L99">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+            MaybeSource&lt;? extends R&gt; source;
+
+            try {
+<span class="fc" id="L106">                source = ObjectHelper.requireNonNull(onSuccessMapper.apply(value), &quot;The onSuccessMapper returned a null MaybeSource&quot;);</span>
+<span class="fc" id="L107">            } catch (Exception ex) {</span>
+<span class="fc" id="L108">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L109">                downstream.onError(ex);</span>
+<span class="fc" id="L110">                return;</span>
+<span class="fc" id="L111">            }</span>
+
+<span class="fc" id="L113">            source.subscribe(new InnerObserver());</span>
+<span class="fc" id="L114">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+            MaybeSource&lt;? extends R&gt; source;
+
+            try {
+<span class="fc" id="L121">                source = ObjectHelper.requireNonNull(onErrorMapper.apply(e), &quot;The onErrorMapper returned a null MaybeSource&quot;);</span>
+<span class="fc" id="L122">            } catch (Exception ex) {</span>
+<span class="fc" id="L123">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L124">                downstream.onError(new CompositeException(e, ex));</span>
+<span class="fc" id="L125">                return;</span>
+<span class="fc" id="L126">            }</span>
+
+<span class="fc" id="L128">            source.subscribe(new InnerObserver());</span>
+<span class="fc" id="L129">        }</span>
+
+        @Override
+        public void onComplete() {
+            MaybeSource&lt;? extends R&gt; source;
+
+            try {
+<span class="fc" id="L136">                source = ObjectHelper.requireNonNull(onCompleteSupplier.call(), &quot;The onCompleteSupplier returned a null MaybeSource&quot;);</span>
+<span class="fc" id="L137">            } catch (Exception ex) {</span>
+<span class="fc" id="L138">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L139">                downstream.onError(ex);</span>
+<span class="fc" id="L140">                return;</span>
+<span class="fc" id="L141">            }</span>
+
+<span class="fc" id="L143">            source.subscribe(new InnerObserver());</span>
+<span class="fc" id="L144">        }</span>
+
+<span class="fc" id="L146">        final class InnerObserver implements MaybeObserver&lt;R&gt; {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L150">                DisposableHelper.setOnce(FlatMapMaybeObserver.this, d);</span>
+<span class="fc" id="L151">            }</span>
+
+            @Override
+            public void onSuccess(R value) {
+<span class="fc" id="L155">                downstream.onSuccess(value);</span>
+<span class="fc" id="L156">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L160">                downstream.onError(e);</span>
+<span class="fc" id="L161">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L165">                downstream.onComplete();</span>
+<span class="fc" id="L166">            }</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

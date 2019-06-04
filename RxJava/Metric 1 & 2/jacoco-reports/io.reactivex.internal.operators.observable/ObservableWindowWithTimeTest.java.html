@@ -1,0 +1,710 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableWindowWithTimeTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableWindowWithTimeTest.java</span></div><h1>ObservableWindowWithTimeTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.observers.*;
+import io.reactivex.schedulers.*;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L35">public class ObservableWindowWithTimeTest {</span>
+
+    private TestScheduler scheduler;
+    private Scheduler.Worker innerScheduler;
+
+    @Before
+    public void before() {
+<span class="fc" id="L42">        scheduler = new TestScheduler();</span>
+<span class="fc" id="L43">        innerScheduler = scheduler.createWorker();</span>
+<span class="fc" id="L44">    }</span>
+
+    @Test
+    public void testTimedAndCount() {
+<span class="fc" id="L48">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L49">        final List&lt;List&lt;String&gt;&gt; lists = new ArrayList&lt;List&lt;String&gt;&gt;();</span>
+
+<span class="fc" id="L51">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L54">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L55">                push(observer, &quot;one&quot;, 10);</span>
+<span class="fc" id="L56">                push(observer, &quot;two&quot;, 90);</span>
+<span class="fc" id="L57">                push(observer, &quot;three&quot;, 110);</span>
+<span class="fc" id="L58">                push(observer, &quot;four&quot;, 190);</span>
+<span class="fc" id="L59">                push(observer, &quot;five&quot;, 210);</span>
+<span class="fc" id="L60">                complete(observer, 250);</span>
+<span class="fc" id="L61">            }</span>
+        });
+
+<span class="fc" id="L64">        Observable&lt;Observable&lt;String&gt;&gt; windowed = source.window(100, TimeUnit.MILLISECONDS, scheduler, 2);</span>
+<span class="fc" id="L65">        windowed.subscribe(observeWindow(list, lists));</span>
+
+<span class="fc" id="L67">        scheduler.advanceTimeTo(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L68">        assertEquals(1, lists.size());</span>
+<span class="fc" id="L69">        assertEquals(lists.get(0), list(&quot;one&quot;, &quot;two&quot;));</span>
+
+<span class="fc" id="L71">        scheduler.advanceTimeTo(200, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L72">        assertEquals(2, lists.size());</span>
+<span class="fc" id="L73">        assertEquals(lists.get(1), list(&quot;three&quot;, &quot;four&quot;));</span>
+
+<span class="fc" id="L75">        scheduler.advanceTimeTo(300, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L76">        assertEquals(3, lists.size());</span>
+<span class="fc" id="L77">        assertEquals(lists.get(2), list(&quot;five&quot;));</span>
+<span class="fc" id="L78">    }</span>
+
+    @Test
+    public void testTimed() {
+<span class="fc" id="L82">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L83">        final List&lt;List&lt;String&gt;&gt; lists = new ArrayList&lt;List&lt;String&gt;&gt;();</span>
+
+<span class="fc" id="L85">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L88">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L89">                push(observer, &quot;one&quot;, 98);</span>
+<span class="fc" id="L90">                push(observer, &quot;two&quot;, 99);</span>
+<span class="fc" id="L91">                push(observer, &quot;three&quot;, 99); // FIXME happens after the window is open</span>
+<span class="fc" id="L92">                push(observer, &quot;four&quot;, 101);</span>
+<span class="fc" id="L93">                push(observer, &quot;five&quot;, 102);</span>
+<span class="fc" id="L94">                complete(observer, 150);</span>
+<span class="fc" id="L95">            }</span>
+        });
+
+<span class="fc" id="L98">        Observable&lt;Observable&lt;String&gt;&gt; windowed = source.window(100, TimeUnit.MILLISECONDS, scheduler);</span>
+<span class="fc" id="L99">        windowed.subscribe(observeWindow(list, lists));</span>
+
+<span class="fc" id="L101">        scheduler.advanceTimeTo(101, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L102">        assertEquals(1, lists.size());</span>
+<span class="fc" id="L103">        assertEquals(lists.get(0), list(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+
+<span class="fc" id="L105">        scheduler.advanceTimeTo(201, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L106">        assertEquals(2, lists.size());</span>
+<span class="fc" id="L107">        assertEquals(lists.get(1), list(&quot;four&quot;, &quot;five&quot;));</span>
+<span class="fc" id="L108">    }</span>
+
+    private List&lt;String&gt; list(String... args) {
+<span class="fc" id="L111">        List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        for (String arg : args) {</span>
+<span class="fc" id="L113">            list.add(arg);</span>
+        }
+<span class="fc" id="L115">        return list;</span>
+    }
+
+    private &lt;T&gt; void push(final Observer&lt;T&gt; observer, final T value, int delay) {
+<span class="fc" id="L119">        innerScheduler.schedule(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L122">                observer.onNext(value);</span>
+<span class="fc" id="L123">            }</span>
+        }, delay, TimeUnit.MILLISECONDS);
+<span class="fc" id="L125">    }</span>
+
+    private void complete(final Observer&lt;?&gt; observer, int delay) {
+<span class="fc" id="L128">        innerScheduler.schedule(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L131">                observer.onComplete();</span>
+<span class="fc" id="L132">            }</span>
+        }, delay, TimeUnit.MILLISECONDS);
+<span class="fc" id="L134">    }</span>
+
+    private &lt;T&gt; Consumer&lt;Observable&lt;T&gt;&gt; observeWindow(final List&lt;T&gt; list, final List&lt;List&lt;T&gt;&gt; lists) {
+<span class="fc" id="L137">        return new Consumer&lt;Observable&lt;T&gt;&gt;() {</span>
+            @Override
+            public void accept(Observable&lt;T&gt; stringObservable) {
+<span class="fc" id="L140">                stringObservable.subscribe(new DefaultObserver&lt;T&gt;() {</span>
+                    @Override
+                    public void onComplete() {
+<span class="fc" id="L143">                        lists.add(new ArrayList&lt;T&gt;(list));</span>
+<span class="fc" id="L144">                        list.clear();</span>
+<span class="fc" id="L145">                    }</span>
+
+                    @Override
+                    public void onError(Throwable e) {
+<span class="nc" id="L149">                        Assert.fail(e.getMessage());</span>
+<span class="nc" id="L150">                    }</span>
+
+                    @Override
+                    public void onNext(T args) {
+<span class="fc" id="L154">                        list.add(args);</span>
+<span class="fc" id="L155">                    }</span>
+                });
+<span class="fc" id="L157">            }</span>
+        };
+    }
+
+    @Test
+    public void testExactWindowSize() {
+<span class="fc" id="L163">        Observable&lt;Observable&lt;Integer&gt;&gt; source = Observable.range(1, 10)</span>
+<span class="fc" id="L164">                .window(1, TimeUnit.MINUTES, scheduler, 3);</span>
+
+<span class="fc" id="L166">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc" id="L167">        final List&lt;List&lt;Integer&gt;&gt; lists = new ArrayList&lt;List&lt;Integer&gt;&gt;();</span>
+
+<span class="fc" id="L169">        source.subscribe(observeWindow(list, lists));</span>
+
+<span class="fc" id="L171">        assertEquals(4, lists.size());</span>
+<span class="fc" id="L172">        assertEquals(3, lists.get(0).size());</span>
+<span class="fc" id="L173">        assertEquals(Arrays.asList(1, 2, 3), lists.get(0));</span>
+<span class="fc" id="L174">        assertEquals(3, lists.get(1).size());</span>
+<span class="fc" id="L175">        assertEquals(Arrays.asList(4, 5, 6), lists.get(1));</span>
+<span class="fc" id="L176">        assertEquals(3, lists.get(2).size());</span>
+<span class="fc" id="L177">        assertEquals(Arrays.asList(7, 8, 9), lists.get(2));</span>
+<span class="fc" id="L178">        assertEquals(1, lists.get(3).size());</span>
+<span class="fc" id="L179">        assertEquals(Arrays.asList(10), lists.get(3));</span>
+<span class="fc" id="L180">    }</span>
+
+    @Test
+    public void testTakeFlatMapCompletes() {
+<span class="fc" id="L184">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;();</span>
+
+<span class="fc" id="L186">        final AtomicInteger wip = new AtomicInteger();</span>
+
+<span class="fc" id="L188">        final int indicator = 999999999;</span>
+
+<span class="fc" id="L190">        ObservableWindowWithSizeTest.hotStream()</span>
+<span class="fc" id="L191">        .window(300, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L192">        .take(10)</span>
+<span class="fc" id="L193">        .doOnComplete(new Action() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L196">                System.out.println(&quot;Main done!&quot;);</span>
+<span class="fc" id="L197">            }</span>
+        })
+<span class="fc" id="L199">        .flatMap(new Function&lt;Observable&lt;Integer&gt;, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Observable&lt;Integer&gt; w) {
+<span class="fc" id="L202">                return w.startWith(indicator)</span>
+<span class="fc" id="L203">                        .doOnComplete(new Action() {</span>
+                            @Override
+                            public void run() {
+<span class="fc" id="L206">                                System.out.println(&quot;inner done: &quot; + wip.incrementAndGet());</span>
+<span class="fc" id="L207">                            }</span>
+                        })
+                        ;
+            }
+        })
+<span class="fc" id="L212">        .doOnNext(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer pv) {
+<span class="fc" id="L215">                System.out.println(pv);</span>
+<span class="fc" id="L216">            }</span>
+        })
+<span class="fc" id="L218">        .subscribe(to);</span>
+
+<span class="fc" id="L220">        to.awaitTerminalEvent(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L221">        to.assertComplete();</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        Assert.assertTrue(to.valueCount() != 0);</span>
+<span class="fc" id="L223">    }</span>
+
+    @Test
+    public void timespanTimeskipDefaultScheduler() {
+<span class="fc" id="L227">        Observable.just(1)</span>
+<span class="fc" id="L228">        .window(1, 1, TimeUnit.MINUTES)</span>
+<span class="fc" id="L229">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L230">        .test()</span>
+<span class="fc" id="L231">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L232">        .assertResult(1);</span>
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void timespanTimeskipCustomScheduler() {
+<span class="fc" id="L237">        Observable.just(1)</span>
+<span class="fc" id="L238">        .window(1, 1, TimeUnit.MINUTES, Schedulers.io())</span>
+<span class="fc" id="L239">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L240">        .test()</span>
+<span class="fc" id="L241">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L242">        .assertResult(1);</span>
+<span class="fc" id="L243">    }</span>
+
+    @Test
+    public void timespanTimeskipCustomSchedulerBufferSize() {
+<span class="fc" id="L247">        Observable.range(1, 10)</span>
+<span class="fc" id="L248">        .window(1, 1, TimeUnit.MINUTES, Schedulers.io(), 2)</span>
+<span class="fc" id="L249">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L250">        .test()</span>
+<span class="fc" id="L251">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L252">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L253">    }</span>
+
+    @Test
+    public void timespanDefaultSchedulerSize() {
+<span class="fc" id="L257">        Observable.range(1, 10)</span>
+<span class="fc" id="L258">        .window(1, TimeUnit.MINUTES, 20)</span>
+<span class="fc" id="L259">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L260">        .test()</span>
+<span class="fc" id="L261">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L262">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L263">    }</span>
+
+    @Test
+    public void timespanDefaultSchedulerSizeRestart() {
+<span class="fc" id="L267">        Observable.range(1, 10)</span>
+<span class="fc" id="L268">        .window(1, TimeUnit.MINUTES, 20, true)</span>
+<span class="fc" id="L269">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity(), true)</span>
+<span class="fc" id="L270">        .test()</span>
+<span class="fc" id="L271">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L272">        .assertResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);</span>
+<span class="fc" id="L273">    }</span>
+
+    @Test
+    public void invalidSpan() {
+        try {
+<span class="nc" id="L278">            Observable.just(1).window(-99, 1, TimeUnit.SECONDS);</span>
+<span class="nc" id="L279">            fail(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L280">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L281">            assertEquals(&quot;timespan &gt; 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L282">        }</span>
+<span class="fc" id="L283">    }</span>
+
+    @Test
+    public void timeskipJustOverlap() {
+<span class="fc" id="L287">        Observable.just(1)</span>
+<span class="fc" id="L288">        .window(2, 1, TimeUnit.MINUTES, Schedulers.single())</span>
+<span class="fc" id="L289">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L290">        .test()</span>
+<span class="fc" id="L291">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L292">        .assertResult(1);</span>
+<span class="fc" id="L293">    }</span>
+
+    @Test
+    public void timeskipJustSkip() {
+<span class="fc" id="L297">        Observable.just(1)</span>
+<span class="fc" id="L298">        .window(1, 2, TimeUnit.MINUTES, Schedulers.single())</span>
+<span class="fc" id="L299">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L300">        .test()</span>
+<span class="fc" id="L301">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L302">        .assertResult(1);</span>
+<span class="fc" id="L303">    }</span>
+
+    @Test
+    public void timeskipSkipping() {
+<span class="fc" id="L307">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L309">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L311">        TestObserver&lt;Integer&gt; to = ps.window(1, 2, TimeUnit.SECONDS, scheduler)</span>
+<span class="fc" id="L312">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L313">        .test();</span>
+
+<span class="fc" id="L315">        ps.onNext(1);</span>
+<span class="fc" id="L316">        ps.onNext(2);</span>
+
+<span class="fc" id="L318">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L320">        ps.onNext(3);</span>
+<span class="fc" id="L321">        ps.onNext(4);</span>
+
+<span class="fc" id="L323">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L325">        ps.onNext(5);</span>
+<span class="fc" id="L326">        ps.onNext(6);</span>
+
+<span class="fc" id="L328">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L330">        ps.onNext(7);</span>
+<span class="fc" id="L331">        ps.onComplete();</span>
+
+<span class="fc" id="L333">        to.assertResult(1, 2, 5, 6);</span>
+<span class="fc" id="L334">    }</span>
+
+    @Test
+    public void timeskipOverlapping() {
+<span class="fc" id="L338">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L340">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L342">        TestObserver&lt;Integer&gt; to = ps.window(2, 1, TimeUnit.SECONDS, scheduler)</span>
+<span class="fc" id="L343">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L344">        .test();</span>
+
+<span class="fc" id="L346">        ps.onNext(1);</span>
+<span class="fc" id="L347">        ps.onNext(2);</span>
+
+<span class="fc" id="L349">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L351">        ps.onNext(3);</span>
+<span class="fc" id="L352">        ps.onNext(4);</span>
+
+<span class="fc" id="L354">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L356">        ps.onNext(5);</span>
+<span class="fc" id="L357">        ps.onNext(6);</span>
+
+<span class="fc" id="L359">        scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L361">        ps.onNext(7);</span>
+<span class="fc" id="L362">        ps.onComplete();</span>
+
+<span class="fc" id="L364">        to.assertResult(1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7);</span>
+<span class="fc" id="L365">    }</span>
+
+    @Test
+    public void exactOnError() {
+<span class="fc" id="L369">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L371">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L373">        TestObserver&lt;Integer&gt; to = ps.window(1, 1, TimeUnit.SECONDS, scheduler)</span>
+<span class="fc" id="L374">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L375">        .test();</span>
+
+<span class="fc" id="L377">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L379">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L380">    }</span>
+
+    @Test
+    public void overlappingOnError() {
+<span class="fc" id="L384">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L386">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L388">        TestObserver&lt;Integer&gt; to = ps.window(2, 1, TimeUnit.SECONDS, scheduler)</span>
+<span class="fc" id="L389">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L390">        .test();</span>
+
+<span class="fc" id="L392">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L394">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L395">    }</span>
+
+    @Test
+    public void skipOnError() {
+<span class="fc" id="L399">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L401">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L403">        TestObserver&lt;Integer&gt; to = ps.window(1, 2, TimeUnit.SECONDS, scheduler)</span>
+<span class="fc" id="L404">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L405">        .test();</span>
+
+<span class="fc" id="L407">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L409">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L410">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L414">        TestHelper.checkDisposed(Observable.range(1, 5).window(1, TimeUnit.DAYS, Schedulers.single()));</span>
+
+<span class="fc" id="L416">        TestHelper.checkDisposed(Observable.range(1, 5).window(2, 1, TimeUnit.DAYS, Schedulers.single()));</span>
+
+<span class="fc" id="L418">        TestHelper.checkDisposed(Observable.range(1, 5).window(1, 2, TimeUnit.DAYS, Schedulers.single()));</span>
+
+<span class="fc" id="L420">        TestHelper.checkDisposed(Observable.never()</span>
+<span class="fc" id="L421">                .window(1, TimeUnit.DAYS, Schedulers.single(), 2, true));</span>
+<span class="fc" id="L422">    }</span>
+
+    @Test
+    public void restartTimer() {
+<span class="fc" id="L426">        Observable.range(1, 5)</span>
+<span class="fc" id="L427">        .window(1, TimeUnit.DAYS, Schedulers.single(), 2, true)</span>
+<span class="fc" id="L428">        .flatMap(Functions.&lt;Observable&lt;Integer&gt;&gt;identity())</span>
+<span class="fc" id="L429">        .test()</span>
+<span class="fc" id="L430">        .assertResult(1, 2, 3, 4, 5);</span>
+<span class="fc" id="L431">    }</span>
+
+    @Test
+    public void exactBoundaryError() {
+<span class="fc" id="L435">        Observable.error(new TestException())</span>
+<span class="fc" id="L436">        .window(1, TimeUnit.DAYS, Schedulers.single(), 2, true)</span>
+<span class="fc" id="L437">        .test()</span>
+<span class="fc" id="L438">        .assertSubscribed()</span>
+<span class="fc" id="L439">        .assertError(TestException.class)</span>
+<span class="fc" id="L440">        .assertNotComplete();</span>
+<span class="fc" id="L441">    }</span>
+
+    @Test
+    public void restartTimerMany() {
+<span class="fc" id="L445">        Observable.intervalRange(1, 1000, 1, 1, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L446">        .window(1, TimeUnit.MILLISECONDS, Schedulers.single(), 2, true)</span>
+<span class="fc" id="L447">        .flatMap(Functions.&lt;Observable&lt;Long&gt;&gt;identity())</span>
+<span class="fc" id="L448">        .take(500)</span>
+<span class="fc" id="L449">        .test()</span>
+<span class="fc" id="L450">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L451">        .assertSubscribed()</span>
+<span class="fc" id="L452">        .assertValueCount(500)</span>
+<span class="fc" id="L453">        .assertNoErrors()</span>
+<span class="fc" id="L454">        .assertComplete();</span>
+<span class="fc" id="L455">    }</span>
+
+    @Test
+    public void exactUnboundedReentrant() {
+<span class="fc" id="L459">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L461">        final Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L463">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L466">                super.onNext(t);</span>
+<span class="fc bfc" id="L467" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L468">                    ps.onNext(2);</span>
+<span class="fc" id="L469">                    ps.onComplete();</span>
+                }
+<span class="fc" id="L471">            }</span>
+        };
+
+<span class="fc" id="L474">        ps.window(1, TimeUnit.MILLISECONDS, scheduler)</span>
+<span class="fc" id="L475">        .flatMap(new Function&lt;Observable&lt;Integer&gt;, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Observable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L478">                return v;</span>
+            }
+        })
+<span class="fc" id="L481">        .subscribe(to);</span>
+
+<span class="fc" id="L483">        ps.onNext(1);</span>
+
+<span class="fc" id="L485">        to</span>
+<span class="fc" id="L486">        .awaitDone(1, TimeUnit.SECONDS)</span>
+<span class="fc" id="L487">        .assertResult(1, 2);</span>
+<span class="fc" id="L488">    }</span>
+
+    @Test
+    public void exactBoundedReentrant() {
+<span class="fc" id="L492">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L494">        final Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L496">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L499">                super.onNext(t);</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L501">                    ps.onNext(2);</span>
+<span class="fc" id="L502">                    ps.onComplete();</span>
+                }
+<span class="fc" id="L504">            }</span>
+        };
+
+<span class="fc" id="L507">        ps.window(1, TimeUnit.MILLISECONDS, scheduler, 10, true)</span>
+<span class="fc" id="L508">        .flatMap(new Function&lt;Observable&lt;Integer&gt;, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Observable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L511">                return v;</span>
+            }
+        })
+<span class="fc" id="L514">        .subscribe(to);</span>
+
+<span class="fc" id="L516">        ps.onNext(1);</span>
+
+<span class="fc" id="L518">        to</span>
+<span class="fc" id="L519">        .awaitDone(1, TimeUnit.SECONDS)</span>
+<span class="fc" id="L520">        .assertResult(1, 2);</span>
+<span class="fc" id="L521">    }</span>
+
+    @Test
+    public void exactBoundedReentrant2() {
+<span class="fc" id="L525">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L527">        final Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L529">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L532">                super.onNext(t);</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L534">                    ps.onNext(2);</span>
+<span class="fc" id="L535">                    ps.onComplete();</span>
+                }
+<span class="fc" id="L537">            }</span>
+        };
+
+<span class="fc" id="L540">        ps.window(1, TimeUnit.MILLISECONDS, scheduler, 2, true)</span>
+<span class="fc" id="L541">        .flatMap(new Function&lt;Observable&lt;Integer&gt;, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Observable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L544">                return v;</span>
+            }
+        })
+<span class="fc" id="L547">        .subscribe(to);</span>
+
+<span class="fc" id="L549">        ps.onNext(1);</span>
+
+<span class="fc" id="L551">        to</span>
+<span class="fc" id="L552">        .awaitDone(1, TimeUnit.SECONDS)</span>
+<span class="fc" id="L553">        .assertResult(1, 2);</span>
+<span class="fc" id="L554">    }</span>
+
+    @Test
+    public void skipReentrant() {
+<span class="fc" id="L558">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L560">        final Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L562">        TestObserver&lt;Integer&gt; to = new TestObserver&lt;Integer&gt;() {</span>
+            @Override
+            public void onNext(Integer t) {
+<span class="fc" id="L565">                super.onNext(t);</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">                if (t == 1) {</span>
+<span class="fc" id="L567">                    ps.onNext(2);</span>
+<span class="fc" id="L568">                    ps.onComplete();</span>
+                }
+<span class="fc" id="L570">            }</span>
+        };
+
+<span class="fc" id="L573">        ps.window(1, 2, TimeUnit.MILLISECONDS, scheduler)</span>
+<span class="fc" id="L574">        .flatMap(new Function&lt;Observable&lt;Integer&gt;, ObservableSource&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Integer&gt; apply(Observable&lt;Integer&gt; v) throws Exception {
+<span class="fc" id="L577">                return v;</span>
+            }
+        })
+<span class="fc" id="L580">        .subscribe(to);</span>
+
+<span class="fc" id="L582">        ps.onNext(1);</span>
+
+<span class="fc" id="L584">        to</span>
+<span class="fc" id="L585">        .awaitDone(1, TimeUnit.SECONDS)</span>
+<span class="fc" id="L586">        .assertResult(1, 2);</span>
+<span class="fc" id="L587">    }</span>
+
+    @Test
+    public void sizeTimeTimeout() {
+<span class="fc" id="L591">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L592">        Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L594">        TestObserver&lt;Observable&lt;Integer&gt;&gt; to = ps.window(5, TimeUnit.MILLISECONDS, scheduler, 100)</span>
+<span class="fc" id="L595">        .test()</span>
+<span class="fc" id="L596">        .assertValueCount(1);</span>
+
+<span class="fc" id="L598">        scheduler.advanceTimeBy(5, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L600">        to.assertValueCount(2)</span>
+<span class="fc" id="L601">        .assertNoErrors()</span>
+<span class="fc" id="L602">        .assertNotComplete();</span>
+
+<span class="fc" id="L604">        to.values().get(0).test().assertResult();</span>
+<span class="fc" id="L605">    }</span>
+
+    @Test
+    public void periodicWindowCompletion() {
+<span class="fc" id="L609">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L610">        Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L612">        TestObserver&lt;Observable&lt;Integer&gt;&gt; to = ps.window(5, TimeUnit.MILLISECONDS, scheduler, Long.MAX_VALUE, false)</span>
+<span class="fc" id="L613">        .test();</span>
+
+<span class="fc" id="L615">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L617">        to.assertValueCount(21)</span>
+<span class="fc" id="L618">        .assertNoErrors()</span>
+<span class="fc" id="L619">        .assertNotComplete();</span>
+<span class="fc" id="L620">    }</span>
+
+    @Test
+    public void periodicWindowCompletionRestartTimer() {
+<span class="fc" id="L624">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L625">        Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L627">        TestObserver&lt;Observable&lt;Integer&gt;&gt; to = ps.window(5, TimeUnit.MILLISECONDS, scheduler, Long.MAX_VALUE, true)</span>
+<span class="fc" id="L628">        .test();</span>
+
+<span class="fc" id="L630">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L632">        to.assertValueCount(21)</span>
+<span class="fc" id="L633">        .assertNoErrors()</span>
+<span class="fc" id="L634">        .assertNotComplete();</span>
+<span class="fc" id="L635">    }</span>
+
+    @Test
+    public void periodicWindowCompletionBounded() {
+<span class="fc" id="L639">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L640">        Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L642">        TestObserver&lt;Observable&lt;Integer&gt;&gt; to = ps.window(5, TimeUnit.MILLISECONDS, scheduler, 5, false)</span>
+<span class="fc" id="L643">        .test();</span>
+
+<span class="fc" id="L645">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L647">        to.assertValueCount(21)</span>
+<span class="fc" id="L648">        .assertNoErrors()</span>
+<span class="fc" id="L649">        .assertNotComplete();</span>
+<span class="fc" id="L650">    }</span>
+
+    @Test
+    public void periodicWindowCompletionRestartTimerBounded() {
+<span class="fc" id="L654">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L655">        Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L657">        TestObserver&lt;Observable&lt;Integer&gt;&gt; to = ps.window(5, TimeUnit.MILLISECONDS, scheduler, 5, true)</span>
+<span class="fc" id="L658">        .test();</span>
+
+<span class="fc" id="L660">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L662">        to.assertValueCount(21)</span>
+<span class="fc" id="L663">        .assertNoErrors()</span>
+<span class="fc" id="L664">        .assertNotComplete();</span>
+<span class="fc" id="L665">    }</span>
+
+    @Test
+    public void periodicWindowCompletionRestartTimerBoundedSomeData() {
+<span class="fc" id="L669">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L670">        Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L672">        TestObserver&lt;Observable&lt;Integer&gt;&gt; to = ps.window(5, TimeUnit.MILLISECONDS, scheduler, 2, true)</span>
+<span class="fc" id="L673">        .test();</span>
+
+<span class="fc" id="L675">        ps.onNext(1);</span>
+<span class="fc" id="L676">        ps.onNext(2);</span>
+
+<span class="fc" id="L678">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L680">        to.assertValueCount(22)</span>
+<span class="fc" id="L681">        .assertNoErrors()</span>
+<span class="fc" id="L682">        .assertNotComplete();</span>
+<span class="fc" id="L683">    }</span>
+
+    @Test
+    public void countRestartsOnTimeTick() {
+<span class="fc" id="L687">        TestScheduler scheduler = new TestScheduler();</span>
+<span class="fc" id="L688">        Subject&lt;Integer&gt; ps = PublishSubject.&lt;Integer&gt;create();</span>
+
+<span class="fc" id="L690">        TestObserver&lt;Observable&lt;Integer&gt;&gt; to = ps.window(5, TimeUnit.MILLISECONDS, scheduler, 5, true)</span>
+<span class="fc" id="L691">        .test();</span>
+
+        // window #1
+<span class="fc" id="L694">        ps.onNext(1);</span>
+<span class="fc" id="L695">        ps.onNext(2);</span>
+
+<span class="fc" id="L697">        scheduler.advanceTimeBy(5, TimeUnit.MILLISECONDS);</span>
+
+        // window #2
+<span class="fc" id="L700">        ps.onNext(3);</span>
+<span class="fc" id="L701">        ps.onNext(4);</span>
+<span class="fc" id="L702">        ps.onNext(5);</span>
+<span class="fc" id="L703">        ps.onNext(6);</span>
+
+<span class="fc" id="L705">        to.assertValueCount(2)</span>
+<span class="fc" id="L706">        .assertNoErrors()</span>
+<span class="fc" id="L707">        .assertNotComplete();</span>
+<span class="fc" id="L708">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

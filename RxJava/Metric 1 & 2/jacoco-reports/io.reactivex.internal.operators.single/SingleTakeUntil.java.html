@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleTakeUntil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.single</a> &gt; <span class="el_source">SingleTakeUntil.java</span></div><h1>SingleTakeUntil.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.single;
+
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Signals the events of the source Single or signals a CancellationException if the
+ * other Publisher signalled first.
+ * @param &lt;T&gt; the main value type
+ * @param &lt;U&gt; the other value type
+ */
+public final class SingleTakeUntil&lt;T, U&gt; extends Single&lt;T&gt; {
+
+    final SingleSource&lt;T&gt; source;
+
+    final Publisher&lt;U&gt; other;
+
+<span class="fc" id="L39">    public SingleTakeUntil(SingleSource&lt;T&gt; source, Publisher&lt;U&gt; other) {</span>
+<span class="fc" id="L40">        this.source = source;</span>
+<span class="fc" id="L41">        this.other = other;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Override
+    protected void subscribeActual(SingleObserver&lt;? super T&gt; observer) {
+<span class="fc" id="L46">        TakeUntilMainObserver&lt;T&gt; parent = new TakeUntilMainObserver&lt;T&gt;(observer);</span>
+<span class="fc" id="L47">        observer.onSubscribe(parent);</span>
+
+<span class="fc" id="L49">        other.subscribe(parent.other);</span>
+
+<span class="fc" id="L51">        source.subscribe(parent);</span>
+<span class="fc" id="L52">    }</span>
+
+    static final class TakeUntilMainObserver&lt;T&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements SingleObserver&lt;T&gt;, Disposable {
+
+        private static final long serialVersionUID = -622603812305745221L;
+
+        final SingleObserver&lt;? super T&gt; downstream;
+
+        final TakeUntilOtherSubscriber other;
+
+<span class="fc" id="L64">        TakeUntilMainObserver(SingleObserver&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L65">            this.downstream = downstream;</span>
+<span class="fc" id="L66">            this.other = new TakeUntilOtherSubscriber(this);</span>
+<span class="fc" id="L67">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L71">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L72">            other.dispose();</span>
+<span class="fc" id="L73">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L77">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L82">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L83">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L87">            other.dispose();</span>
+
+<span class="fc" id="L89">            Disposable a = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (a != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L91">                downstream.onSuccess(value);</span>
+            }
+<span class="fc" id="L93">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L97">            other.dispose();</span>
+
+<span class="fc" id="L99">            Disposable a = get();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (a != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L101">                a = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if (a != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L103">                    downstream.onError(e);</span>
+<span class="fc" id="L104">                    return;</span>
+                }
+            }
+<span class="fc" id="L107">            RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L108">        }</span>
+
+        void otherError(Throwable e) {
+<span class="fc" id="L111">            Disposable a = get();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (a != DisposableHelper.DISPOSED) {</span>
+<span class="fc" id="L113">                a = getAndSet(DisposableHelper.DISPOSED);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                if (a != DisposableHelper.DISPOSED) {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                    if (a != null) {</span>
+<span class="fc" id="L116">                        a.dispose();</span>
+                    }
+<span class="fc" id="L118">                    downstream.onError(e);</span>
+<span class="fc" id="L119">                    return;</span>
+                }
+            }
+<span class="fc" id="L122">            RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L123">        }</span>
+    }
+
+    static final class TakeUntilOtherSubscriber
+    extends AtomicReference&lt;Subscription&gt;
+    implements FlowableSubscriber&lt;Object&gt; {
+
+        private static final long serialVersionUID = 5170026210238877381L;
+
+        final TakeUntilMainObserver&lt;?&gt; parent;
+
+<span class="fc" id="L134">        TakeUntilOtherSubscriber(TakeUntilMainObserver&lt;?&gt; parent) {</span>
+<span class="fc" id="L135">            this.parent = parent;</span>
+<span class="fc" id="L136">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L140">            SubscriptionHelper.setOnce(this, s, Long.MAX_VALUE);</span>
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public void onNext(Object t) {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (SubscriptionHelper.cancel(this)) {</span>
+<span class="fc" id="L146">                parent.otherError(new CancellationException());</span>
+            }
+<span class="fc" id="L148">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L152">            parent.otherError(t);</span>
+<span class="fc" id="L153">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (get() != SubscriptionHelper.CANCELLED) {</span>
+<span class="fc" id="L158">                lazySet(SubscriptionHelper.CANCELLED);</span>
+<span class="fc" id="L159">                parent.otherError(new CancellationException());</span>
+            }
+<span class="fc" id="L161">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L164">            SubscriptionHelper.cancel(this);</span>
+<span class="fc" id="L165">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PublishSubject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.subjects</a> &gt; <span class="el_source">PublishSubject.java</span></div><h1>PublishSubject.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.subjects;
+
+import io.reactivex.annotations.CheckReturnValue;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.annotations.NonNull;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * A Subject that emits (multicasts) items to currently subscribed {@link Observer}s and terminal events to current
+ * or late {@code Observer}s.
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;281&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/PublishSubject.png&quot; alt=&quot;&quot;&gt;
+ * &lt;p&gt;
+ * This subject does not have a public constructor by design; a new empty instance of this
+ * {@code PublishSubject} can be created via the {@link #create()} method.
+ * &lt;p&gt;
+ * Since a {@code Subject} is conceptionally derived from the {@code Processor} type in the Reactive Streams specification,
+ * {@code null}s are not allowed (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.13&quot;&gt;Rule 2.13&lt;/a&gt;) as
+ * parameters to {@link #onNext(Object)} and {@link #onError(Throwable)}. Such calls will result in a
+ * {@link NullPointerException} being thrown and the subject's state is not changed.
+ * &lt;p&gt;
+ * Since a {@code PublishSubject} is an {@link io.reactivex.Observable}, it does not support backpressure.
+ * &lt;p&gt;
+ * When this {@code PublishSubject} is terminated via {@link #onError(Throwable)} or {@link #onComplete()},
+ * late {@link io.reactivex.Observer}s only receive the respective terminal event.
+ * &lt;p&gt;
+ * Unlike a {@link BehaviorSubject}, a {@code PublishSubject} doesn't retain/cache items, therefore, a new
+ * {@code Observer} won't receive any past items.
+ * &lt;p&gt;
+ * Even though {@code PublishSubject} implements the {@code Observer} interface, calling
+ * {@code onSubscribe} is not required (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.12&quot;&gt;Rule 2.12&lt;/a&gt;)
+ * if the subject is used as a standalone source. However, calling {@code onSubscribe}
+ * after the {@code PublishSubject} reached its terminal state will result in the
+ * given {@code Disposable} being disposed immediately.
+ * &lt;p&gt;
+ * Calling {@link #onNext(Object)}, {@link #onError(Throwable)} and {@link #onComplete()}
+ * is required to be serialized (called from the same thread or called non-overlappingly from different threads
+ * through external means of serialization). The {@link #toSerialized()} method available to all {@code Subject}s
+ * provides such serialization and also protects against reentrance (i.e., when a downstream {@code Observer}
+ * consuming this subject also wants to call {@link #onNext(Object)} on this subject recursively).
+ * &lt;p&gt;
+ * This {@code PublishSubject} supports the standard state-peeking methods {@link #hasComplete()}, {@link #hasThrowable()},
+ * {@link #getThrowable()} and {@link #hasObservers()}.
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;{@code PublishSubject} does not operate by default on a particular {@link io.reactivex.Scheduler} and
+ *  the {@code Observer}s get notified on the thread the respective {@code onXXX} methods were invoked.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Error handling:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;When the {@link #onError(Throwable)} is called, the {@code PublishSubject} enters into a terminal state
+ *  and emits the same {@code Throwable} instance to the last set of {@code Observer}s. During this emission,
+ *  if one or more {@code Observer}s dispose their respective {@code Disposable}s, the
+ *  {@code Throwable} is delivered to the global error handler via
+ *  {@link io.reactivex.plugins.RxJavaPlugins#onError(Throwable)} (multiple times if multiple {@code Observer}s
+ *  cancel at once).
+ *  If there were no {@code Observer}s subscribed to this {@code PublishSubject} when the {@code onError()}
+ *  was called, the global error handler is not invoked.
+ *  &lt;/dd&gt;
+ * &lt;/dl&gt;
+ * &lt;p&gt;
+ * Example usage:
+ * &lt;pre&gt; {@code
+
+  PublishSubject&lt;Object&gt; subject = PublishSubject.create();
+  // observer1 will receive all onNext and onComplete events
+  subject.subscribe(observer1);
+  subject.onNext(&quot;one&quot;);
+  subject.onNext(&quot;two&quot;);
+  // observer2 will only receive &quot;three&quot; and onComplete
+  subject.subscribe(observer2);
+  subject.onNext(&quot;three&quot;);
+  subject.onComplete();
+
+  // late Observers only receive the terminal event
+  subject.test().assertEmpty();
+  } &lt;/pre&gt;
+ *
+ * @param &lt;T&gt;
+ *          the type of items observed and emitted by the Subject
+ */
+public final class PublishSubject&lt;T&gt; extends Subject&lt;T&gt; {
+    /** The terminated indicator for the subscribers array. */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L101">    static final PublishDisposable[] TERMINATED = new PublishDisposable[0];</span>
+    /** An empty subscribers array to avoid allocating it all the time. */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L104">    static final PublishDisposable[] EMPTY = new PublishDisposable[0];</span>
+
+    /** The array of currently subscribed subscribers. */
+    final AtomicReference&lt;PublishDisposable&lt;T&gt;[]&gt; subscribers;
+
+    /** The error, write before terminating and read after checking subscribers. */
+    Throwable error;
+
+    /**
+     * Constructs a PublishSubject.
+     * @param &lt;T&gt; the value type
+     * @return the new PublishSubject
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; PublishSubject&lt;T&gt; create() {
+<span class="fc" id="L120">        return new PublishSubject&lt;T&gt;();</span>
+    }
+
+    /**
+     * Constructs a PublishSubject.
+     * @since 2.0
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L128">    PublishSubject() {</span>
+<span class="fc" id="L129">        subscribers = new AtomicReference&lt;PublishDisposable&lt;T&gt;[]&gt;(EMPTY);</span>
+<span class="fc" id="L130">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super T&gt; t) {
+<span class="fc" id="L134">        PublishDisposable&lt;T&gt; ps = new PublishDisposable&lt;T&gt;(t, this);</span>
+<span class="fc" id="L135">        t.onSubscribe(ps);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (add(ps)) {</span>
+            // if cancellation happened while a successful add, the remove() didn't work
+            // so we need to do it again
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (ps.isDisposed()) {</span>
+<span class="fc" id="L140">                remove(ps);</span>
+            }
+        } else {
+<span class="fc" id="L143">            Throwable ex = error;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (ex != null) {</span>
+<span class="fc" id="L145">                t.onError(ex);</span>
+            } else {
+<span class="fc" id="L147">                t.onComplete();</span>
+            }
+        }
+<span class="fc" id="L150">    }</span>
+
+    /**
+     * Tries to add the given subscriber to the subscribers array atomically
+     * or returns false if the subject has terminated.
+     * @param ps the subscriber to add
+     * @return true if successful, false if the subject has terminated
+     */
+    boolean add(PublishDisposable&lt;T&gt; ps) {
+        for (;;) {
+<span class="fc" id="L160">            PublishDisposable&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (a == TERMINATED) {</span>
+<span class="fc" id="L162">                return false;</span>
+            }
+
+<span class="fc" id="L165">            int n = a.length;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L167">            PublishDisposable&lt;T&gt;[] b = new PublishDisposable[n + 1];</span>
+<span class="fc" id="L168">            System.arraycopy(a, 0, b, 0, n);</span>
+<span class="fc" id="L169">            b[n] = ps;</span>
+
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L172">                return true;</span>
+            }
+<span class="fc" id="L174">        }</span>
+    }
+
+    /**
+     * Atomically removes the given subscriber if it is subscribed to the subject.
+     * @param ps the subject to remove
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    void remove(PublishDisposable&lt;T&gt; ps) {
+        for (;;) {
+<span class="fc" id="L184">            PublishDisposable&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L185" title="All 4 branches covered.">            if (a == TERMINATED || a == EMPTY) {</span>
+<span class="fc" id="L186">                return;</span>
+            }
+
+<span class="fc" id="L189">            int n = a.length;</span>
+<span class="fc" id="L190">            int j = -1;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                if (a[i] == ps) {</span>
+<span class="fc" id="L193">                    j = i;</span>
+<span class="fc" id="L194">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (j &lt; 0) {</span>
+<span class="fc" id="L199">                return;</span>
+            }
+
+            PublishDisposable&lt;T&gt;[] b;
+
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            if (n == 1) {</span>
+<span class="fc" id="L205">                b = EMPTY;</span>
+            } else {
+<span class="fc" id="L207">                b = new PublishDisposable[n - 1];</span>
+<span class="fc" id="L208">                System.arraycopy(a, 0, b, 0, j);</span>
+<span class="fc" id="L209">                System.arraycopy(a, j + 1, b, j, n - j - 1);</span>
+            }
+<span class="fc bfc" id="L211" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L212">                return;</span>
+            }
+<span class="fc" id="L214">        }</span>
+    }
+
+    @Override
+    public void onSubscribe(Disposable d) {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L220">            d.dispose();</span>
+        }
+<span class="fc" id="L222">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc" id="L226">        ObjectHelper.requireNonNull(t, &quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        for (PublishDisposable&lt;T&gt; pd : subscribers.get()) {</span>
+<span class="fc" id="L228">            pd.onNext(t);</span>
+        }
+<span class="fc" id="L230">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onError(Throwable t) {
+<span class="fc" id="L235">        ObjectHelper.requireNonNull(t, &quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L237">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L238">            return;</span>
+        }
+<span class="fc" id="L240">        error = t;</span>
+
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        for (PublishDisposable&lt;T&gt; pd : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L243">            pd.onError(t);</span>
+        }
+<span class="fc" id="L245">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L251">            return;</span>
+        }
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        for (PublishDisposable&lt;T&gt; pd : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L254">            pd.onComplete();</span>
+        }
+<span class="fc" id="L256">    }</span>
+
+    @Override
+    public boolean hasObservers() {
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        return subscribers.get().length != 0;</span>
+    }
+
+    @Override
+    @Nullable
+    public Throwable getThrowable() {
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L267">            return error;</span>
+        }
+<span class="fc" id="L269">        return null;</span>
+    }
+
+    @Override
+    public boolean hasThrowable() {
+<span class="fc bfc" id="L274" title="All 4 branches covered.">        return subscribers.get() == TERMINATED &amp;&amp; error != null;</span>
+    }
+
+    @Override
+    public boolean hasComplete() {
+<span class="fc bfc" id="L279" title="All 4 branches covered.">        return subscribers.get() == TERMINATED &amp;&amp; error == null;</span>
+    }
+
+    /**
+     * Wraps the actual subscriber, tracks its requests and makes cancellation
+     * to remove itself from the current subscribers array.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    static final class PublishDisposable&lt;T&gt; extends AtomicBoolean implements Disposable {
+
+        private static final long serialVersionUID = 3562861878281475070L;
+        /** The actual subscriber. */
+        final Observer&lt;? super T&gt; downstream;
+        /** The subject state. */
+        final PublishSubject&lt;T&gt; parent;
+
+        /**
+         * Constructs a PublishSubscriber, wraps the actual subscriber and the state.
+         * @param actual the actual subscriber
+         * @param parent the parent PublishProcessor
+         */
+<span class="fc" id="L301">        PublishDisposable(Observer&lt;? super T&gt; actual, PublishSubject&lt;T&gt; parent) {</span>
+<span class="fc" id="L302">            this.downstream = actual;</span>
+<span class="fc" id="L303">            this.parent = parent;</span>
+<span class="fc" id="L304">        }</span>
+
+        public void onNext(T t) {
+<span class="fc bfc" id="L307" title="All 2 branches covered.">            if (!get()) {</span>
+<span class="fc" id="L308">                downstream.onNext(t);</span>
+            }
+<span class="fc" id="L310">        }</span>
+
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L313" title="All 2 branches covered.">            if (get()) {</span>
+<span class="fc" id="L314">                RxJavaPlugins.onError(t);</span>
+            } else {
+<span class="fc" id="L316">                downstream.onError(t);</span>
+            }
+<span class="fc" id="L318">        }</span>
+
+        public void onComplete() {
+<span class="fc bfc" id="L321" title="All 2 branches covered.">            if (!get()) {</span>
+<span class="fc" id="L322">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L324">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L328" title="All 2 branches covered.">            if (compareAndSet(false, true)) {</span>
+<span class="fc" id="L329">                parent.remove(this);</span>
+            }
+<span class="fc" id="L331">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L335">            return get();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

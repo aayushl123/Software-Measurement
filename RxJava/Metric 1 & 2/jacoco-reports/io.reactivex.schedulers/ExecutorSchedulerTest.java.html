@@ -1,0 +1,583 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExecutorSchedulerTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.schedulers</a> &gt; <span class="el_source">ExecutorSchedulerTest.java</span></div><h1>ExecutorSchedulerTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.schedulers;
+
+import static org.junit.Assert.*;
+
+import java.lang.management.*;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.*;
+
+import io.reactivex.*;
+import io.reactivex.Scheduler.Worker;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.disposables.EmptyDisposable;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.schedulers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L33">public class ExecutorSchedulerTest extends AbstractSchedulerConcurrencyTests {</span>
+
+<span class="fc" id="L35">    static final Executor executor = Executors.newFixedThreadPool(2, new RxThreadFactory(&quot;TestCustomPool&quot;));</span>
+
+    @Override
+    protected Scheduler getScheduler() {
+<span class="fc" id="L39">        return Schedulers.from(executor);</span>
+    }
+
+    @Test
+    @Ignore(&quot;Unhandled errors are no longer thrown&quot;)
+    public final void testUnhandledErrorIsDeliveredToThreadHandler() throws InterruptedException {
+<span class="nc" id="L45">        SchedulerTestHelper.testUnhandledErrorIsDeliveredToThreadHandler(getScheduler());</span>
+<span class="nc" id="L46">    }</span>
+
+    @Test
+    public final void testHandledErrorIsNotDeliveredToThreadHandler() throws InterruptedException {
+<span class="fc" id="L50">        SchedulerTestHelper.testHandledErrorIsNotDeliveredToThreadHandler(getScheduler());</span>
+<span class="fc" id="L51">    }</span>
+
+    public static void testCancelledRetention(Scheduler.Worker w, boolean periodic) throws InterruptedException {
+<span class="fc" id="L54">        System.out.println(&quot;Wait before GC&quot;);</span>
+<span class="fc" id="L55">        Thread.sleep(1000);</span>
+
+<span class="fc" id="L57">        System.out.println(&quot;GC&quot;);</span>
+<span class="fc" id="L58">        System.gc();</span>
+
+<span class="fc" id="L60">        Thread.sleep(1000);</span>
+
+<span class="fc" id="L62">        MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();</span>
+<span class="fc" id="L63">        MemoryUsage memHeap = memoryMXBean.getHeapMemoryUsage();</span>
+<span class="fc" id="L64">        long initial = memHeap.getUsed();</span>
+
+<span class="fc" id="L66">        System.out.printf(&quot;Starting: %.3f MB%n&quot;, initial / 1024.0 / 1024.0);</span>
+
+<span class="fc" id="L68">        int n = 100 * 1000;</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (periodic) {</span>
+<span class="fc" id="L70">            final CountDownLatch cdl = new CountDownLatch(n);</span>
+<span class="fc" id="L71">            final Runnable action = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L74">                    cdl.countDown();</span>
+<span class="fc" id="L75">                }</span>
+            };
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                if (i % 50000 == 0) {</span>
+<span class="fc" id="L79">                    System.out.println(&quot;  -&gt; still scheduling: &quot; + i);</span>
+                }
+<span class="fc" id="L81">                w.schedulePeriodically(action, 0, 1, TimeUnit.DAYS);</span>
+            }
+
+<span class="fc" id="L84">            System.out.println(&quot;Waiting for the first round to finish...&quot;);</span>
+<span class="fc" id="L85">            cdl.await();</span>
+<span class="fc" id="L86">        } else {</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                if (i % 50000 == 0) {</span>
+<span class="fc" id="L89">                    System.out.println(&quot;  -&gt; still scheduling: &quot; + i);</span>
+                }
+<span class="fc" id="L91">                w.schedule(Functions.EMPTY_RUNNABLE, 1, TimeUnit.DAYS);</span>
+            }
+        }
+
+<span class="fc" id="L95">        memHeap = memoryMXBean.getHeapMemoryUsage();</span>
+<span class="fc" id="L96">        long after = memHeap.getUsed();</span>
+<span class="fc" id="L97">        System.out.printf(&quot;Peak: %.3f MB%n&quot;, after / 1024.0 / 1024.0);</span>
+
+<span class="fc" id="L99">        w.dispose();</span>
+
+<span class="fc" id="L101">        System.out.println(&quot;Wait before second GC&quot;);</span>
+<span class="fc" id="L102">        System.out.println(&quot;JDK 6 purge is N log N because it removes and shifts one by one&quot;);</span>
+<span class="fc" id="L103">        int t = (int)(n * Math.log(n) / 100) + SchedulerPoolFactory.PURGE_PERIOD_SECONDS * 1000;</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        while (t &gt; 0) {</span>
+<span class="fc" id="L105">            System.out.printf(&quot;  &gt;&gt; Waiting for purge: %.2f s remaining%n&quot;, t / 1000d);</span>
+
+<span class="fc" id="L107">            System.gc();</span>
+
+<span class="fc" id="L109">            Thread.sleep(1000);</span>
+
+<span class="fc" id="L111">            t -= 1000;</span>
+<span class="fc" id="L112">            memHeap = memoryMXBean.getHeapMemoryUsage();</span>
+<span class="fc" id="L113">            long finish = memHeap.getUsed();</span>
+<span class="fc" id="L114">            System.out.printf(&quot;After: %.3f MB%n&quot;, finish / 1024.0 / 1024.0);</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">            if (finish &lt;= initial * 5) {</span>
+<span class="fc" id="L116">                break;</span>
+            }
+<span class="nc" id="L118">        }</span>
+
+<span class="fc" id="L120">        System.out.println(&quot;Second GC&quot;);</span>
+<span class="fc" id="L121">        System.gc();</span>
+
+<span class="fc" id="L123">        Thread.sleep(1000);</span>
+
+<span class="fc" id="L125">        memHeap = memoryMXBean.getHeapMemoryUsage();</span>
+<span class="fc" id="L126">        long finish = memHeap.getUsed();</span>
+<span class="fc" id="L127">        System.out.printf(&quot;After: %.3f MB%n&quot;, finish / 1024.0 / 1024.0);</span>
+
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (finish &gt; initial * 5) {</span>
+<span class="nc" id="L130">            fail(String.format(&quot;Tasks retained: %.3f -&gt; %.3f -&gt; %.3f&quot;, initial / 1024 / 1024.0, after / 1024 / 1024.0, finish / 1024 / 1024d));</span>
+        }
+<span class="fc" id="L132">    }</span>
+
+    @Test(timeout = 60000)
+    public void testCancelledTaskRetention() throws InterruptedException {
+<span class="fc" id="L136">        ExecutorService exec = Executors.newSingleThreadExecutor();</span>
+<span class="fc" id="L137">        Scheduler s = Schedulers.from(exec);</span>
+        try {
+<span class="fc" id="L139">            Scheduler.Worker w = s.createWorker();</span>
+            try {
+<span class="fc" id="L141">                testCancelledRetention(w, false);</span>
+            } finally {
+<span class="fc" id="L143">                w.dispose();</span>
+            }
+
+<span class="fc" id="L146">            w = s.createWorker();</span>
+            try {
+<span class="fc" id="L148">                testCancelledRetention(w, true);</span>
+            } finally {
+<span class="fc" id="L150">                w.dispose();</span>
+            }
+        } finally {
+<span class="fc" id="L153">            exec.shutdownNow();</span>
+        }
+<span class="fc" id="L155">    }</span>
+
+    /** A simple executor which queues tasks and executes them one-by-one if executeOne() is called. */
+<span class="fc" id="L158">    static final class TestExecutor implements Executor {</span>
+<span class="fc" id="L159">        final ConcurrentLinkedQueue&lt;Runnable&gt; queue = new ConcurrentLinkedQueue&lt;Runnable&gt;();</span>
+        @Override
+        public void execute(Runnable command) {
+<span class="fc" id="L162">            queue.offer(command);</span>
+<span class="fc" id="L163">        }</span>
+        public void executeOne() {
+<span class="nc" id="L165">            Runnable r = queue.poll();</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">            if (r != null) {</span>
+<span class="nc" id="L167">                r.run();</span>
+            }
+<span class="nc" id="L169">        }</span>
+        public void executeAll() {
+            Runnable r;
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            while ((r = queue.poll()) != null) {</span>
+<span class="fc" id="L173">                r.run();</span>
+            }
+<span class="fc" id="L175">        }</span>
+    }
+
+    @Test
+    public void testCancelledTasksDontRun() {
+<span class="fc" id="L180">        final AtomicInteger calls = new AtomicInteger();</span>
+<span class="fc" id="L181">        Runnable task = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="nc" id="L184">                calls.getAndIncrement();</span>
+<span class="nc" id="L185">            }</span>
+        };
+<span class="fc" id="L187">        TestExecutor exec = new TestExecutor();</span>
+<span class="fc" id="L188">        Scheduler custom = Schedulers.from(exec);</span>
+<span class="fc" id="L189">        Worker w = custom.createWorker();</span>
+        try {
+<span class="fc" id="L191">            Disposable d1 = w.schedule(task);</span>
+<span class="fc" id="L192">            Disposable d2 = w.schedule(task);</span>
+<span class="fc" id="L193">            Disposable d3 = w.schedule(task);</span>
+
+<span class="fc" id="L195">            d1.dispose();</span>
+<span class="fc" id="L196">            d2.dispose();</span>
+<span class="fc" id="L197">            d3.dispose();</span>
+
+<span class="fc" id="L199">            exec.executeAll();</span>
+
+<span class="fc" id="L201">            assertEquals(0, calls.get());</span>
+        } finally {
+<span class="fc" id="L203">            w.dispose();</span>
+        }
+<span class="fc" id="L205">    }</span>
+
+    @Test
+    public void testCancelledWorkerDoesntRunTasks() {
+<span class="fc" id="L209">        final AtomicInteger calls = new AtomicInteger();</span>
+<span class="fc" id="L210">        Runnable task = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="nc" id="L213">                calls.getAndIncrement();</span>
+<span class="nc" id="L214">            }</span>
+        };
+<span class="fc" id="L216">        TestExecutor exec = new TestExecutor();</span>
+<span class="fc" id="L217">        Scheduler custom = Schedulers.from(exec);</span>
+<span class="fc" id="L218">        Worker w = custom.createWorker();</span>
+        try {
+<span class="fc" id="L220">            w.schedule(task);</span>
+<span class="fc" id="L221">            w.schedule(task);</span>
+<span class="fc" id="L222">            w.schedule(task);</span>
+        } finally {
+<span class="fc" id="L224">            w.dispose();</span>
+        }
+<span class="fc" id="L226">        exec.executeAll();</span>
+<span class="fc" id="L227">        assertEquals(0, calls.get());</span>
+<span class="fc" id="L228">    }</span>
+
+    // FIXME the internal structure changed and these can't be tested
+//
+//    @Test
+//    public void testNoTimedTaskAfterScheduleRetention() throws InterruptedException {
+//        Executor e = new Executor() {
+//            @Override
+//            public void execute(Runnable command) {
+//                command.run();
+//            }
+//        };
+//        ExecutorWorker w = (ExecutorWorker)Schedulers.from(e).createWorker();
+//
+//        w.schedule(Functions.emptyRunnable(), 50, TimeUnit.MILLISECONDS);
+//
+//        assertTrue(w.tasks.hasSubscriptions());
+//
+//        Thread.sleep(150);
+//
+//        assertFalse(w.tasks.hasSubscriptions());
+//    }
+//
+//    @Test
+//    public void testNoTimedTaskPartRetention() {
+//        Executor e = new Executor() {
+//            @Override
+//            public void execute(Runnable command) {
+//
+//            }
+//        };
+//        ExecutorWorker w = (ExecutorWorker)Schedulers.from(e).createWorker();
+//
+//        Disposable task = w.schedule(Functions.emptyRunnable(), 1, TimeUnit.DAYS);
+//
+//        assertTrue(w.tasks.hasSubscriptions());
+//
+//        task.dispose();
+//
+//        assertFalse(w.tasks.hasSubscriptions());
+//    }
+//
+//    @Test
+//    public void testNoPeriodicTimedTaskPartRetention() throws InterruptedException {
+//        Executor e = new Executor() {
+//            @Override
+//            public void execute(Runnable command) {
+//                command.run();
+//            }
+//        };
+//        ExecutorWorker w = (ExecutorWorker)Schedulers.from(e).createWorker();
+//
+//        final CountDownLatch cdl = new CountDownLatch(1);
+//        final Runnable action = new Runnable() {
+//            @Override
+//            public void run() {
+//                cdl.countDown();
+//            }
+//        };
+//
+//        Disposable task = w.schedulePeriodically(action, 0, 1, TimeUnit.DAYS);
+//
+//        assertTrue(w.tasks.hasSubscriptions());
+//
+//        cdl.await();
+//
+//        task.dispose();
+//
+//        assertFalse(w.tasks.hasSubscriptions());
+//    }
+
+    @Test
+    public void plainExecutor() throws Exception {
+<span class="fc" id="L301">        Scheduler s = Schedulers.from(new Executor() {</span>
+            @Override
+            public void execute(Runnable r) {
+<span class="fc" id="L304">                r.run();</span>
+<span class="fc" id="L305">            }</span>
+        });
+
+<span class="fc" id="L308">        final CountDownLatch cdl = new CountDownLatch(5);</span>
+
+<span class="fc" id="L310">        Runnable r = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L313">                cdl.countDown();</span>
+<span class="fc" id="L314">            }</span>
+        };
+
+<span class="fc" id="L317">        s.scheduleDirect(r);</span>
+
+<span class="fc" id="L319">        s.scheduleDirect(r, 50, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L321">        Disposable d = s.schedulePeriodicallyDirect(r, 10, 10, TimeUnit.MILLISECONDS);</span>
+
+        try {
+<span class="fc" id="L324">            assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+        } finally {
+<span class="fc" id="L326">            d.dispose();</span>
+        }
+
+<span class="fc" id="L329">        assertTrue(d.isDisposed());</span>
+<span class="fc" id="L330">    }</span>
+
+    @Test
+    public void rejectingExecutor() {
+<span class="fc" id="L334">        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();</span>
+<span class="fc" id="L335">        exec.shutdown();</span>
+
+<span class="fc" id="L337">        Scheduler s = Schedulers.from(exec);</span>
+
+<span class="fc" id="L339">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L342">            assertSame(EmptyDisposable.INSTANCE, s.scheduleDirect(Functions.EMPTY_RUNNABLE));</span>
+
+<span class="fc" id="L344">            assertSame(EmptyDisposable.INSTANCE, s.scheduleDirect(Functions.EMPTY_RUNNABLE, 10, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L346">            assertSame(EmptyDisposable.INSTANCE, s.schedulePeriodicallyDirect(Functions.EMPTY_RUNNABLE, 10, 10, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L348">            TestHelper.assertUndeliverable(errors, 0, RejectedExecutionException.class);</span>
+<span class="fc" id="L349">            TestHelper.assertUndeliverable(errors, 1, RejectedExecutionException.class);</span>
+<span class="fc" id="L350">            TestHelper.assertUndeliverable(errors, 2, RejectedExecutionException.class);</span>
+        } finally {
+<span class="fc" id="L352">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L354">    }</span>
+
+    @Test
+    public void rejectingExecutorWorker() {
+<span class="fc" id="L358">        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();</span>
+<span class="fc" id="L359">        exec.shutdown();</span>
+
+<span class="fc" id="L361">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+        try {
+<span class="fc" id="L364">            Worker s = Schedulers.from(exec).createWorker();</span>
+<span class="fc" id="L365">            assertSame(EmptyDisposable.INSTANCE, s.schedule(Functions.EMPTY_RUNNABLE));</span>
+
+<span class="fc" id="L367">            s = Schedulers.from(exec).createWorker();</span>
+<span class="fc" id="L368">            assertSame(EmptyDisposable.INSTANCE, s.schedule(Functions.EMPTY_RUNNABLE, 10, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L370">            s = Schedulers.from(exec).createWorker();</span>
+<span class="fc" id="L371">            assertSame(EmptyDisposable.INSTANCE, s.schedulePeriodically(Functions.EMPTY_RUNNABLE, 10, 10, TimeUnit.MILLISECONDS));</span>
+
+<span class="fc" id="L373">            TestHelper.assertUndeliverable(errors, 0, RejectedExecutionException.class);</span>
+<span class="fc" id="L374">            TestHelper.assertUndeliverable(errors, 1, RejectedExecutionException.class);</span>
+<span class="fc" id="L375">            TestHelper.assertUndeliverable(errors, 2, RejectedExecutionException.class);</span>
+        } finally {
+<span class="fc" id="L377">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L379">    }</span>
+
+    @Test
+    public void reuseScheduledExecutor() throws Exception {
+<span class="fc" id="L383">        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();</span>
+
+        try {
+<span class="fc" id="L386">            Scheduler s = Schedulers.from(exec);</span>
+
+<span class="fc" id="L388">            final CountDownLatch cdl = new CountDownLatch(8);</span>
+
+<span class="fc" id="L390">            Runnable r = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L393">                    cdl.countDown();</span>
+<span class="fc" id="L394">                }</span>
+            };
+
+<span class="fc" id="L397">            s.scheduleDirect(r);</span>
+
+<span class="fc" id="L399">            s.scheduleDirect(r, 10, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L401">            Disposable d = s.schedulePeriodicallyDirect(r, 10, 10, TimeUnit.MILLISECONDS);</span>
+
+            try {
+<span class="fc" id="L404">                assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+            } finally {
+<span class="fc" id="L406">                d.dispose();</span>
+            }
+        } finally {
+<span class="fc" id="L409">            exec.shutdown();</span>
+        }
+<span class="fc" id="L411">    }</span>
+
+    @Test
+    public void reuseScheduledExecutorAsWorker() throws Exception {
+<span class="fc" id="L415">        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();</span>
+
+<span class="fc" id="L417">        Worker s = Schedulers.from(exec).createWorker();</span>
+
+<span class="fc" id="L419">        assertFalse(s.isDisposed());</span>
+        try {
+
+<span class="fc" id="L422">            final CountDownLatch cdl = new CountDownLatch(8);</span>
+
+<span class="fc" id="L424">            Runnable r = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L427">                    cdl.countDown();</span>
+<span class="fc" id="L428">                }</span>
+            };
+
+<span class="fc" id="L431">            s.schedule(r);</span>
+
+<span class="fc" id="L433">            s.schedule(r, 10, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L435">            Disposable d = s.schedulePeriodically(r, 10, 10, TimeUnit.MILLISECONDS);</span>
+
+            try {
+<span class="fc" id="L438">                assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+            } finally {
+<span class="fc" id="L440">                d.dispose();</span>
+            }
+        } finally {
+<span class="fc" id="L443">            s.dispose();</span>
+<span class="fc" id="L444">            exec.shutdown();</span>
+        }
+
+<span class="fc" id="L447">        assertTrue(s.isDisposed());</span>
+<span class="fc" id="L448">    }</span>
+
+    @Test
+    public void disposeRace() {
+<span class="fc" id="L452">        ExecutorService exec = Executors.newSingleThreadExecutor();</span>
+<span class="fc" id="L453">        final Scheduler s = Schedulers.from(exec);</span>
+        try {
+<span class="fc bfc" id="L455" title="All 2 branches covered.">            for (int i = 0; i &lt; 500; i++) {</span>
+<span class="fc" id="L456">                final Worker w = s.createWorker();</span>
+
+<span class="fc" id="L458">                final AtomicInteger c = new AtomicInteger(2);</span>
+
+<span class="fc" id="L460">                w.schedule(new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L463">                        c.decrementAndGet();</span>
+<span class="pc bpc" id="L464" title="1 of 2 branches missed.">                        while (c.get() != 0) { }</span>
+<span class="fc" id="L465">                    }</span>
+                });
+
+<span class="fc" id="L468">                c.decrementAndGet();</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">                while (c.get() != 0) { }</span>
+<span class="fc" id="L470">                w.dispose();</span>
+            }
+        } finally {
+<span class="fc" id="L473">            exec.shutdownNow();</span>
+        }
+<span class="fc" id="L475">    }</span>
+
+    @Test
+    public void runnableDisposed() {
+<span class="fc" id="L479">        final Scheduler s = Schedulers.from(new Executor() {</span>
+            @Override
+            public void execute(Runnable r) {
+<span class="fc" id="L482">                r.run();</span>
+<span class="fc" id="L483">            }</span>
+        });
+<span class="fc" id="L485">        Disposable d = s.scheduleDirect(Functions.EMPTY_RUNNABLE);</span>
+
+<span class="fc" id="L487">        assertTrue(d.isDisposed());</span>
+<span class="fc" id="L488">    }</span>
+
+    @Test(timeout = 1000)
+    public void runnableDisposedAsync() throws Exception {
+<span class="fc" id="L492">        final Scheduler s = Schedulers.from(new Executor() {</span>
+            @Override
+            public void execute(Runnable r) {
+<span class="fc" id="L495">                new Thread(r).start();</span>
+<span class="fc" id="L496">            }</span>
+        });
+<span class="fc" id="L498">        Disposable d = s.scheduleDirect(Functions.EMPTY_RUNNABLE);</span>
+
+<span class="fc bfc" id="L500" title="All 2 branches covered.">        while (!d.isDisposed()) {</span>
+<span class="fc" id="L501">            Thread.sleep(1);</span>
+        }
+<span class="fc" id="L503">    }</span>
+
+    @Test(timeout = 1000)
+    public void runnableDisposedAsync2() throws Exception {
+<span class="fc" id="L507">        final Scheduler s = Schedulers.from(executor);</span>
+<span class="fc" id="L508">        Disposable d = s.scheduleDirect(Functions.EMPTY_RUNNABLE);</span>
+
+<span class="fc bfc" id="L510" title="All 2 branches covered.">        while (!d.isDisposed()) {</span>
+<span class="fc" id="L511">            Thread.sleep(1);</span>
+        }
+<span class="fc" id="L513">    }</span>
+
+    @Test(timeout = 1000)
+    public void runnableDisposedAsyncCrash() throws Exception {
+<span class="fc" id="L517">        final Scheduler s = Schedulers.from(new Executor() {</span>
+            @Override
+            public void execute(Runnable r) {
+<span class="fc" id="L520">                new Thread(r).start();</span>
+<span class="fc" id="L521">            }</span>
+        });
+<span class="fc" id="L523">        Disposable d = s.scheduleDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L526">                throw new IllegalStateException();</span>
+            }
+        });
+
+<span class="fc bfc" id="L530" title="All 2 branches covered.">        while (!d.isDisposed()) {</span>
+<span class="fc" id="L531">            Thread.sleep(1);</span>
+        }
+<span class="fc" id="L533">    }</span>
+
+    @Test(timeout = 1000)
+    public void runnableDisposedAsyncTimed() throws Exception {
+<span class="fc" id="L537">        final Scheduler s = Schedulers.from(new Executor() {</span>
+            @Override
+            public void execute(Runnable r) {
+<span class="fc" id="L540">                new Thread(r).start();</span>
+<span class="fc" id="L541">            }</span>
+        });
+<span class="fc" id="L543">        Disposable d = s.scheduleDirect(Functions.EMPTY_RUNNABLE, 1, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        while (!d.isDisposed()) {</span>
+<span class="fc" id="L546">            Thread.sleep(1);</span>
+        }
+<span class="fc" id="L548">    }</span>
+
+    @Test(timeout = 1000)
+    public void runnableDisposedAsyncTimed2() throws Exception {
+<span class="fc" id="L552">        ExecutorService executorScheduler = Executors.newScheduledThreadPool(1, new RxThreadFactory(&quot;TestCustomPoolTimed&quot;));</span>
+        try {
+<span class="fc" id="L554">            final Scheduler s = Schedulers.from(executorScheduler);</span>
+<span class="fc" id="L555">            Disposable d = s.scheduleDirect(Functions.EMPTY_RUNNABLE, 1, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc bfc" id="L557" title="All 2 branches covered.">            while (!d.isDisposed()) {</span>
+<span class="fc" id="L558">                Thread.sleep(1);</span>
+            }
+        } finally {
+<span class="fc" id="L561">            executorScheduler.shutdownNow();</span>
+        }
+<span class="fc" id="L563">    }</span>
+
+    @Test
+    public void unwrapScheduleDirectTaskAfterDispose() {
+<span class="fc" id="L567">        Scheduler scheduler = getScheduler();</span>
+<span class="fc" id="L568">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L569">        Runnable countDownRunnable = new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="nc" id="L572">                cdl.countDown();</span>
+<span class="nc" id="L573">            }</span>
+        };
+<span class="fc" id="L575">        Disposable disposable = scheduler.scheduleDirect(countDownRunnable, 100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L576">        SchedulerRunnableIntrospection wrapper = (SchedulerRunnableIntrospection) disposable;</span>
+<span class="fc" id="L577">        assertSame(countDownRunnable, wrapper.getWrappedRunnable());</span>
+<span class="fc" id="L578">        disposable.dispose();</span>
+
+<span class="fc" id="L580">        assertSame(Functions.EMPTY_RUNNABLE, wrapper.getWrappedRunnable());</span>
+<span class="fc" id="L581">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

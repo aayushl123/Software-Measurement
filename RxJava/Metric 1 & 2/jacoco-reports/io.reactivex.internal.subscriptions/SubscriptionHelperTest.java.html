@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionHelperTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.subscriptions</a> &gt; <span class="el_source">SubscriptionHelperTest.java</span></div><h1>SubscriptionHelperTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.subscriptions;
+
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+import java.util.List;
+import java.util.concurrent.atomic.*;
+
+import org.junit.Test;
+import org.reactivestreams.Subscription;
+
+import io.reactivex.TestHelper;
+import io.reactivex.exceptions.ProtocolViolationException;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L28">public class SubscriptionHelperTest {</span>
+
+    @Test
+    public void checkEnum() {
+<span class="fc" id="L32">        TestHelper.checkEnum(SubscriptionHelper.class);</span>
+<span class="fc" id="L33">    }</span>
+
+    @Test
+    public void validateNullThrows() {
+<span class="fc" id="L37">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L39">            SubscriptionHelper.validate(null, null);</span>
+
+<span class="fc" id="L41">            TestHelper.assertError(errors, 0, NullPointerException.class, &quot;next is null&quot;);</span>
+        } finally {
+<span class="fc" id="L43">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L45">    }</span>
+
+    @Test
+    public void cancelNoOp() {
+<span class="fc" id="L49">        SubscriptionHelper.CANCELLED.cancel();</span>
+<span class="fc" id="L50">    }</span>
+
+    @Test
+    public void set() {
+<span class="fc" id="L54">        AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L56">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L58">        assertTrue(SubscriptionHelper.set(atomicSubscription, bs1));</span>
+
+<span class="fc" id="L60">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L62">        assertTrue(SubscriptionHelper.set(atomicSubscription, bs2));</span>
+
+<span class="fc" id="L64">        assertTrue(bs1.isCancelled());</span>
+
+<span class="fc" id="L66">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L67">    }</span>
+
+    @Test
+    public void replace() {
+<span class="fc" id="L71">        AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L73">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L75">        assertTrue(SubscriptionHelper.replace(atomicSubscription, bs1));</span>
+
+<span class="fc" id="L77">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L79">        assertTrue(SubscriptionHelper.replace(atomicSubscription, bs2));</span>
+
+<span class="fc" id="L81">        assertFalse(bs1.isCancelled());</span>
+
+<span class="fc" id="L83">        assertFalse(bs2.isCancelled());</span>
+<span class="fc" id="L84">    }</span>
+
+    @Test
+    public void cancelRace() {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L89">            final AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L91">            Runnable r = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L94">                    SubscriptionHelper.cancel(atomicSubscription);</span>
+<span class="fc" id="L95">                }</span>
+            };
+
+<span class="fc" id="L98">            TestHelper.race(r, r);</span>
+        }
+<span class="fc" id="L100">    }</span>
+
+    @Test
+    public void setRace() {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L105">            final AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L107">            final BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L108">            final BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L110">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L113">                    SubscriptionHelper.set(atomicSubscription, bs1);</span>
+<span class="fc" id="L114">                }</span>
+            };
+
+<span class="fc" id="L117">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L120">                    SubscriptionHelper.set(atomicSubscription, bs2);</span>
+<span class="fc" id="L121">                }</span>
+            };
+
+<span class="fc" id="L124">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L126">            assertTrue(bs1.isCancelled() ^ bs2.isCancelled());</span>
+        }
+<span class="fc" id="L128">    }</span>
+
+    @Test
+    public void replaceRace() {
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L133">            final AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L135">            final BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L136">            final BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L138">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L141">                    SubscriptionHelper.replace(atomicSubscription, bs1);</span>
+<span class="fc" id="L142">                }</span>
+            };
+
+<span class="fc" id="L145">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L148">                    SubscriptionHelper.replace(atomicSubscription, bs2);</span>
+<span class="fc" id="L149">                }</span>
+            };
+
+<span class="fc" id="L152">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L154">            assertFalse(bs1.isCancelled());</span>
+<span class="fc" id="L155">            assertFalse(bs2.isCancelled());</span>
+        }
+<span class="fc" id="L157">    }</span>
+
+    @Test
+    public void cancelAndChange() {
+<span class="fc" id="L161">        AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L163">        SubscriptionHelper.cancel(atomicSubscription);</span>
+
+<span class="fc" id="L165">        BooleanSubscription bs1 = new BooleanSubscription();</span>
+<span class="fc" id="L166">        assertFalse(SubscriptionHelper.set(atomicSubscription, bs1));</span>
+<span class="fc" id="L167">        assertTrue(bs1.isCancelled());</span>
+
+<span class="fc" id="L169">        assertFalse(SubscriptionHelper.set(atomicSubscription, null));</span>
+
+<span class="fc" id="L171">        BooleanSubscription bs2 = new BooleanSubscription();</span>
+<span class="fc" id="L172">        assertFalse(SubscriptionHelper.replace(atomicSubscription, bs2));</span>
+<span class="fc" id="L173">        assertTrue(bs2.isCancelled());</span>
+
+<span class="fc" id="L175">        assertFalse(SubscriptionHelper.replace(atomicSubscription, null));</span>
+<span class="fc" id="L176">    }</span>
+
+    @Test
+    public void invalidDeferredRequest() {
+<span class="fc" id="L180">        AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+<span class="fc" id="L181">        AtomicLong r = new AtomicLong();</span>
+
+<span class="fc" id="L183">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L185">            SubscriptionHelper.deferredRequest(atomicSubscription, r, -99);</span>
+
+<span class="fc" id="L187">            TestHelper.assertError(errors, 0, IllegalArgumentException.class, &quot;n &gt; 0 required but it was -99&quot;);</span>
+        } finally {
+<span class="fc" id="L189">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L191">    }</span>
+
+    @Test
+    public void deferredRace() {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L196">            final AtomicReference&lt;Subscription&gt; atomicSubscription = new AtomicReference&lt;Subscription&gt;();</span>
+<span class="fc" id="L197">            final AtomicLong r = new AtomicLong();</span>
+
+<span class="fc" id="L199">            final AtomicLong q = new AtomicLong();</span>
+
+<span class="fc" id="L201">            final Subscription a = new Subscription() {</span>
+                @Override
+                public void request(long n) {
+<span class="fc" id="L204">                    q.addAndGet(n);</span>
+<span class="fc" id="L205">                }</span>
+
+                @Override
+                public void cancel() {
+
+<span class="nc" id="L210">                }</span>
+            };
+
+<span class="fc" id="L213">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L216">                    SubscriptionHelper.deferredSetOnce(atomicSubscription, r, a);</span>
+<span class="fc" id="L217">                }</span>
+            };
+
+<span class="fc" id="L220">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L223">                    SubscriptionHelper.deferredRequest(atomicSubscription, r, 1);</span>
+<span class="fc" id="L224">                }</span>
+            };
+
+<span class="fc" id="L227">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L229">            assertSame(a, atomicSubscription.get());</span>
+<span class="fc" id="L230">            assertEquals(1, q.get());</span>
+<span class="fc" id="L231">            assertEquals(0, r.get());</span>
+        }
+<span class="fc" id="L233">    }</span>
+
+    @Test
+    public void setOnceAndRequest() {
+<span class="fc" id="L237">        AtomicReference&lt;Subscription&gt; ref = new AtomicReference&lt;Subscription&gt;();</span>
+
+<span class="fc" id="L239">        Subscription sub = mock(Subscription.class);</span>
+
+<span class="fc" id="L241">        assertTrue(SubscriptionHelper.setOnce(ref, sub, 1));</span>
+
+<span class="fc" id="L243">        verify(sub).request(1);</span>
+<span class="fc" id="L244">        verify(sub, never()).cancel();</span>
+
+<span class="fc" id="L246">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L248">            sub = mock(Subscription.class);</span>
+
+<span class="fc" id="L250">            assertFalse(SubscriptionHelper.setOnce(ref, sub, 1));</span>
+
+<span class="fc" id="L252">            verify(sub, never()).request(anyLong());</span>
+<span class="fc" id="L253">            verify(sub).cancel();</span>
+
+<span class="fc" id="L255">            TestHelper.assertError(errors, 0, ProtocolViolationException.class);</span>
+        } finally {
+<span class="fc" id="L257">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L259">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PublishProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.processors</a> &gt; <span class="el_source">PublishProcessor.java</span></div><h1>PublishProcessor.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+package io.reactivex.processors;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.annotations.*;
+import io.reactivex.exceptions.MissingBackpressureException;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.util.BackpressureHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Processor that multicasts all subsequently observed items to its current {@link Subscriber}s.
+ *
+ * &lt;p&gt;
+ * &lt;img width=&quot;640&quot; height=&quot;278&quot; src=&quot;https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/PublishProcessor.png&quot; alt=&quot;&quot;&gt;
+ * &lt;p&gt;
+ * This processor does not have a public constructor by design; a new empty instance of this
+ * {@code PublishProcessor} can be created via the {@link #create()} method.
+ * &lt;p&gt;
+ * Since a {@code PublishProcessor} is a Reactive Streams {@code Processor} type,
+ * {@code null}s are not allowed (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.13&quot;&gt;Rule 2.13&lt;/a&gt;) as
+ * parameters to {@link #onNext(Object)} and {@link #onError(Throwable)}. Such calls will result in a
+ * {@link NullPointerException} being thrown and the processor's state is not changed.
+ * &lt;p&gt;
+ * {@code PublishProcessor} is a {@link io.reactivex.Flowable} as well as a {@link FlowableProcessor},
+ * however, it does not coordinate backpressure between different subscribers and between an
+ * upstream source and a subscriber. If an upstream item is received via {@link #onNext(Object)}, if
+ * a subscriber is not ready to receive an item, that subscriber is terminated via a {@link MissingBackpressureException}.
+ * To avoid this case, use {@link #offer(Object)} and retry sometime later if it returned false.
+ * The {@code PublishProcessor}'s {@link Subscriber}-side consumes items in an unbounded manner.
+ * &lt;p&gt;
+ * For a multicasting processor type that also coordinates between the downstream {@code Subscriber}s and the upstream
+ * source as well, consider using {@link MulticastProcessor}.
+ * &lt;p&gt;
+ * When this {@code PublishProcessor} is terminated via {@link #onError(Throwable)} or {@link #onComplete()},
+ * late {@link Subscriber}s only receive the respective terminal event.
+ * &lt;p&gt;
+ * Unlike a {@link BehaviorProcessor}, a {@code PublishProcessor} doesn't retain/cache items, therefore, a new
+ * {@code Subscriber} won't receive any past items.
+ * &lt;p&gt;
+ * Even though {@code PublishProcessor} implements the {@link Subscriber} interface, calling
+ * {@code onSubscribe} is not required (&lt;a href=&quot;https://github.com/reactive-streams/reactive-streams-jvm#2.12&quot;&gt;Rule 2.12&lt;/a&gt;)
+ * if the processor is used as a standalone source. However, calling {@code onSubscribe}
+ * after the {@code PublishProcessor} reached its terminal state will result in the
+ * given {@link Subscription} being canceled immediately.
+ * &lt;p&gt;
+ * Calling {@link #onNext(Object)}, {@link #offer(Object)}, {@link #onError(Throwable)} and {@link #onComplete()}
+ * is required to be serialized (called from the same thread or called non-overlappingly from different threads
+ * through external means of serialization). The {@link #toSerialized()} method available to all {@link FlowableProcessor}s
+ * provides such serialization and also protects against reentrance (i.e., when a downstream {@code Subscriber}
+ * consuming this processor also wants to call {@link #onNext(Object)} on this processor recursively).
+ * Note that serializing over {@link #offer(Object)} is not supported through {@code toSerialized()} because it is a method
+ * available on the {@code PublishProcessor} and {@code BehaviorProcessor} classes only.
+ * &lt;p&gt;
+ * This {@code PublishProcessor} supports the standard state-peeking methods {@link #hasComplete()}, {@link #hasThrowable()},
+ * {@link #getThrowable()} and {@link #hasSubscribers()}.
+ * &lt;dl&gt;
+ *  &lt;dt&gt;&lt;b&gt;Backpressure:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;The processor does not coordinate backpressure for its subscribers and implements a weaker {@code onSubscribe} which
+ *  calls requests Long.MAX_VALUE from the incoming Subscriptions. This makes it possible to subscribe the {@code PublishProcessor}
+ *  to multiple sources (note on serialization though) unlike the standard {@code Subscriber} contract. Child subscribers, however, are not overflown but receive an
+ *  {@link IllegalStateException} in case their requested amount is zero.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Scheduler:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;{@code PublishProcessor} does not operate by default on a particular {@link io.reactivex.Scheduler} and
+ *  the {@code Subscriber}s get notified on the thread the respective {@code onXXX} methods were invoked.&lt;/dd&gt;
+ *  &lt;dt&gt;&lt;b&gt;Error handling:&lt;/b&gt;&lt;/dt&gt;
+ *  &lt;dd&gt;When the {@link #onError(Throwable)} is called, the {@code PublishProcessor} enters into a terminal state
+ *  and emits the same {@code Throwable} instance to the last set of {@code Subscriber}s. During this emission,
+ *  if one or more {@code Subscriber}s cancel their respective {@code Subscription}s, the
+ *  {@code Throwable} is delivered to the global error handler via
+ *  {@link io.reactivex.plugins.RxJavaPlugins#onError(Throwable)} (multiple times if multiple {@code Subscriber}s
+ *  cancel at once).
+ *  If there were no {@code Subscriber}s subscribed to this {@code PublishProcessor} when the {@code onError()}
+ *  was called, the global error handler is not invoked.
+ *  &lt;/dd&gt;
+ * &lt;/dl&gt;
+ *
+ * Example usage:
+ * &lt;pre&gt; {@code
+
+  PublishProcessor&lt;Object&gt; processor = PublishProcessor.create();
+  // subscriber1 will receive all onNext and onComplete events
+  processor.subscribe(subscriber1);
+  processor.onNext(&quot;one&quot;);
+  processor.onNext(&quot;two&quot;);
+  // subscriber2 will only receive &quot;three&quot; and onComplete
+  processor.subscribe(subscriber2);
+  processor.onNext(&quot;three&quot;);
+  processor.onComplete();
+
+  } &lt;/pre&gt;
+ * @param &lt;T&gt; the value type multicasted to Subscribers.
+ * @see MulticastProcessor
+ */
+public final class PublishProcessor&lt;T&gt; extends FlowableProcessor&lt;T&gt; {
+    /** The terminated indicator for the subscribers array. */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L113">    static final PublishSubscription[] TERMINATED = new PublishSubscription[0];</span>
+    /** An empty subscribers array to avoid allocating it all the time. */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L116">    static final PublishSubscription[] EMPTY = new PublishSubscription[0];</span>
+
+    /** The array of currently subscribed subscribers. */
+    final AtomicReference&lt;PublishSubscription&lt;T&gt;[]&gt; subscribers;
+
+    /** The error, write before terminating and read after checking subscribers. */
+    Throwable error;
+
+    /**
+     * Constructs a PublishProcessor.
+     * @param &lt;T&gt; the value type
+     * @return the new PublishProcessor
+     */
+    @CheckReturnValue
+    @NonNull
+    public static &lt;T&gt; PublishProcessor&lt;T&gt; create() {
+<span class="fc" id="L132">        return new PublishProcessor&lt;T&gt;();</span>
+    }
+
+    /**
+     * Constructs a PublishProcessor.
+     * @since 2.0
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L140">    PublishProcessor() {</span>
+<span class="fc" id="L141">        subscribers = new AtomicReference&lt;PublishSubscription&lt;T&gt;[]&gt;(EMPTY);</span>
+<span class="fc" id="L142">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; t) {
+<span class="fc" id="L146">        PublishSubscription&lt;T&gt; ps = new PublishSubscription&lt;T&gt;(t, this);</span>
+<span class="fc" id="L147">        t.onSubscribe(ps);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (add(ps)) {</span>
+            // if cancellation happened while a successful add, the remove() didn't work
+            // so we need to do it again
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (ps.isCancelled()) {</span>
+<span class="fc" id="L152">                remove(ps);</span>
+            }
+        } else {
+<span class="fc" id="L155">            Throwable ex = error;</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            if (ex != null) {</span>
+<span class="fc" id="L157">                t.onError(ex);</span>
+            } else {
+<span class="fc" id="L159">                t.onComplete();</span>
+            }
+        }
+<span class="fc" id="L162">    }</span>
+
+    /**
+     * Tries to add the given subscriber to the subscribers array atomically
+     * or returns false if this processor has terminated.
+     * @param ps the subscriber to add
+     * @return true if successful, false if this processor has terminated
+     */
+    boolean add(PublishSubscription&lt;T&gt; ps) {
+        for (;;) {
+<span class="fc" id="L172">            PublishSubscription&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (a == TERMINATED) {</span>
+<span class="fc" id="L174">                return false;</span>
+            }
+
+<span class="fc" id="L177">            int n = a.length;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L179">            PublishSubscription&lt;T&gt;[] b = new PublishSubscription[n + 1];</span>
+<span class="fc" id="L180">            System.arraycopy(a, 0, b, 0, n);</span>
+<span class="fc" id="L181">            b[n] = ps;</span>
+
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L184">                return true;</span>
+            }
+<span class="fc" id="L186">        }</span>
+    }
+
+    /**
+     * Atomically removes the given subscriber if it is subscribed to this processor.
+     * @param ps the subscription wrapping a subscriber to remove
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    void remove(PublishSubscription&lt;T&gt; ps) {
+        for (;;) {
+<span class="fc" id="L196">            PublishSubscription&lt;T&gt;[] a = subscribers.get();</span>
+<span class="fc bfc" id="L197" title="All 4 branches covered.">            if (a == TERMINATED || a == EMPTY) {</span>
+<span class="fc" id="L198">                return;</span>
+            }
+
+<span class="fc" id="L201">            int n = a.length;</span>
+<span class="fc" id="L202">            int j = -1;</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                if (a[i] == ps) {</span>
+<span class="fc" id="L205">                    j = i;</span>
+<span class="fc" id="L206">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (j &lt; 0) {</span>
+<span class="fc" id="L211">                return;</span>
+            }
+
+            PublishSubscription&lt;T&gt;[] b;
+
+<span class="fc bfc" id="L216" title="All 2 branches covered.">            if (n == 1) {</span>
+<span class="fc" id="L217">                b = EMPTY;</span>
+            } else {
+<span class="fc" id="L219">                b = new PublishSubscription[n - 1];</span>
+<span class="fc" id="L220">                System.arraycopy(a, 0, b, 0, j);</span>
+<span class="fc" id="L221">                System.arraycopy(a, j + 1, b, j, n - j - 1);</span>
+            }
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (subscribers.compareAndSet(a, b)) {</span>
+<span class="fc" id="L224">                return;</span>
+            }
+<span class="fc" id="L226">        }</span>
+    }
+
+    @Override
+    public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L232">            s.cancel();</span>
+<span class="fc" id="L233">            return;</span>
+        }
+        // PublishProcessor doesn't bother with request coordination.
+<span class="fc" id="L236">        s.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L237">    }</span>
+
+    @Override
+    public void onNext(T t) {
+<span class="fc" id="L241">        ObjectHelper.requireNonNull(t, &quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        for (PublishSubscription&lt;T&gt; s : subscribers.get()) {</span>
+<span class="fc" id="L243">            s.onNext(t);</span>
+        }
+<span class="fc" id="L245">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onError(Throwable t) {
+<span class="fc" id="L250">        ObjectHelper.requireNonNull(t, &quot;onError called with null. Null values are generally not allowed in 2.x operators and sources.&quot;);</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L252">            RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L253">            return;</span>
+        }
+<span class="fc" id="L255">        error = t;</span>
+
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for (PublishSubscription&lt;T&gt; s : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L258">            s.onError(t);</span>
+        }
+<span class="fc" id="L260">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void onComplete() {
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L266">            return;</span>
+        }
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        for (PublishSubscription&lt;T&gt; s : subscribers.getAndSet(TERMINATED)) {</span>
+<span class="fc" id="L269">            s.onComplete();</span>
+        }
+<span class="fc" id="L271">    }</span>
+
+    /**
+     * Tries to emit the item to all currently subscribed Subscribers if all of them
+     * has requested some value, returns false otherwise.
+     * &lt;p&gt;
+     * This method should be called in a sequential manner just like the onXXX methods
+     * of the PublishProcessor.
+     * &lt;p&gt;
+     * Calling with null will terminate the PublishProcessor and a NullPointerException
+     * is signalled to the Subscribers.
+     * &lt;p&gt;History: 2.0.8 - experimental
+     * @param t the item to emit, not null
+     * @return true if the item was emitted to all Subscribers
+     * @since 2.2
+     */
+    public boolean offer(T t) {
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        if (t == null) {</span>
+<span class="fc" id="L289">            onError(new NullPointerException(&quot;onNext called with null. Null values are generally not allowed in 2.x operators and sources.&quot;));</span>
+<span class="fc" id="L290">            return true;</span>
+        }
+<span class="fc" id="L292">        PublishSubscription&lt;T&gt;[] array = subscribers.get();</span>
+
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        for (PublishSubscription&lt;T&gt; s : array) {</span>
+<span class="fc bfc" id="L295" title="All 2 branches covered.">            if (s.isFull()) {</span>
+<span class="fc" id="L296">                return false;</span>
+            }
+        }
+
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        for (PublishSubscription&lt;T&gt; s : array) {</span>
+<span class="fc" id="L301">            s.onNext(t);</span>
+        }
+<span class="fc" id="L303">        return true;</span>
+    }
+
+    @Override
+    public boolean hasSubscribers() {
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        return subscribers.get().length != 0;</span>
+    }
+
+    @Override
+    @Nullable
+    public Throwable getThrowable() {
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (subscribers.get() == TERMINATED) {</span>
+<span class="fc" id="L315">            return error;</span>
+        }
+<span class="fc" id="L317">        return null;</span>
+    }
+
+    @Override
+    public boolean hasThrowable() {
+<span class="fc bfc" id="L322" title="All 4 branches covered.">        return subscribers.get() == TERMINATED &amp;&amp; error != null;</span>
+    }
+
+    @Override
+    public boolean hasComplete() {
+<span class="fc bfc" id="L327" title="All 4 branches covered.">        return subscribers.get() == TERMINATED &amp;&amp; error == null;</span>
+    }
+
+    /**
+     * Wraps the actual subscriber, tracks its requests and makes cancellation
+     * to remove itself from the current subscribers array.
+     *
+     * @param &lt;T&gt; the value type
+     */
+    static final class PublishSubscription&lt;T&gt; extends AtomicLong implements Subscription {
+
+        private static final long serialVersionUID = 3562861878281475070L;
+        /** The actual subscriber. */
+        final Subscriber&lt;? super T&gt; downstream;
+        /** The parent processor servicing this subscriber. */
+        final PublishProcessor&lt;T&gt; parent;
+
+        /**
+         * Constructs a PublishSubscriber, wraps the actual subscriber and the state.
+         * @param actual the actual subscriber
+         * @param parent the parent PublishProcessor
+         */
+<span class="fc" id="L349">        PublishSubscription(Subscriber&lt;? super T&gt; actual, PublishProcessor&lt;T&gt; parent) {</span>
+<span class="fc" id="L350">            this.downstream = actual;</span>
+<span class="fc" id="L351">            this.parent = parent;</span>
+<span class="fc" id="L352">        }</span>
+
+        public void onNext(T t) {
+<span class="fc" id="L355">            long r = get();</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">            if (r == Long.MIN_VALUE) {</span>
+<span class="fc" id="L357">                return;</span>
+            }
+<span class="fc bfc" id="L359" title="All 2 branches covered.">            if (r != 0L) {</span>
+<span class="fc" id="L360">                downstream.onNext(t);</span>
+<span class="fc" id="L361">                BackpressureHelper.producedCancel(this, 1);</span>
+            } else {
+<span class="fc" id="L363">                cancel();</span>
+<span class="fc" id="L364">                downstream.onError(new MissingBackpressureException(&quot;Could not emit value due to lack of requests&quot;));</span>
+            }
+<span class="fc" id="L366">        }</span>
+
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L369" title="All 2 branches covered.">            if (get() != Long.MIN_VALUE) {</span>
+<span class="fc" id="L370">                downstream.onError(t);</span>
+            } else {
+<span class="fc" id="L372">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L374">        }</span>
+
+        public void onComplete() {
+<span class="fc bfc" id="L377" title="All 2 branches covered.">            if (get() != Long.MIN_VALUE) {</span>
+<span class="fc" id="L378">                downstream.onComplete();</span>
+            }
+<span class="fc" id="L380">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L384" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L385">                BackpressureHelper.addCancel(this, n);</span>
+            }
+<span class="fc" id="L387">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L391" title="All 2 branches covered.">            if (getAndSet(Long.MIN_VALUE) != Long.MIN_VALUE) {</span>
+<span class="fc" id="L392">                parent.remove(this);</span>
+            }
+<span class="fc" id="L394">        }</span>
+
+        public boolean isCancelled() {
+<span class="fc bfc" id="L397" title="All 2 branches covered.">            return get() == Long.MIN_VALUE;</span>
+        }
+
+        boolean isFull() {
+<span class="fc bfc" id="L401" title="All 2 branches covered.">            return get() == 0L;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

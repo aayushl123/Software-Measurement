@@ -1,0 +1,3136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex</a> &gt; <span class="el_source">TestHelper.java</span></div><h1>TestHelper.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
+import org.reactivestreams.*;
+
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.operators.completable.CompletableToFlowable;
+import io.reactivex.internal.operators.maybe.MaybeToFlowable;
+import io.reactivex.internal.operators.single.SingleToFlowable;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.internal.util.ExceptionHelper;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.parallel.ParallelFlowable;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.Subject;
+import io.reactivex.subscribers.TestSubscriber;
+
+/**
+ * Common methods for helping with tests from 1.x mostly.
+ */
+<span class="fc" id="L51">public enum TestHelper {</span>
+    ;
+
+    /**
+     * Number of times to loop a {@link #race(Runnable, Runnable)} invocation
+     * by default.
+     */
+    public static final int RACE_DEFAULT_LOOPS = 2500;
+
+    /**
+     * Number of times to loop a {@link #race(Runnable, Runnable)} invocation
+     * in tests with race conditions requiring more runs to check.
+     */
+    public static final int RACE_LONG_LOOPS = 10000;
+
+    /**
+     * Mocks a subscriber and prepares it to request Long.MAX_VALUE.
+     * @param &lt;T&gt; the value type
+     * @return the mocked subscriber
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; FlowableSubscriber&lt;T&gt; mockSubscriber() {
+<span class="fc" id="L73">        FlowableSubscriber&lt;T&gt; w = mock(FlowableSubscriber.class);</span>
+
+<span class="fc" id="L75">        Mockito.doAnswer(new Answer&lt;Object&gt;() {</span>
+            @Override
+            public Object answer(InvocationOnMock a) throws Throwable {
+<span class="fc" id="L78">                Subscription s = a.getArgument(0);</span>
+<span class="fc" id="L79">                s.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L80">                return null;</span>
+            }
+<span class="fc" id="L82">        }).when(w).onSubscribe((Subscription)any());</span>
+
+<span class="fc" id="L84">        return w;</span>
+    }
+
+    /**
+     * Mocks an Observer with the proper receiver type.
+     * @param &lt;T&gt; the value type
+     * @return the mocked observer
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; Observer&lt;T&gt; mockObserver() {
+<span class="fc" id="L94">        return mock(Observer.class);</span>
+    }
+
+    /**
+     * Mocks an MaybeObserver with the proper receiver type.
+     * @param &lt;T&gt; the value type
+     * @return the mocked observer
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; MaybeObserver&lt;T&gt; mockMaybeObserver() {
+<span class="fc" id="L104">        return mock(MaybeObserver.class);</span>
+    }
+
+    /**
+     * Mocks an SingleObserver with the proper receiver type.
+     * @param &lt;T&gt; the value type
+     * @return the mocked observer
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; SingleObserver&lt;T&gt; mockSingleObserver() {
+<span class="fc" id="L114">        return mock(SingleObserver.class);</span>
+    }
+
+    /**
+     * Mocks an CompletableObserver.
+     * @return the mocked observer
+     */
+    public static CompletableObserver mockCompletableObserver() {
+<span class="fc" id="L122">        return mock(CompletableObserver.class);</span>
+    }
+
+    /**
+     * Validates that the given class, when forcefully instantiated throws
+     * an IllegalArgumentException(&quot;No instances!&quot;) exception.
+     * @param clazz the class to test, not null
+     */
+    public static void checkUtilityClass(Class&lt;?&gt; clazz) {
+        try {
+<span class="fc" id="L132">            Constructor&lt;?&gt; c = clazz.getDeclaredConstructor();</span>
+
+<span class="fc" id="L134">            c.setAccessible(true);</span>
+
+            try {
+<span class="nc" id="L137">                c.newInstance();</span>
+<span class="nc" id="L138">                fail(&quot;Should have thrown InvocationTargetException(IllegalStateException)&quot;);</span>
+<span class="fc" id="L139">            } catch (InvocationTargetException ex) {</span>
+<span class="fc" id="L140">                assertEquals(&quot;No instances!&quot;, ex.getCause().getMessage());</span>
+<span class="nc" id="L141">            }</span>
+<span class="nc" id="L142">        } catch (Exception ex) {</span>
+<span class="nc" id="L143">            AssertionError ae = new AssertionError(ex.toString());</span>
+<span class="nc" id="L144">            ae.initCause(ex);</span>
+<span class="nc" id="L145">            throw ae;</span>
+<span class="fc" id="L146">        }</span>
+<span class="fc" id="L147">    }</span>
+
+    public static List&lt;Throwable&gt; trackPluginErrors() {
+<span class="fc" id="L150">        final List&lt;Throwable&gt; list = Collections.synchronizedList(new ArrayList&lt;Throwable&gt;());</span>
+
+<span class="fc" id="L152">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(Throwable t) {
+<span class="fc" id="L155">                list.add(t);</span>
+<span class="fc" id="L156">            }</span>
+        });
+
+<span class="fc" id="L159">        return list;</span>
+    }
+
+    public static void assertError(List&lt;Throwable&gt; list, int index, Class&lt;? extends Throwable&gt; clazz) {
+<span class="fc" id="L163">        Throwable ex = list.get(index);</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (!clazz.isInstance(ex)) {</span>
+<span class="nc" id="L165">            AssertionError err = new AssertionError(clazz + &quot; expected but got &quot; + list.get(index));</span>
+<span class="nc" id="L166">            err.initCause(list.get(index));</span>
+<span class="nc" id="L167">            throw err;</span>
+        }
+<span class="fc" id="L169">    }</span>
+
+    public static void assertUndeliverable(List&lt;Throwable&gt; list, int index, Class&lt;? extends Throwable&gt; clazz) {
+<span class="fc" id="L172">        Throwable ex = list.get(index);</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        if (!(ex instanceof UndeliverableException)) {</span>
+<span class="nc" id="L174">            AssertionError err = new AssertionError(&quot;Outer exception UndeliverableException expected but got &quot; + list.get(index));</span>
+<span class="nc" id="L175">            err.initCause(list.get(index));</span>
+<span class="nc" id="L176">            throw err;</span>
+        }
+<span class="fc" id="L178">        ex = ex.getCause();</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        if (!clazz.isInstance(ex)) {</span>
+<span class="nc" id="L180">            AssertionError err = new AssertionError(&quot;Inner exception &quot; + clazz + &quot; expected but got &quot; + list.get(index));</span>
+<span class="nc" id="L181">            err.initCause(list.get(index));</span>
+<span class="nc" id="L182">            throw err;</span>
+        }
+<span class="fc" id="L184">    }</span>
+
+    public static void assertError(List&lt;Throwable&gt; list, int index, Class&lt;? extends Throwable&gt; clazz, String message) {
+<span class="fc" id="L187">        Throwable ex = list.get(index);</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        if (!clazz.isInstance(ex)) {</span>
+<span class="nc" id="L189">            AssertionError err = new AssertionError(&quot;Type &quot; + clazz + &quot; expected but got &quot; + ex);</span>
+<span class="nc" id="L190">            err.initCause(ex);</span>
+<span class="nc" id="L191">            throw err;</span>
+        }
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">        if (!ObjectHelper.equals(message, ex.getMessage())) {</span>
+<span class="nc" id="L194">            AssertionError err = new AssertionError(&quot;Message &quot; + message + &quot; expected but got &quot; + ex.getMessage());</span>
+<span class="nc" id="L195">            err.initCause(ex);</span>
+<span class="nc" id="L196">            throw err;</span>
+        }
+<span class="fc" id="L198">    }</span>
+
+    public static void assertUndeliverable(List&lt;Throwable&gt; list, int index, Class&lt;? extends Throwable&gt; clazz, String message) {
+<span class="fc" id="L201">        Throwable ex = list.get(index);</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        if (!(ex instanceof UndeliverableException)) {</span>
+<span class="nc" id="L203">            AssertionError err = new AssertionError(&quot;Outer exception UndeliverableException expected but got &quot; + list.get(index));</span>
+<span class="nc" id="L204">            err.initCause(list.get(index));</span>
+<span class="nc" id="L205">            throw err;</span>
+        }
+<span class="fc" id="L207">        ex = ex.getCause();</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (!clazz.isInstance(ex)) {</span>
+<span class="nc" id="L209">            AssertionError err = new AssertionError(&quot;Inner exception &quot; + clazz + &quot; expected but got &quot; + list.get(index));</span>
+<span class="nc" id="L210">            err.initCause(list.get(index));</span>
+<span class="nc" id="L211">            throw err;</span>
+        }
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (!ObjectHelper.equals(message, ex.getMessage())) {</span>
+<span class="nc" id="L214">            AssertionError err = new AssertionError(&quot;Message &quot; + message + &quot; expected but got &quot; + ex.getMessage());</span>
+<span class="nc" id="L215">            err.initCause(ex);</span>
+<span class="nc" id="L216">            throw err;</span>
+        }
+<span class="fc" id="L218">    }</span>
+
+    public static void assertError(TestObserver&lt;?&gt; to, int index, Class&lt;? extends Throwable&gt; clazz) {
+<span class="fc" id="L221">        Throwable ex = to.errors().get(0);</span>
+        try {
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            if (ex instanceof CompositeException) {</span>
+<span class="fc" id="L224">                CompositeException ce = (CompositeException) ex;</span>
+<span class="fc" id="L225">                List&lt;Throwable&gt; cel = ce.getExceptions();</span>
+<span class="fc" id="L226">                assertTrue(cel.get(index).toString(), clazz.isInstance(cel.get(index)));</span>
+<span class="fc" id="L227">            } else {</span>
+<span class="nc" id="L228">                fail(ex.toString() + &quot;: not a CompositeException&quot;);</span>
+            }
+<span class="nc" id="L230">        } catch (AssertionError e) {</span>
+<span class="nc" id="L231">            ex.printStackTrace();</span>
+<span class="nc" id="L232">            throw e;</span>
+<span class="fc" id="L233">        }</span>
+<span class="fc" id="L234">    }</span>
+
+    public static void assertError(TestSubscriber&lt;?&gt; ts, int index, Class&lt;? extends Throwable&gt; clazz) {
+<span class="fc" id="L237">        Throwable ex = ts.errors().get(0);</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        if (ex instanceof CompositeException) {</span>
+<span class="fc" id="L239">            CompositeException ce = (CompositeException) ex;</span>
+<span class="fc" id="L240">            List&lt;Throwable&gt; cel = ce.getExceptions();</span>
+<span class="fc" id="L241">            assertTrue(cel.get(index).toString(), clazz.isInstance(cel.get(index)));</span>
+<span class="fc" id="L242">        } else {</span>
+<span class="nc" id="L243">            fail(ex.toString() + &quot;: not a CompositeException&quot;);</span>
+        }
+<span class="fc" id="L245">    }</span>
+
+    public static void assertError(TestObserver&lt;?&gt; to, int index, Class&lt;? extends Throwable&gt; clazz, String message) {
+<span class="fc" id="L248">        Throwable ex = to.errors().get(0);</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        if (ex instanceof CompositeException) {</span>
+<span class="fc" id="L250">            CompositeException ce = (CompositeException) ex;</span>
+<span class="fc" id="L251">            List&lt;Throwable&gt; cel = ce.getExceptions();</span>
+<span class="fc" id="L252">            assertTrue(cel.get(index).toString(), clazz.isInstance(cel.get(index)));</span>
+<span class="fc" id="L253">            assertEquals(message, cel.get(index).getMessage());</span>
+<span class="fc" id="L254">        } else {</span>
+<span class="nc" id="L255">            fail(ex.toString() + &quot;: not a CompositeException&quot;);</span>
+        }
+<span class="fc" id="L257">    }</span>
+
+    public static void assertError(TestSubscriber&lt;?&gt; ts, int index, Class&lt;? extends Throwable&gt; clazz, String message) {
+<span class="fc" id="L260">        Throwable ex = ts.errors().get(0);</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        if (ex instanceof CompositeException) {</span>
+<span class="fc" id="L262">            CompositeException ce = (CompositeException) ex;</span>
+<span class="fc" id="L263">            List&lt;Throwable&gt; cel = ce.getExceptions();</span>
+<span class="fc" id="L264">            assertTrue(cel.get(index).toString(), clazz.isInstance(cel.get(index)));</span>
+<span class="fc" id="L265">            assertEquals(message, cel.get(index).getMessage());</span>
+<span class="fc" id="L266">        } else {</span>
+<span class="nc" id="L267">            fail(ex.toString() + &quot;: not a CompositeException&quot;);</span>
+        }
+<span class="fc" id="L269">    }</span>
+
+    /**
+     * Verify that a specific enum type has no enum constants.
+     * @param &lt;E&gt; the enum type
+     * @param e the enum class instance
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; void assertEmptyEnum(Class&lt;E&gt; e) {
+<span class="nc" id="L277">        assertEquals(0, e.getEnumConstants().length);</span>
+
+        try {
+            try {
+<span class="nc" id="L281">                Method m0 = e.getDeclaredMethod(&quot;values&quot;);</span>
+
+<span class="nc" id="L283">                Object[] a = (Object[])m0.invoke(null);</span>
+<span class="nc" id="L284">                assertEquals(0, a.length);</span>
+
+<span class="nc" id="L286">                Method m = e.getDeclaredMethod(&quot;valueOf&quot;, String.class);</span>
+
+<span class="nc" id="L288">                m.invoke(&quot;INSTANCE&quot;);</span>
+<span class="nc" id="L289">                fail(&quot;Should have thrown!&quot;);</span>
+<span class="nc" id="L290">            } catch (InvocationTargetException ex) {</span>
+<span class="nc" id="L291">                fail(ex.toString());</span>
+<span class="nc" id="L292">            } catch (IllegalAccessException ex) {</span>
+<span class="nc" id="L293">                fail(ex.toString());</span>
+<span class="nc" id="L294">            } catch (IllegalArgumentException ex) {</span>
+                // we expected this
+<span class="nc" id="L296">            }</span>
+<span class="nc" id="L297">        } catch (NoSuchMethodException ex) {</span>
+<span class="nc" id="L298">            fail(ex.toString());</span>
+<span class="nc" id="L299">        }</span>
+<span class="nc" id="L300">    }</span>
+
+    /**
+     * Assert that by consuming the Publisher with a bad request amount, it is
+     * reported to the plugin error handler promptly.
+     * @param source the source to consume
+     */
+    public static void assertBadRequestReported(Publisher&lt;?&gt; source) {
+<span class="fc" id="L308">        List&lt;Throwable&gt; list = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L310">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L312">            source.subscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+
+                @Override
+                public void onSubscribe(Subscription s) {
+                    try {
+<span class="fc" id="L317">                        s.request(-99);</span>
+<span class="fc" id="L318">                        s.cancel();</span>
+<span class="fc" id="L319">                        s.cancel();</span>
+                    } finally {
+<span class="fc" id="L321">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L323">                }</span>
+
+                @Override
+                public void onNext(Object t) {
+
+<span class="nc" id="L328">                }</span>
+
+                @Override
+                public void onError(Throwable t) {
+
+<span class="nc" id="L333">                }</span>
+
+                @Override
+                public void onComplete() {
+
+<span class="nc" id="L338">                }</span>
+
+            });
+
+            try {
+<span class="fc" id="L343">                assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L344">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L345">                throw new AssertionError(ex.getMessage());</span>
+<span class="fc" id="L346">            }</span>
+
+<span class="fc" id="L348">            assertTrue(list.toString(), list.get(0) instanceof IllegalArgumentException);</span>
+<span class="fc" id="L349">            assertEquals(&quot;n &gt; 0 required but it was -99&quot;, list.get(0).getMessage());</span>
+        } finally {
+<span class="fc" id="L351">            RxJavaPlugins.setErrorHandler(null);</span>
+        }
+<span class="fc" id="L353">    }</span>
+    /**
+     * Synchronizes the execution of two runnables (as much as possible)
+     * to test race conditions.
+     * &lt;p&gt;The method blocks until both have run to completion.
+     * @param r1 the first runnable
+     * @param r2 the second runnable
+     * @see #RACE_DEFAULT_LOOPS
+     * @see #RACE_LONG_LOOPS
+     */
+    public static void race(final Runnable r1, final Runnable r2) {
+<span class="fc" id="L364">        race(r1, r2, Schedulers.single());</span>
+<span class="fc" id="L365">    }</span>
+    /**
+     * Synchronizes the execution of two runnables (as much as possible)
+     * to test race conditions.
+     * &lt;p&gt;The method blocks until both have run to completion.
+     * @param r1 the first runnable
+     * @param r2 the second runnable
+     * @param s the scheduler to use
+     * @see #RACE_DEFAULT_LOOPS
+     * @see #RACE_LONG_LOOPS
+     */
+    public static void race(final Runnable r1, final Runnable r2, Scheduler s) {
+<span class="fc" id="L377">        final AtomicInteger count = new AtomicInteger(2);</span>
+<span class="fc" id="L378">        final CountDownLatch cdl = new CountDownLatch(2);</span>
+
+<span class="fc" id="L380">        final Throwable[] errors = { null, null };</span>
+
+<span class="fc" id="L382">        s.scheduleDirect(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc bfc" id="L385" title="All 2 branches covered.">                if (count.decrementAndGet() != 0) {</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">                    while (count.get() != 0) { }</span>
+                }
+
+                try {
+                    try {
+<span class="fc" id="L391">                        r1.run();</span>
+<span class="nc" id="L392">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L393">                        errors[0] = ex;</span>
+<span class="fc" id="L394">                    }</span>
+                } finally {
+<span class="fc" id="L396">                    cdl.countDown();</span>
+                }
+<span class="fc" id="L398">            }</span>
+        });
+
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        if (count.decrementAndGet() != 0) {</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            while (count.get() != 0) { }</span>
+        }
+
+        try {
+            try {
+<span class="fc" id="L407">                r2.run();</span>
+<span class="nc" id="L408">            } catch (Throwable ex) {</span>
+<span class="nc" id="L409">                errors[1] = ex;</span>
+<span class="fc" id="L410">            }</span>
+        } finally {
+<span class="fc" id="L412">            cdl.countDown();</span>
+        }
+
+        try {
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">            if (!cdl.await(5, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L417">                throw new AssertionError(&quot;The wait timed out!&quot;);</span>
+            }
+<span class="nc" id="L419">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L420">            throw new RuntimeException(ex);</span>
+<span class="fc" id="L421">        }</span>
+<span class="pc bpc" id="L422" title="3 of 4 branches missed.">        if (errors[0] != null &amp;&amp; errors[1] == null) {</span>
+<span class="nc" id="L423">            throw ExceptionHelper.wrapOrThrow(errors[0]);</span>
+        }
+
+<span class="pc bpc" id="L426" title="2 of 4 branches missed.">        if (errors[0] == null &amp;&amp; errors[1] != null) {</span>
+<span class="nc" id="L427">            throw ExceptionHelper.wrapOrThrow(errors[1]);</span>
+        }
+
+<span class="pc bpc" id="L430" title="3 of 4 branches missed.">        if (errors[0] != null &amp;&amp; errors[1] != null) {</span>
+<span class="nc" id="L431">            throw new CompositeException(errors);</span>
+        }
+<span class="fc" id="L433">    }</span>
+
+    /**
+     * Cast the given Throwable to CompositeException and returns its inner
+     * Throwable list.
+     * @param ex the target Throwable
+     * @return the list of Throwables
+     */
+    public static List&lt;Throwable&gt; compositeList(Throwable ex) {
+<span class="pc bpc" id="L442" title="1 of 2 branches missed.">        if (ex instanceof UndeliverableException) {</span>
+<span class="nc" id="L443">            ex = ex.getCause();</span>
+        }
+<span class="fc" id="L445">        return ((CompositeException)ex).getExceptions();</span>
+    }
+
+    /**
+     * Assert that the offer methods throw UnsupportedOperationExcetpion.
+     * @param q the queue implementation
+     */
+    public static void assertNoOffer(SimpleQueue&lt;?&gt; q) {
+        try {
+<span class="nc" id="L454">            q.offer(null);</span>
+<span class="nc" id="L455">            fail(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L456">        } catch (UnsupportedOperationException ex) {</span>
+            // expected
+<span class="nc" id="L458">        }</span>
+        try {
+<span class="nc" id="L460">            q.offer(null, null);</span>
+<span class="nc" id="L461">            fail(&quot;Should have thrown!&quot;);</span>
+<span class="fc" id="L462">        } catch (UnsupportedOperationException ex) {</span>
+            // expected
+<span class="nc" id="L464">        }</span>
+<span class="fc" id="L465">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;E extends Enum&lt;E&gt;&gt; void checkEnum(Class&lt;E&gt; enumClass) {
+        try {
+<span class="fc" id="L470">            Method m = enumClass.getMethod(&quot;values&quot;);</span>
+<span class="fc" id="L471">            m.setAccessible(true);</span>
+<span class="fc" id="L472">            Method e = enumClass.getMethod(&quot;valueOf&quot;, String.class);</span>
+<span class="fc" id="L473">            m.setAccessible(true);</span>
+
+<span class="fc bfc" id="L475" title="All 2 branches covered.">            for (Enum&lt;E&gt; o : (Enum&lt;E&gt;[])m.invoke(null)) {</span>
+<span class="fc" id="L476">                assertSame(o, e.invoke(null, o.name()));</span>
+            }
+
+<span class="nc" id="L479">        } catch (Throwable ex) {</span>
+<span class="nc" id="L480">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L481">        }</span>
+<span class="fc" id="L482">    }</span>
+
+    /**
+     * Returns an Consumer that asserts the TestSubscriber has exactly one value + completed
+     * normally and that single value is not the value specified.
+     * @param &lt;T&gt; the value type
+     * @param value the value not expected
+     * @return the consumer
+     */
+    public static &lt;T&gt; Consumer&lt;TestSubscriber&lt;T&gt;&gt; subscriberSingleNot(final T value) {
+<span class="nc" id="L492">        return new Consumer&lt;TestSubscriber&lt;T&gt;&gt;() {</span>
+            @Override
+            public void accept(TestSubscriber&lt;T&gt; ts) throws Exception {
+<span class="nc" id="L495">                ts</span>
+<span class="nc" id="L496">                .assertSubscribed()</span>
+<span class="nc" id="L497">                .assertValueCount(1)</span>
+<span class="nc" id="L498">                .assertNoErrors()</span>
+<span class="nc" id="L499">                .assertComplete();</span>
+
+<span class="nc" id="L501">                T v = ts.values().get(0);</span>
+<span class="nc" id="L502">                assertNotEquals(value, v);</span>
+<span class="nc" id="L503">            }</span>
+        };
+    }
+
+    /**
+     * Returns an Consumer that asserts the TestObserver has exactly one value + completed
+     * normally and that single value is not the value specified.
+     * @param &lt;T&gt; the value type
+     * @param value the value not expected
+     * @return the consumer
+     */
+    public static &lt;T&gt; Consumer&lt;TestObserver&lt;T&gt;&gt; observerSingleNot(final T value) {
+<span class="fc" id="L515">        return new Consumer&lt;TestObserver&lt;T&gt;&gt;() {</span>
+            @Override
+            public void accept(TestObserver&lt;T&gt; to) throws Exception {
+<span class="fc" id="L518">                to</span>
+<span class="fc" id="L519">                .assertSubscribed()</span>
+<span class="fc" id="L520">                .assertValueCount(1)</span>
+<span class="fc" id="L521">                .assertNoErrors()</span>
+<span class="fc" id="L522">                .assertComplete();</span>
+
+<span class="fc" id="L524">                T v = to.values().get(0);</span>
+<span class="fc" id="L525">                assertNotEquals(value, v);</span>
+<span class="fc" id="L526">            }</span>
+        };
+    }
+
+    /**
+     * Calls onSubscribe twice and checks if it doesn't affect the first Subscription while
+     * reporting it to plugin error handler.
+     * @param subscriber the target
+     */
+    public static void doubleOnSubscribe(Subscriber&lt;?&gt; subscriber) {
+<span class="fc" id="L536">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L538">            BooleanSubscription s1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L540">            subscriber.onSubscribe(s1);</span>
+
+<span class="fc" id="L542">            BooleanSubscription s2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L544">            subscriber.onSubscribe(s2);</span>
+
+<span class="fc" id="L546">            assertFalse(s1.isCancelled());</span>
+
+<span class="fc" id="L548">            assertTrue(s2.isCancelled());</span>
+
+<span class="fc" id="L550">            assertError(errors, 0, IllegalStateException.class, &quot;Subscription already set!&quot;);</span>
+        } finally {
+<span class="fc" id="L552">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L554">    }</span>
+
+    /**
+     * Calls onSubscribe twice and checks if it doesn't affect the first Disposable while
+     * reporting it to plugin error handler.
+     * @param observer the target
+     */
+    public static void doubleOnSubscribe(Observer&lt;?&gt; observer) {
+<span class="fc" id="L562">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L564">            Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L566">            observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L568">            Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L570">            observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L572">            assertFalse(d1.isDisposed());</span>
+
+<span class="fc" id="L574">            assertTrue(d2.isDisposed());</span>
+
+<span class="fc" id="L576">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+        } finally {
+<span class="fc" id="L578">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L580">    }</span>
+
+    /**
+     * Calls onSubscribe twice and checks if it doesn't affect the first Disposable while
+     * reporting it to plugin error handler.
+     * @param observer the target
+     */
+    public static void doubleOnSubscribe(SingleObserver&lt;?&gt; observer) {
+<span class="nc" id="L588">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="nc" id="L590">            Disposable d1 = Disposables.empty();</span>
+
+<span class="nc" id="L592">            observer.onSubscribe(d1);</span>
+
+<span class="nc" id="L594">            Disposable d2 = Disposables.empty();</span>
+
+<span class="nc" id="L596">            observer.onSubscribe(d2);</span>
+
+<span class="nc" id="L598">            assertFalse(d1.isDisposed());</span>
+
+<span class="nc" id="L600">            assertTrue(d2.isDisposed());</span>
+
+<span class="nc" id="L602">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+        } finally {
+<span class="nc" id="L604">            RxJavaPlugins.reset();</span>
+        }
+<span class="nc" id="L606">    }</span>
+
+    /**
+     * Calls onSubscribe twice and checks if it doesn't affect the first Disposable while
+     * reporting it to plugin error handler.
+     * @param observer the target
+     */
+    public static void doubleOnSubscribe(CompletableObserver observer) {
+<span class="nc" id="L614">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="nc" id="L616">            Disposable d1 = Disposables.empty();</span>
+
+<span class="nc" id="L618">            observer.onSubscribe(d1);</span>
+
+<span class="nc" id="L620">            Disposable d2 = Disposables.empty();</span>
+
+<span class="nc" id="L622">            observer.onSubscribe(d2);</span>
+
+<span class="nc" id="L624">            assertFalse(d1.isDisposed());</span>
+
+<span class="nc" id="L626">            assertTrue(d2.isDisposed());</span>
+
+<span class="nc" id="L628">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+        } finally {
+<span class="nc" id="L630">            RxJavaPlugins.reset();</span>
+        }
+<span class="nc" id="L632">    }</span>
+
+    /**
+     * Calls onSubscribe twice and checks if it doesn't affect the first Disposable while
+     * reporting it to plugin error handler.
+     * @param observer the target
+     */
+    public static void doubleOnSubscribe(MaybeObserver&lt;?&gt; observer) {
+<span class="nc" id="L640">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="nc" id="L642">            Disposable d1 = Disposables.empty();</span>
+
+<span class="nc" id="L644">            observer.onSubscribe(d1);</span>
+
+<span class="nc" id="L646">            Disposable d2 = Disposables.empty();</span>
+
+<span class="nc" id="L648">            observer.onSubscribe(d2);</span>
+
+<span class="nc" id="L650">            assertFalse(d1.isDisposed());</span>
+
+<span class="nc" id="L652">            assertTrue(d2.isDisposed());</span>
+
+<span class="nc" id="L654">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+        } finally {
+<span class="nc" id="L656">            RxJavaPlugins.reset();</span>
+        }
+<span class="nc" id="L658">    }</span>
+
+    /**
+     * Checks if the upstream's Subscription sent through the onSubscribe reports
+     * isCancelled properly before and after calling dispose.
+     * @param &lt;T&gt; the input value type
+     * @param source the source to test
+     */
+    public static &lt;T&gt; void checkDisposed(Flowable&lt;T&gt; source) {
+<span class="fc" id="L667">        final TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;(0L);</span>
+<span class="fc" id="L668">        source.subscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="fc" id="L671">                ts.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc" id="L673">                s.cancel();</span>
+
+<span class="fc" id="L675">                s.cancel();</span>
+<span class="fc" id="L676">            }</span>
+
+            @Override
+            public void onNext(Object t) {
+<span class="nc" id="L680">                ts.onNext(t);</span>
+<span class="nc" id="L681">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L685">                ts.onError(t);</span>
+<span class="nc" id="L686">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L690">                ts.onComplete();</span>
+<span class="nc" id="L691">            }</span>
+        });
+<span class="fc" id="L693">        ts.assertEmpty();</span>
+<span class="fc" id="L694">    }</span>
+    /**
+     * Checks if the upstream's Disposable sent through the onSubscribe reports
+     * isDisposed properly before and after calling dispose.
+     * @param source the source to test
+     */
+    public static void checkDisposed(Maybe&lt;?&gt; source) {
+<span class="fc" id="L701">        final Boolean[] b = { null, null };</span>
+<span class="fc" id="L702">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L703">        source.subscribe(new MaybeObserver&lt;Object&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+                try {
+<span class="fc" id="L708">                    b[0] = d.isDisposed();</span>
+
+<span class="fc" id="L710">                    d.dispose();</span>
+
+<span class="fc" id="L712">                    b[1] = d.isDisposed();</span>
+
+<span class="fc" id="L714">                    d.dispose();</span>
+                } finally {
+<span class="fc" id="L716">                    cdl.countDown();</span>
+                }
+<span class="fc" id="L718">            }</span>
+
+            @Override
+            public void onSuccess(Object value) {
+                // ignored
+<span class="fc" id="L723">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+                // ignored
+<span class="nc" id="L728">            }</span>
+
+            @Override
+            public void onComplete() {
+                // ignored
+<span class="nc" id="L733">            }</span>
+        });
+
+        try {
+<span class="fc" id="L737">            assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L738">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L739">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L740">        }</span>
+
+<span class="fc" id="L742">        assertEquals(&quot;Reports disposed upfront?&quot;, false, b[0]);</span>
+<span class="fc" id="L743">        assertEquals(&quot;Didn't report disposed after?&quot;, true, b[1]);</span>
+<span class="fc" id="L744">    }</span>
+
+    /**
+     * Checks if the upstream's Disposable sent through the onSubscribe reports
+     * isDisposed properly before and after calling dispose.
+     * @param source the source to test
+     */
+    public static void checkDisposed(Observable&lt;?&gt; source) {
+<span class="fc" id="L752">        final Boolean[] b = { null, null };</span>
+<span class="fc" id="L753">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L754">        source.subscribe(new Observer&lt;Object&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+                try {
+<span class="fc" id="L759">                    b[0] = d.isDisposed();</span>
+
+<span class="fc" id="L761">                    d.dispose();</span>
+
+<span class="fc" id="L763">                    b[1] = d.isDisposed();</span>
+
+<span class="fc" id="L765">                    d.dispose();</span>
+                } finally {
+<span class="fc" id="L767">                    cdl.countDown();</span>
+                }
+<span class="fc" id="L769">            }</span>
+
+            @Override
+            public void onNext(Object value) {
+                // ignored
+<span class="fc" id="L774">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+                // ignored
+<span class="nc" id="L779">            }</span>
+
+            @Override
+            public void onComplete() {
+                // ignored
+<span class="fc" id="L784">            }</span>
+        });
+
+        try {
+<span class="fc" id="L788">            assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L789">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L790">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L791">        }</span>
+
+<span class="fc" id="L793">        assertEquals(&quot;Reports disposed upfront?&quot;, false, b[0]);</span>
+<span class="fc" id="L794">        assertEquals(&quot;Didn't report disposed after?&quot;, true, b[1]);</span>
+<span class="fc" id="L795">    }</span>
+
+    /**
+     * Checks if the upstream's Disposable sent through the onSubscribe reports
+     * isDisposed properly before and after calling dispose.
+     * @param source the source to test
+     */
+    public static void checkDisposed(Single&lt;?&gt; source) {
+<span class="fc" id="L803">        final Boolean[] b = { null, null };</span>
+<span class="fc" id="L804">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L805">        source.subscribe(new SingleObserver&lt;Object&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+                try {
+<span class="fc" id="L810">                    b[0] = d.isDisposed();</span>
+
+<span class="fc" id="L812">                    d.dispose();</span>
+
+<span class="fc" id="L814">                    b[1] = d.isDisposed();</span>
+
+<span class="fc" id="L816">                    d.dispose();</span>
+                } finally {
+<span class="fc" id="L818">                    cdl.countDown();</span>
+                }
+<span class="fc" id="L820">            }</span>
+
+            @Override
+            public void onSuccess(Object value) {
+                // ignored
+<span class="fc" id="L825">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+                // ignored
+<span class="nc" id="L830">            }</span>
+        });
+
+        try {
+<span class="fc" id="L834">            assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L835">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L836">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L837">        }</span>
+
+<span class="fc" id="L839">        assertEquals(&quot;Reports disposed upfront?&quot;, false, b[0]);</span>
+<span class="fc" id="L840">        assertEquals(&quot;Didn't report disposed after?&quot;, true, b[1]);</span>
+<span class="fc" id="L841">    }</span>
+
+    /**
+     * Checks if the upstream's Disposable sent through the onSubscribe reports
+     * isDisposed properly before and after calling dispose.
+     * @param source the source to test
+     */
+    public static void checkDisposed(Completable source) {
+<span class="fc" id="L849">        final Boolean[] b = { null, null };</span>
+<span class="fc" id="L850">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L851">        source.subscribe(new CompletableObserver() {</span>
+
+            @Override
+            public void onSubscribe(Disposable d) {
+                try {
+<span class="fc" id="L856">                    b[0] = d.isDisposed();</span>
+
+<span class="fc" id="L858">                    d.dispose();</span>
+
+<span class="fc" id="L860">                    b[1] = d.isDisposed();</span>
+
+<span class="fc" id="L862">                    d.dispose();</span>
+                } finally {
+<span class="fc" id="L864">                    cdl.countDown();</span>
+                }
+<span class="fc" id="L866">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+                // ignored
+<span class="nc" id="L871">            }</span>
+
+            @Override
+            public void onComplete() {
+                // ignored
+<span class="fc" id="L876">            }</span>
+        });
+
+        try {
+<span class="fc" id="L880">            assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L881">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L882">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L883">        }</span>
+
+<span class="fc" id="L885">        assertEquals(&quot;Reports disposed upfront?&quot;, false, b[0]);</span>
+<span class="fc" id="L886">        assertEquals(&quot;Didn't report disposed after?&quot;, true, b[1]);</span>
+<span class="fc" id="L887">    }</span>
+
+    /**
+     * Consumer for all base reactive types.
+     */
+<span class="fc" id="L892">    enum NoOpConsumer implements FlowableSubscriber&lt;Object&gt;, Observer&lt;Object&gt;, MaybeObserver&lt;Object&gt;, SingleObserver&lt;Object&gt;, CompletableObserver {</span>
+<span class="fc" id="L893">        INSTANCE;</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+            // deliberately no-op
+<span class="fc" id="L898">        }</span>
+
+        @Override
+        public void onSuccess(Object value) {
+            // deliberately no-op
+<span class="nc" id="L903">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+            // deliberately no-op
+<span class="fc" id="L908">        }</span>
+
+        @Override
+        public void onComplete() {
+            // deliberately no-op
+<span class="nc" id="L913">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+            // deliberately no-op
+<span class="fc" id="L918">        }</span>
+
+        @Override
+        public void onNext(Object t) {
+            // deliberately no-op
+<span class="fc" id="L923">        }</span>
+    }
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeMaybe(Function&lt;Maybe&lt;T&gt;, ? extends MaybeSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L934">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L936">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L937">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L939">            Maybe&lt;T&gt; source = new Maybe&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L943">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L945">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L947">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L949">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L951">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L952">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L954">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L956">                }</span>
+            };
+
+<span class="fc" id="L959">            MaybeSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L961">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L964">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L965">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L966">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L967">            }</span>
+
+<span class="fc" id="L969">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L970">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L972">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L973">        } catch (Throwable ex) {</span>
+<span class="nc" id="L974">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L976">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L978">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeMaybeToSingle(Function&lt;Maybe&lt;T&gt;, ? extends SingleSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L988">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L990">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L991">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L993">            Maybe&lt;T&gt; source = new Maybe&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L997">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L999">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1001">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1003">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1005">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1006">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1008">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1010">                }</span>
+            };
+
+<span class="fc" id="L1013">            SingleSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1015">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1018">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1019">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1020">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1021">            }</span>
+
+<span class="fc" id="L1023">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1024">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1026">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1027">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1028">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1030">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1032">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeMaybeToObservable(Function&lt;Maybe&lt;T&gt;, ? extends ObservableSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1042">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1044">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1045">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1047">            Maybe&lt;T&gt; source = new Maybe&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1051">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1053">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1055">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1057">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1059">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1060">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1062">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1064">                }</span>
+            };
+
+<span class="fc" id="L1067">            ObservableSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1069">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1072">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1073">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1074">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1075">            }</span>
+
+<span class="fc" id="L1077">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1078">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1080">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1081">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1082">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1084">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1086">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeMaybeToFlowable(Function&lt;Maybe&lt;T&gt;, ? extends Publisher&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1096">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1098">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1099">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1101">            Maybe&lt;T&gt; source = new Maybe&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1105">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1107">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1109">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1111">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1113">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1114">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1116">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1118">                }</span>
+            };
+
+<span class="fc" id="L1121">            Publisher&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1123">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1126">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1127">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1128">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1129">            }</span>
+
+<span class="fc" id="L1131">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1132">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1134">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1135">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1136">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1138">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1140">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeSingleToMaybe(Function&lt;Single&lt;T&gt;, ? extends MaybeSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1150">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1152">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1153">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1155">            Single&lt;T&gt; source = new Single&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(SingleObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1159">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1161">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1163">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1165">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1167">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1168">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1170">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1172">                }</span>
+            };
+
+<span class="fc" id="L1175">            MaybeSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1177">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1180">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1181">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1182">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1183">            }</span>
+
+<span class="fc" id="L1185">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1186">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1188">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1189">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1190">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1192">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1194">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeSingleToObservable(Function&lt;Single&lt;T&gt;, ? extends ObservableSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1204">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1206">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1207">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1209">            Single&lt;T&gt; source = new Single&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(SingleObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1213">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1215">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1217">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1219">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1221">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1222">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1224">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1226">                }</span>
+            };
+
+<span class="fc" id="L1229">            ObservableSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1231">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1234">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1235">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1236">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1237">            }</span>
+
+<span class="fc" id="L1239">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1240">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1242">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1243">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1244">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1246">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1248">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeSingleToFlowable(Function&lt;Single&lt;T&gt;, ? extends Publisher&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1258">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1260">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1261">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1263">            Single&lt;T&gt; source = new Single&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(SingleObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1267">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1269">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1271">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1273">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1275">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1276">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1278">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1280">                }</span>
+            };
+
+<span class="fc" id="L1283">            Publisher&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1285">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1288">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1289">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1290">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1291">            }</span>
+
+<span class="fc" id="L1293">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1294">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1296">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1297">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1298">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1300">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1302">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T&gt; void checkDoubleOnSubscribeMaybeToCompletable(Function&lt;Maybe&lt;T&gt;, ? extends CompletableSource&gt; transform) {
+<span class="fc" id="L1311">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1313">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1314">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1316">            Maybe&lt;T&gt; source = new Maybe&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(MaybeObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1320">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1322">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1324">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1326">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1328">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1329">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1331">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1333">                }</span>
+            };
+
+<span class="fc" id="L1336">            CompletableSource out = transform.apply(source);</span>
+
+<span class="fc" id="L1338">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1341">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1342">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1343">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1344">            }</span>
+
+<span class="fc" id="L1346">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1347">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1349">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1350">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1351">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1353">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1355">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeSingle(Function&lt;Single&lt;T&gt;, ? extends SingleSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1365">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1367">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1368">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1370">            Single&lt;T&gt; source = new Single&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(SingleObserver&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1374">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1376">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1378">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1380">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1382">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1383">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1385">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1387">                }</span>
+            };
+
+<span class="fc" id="L1390">            SingleSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1392">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1395">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1396">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1397">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1398">            }</span>
+
+<span class="fc" id="L1400">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1401">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1403">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1404">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1405">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1407">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1409">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeFlowable(Function&lt;Flowable&lt;T&gt;, ? extends Publisher&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1419">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1421">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1422">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1424">            Flowable&lt;T&gt; source = new Flowable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+                    try {
+<span class="fc" id="L1428">                        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1430">                        subscriber.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1432">                        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1434">                        subscriber.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1436">                        b[0] = bs1.isCancelled();</span>
+<span class="fc" id="L1437">                        b[1] = bs2.isCancelled();</span>
+                    } finally {
+<span class="fc" id="L1439">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1441">                }</span>
+            };
+
+<span class="fc" id="L1444">            Publisher&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1446">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1449">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1450">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1451">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1452">            }</span>
+
+<span class="fc" id="L1454">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1455">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1457">            assertError(errors, 0, IllegalStateException.class, &quot;Subscription already set!&quot;);</span>
+<span class="nc" id="L1458">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1459">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1461">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1463">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeObservable(Function&lt;Observable&lt;T&gt;, ? extends ObservableSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1473">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1475">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1476">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1478">            Observable&lt;T&gt; source = new Observable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1482">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1484">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1486">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1488">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1490">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1491">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1493">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1495">                }</span>
+            };
+
+<span class="fc" id="L1498">            ObservableSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1500">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1503">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1504">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1505">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1506">            }</span>
+
+<span class="fc" id="L1508">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1509">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1511">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1512">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1513">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1515">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1517">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeObservableToSingle(Function&lt;Observable&lt;T&gt;, ? extends SingleSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1527">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1529">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1530">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1532">            Observable&lt;T&gt; source = new Observable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1536">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1538">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1540">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1542">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1544">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1545">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1547">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1549">                }</span>
+            };
+
+<span class="fc" id="L1552">            SingleSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1554">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1557">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1558">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1559">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1560">            }</span>
+
+<span class="fc" id="L1562">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1563">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1565">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1566">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1567">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1569">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1571">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeObservableToMaybe(Function&lt;Observable&lt;T&gt;, ? extends MaybeSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1581">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1583">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1584">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1586">            Observable&lt;T&gt; source = new Observable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1590">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1592">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1594">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1596">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1598">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1599">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1601">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1603">                }</span>
+            };
+
+<span class="fc" id="L1606">            MaybeSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1608">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1611">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1612">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1613">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1614">            }</span>
+
+<span class="fc" id="L1616">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1617">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1619">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1620">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1621">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1623">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1625">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T&gt; void checkDoubleOnSubscribeObservableToCompletable(Function&lt;Observable&lt;T&gt;, ? extends CompletableSource&gt; transform) {
+<span class="fc" id="L1634">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1636">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1637">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1639">            Observable&lt;T&gt; source = new Observable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+                    try {
+<span class="fc" id="L1643">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1645">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1647">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1649">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1651">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1652">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1654">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1656">                }</span>
+            };
+
+<span class="fc" id="L1659">            CompletableSource out = transform.apply(source);</span>
+
+<span class="fc" id="L1661">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1664">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1665">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1666">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1667">            }</span>
+
+<span class="fc" id="L1669">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1670">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1672">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1673">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1674">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1676">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1678">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeFlowableToObservable(Function&lt;Flowable&lt;T&gt;, ? extends ObservableSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1688">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1690">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1691">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1693">            Flowable&lt;T&gt; source = new Flowable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+                    try {
+<span class="fc" id="L1697">                        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1699">                        subscriber.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1701">                        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1703">                        subscriber.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1705">                        b[0] = bs1.isCancelled();</span>
+<span class="fc" id="L1706">                        b[1] = bs2.isCancelled();</span>
+                    } finally {
+<span class="fc" id="L1708">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1710">                }</span>
+            };
+
+<span class="fc" id="L1713">            ObservableSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1715">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1718">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1719">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1720">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1721">            }</span>
+
+<span class="fc" id="L1723">            assertEquals(&quot;First cancelled?&quot;, false, b[0]);</span>
+<span class="fc" id="L1724">            assertEquals(&quot;Second not cancelled?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1726">            assertError(errors, 0, IllegalStateException.class, &quot;Subscription already set!&quot;);</span>
+<span class="nc" id="L1727">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1728">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1730">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1732">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeFlowableToSingle(Function&lt;Flowable&lt;T&gt;, ? extends SingleSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1742">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1744">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1745">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1747">            Flowable&lt;T&gt; source = new Flowable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+                    try {
+<span class="fc" id="L1751">                        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1753">                        subscriber.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1755">                        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1757">                        subscriber.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1759">                        b[0] = bs1.isCancelled();</span>
+<span class="fc" id="L1760">                        b[1] = bs2.isCancelled();</span>
+                    } finally {
+<span class="fc" id="L1762">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1764">                }</span>
+            };
+
+<span class="fc" id="L1767">            SingleSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1769">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1772">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1773">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1774">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1775">            }</span>
+
+<span class="fc" id="L1777">            assertEquals(&quot;First cancelled?&quot;, false, b[0]);</span>
+<span class="fc" id="L1778">            assertEquals(&quot;Second not cancelled?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1780">            assertError(errors, 0, IllegalStateException.class, &quot;Subscription already set!&quot;);</span>
+<span class="nc" id="L1781">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1782">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1784">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1786">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param &lt;R&gt; the output value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T, R&gt; void checkDoubleOnSubscribeFlowableToMaybe(Function&lt;Flowable&lt;T&gt;, ? extends MaybeSource&lt;R&gt;&gt; transform) {
+<span class="fc" id="L1796">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1798">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1799">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1801">            Flowable&lt;T&gt; source = new Flowable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+                    try {
+<span class="fc" id="L1805">                        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1807">                        subscriber.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1809">                        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1811">                        subscriber.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1813">                        b[0] = bs1.isCancelled();</span>
+<span class="fc" id="L1814">                        b[1] = bs2.isCancelled();</span>
+                    } finally {
+<span class="fc" id="L1816">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1818">                }</span>
+            };
+
+<span class="fc" id="L1821">            MaybeSource&lt;R&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1823">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1826">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1827">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1828">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1829">            }</span>
+
+<span class="fc" id="L1831">            assertEquals(&quot;First cancelled?&quot;, false, b[0]);</span>
+<span class="fc" id="L1832">            assertEquals(&quot;Second not cancelled?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1834">            assertError(errors, 0, IllegalStateException.class, &quot;Subscription already set!&quot;);</span>
+<span class="nc" id="L1835">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1836">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1838">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1840">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the input value type
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T&gt; void checkDoubleOnSubscribeFlowableToCompletable(Function&lt;Flowable&lt;T&gt;, ? extends Completable&gt; transform) {
+<span class="fc" id="L1849">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1851">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1852">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1854">            Flowable&lt;T&gt; source = new Flowable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+                    try {
+<span class="fc" id="L1858">                        BooleanSubscription bs1 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1860">                        subscriber.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1862">                        BooleanSubscription bs2 = new BooleanSubscription();</span>
+
+<span class="fc" id="L1864">                        subscriber.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1866">                        b[0] = bs1.isCancelled();</span>
+<span class="fc" id="L1867">                        b[1] = bs2.isCancelled();</span>
+                    } finally {
+<span class="fc" id="L1869">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1871">                }</span>
+            };
+
+<span class="fc" id="L1874">            Completable out = transform.apply(source);</span>
+
+<span class="fc" id="L1876">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1879">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1880">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1881">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1882">            }</span>
+
+<span class="fc" id="L1884">            assertEquals(&quot;First cancelled?&quot;, false, b[0]);</span>
+<span class="fc" id="L1885">            assertEquals(&quot;Second not cancelled?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1887">            assertError(errors, 0, IllegalStateException.class, &quot;Subscription already set!&quot;);</span>
+<span class="nc" id="L1888">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1889">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1891">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1893">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param transform the transform to drive an operator
+     */
+    public static void checkDoubleOnSubscribeCompletable(Function&lt;Completable, ? extends CompletableSource&gt; transform) {
+<span class="fc" id="L1901">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1903">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1904">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1906">            Completable source = new Completable() {</span>
+                @Override
+                protected void subscribeActual(CompletableObserver observer) {
+                    try {
+<span class="fc" id="L1910">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1912">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1914">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1916">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1918">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1919">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1921">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1923">                }</span>
+            };
+
+<span class="fc" id="L1926">            CompletableSource out = transform.apply(source);</span>
+
+<span class="fc" id="L1928">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1931">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1932">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1933">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1934">            }</span>
+
+<span class="fc" id="L1936">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1937">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1939">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1940">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1941">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1943">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1945">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the output value tye
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T&gt; void checkDoubleOnSubscribeCompletableToMaybe(Function&lt;Completable, ? extends MaybeSource&lt;T&gt;&gt; transform) {
+<span class="fc" id="L1954">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1956">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L1957">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L1959">            Completable source = new Completable() {</span>
+                @Override
+                protected void subscribeActual(CompletableObserver observer) {
+                    try {
+<span class="fc" id="L1963">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L1965">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L1967">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L1969">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L1971">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L1972">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L1974">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L1976">                }</span>
+            };
+
+<span class="fc" id="L1979">            MaybeSource&lt;T&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L1981">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L1984">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L1985">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L1986">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L1987">            }</span>
+
+<span class="fc" id="L1989">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L1990">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L1992">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L1993">        } catch (Throwable ex) {</span>
+<span class="nc" id="L1994">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L1996">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1998">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param &lt;T&gt; the output value tye
+     * @param transform the transform to drive an operator
+     */
+    public static &lt;T&gt; void checkDoubleOnSubscribeCompletableToSingle(Function&lt;Completable, ? extends SingleSource&lt;T&gt;&gt; transform) {
+<span class="fc" id="L2007">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L2009">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L2010">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L2012">            Completable source = new Completable() {</span>
+                @Override
+                protected void subscribeActual(CompletableObserver observer) {
+                    try {
+<span class="fc" id="L2016">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L2018">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L2020">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L2022">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L2024">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L2025">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L2027">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L2029">                }</span>
+            };
+
+<span class="fc" id="L2032">            SingleSource&lt;T&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L2034">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L2037">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L2038">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L2039">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L2040">            }</span>
+
+<span class="fc" id="L2042">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L2043">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L2045">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L2046">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2047">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L2049">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L2051">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param transform the transform to drive an operator
+     */
+    public static void checkDoubleOnSubscribeCompletableToFlowable(Function&lt;Completable, ? extends Publisher&lt;?&gt;&gt; transform) {
+<span class="fc" id="L2059">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L2061">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L2062">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L2064">            Completable source = new Completable() {</span>
+                @Override
+                protected void subscribeActual(CompletableObserver observer) {
+                    try {
+<span class="fc" id="L2068">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L2070">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L2072">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L2074">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L2076">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L2077">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L2079">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L2081">                }</span>
+            };
+
+<span class="fc" id="L2084">            Publisher&lt;?&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L2086">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L2089">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L2090">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L2091">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L2092">            }</span>
+
+<span class="fc" id="L2094">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L2095">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L2097">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L2098">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2099">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L2101">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L2103">    }</span>
+
+    /**
+     * Check if the given transformed reactive type reports multiple onSubscribe calls to
+     * RxJavaPlugins.
+     * @param transform the transform to drive an operator
+     */
+    public static void checkDoubleOnSubscribeCompletableToObservable(Function&lt;Completable, ? extends ObservableSource&lt;?&gt;&gt; transform) {
+<span class="fc" id="L2111">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L2113">            final Boolean[] b = { null, null };</span>
+<span class="fc" id="L2114">            final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L2116">            Completable source = new Completable() {</span>
+                @Override
+                protected void subscribeActual(CompletableObserver observer) {
+                    try {
+<span class="fc" id="L2120">                        Disposable d1 = Disposables.empty();</span>
+
+<span class="fc" id="L2122">                        observer.onSubscribe(d1);</span>
+
+<span class="fc" id="L2124">                        Disposable d2 = Disposables.empty();</span>
+
+<span class="fc" id="L2126">                        observer.onSubscribe(d2);</span>
+
+<span class="fc" id="L2128">                        b[0] = d1.isDisposed();</span>
+<span class="fc" id="L2129">                        b[1] = d2.isDisposed();</span>
+                    } finally {
+<span class="fc" id="L2131">                        cdl.countDown();</span>
+                    }
+<span class="fc" id="L2133">                }</span>
+            };
+
+<span class="fc" id="L2136">            ObservableSource&lt;?&gt; out = transform.apply(source);</span>
+
+<span class="fc" id="L2138">            out.subscribe(NoOpConsumer.INSTANCE);</span>
+
+            try {
+<span class="fc" id="L2141">                assertTrue(&quot;Timed out&quot;, cdl.await(5, TimeUnit.SECONDS));</span>
+<span class="nc" id="L2142">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L2143">                throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L2144">            }</span>
+
+<span class="fc" id="L2146">            assertEquals(&quot;First disposed?&quot;, false, b[0]);</span>
+<span class="fc" id="L2147">            assertEquals(&quot;Second not disposed?&quot;, true, b[1]);</span>
+
+<span class="fc" id="L2149">            assertError(errors, 0, IllegalStateException.class, &quot;Disposable already set!&quot;);</span>
+<span class="nc" id="L2150">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2151">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+        } finally {
+<span class="fc" id="L2153">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L2155">    }</span>
+
+    /**
+     * Check if the operator applied to a Maybe source propagates dispose properly.
+     * @param &lt;T&gt; the source value type
+     * @param &lt;U&gt; the output value type
+     * @param composer the function to apply an operator to the provided Maybe source
+     */
+    public static &lt;T, U&gt; void checkDisposedMaybe(Function&lt;Maybe&lt;T&gt;, ? extends MaybeSource&lt;U&gt;&gt; composer) {
+<span class="fc" id="L2164">        PublishProcessor&lt;T&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L2166">        TestSubscriber&lt;U&gt; ts = new TestSubscriber&lt;U&gt;();</span>
+
+        try {
+<span class="fc" id="L2169">            new MaybeToFlowable&lt;U&gt;(composer.apply(pp.singleElement())).subscribe(ts);</span>
+<span class="nc" id="L2170">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2171">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L2172">        }</span>
+
+<span class="fc" id="L2174">        assertTrue(&quot;Not subscribed to source!&quot;, pp.hasSubscribers());</span>
+
+<span class="fc" id="L2176">        ts.cancel();</span>
+
+<span class="fc" id="L2178">        assertFalse(&quot;Dispose not propagated!&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L2179">    }</span>
+
+    /**
+     * Check if the operator applied to a Completable source propagates dispose properly.
+     * @param composer the function to apply an operator to the provided Completable source
+     */
+    public static void checkDisposedCompletable(Function&lt;Completable, ? extends CompletableSource&gt; composer) {
+<span class="fc" id="L2186">        PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L2188">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+        try {
+<span class="fc" id="L2191">            new CompletableToFlowable&lt;Integer&gt;(composer.apply(pp.ignoreElements())).subscribe(ts);</span>
+<span class="nc" id="L2192">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2193">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L2194">        }</span>
+
+<span class="fc" id="L2196">        assertTrue(&quot;Not subscribed to source!&quot;, pp.hasSubscribers());</span>
+
+<span class="fc" id="L2198">        ts.cancel();</span>
+
+<span class="fc" id="L2200">        assertFalse(&quot;Dispose not propagated!&quot;, pp.hasSubscribers());</span>
+<span class="fc" id="L2201">    }</span>
+
+    /**
+     * Check if the operator applied to a Maybe source propagates dispose properly.
+     * @param &lt;T&gt; the source value type
+     * @param &lt;U&gt; the output value type
+     * @param composer the function to apply an operator to the provided Maybe source
+     */
+    public static &lt;T, U&gt; void checkDisposedMaybeToSingle(Function&lt;Maybe&lt;T&gt;, ? extends SingleSource&lt;U&gt;&gt; composer) {
+<span class="fc" id="L2210">        PublishProcessor&lt;T&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L2212">        TestSubscriber&lt;U&gt; ts = new TestSubscriber&lt;U&gt;();</span>
+
+        try {
+<span class="fc" id="L2215">            new SingleToFlowable&lt;U&gt;(composer.apply(pp.singleElement())).subscribe(ts);</span>
+<span class="nc" id="L2216">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2217">            throw ExceptionHelper.wrapOrThrow(ex);</span>
+<span class="fc" id="L2218">        }</span>
+
+<span class="fc" id="L2220">        assertTrue(pp.hasSubscribers());</span>
+
+<span class="fc" id="L2222">        ts.cancel();</span>
+
+<span class="fc" id="L2224">        assertFalse(pp.hasSubscribers());</span>
+<span class="fc" id="L2225">    }</span>
+
+    /**
+     * Check if the TestSubscriber has a CompositeException with the specified class
+     * of Throwables in the given order.
+     * @param ts the TestSubscriber instance
+     * @param classes the array of expected Throwables inside the Composite
+     */
+    public static void assertCompositeExceptions(TestSubscriber&lt;?&gt; ts, Class&lt;? extends Throwable&gt;... classes) {
+<span class="fc" id="L2234">        ts</span>
+<span class="fc" id="L2235">        .assertSubscribed()</span>
+<span class="fc" id="L2236">        .assertError(CompositeException.class)</span>
+<span class="fc" id="L2237">        .assertNotComplete();</span>
+
+<span class="fc" id="L2239">        List&lt;Throwable&gt; list = compositeList(ts.errors().get(0));</span>
+
+<span class="fc" id="L2241">        assertEquals(classes.length, list.size());</span>
+
+<span class="fc bfc" id="L2243" title="All 2 branches covered.">        for (int i = 0; i &lt; classes.length; i++) {</span>
+<span class="fc" id="L2244">            assertError(list, i, classes[i]);</span>
+        }
+<span class="fc" id="L2246">    }</span>
+
+    /**
+     * Check if the TestSubscriber has a CompositeException with the specified class
+     * of Throwables in the given order.
+     * @param ts the TestSubscriber instance
+     * @param classes the array of subsequent Class and String instances representing the
+     * expected Throwable class and the expected error message
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static void assertCompositeExceptions(TestSubscriber&lt;?&gt; ts, Object... classes) {
+<span class="nc" id="L2257">        ts</span>
+<span class="nc" id="L2258">        .assertSubscribed()</span>
+<span class="nc" id="L2259">        .assertError(CompositeException.class)</span>
+<span class="nc" id="L2260">        .assertNotComplete();</span>
+
+<span class="nc" id="L2262">        List&lt;Throwable&gt; list = compositeList(ts.errors().get(0));</span>
+
+<span class="nc" id="L2264">        assertEquals(classes.length, list.size());</span>
+
+<span class="nc bnc" id="L2266" title="All 2 branches missed.">        for (int i = 0; i &lt; classes.length; i += 2) {</span>
+<span class="nc" id="L2267">            assertError(list, i, (Class&lt;Throwable&gt;)classes[i], (String)classes[i + 1]);</span>
+        }
+<span class="nc" id="L2269">    }</span>
+
+    /**
+     * Check if the TestSubscriber has a CompositeException with the specified class
+     * of Throwables in the given order.
+     * @param to the TestSubscriber instance
+     * @param classes the array of expected Throwables inside the Composite
+     */
+    public static void assertCompositeExceptions(TestObserver&lt;?&gt; to, Class&lt;? extends Throwable&gt;... classes) {
+<span class="fc" id="L2278">        to</span>
+<span class="fc" id="L2279">        .assertSubscribed()</span>
+<span class="fc" id="L2280">        .assertError(CompositeException.class)</span>
+<span class="fc" id="L2281">        .assertNotComplete();</span>
+
+<span class="fc" id="L2283">        List&lt;Throwable&gt; list = compositeList(to.errors().get(0));</span>
+
+<span class="fc" id="L2285">        assertEquals(classes.length, list.size());</span>
+
+<span class="fc bfc" id="L2287" title="All 2 branches covered.">        for (int i = 0; i &lt; classes.length; i++) {</span>
+<span class="fc" id="L2288">            assertError(list, i, classes[i]);</span>
+        }
+<span class="fc" id="L2290">    }</span>
+
+    /**
+     * Check if the TestSubscriber has a CompositeException with the specified class
+     * of Throwables in the given order.
+     * @param to the TestSubscriber instance
+     * @param classes the array of subsequent Class and String instances representing the
+     * expected Throwable class and the expected error message
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static void assertCompositeExceptions(TestObserver&lt;?&gt; to, Object... classes) {
+<span class="nc" id="L2301">        to</span>
+<span class="nc" id="L2302">        .assertSubscribed()</span>
+<span class="nc" id="L2303">        .assertError(CompositeException.class)</span>
+<span class="nc" id="L2304">        .assertNotComplete();</span>
+
+<span class="nc" id="L2306">        List&lt;Throwable&gt; list = compositeList(to.errors().get(0));</span>
+
+<span class="nc" id="L2308">        assertEquals(classes.length, list.size());</span>
+
+<span class="nc bnc" id="L2310" title="All 2 branches missed.">        for (int i = 0; i &lt; classes.length; i += 2) {</span>
+<span class="nc" id="L2311">            assertError(list, i, (Class&lt;Throwable&gt;)classes[i], (String)classes[i + 1]);</span>
+        }
+<span class="nc" id="L2313">    }</span>
+
+    /**
+     * Emit the given values and complete the Processor.
+     * @param &lt;T&gt; the value type
+     * @param p the target processor
+     * @param values the values to emit
+     */
+    public static &lt;T&gt; void emit(Processor&lt;T, ?&gt; p, T... values) {
+<span class="fc bfc" id="L2322" title="All 2 branches covered.">        for (T v : values) {</span>
+<span class="fc" id="L2323">            p.onNext(v);</span>
+        }
+<span class="fc" id="L2325">        p.onComplete();</span>
+<span class="fc" id="L2326">    }</span>
+
+    /**
+     * Emit the given values and complete the Subject.
+     * @param &lt;T&gt; the value type
+     * @param p the target subject
+     * @param values the values to emit
+     */
+    public static &lt;T&gt; void emit(Subject&lt;T&gt; p, T... values) {
+<span class="fc bfc" id="L2335" title="All 2 branches covered.">        for (T v : values) {</span>
+<span class="fc" id="L2336">            p.onNext(v);</span>
+        }
+<span class="fc" id="L2338">        p.onComplete();</span>
+<span class="fc" id="L2339">    }</span>
+
+    /**
+     * Checks if the source is fuseable and its isEmpty/clear works properly.
+     * @param &lt;T&gt; the value type
+     * @param source the source sequence
+     */
+    public static &lt;T&gt; void checkFusedIsEmptyClear(Observable&lt;T&gt; source) {
+<span class="fc" id="L2347">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L2349">        final Boolean[] state = { null, null, null, null };</span>
+
+<span class="fc" id="L2351">        source.subscribe(new Observer&lt;T&gt;() {</span>
+            @Override
+            public void onSubscribe(Disposable d) {
+                try {
+<span class="pc bpc" id="L2355" title="1 of 2 branches missed.">                    if (d instanceof QueueDisposable) {</span>
+                        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L2357">                        QueueDisposable&lt;Object&gt; qd = (QueueDisposable&lt;Object&gt;) d;</span>
+<span class="fc" id="L2358">                        state[0] = true;</span>
+
+<span class="fc" id="L2360">                        int m = qd.requestFusion(QueueFuseable.ANY);</span>
+
+<span class="pc bpc" id="L2362" title="1 of 2 branches missed.">                        if (m != QueueFuseable.NONE) {</span>
+<span class="fc" id="L2363">                            state[1] = true;</span>
+
+<span class="fc" id="L2365">                            state[2] = qd.isEmpty();</span>
+
+<span class="fc" id="L2367">                            qd.clear();</span>
+
+<span class="fc" id="L2369">                            state[3] = qd.isEmpty();</span>
+                        }
+                    }
+<span class="fc" id="L2372">                    cdl.countDown();</span>
+                } finally {
+<span class="fc" id="L2374">                    d.dispose();</span>
+                }
+<span class="fc" id="L2376">            }</span>
+
+            @Override
+            public void onNext(T value) {
+
+<span class="nc" id="L2381">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L2386">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L2391">            }</span>
+        });
+
+        try {
+<span class="fc" id="L2395">            assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L2397">            assertTrue(&quot;Not fuseable&quot;, state[0]);</span>
+<span class="fc" id="L2398">            assertTrue(&quot;Fusion rejected&quot;, state[1]);</span>
+
+<span class="fc" id="L2400">            assertNotNull(state[2]);</span>
+<span class="fc" id="L2401">            assertTrue(&quot;Did not empty&quot;, state[3]);</span>
+<span class="nc" id="L2402">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L2403">            throw new RuntimeException(ex);</span>
+<span class="fc" id="L2404">        }</span>
+<span class="fc" id="L2405">    }</span>
+
+    /**
+     * Checks if the source is fuseable and its isEmpty/clear works properly.
+     * @param &lt;T&gt; the value type
+     * @param source the source sequence
+     */
+    public static &lt;T&gt; void checkFusedIsEmptyClear(Flowable&lt;T&gt; source) {
+<span class="fc" id="L2413">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+
+<span class="fc" id="L2415">        final Boolean[] state = { null, null, null, null };</span>
+
+<span class="fc" id="L2417">        source.subscribe(new FlowableSubscriber&lt;T&gt;() {</span>
+            @Override
+            public void onSubscribe(Subscription s) {
+                try {
+<span class="pc bpc" id="L2421" title="1 of 2 branches missed.">                    if (s instanceof QueueSubscription) {</span>
+                        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L2423">                        QueueSubscription&lt;Object&gt; qs = (QueueSubscription&lt;Object&gt;) s;</span>
+<span class="fc" id="L2424">                        state[0] = true;</span>
+
+<span class="fc" id="L2426">                        int m = qs.requestFusion(QueueFuseable.ANY);</span>
+
+<span class="pc bpc" id="L2428" title="1 of 2 branches missed.">                        if (m != QueueFuseable.NONE) {</span>
+<span class="fc" id="L2429">                            state[1] = true;</span>
+
+<span class="fc" id="L2431">                            state[2] = qs.isEmpty();</span>
+
+<span class="fc" id="L2433">                            qs.clear();</span>
+
+<span class="fc" id="L2435">                            state[3] = qs.isEmpty();</span>
+                        }
+                    }
+<span class="fc" id="L2438">                    cdl.countDown();</span>
+                } finally {
+<span class="fc" id="L2440">                    s.cancel();</span>
+                }
+<span class="fc" id="L2442">            }</span>
+
+            @Override
+            public void onNext(T value) {
+
+<span class="nc" id="L2447">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L2452">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L2457">            }</span>
+        });
+
+        try {
+<span class="fc" id="L2461">            assertTrue(cdl.await(5, TimeUnit.SECONDS));</span>
+
+<span class="fc" id="L2463">            assertTrue(&quot;Not fuseable&quot;, state[0]);</span>
+<span class="fc" id="L2464">            assertTrue(&quot;Fusion rejected&quot;, state[1]);</span>
+
+<span class="fc" id="L2466">            assertNotNull(state[2]);</span>
+<span class="fc" id="L2467">            assertTrue(&quot;Did not empty&quot;, state[3]);</span>
+<span class="nc" id="L2468">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L2469">            throw new RuntimeException(ex);</span>
+<span class="fc" id="L2470">        }</span>
+<span class="fc" id="L2471">    }</span>
+
+    /**
+     * Returns an expanded error list of the given test consumer.
+     * @param to the test consumer instance
+     * @return the list
+     */
+    public static List&lt;Throwable&gt; errorList(TestObserver&lt;?&gt; to) {
+<span class="fc" id="L2479">        return compositeList(to.errors().get(0));</span>
+    }
+
+    /**
+     * Returns an expanded error list of the given test consumer.
+     * @param ts the test consumer instance
+     * @return the list
+     */
+    public static List&lt;Throwable&gt; errorList(TestSubscriber&lt;?&gt; ts) {
+<span class="fc" id="L2488">        return compositeList(ts.errors().get(0));</span>
+    }
+
+    /**
+     * Tests the given mapping of a bad Observable by emitting the good values, then an error/completion and then
+     * a bad value followed by a TestException and and a completion.
+     * @param &lt;T&gt; the value type
+     * @param mapper the mapper that receives a bad Observable and returns a reactive base type (detected via reflection).
+     * @param error if true, the good value emission is followed by a TestException(&quot;error&quot;), if false then onComplete is called
+     * @param badValue the bad value to emit if not null
+     * @param goodValue the good value to emit before turning bad, if not null
+     * @param expected the expected resulting values, null to ignore values received
+     */
+    public static &lt;T&gt; void checkBadSourceObservable(Function&lt;Observable&lt;T&gt;, Object&gt; mapper,
+            final boolean error, final T goodValue, final T badValue, final Object... expected) {
+<span class="fc" id="L2503">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L2505">            Observable&lt;T&gt; bad = new Observable&lt;T&gt;() {</span>
+                boolean once;
+                @Override
+                protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L2509">                    observer.onSubscribe(Disposables.empty());</span>
+
+<span class="fc bfc" id="L2511" title="All 2 branches covered.">                    if (once) {</span>
+<span class="fc" id="L2512">                        return;</span>
+                    }
+<span class="fc" id="L2514">                    once = true;</span>
+
+<span class="pc bpc" id="L2516" title="1 of 2 branches missed.">                    if (goodValue != null) {</span>
+<span class="fc" id="L2517">                        observer.onNext(goodValue);</span>
+                    }
+
+<span class="pc bpc" id="L2520" title="1 of 2 branches missed.">                    if (error) {</span>
+<span class="nc" id="L2521">                        observer.onError(new TestException(&quot;error&quot;));</span>
+                    } else {
+<span class="fc" id="L2523">                        observer.onComplete();</span>
+                    }
+
+<span class="fc bfc" id="L2526" title="All 2 branches covered.">                    if (badValue != null) {</span>
+<span class="fc" id="L2527">                        observer.onNext(badValue);</span>
+                    }
+<span class="fc" id="L2529">                    observer.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L2530">                    observer.onComplete();</span>
+<span class="fc" id="L2531">                }</span>
+            };
+
+<span class="fc" id="L2534">            Object o = mapper.apply(bad);</span>
+
+<span class="fc bfc" id="L2536" title="All 2 branches covered.">            if (o instanceof ObservableSource) {</span>
+<span class="fc" id="L2537">                ObservableSource&lt;?&gt; os = (ObservableSource&lt;?&gt;) o;</span>
+<span class="fc" id="L2538">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L2540">                os.subscribe(to);</span>
+
+<span class="fc" id="L2542">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2544">                to.assertSubscribed();</span>
+
+<span class="fc bfc" id="L2546" title="All 2 branches covered.">                if (expected != null) {</span>
+<span class="fc" id="L2547">                    to.assertValues(expected);</span>
+                }
+<span class="pc bpc" id="L2549" title="1 of 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2550">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2551">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2552">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2554">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="pc bpc" id="L2558" title="1 of 2 branches missed.">            if (o instanceof Publisher) {</span>
+<span class="nc" id="L2559">                Publisher&lt;?&gt; os = (Publisher&lt;?&gt;) o;</span>
+<span class="nc" id="L2560">                TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+
+<span class="nc" id="L2562">                os.subscribe(ts);</span>
+
+<span class="nc" id="L2564">                ts.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="nc" id="L2566">                ts.assertSubscribed();</span>
+
+<span class="nc bnc" id="L2568" title="All 2 branches missed.">                if (expected != null) {</span>
+<span class="nc" id="L2569">                    ts.assertValues(expected);</span>
+                }
+<span class="nc bnc" id="L2571" title="All 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2572">                    ts.assertError(TestException.class)</span>
+<span class="nc" id="L2573">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2574">                    .assertNotComplete();</span>
+                } else {
+<span class="nc" id="L2576">                    ts.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc bfc" id="L2580" title="All 2 branches covered.">            if (o instanceof SingleSource) {</span>
+<span class="fc" id="L2581">                SingleSource&lt;?&gt; os = (SingleSource&lt;?&gt;) o;</span>
+<span class="fc" id="L2582">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L2584">                os.subscribe(to);</span>
+
+<span class="fc" id="L2586">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2588">                to.assertSubscribed();</span>
+
+<span class="pc bpc" id="L2590" title="1 of 2 branches missed.">                if (expected != null) {</span>
+<span class="fc" id="L2591">                    to.assertValues(expected);</span>
+                }
+<span class="pc bpc" id="L2593" title="1 of 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2594">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2595">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2596">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2598">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc bfc" id="L2602" title="All 2 branches covered.">            if (o instanceof MaybeSource) {</span>
+<span class="fc" id="L2603">                MaybeSource&lt;?&gt; os = (MaybeSource&lt;?&gt;) o;</span>
+<span class="fc" id="L2604">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L2606">                os.subscribe(to);</span>
+
+<span class="fc" id="L2608">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2610">                to.assertSubscribed();</span>
+
+<span class="pc bpc" id="L2612" title="1 of 2 branches missed.">                if (expected != null) {</span>
+<span class="fc" id="L2613">                    to.assertValues(expected);</span>
+                }
+<span class="pc bpc" id="L2615" title="1 of 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2616">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2617">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2618">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2620">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc bfc" id="L2624" title="All 2 branches covered.">            if (o instanceof CompletableSource) {</span>
+<span class="fc" id="L2625">                CompletableSource os = (CompletableSource) o;</span>
+<span class="fc" id="L2626">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L2628">                os.subscribe(to);</span>
+
+<span class="fc" id="L2630">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2632">                to.assertSubscribed();</span>
+
+<span class="pc bpc" id="L2634" title="1 of 2 branches missed.">                if (expected != null) {</span>
+<span class="fc" id="L2635">                    to.assertValues(expected);</span>
+                }
+<span class="pc bpc" id="L2637" title="1 of 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2638">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2639">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2640">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2642">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc" id="L2646">            assertUndeliverable(errors, 0, TestException.class, &quot;second&quot;);</span>
+<span class="nc" id="L2647">        } catch (AssertionError ex) {</span>
+<span class="nc" id="L2648">            throw ex;</span>
+<span class="nc" id="L2649">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2650">            throw new RuntimeException(ex);</span>
+        } finally {
+<span class="fc" id="L2652">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L2654">    }</span>
+
+    /**
+     * Tests the given mapping of a bad Observable by emitting the good values, then an error/completion and then
+     * a bad value followed by a TestException and and a completion.
+     * @param &lt;T&gt; the value type
+     * @param mapper the mapper that receives a bad Observable and returns a reactive base type (detected via reflection).
+     * @param error if true, the good value emission is followed by a TestException(&quot;error&quot;), if false then onComplete is called
+     * @param badValue the bad value to emit if not null
+     * @param goodValue the good value to emit before turning bad, if not null
+     * @param expected the expected resulting values, null to ignore values received
+     */
+    public static &lt;T&gt; void checkBadSourceFlowable(Function&lt;Flowable&lt;T&gt;, Object&gt; mapper,
+            final boolean error, final T goodValue, final T badValue, final Object... expected) {
+<span class="fc" id="L2668">        List&lt;Throwable&gt; errors = trackPluginErrors();</span>
+        try {
+<span class="fc" id="L2670">            Flowable&lt;T&gt; bad = new Flowable&lt;T&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+<span class="fc" id="L2673">                    subscriber.onSubscribe(new BooleanSubscription());</span>
+
+<span class="fc bfc" id="L2675" title="All 2 branches covered.">                    if (goodValue != null) {</span>
+<span class="fc" id="L2676">                        subscriber.onNext(goodValue);</span>
+                    }
+
+<span class="fc bfc" id="L2679" title="All 2 branches covered.">                    if (error) {</span>
+<span class="fc" id="L2680">                        subscriber.onError(new TestException(&quot;error&quot;));</span>
+                    } else {
+<span class="fc" id="L2682">                        subscriber.onComplete();</span>
+                    }
+
+<span class="fc bfc" id="L2685" title="All 2 branches covered.">                    if (badValue != null) {</span>
+<span class="fc" id="L2686">                        subscriber.onNext(badValue);</span>
+                    }
+<span class="fc" id="L2688">                    subscriber.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L2689">                    subscriber.onComplete();</span>
+<span class="fc" id="L2690">                }</span>
+            };
+
+<span class="fc" id="L2693">            Object o = mapper.apply(bad);</span>
+
+<span class="pc bpc" id="L2695" title="1 of 2 branches missed.">            if (o instanceof ObservableSource) {</span>
+<span class="nc" id="L2696">                ObservableSource&lt;?&gt; os = (ObservableSource&lt;?&gt;) o;</span>
+<span class="nc" id="L2697">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="nc" id="L2699">                os.subscribe(to);</span>
+
+<span class="nc" id="L2701">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="nc" id="L2703">                to.assertSubscribed();</span>
+
+<span class="nc bnc" id="L2705" title="All 2 branches missed.">                if (expected != null) {</span>
+<span class="nc" id="L2706">                    to.assertValues(expected);</span>
+                }
+<span class="nc bnc" id="L2708" title="All 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2709">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2710">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2711">                    .assertNotComplete();</span>
+                } else {
+<span class="nc" id="L2713">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc bfc" id="L2717" title="All 2 branches covered.">            if (o instanceof Publisher) {</span>
+<span class="fc" id="L2718">                Publisher&lt;?&gt; os = (Publisher&lt;?&gt;) o;</span>
+<span class="fc" id="L2719">                TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+
+<span class="fc" id="L2721">                os.subscribe(ts);</span>
+
+<span class="fc" id="L2723">                ts.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2725">                ts.assertSubscribed();</span>
+
+<span class="fc bfc" id="L2727" title="All 2 branches covered.">                if (expected != null) {</span>
+<span class="fc" id="L2728">                    ts.assertValues(expected);</span>
+                }
+<span class="fc bfc" id="L2730" title="All 2 branches covered.">                if (error) {</span>
+<span class="fc" id="L2731">                    ts.assertError(TestException.class)</span>
+<span class="fc" id="L2732">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="fc" id="L2733">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2735">                    ts.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc bfc" id="L2739" title="All 2 branches covered.">            if (o instanceof SingleSource) {</span>
+<span class="fc" id="L2740">                SingleSource&lt;?&gt; os = (SingleSource&lt;?&gt;) o;</span>
+<span class="fc" id="L2741">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L2743">                os.subscribe(to);</span>
+
+<span class="fc" id="L2745">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2747">                to.assertSubscribed();</span>
+
+<span class="pc bpc" id="L2749" title="1 of 2 branches missed.">                if (expected != null) {</span>
+<span class="fc" id="L2750">                    to.assertValues(expected);</span>
+                }
+<span class="pc bpc" id="L2752" title="1 of 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2753">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2754">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2755">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2757">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc bfc" id="L2761" title="All 2 branches covered.">            if (o instanceof MaybeSource) {</span>
+<span class="fc" id="L2762">                MaybeSource&lt;?&gt; os = (MaybeSource&lt;?&gt;) o;</span>
+<span class="fc" id="L2763">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L2765">                os.subscribe(to);</span>
+
+<span class="fc" id="L2767">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2769">                to.assertSubscribed();</span>
+
+<span class="pc bpc" id="L2771" title="1 of 2 branches missed.">                if (expected != null) {</span>
+<span class="fc" id="L2772">                    to.assertValues(expected);</span>
+                }
+<span class="pc bpc" id="L2774" title="1 of 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2775">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2776">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2777">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2779">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc bfc" id="L2783" title="All 2 branches covered.">            if (o instanceof CompletableSource) {</span>
+<span class="fc" id="L2784">                CompletableSource os = (CompletableSource) o;</span>
+<span class="fc" id="L2785">                TestObserver&lt;Object&gt; to = new TestObserver&lt;Object&gt;();</span>
+
+<span class="fc" id="L2787">                os.subscribe(to);</span>
+
+<span class="fc" id="L2789">                to.awaitDone(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L2791">                to.assertSubscribed();</span>
+
+<span class="pc bpc" id="L2793" title="1 of 2 branches missed.">                if (expected != null) {</span>
+<span class="fc" id="L2794">                    to.assertValues(expected);</span>
+                }
+<span class="pc bpc" id="L2796" title="1 of 2 branches missed.">                if (error) {</span>
+<span class="nc" id="L2797">                    to.assertError(TestException.class)</span>
+<span class="nc" id="L2798">                    .assertErrorMessage(&quot;error&quot;)</span>
+<span class="nc" id="L2799">                    .assertNotComplete();</span>
+                } else {
+<span class="fc" id="L2801">                    to.assertNoErrors().assertComplete();</span>
+                }
+            }
+
+<span class="fc" id="L2805">            assertUndeliverable(errors, 0, TestException.class, &quot;second&quot;);</span>
+<span class="nc" id="L2806">        } catch (AssertionError ex) {</span>
+<span class="nc" id="L2807">            throw ex;</span>
+<span class="nc" id="L2808">        } catch (Throwable ex) {</span>
+<span class="nc" id="L2809">            throw new RuntimeException(ex);</span>
+        } finally {
+<span class="fc" id="L2811">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L2813">    }</span>
+
+    public static &lt;T&gt; void checkInvalidParallelSubscribers(ParallelFlowable&lt;T&gt; source) {
+<span class="fc" id="L2816">        int n = source.parallelism();</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L2819">        TestSubscriber&lt;Object&gt;[] tss = new TestSubscriber[n + 1];</span>
+<span class="fc bfc" id="L2820" title="All 2 branches covered.">        for (int i = 0; i &lt;= n; i++) {</span>
+<span class="fc" id="L2821">            tss[i] = new TestSubscriber&lt;Object&gt;().withTag(&quot;&quot; + i);</span>
+        }
+
+<span class="fc" id="L2824">        source.subscribe(tss);</span>
+
+<span class="fc bfc" id="L2826" title="All 2 branches covered.">        for (int i = 0; i &lt;= n; i++) {</span>
+<span class="fc" id="L2827">            tss[i].assertFailure(IllegalArgumentException.class);</span>
+        }
+<span class="fc" id="L2829">    }</span>
+
+    public static &lt;T&gt; Observable&lt;T&gt; rejectObservableFusion() {
+<span class="fc" id="L2832">        return new Observable&lt;T&gt;() {</span>
+            @Override
+            protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L2835">                observer.onSubscribe(new QueueDisposable&lt;T&gt;() {</span>
+
+                    @Override
+                    public int requestFusion(int mode) {
+<span class="fc" id="L2839">                        return 0;</span>
+                    }
+
+                    @Override
+                    public boolean offer(T value) {
+<span class="nc" id="L2844">                        throw new IllegalStateException();</span>
+                    }
+
+                    @Override
+                    public boolean offer(T v1, T v2) {
+<span class="nc" id="L2849">                        throw new IllegalStateException();</span>
+                    }
+
+                    @Override
+                    public T poll() throws Exception {
+<span class="nc" id="L2854">                        return null;</span>
+                    }
+
+                    @Override
+                    public boolean isEmpty() {
+<span class="nc" id="L2859">                        return true;</span>
+                    }
+
+                    @Override
+                    public void clear() {
+<span class="nc" id="L2864">                    }</span>
+
+                    @Override
+                    public void dispose() {
+<span class="nc" id="L2868">                    }</span>
+
+                    @Override
+                    public boolean isDisposed() {
+<span class="nc" id="L2872">                        return false;</span>
+                    }
+                });
+<span class="fc" id="L2875">            }</span>
+        };
+    }
+
+    public static &lt;T&gt; Flowable&lt;T&gt; rejectFlowableFusion() {
+<span class="fc" id="L2880">        return new Flowable&lt;T&gt;() {</span>
+            @Override
+            protected void subscribeActual(Subscriber&lt;? super T&gt; subscriber) {
+<span class="fc" id="L2883">                subscriber.onSubscribe(new QueueSubscription&lt;T&gt;() {</span>
+
+                    @Override
+                    public int requestFusion(int mode) {
+<span class="fc" id="L2887">                        return 0;</span>
+                    }
+
+                    @Override
+                    public boolean offer(T value) {
+<span class="nc" id="L2892">                        throw new IllegalStateException();</span>
+                    }
+
+                    @Override
+                    public boolean offer(T v1, T v2) {
+<span class="nc" id="L2897">                        throw new IllegalStateException();</span>
+                    }
+
+                    @Override
+                    public T poll() throws Exception {
+<span class="nc" id="L2902">                        return null;</span>
+                    }
+
+                    @Override
+                    public boolean isEmpty() {
+<span class="nc" id="L2907">                        return true;</span>
+                    }
+
+                    @Override
+                    public void clear() {
+<span class="nc" id="L2912">                    }</span>
+
+                    @Override
+                    public void cancel() {
+<span class="nc" id="L2916">                    }</span>
+
+                    @Override
+                    public void request(long n) {
+<span class="fc" id="L2920">                    }</span>
+                });
+<span class="fc" id="L2922">            }</span>
+        };
+    }
+
+    static final class FlowableStripBoundary&lt;T&gt; extends Flowable&lt;T&gt; implements FlowableTransformer&lt;T, T&gt; {
+
+        final Flowable&lt;T&gt; source;
+
+<span class="fc" id="L2930">        FlowableStripBoundary(Flowable&lt;T&gt; source) {</span>
+<span class="fc" id="L2931">            this.source = source;</span>
+<span class="fc" id="L2932">        }</span>
+
+        @Override
+        public Flowable&lt;T&gt; apply(Flowable&lt;T&gt; upstream) {
+<span class="fc" id="L2936">            return new FlowableStripBoundary&lt;T&gt;(upstream);</span>
+        }
+
+        @Override
+        protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L2941">            source.subscribe(new StripBoundarySubscriber&lt;T&gt;(s));</span>
+<span class="fc" id="L2942">        }</span>
+
+        static final class StripBoundarySubscriber&lt;T&gt; implements FlowableSubscriber&lt;T&gt;, QueueSubscription&lt;T&gt; {
+
+            final Subscriber&lt;? super T&gt; downstream;
+
+            Subscription upstream;
+
+            QueueSubscription&lt;T&gt; qs;
+
+<span class="fc" id="L2952">            StripBoundarySubscriber(Subscriber&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L2953">                this.downstream = downstream;</span>
+<span class="fc" id="L2954">            }</span>
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void onSubscribe(Subscription subscription) {
+<span class="fc" id="L2959">                this.upstream = subscription;</span>
+<span class="pc bpc" id="L2960" title="1 of 2 branches missed.">                if (subscription instanceof QueueSubscription) {</span>
+<span class="fc" id="L2961">                    qs = (QueueSubscription&lt;T&gt;)subscription;</span>
+                }
+<span class="fc" id="L2963">                downstream.onSubscribe(this);</span>
+<span class="fc" id="L2964">            }</span>
+
+            @Override
+            public void onNext(T t) {
+<span class="nc" id="L2968">                downstream.onNext(t);</span>
+<span class="nc" id="L2969">            }</span>
+
+            @Override
+            public void onError(Throwable throwable) {
+<span class="nc" id="L2973">                downstream.onError(throwable);</span>
+<span class="nc" id="L2974">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L2978">                downstream.onComplete();</span>
+<span class="nc" id="L2979">            }</span>
+
+            @Override
+            public int requestFusion(int mode) {
+<span class="fc" id="L2983">                QueueSubscription&lt;T&gt; fs = qs;</span>
+<span class="pc bpc" id="L2984" title="1 of 2 branches missed.">                if (fs != null) {</span>
+<span class="fc" id="L2985">                    return fs.requestFusion(mode &amp; ~BOUNDARY);</span>
+                }
+<span class="nc" id="L2987">                return NONE;</span>
+            }
+
+            @Override
+            public boolean offer(T value) {
+<span class="nc" id="L2992">                throw new UnsupportedOperationException(&quot;Should not be called&quot;);</span>
+            }
+
+            @Override
+            public boolean offer(T v1, T v2) {
+<span class="nc" id="L2997">                throw new UnsupportedOperationException(&quot;Should not be called&quot;);</span>
+            }
+
+            @Override
+            public T poll() throws Exception {
+<span class="fc" id="L3002">                return qs.poll();</span>
+            }
+
+            @Override
+            public void clear() {
+<span class="nc" id="L3007">                qs.clear();</span>
+<span class="nc" id="L3008">            }</span>
+
+            @Override
+            public boolean isEmpty() {
+<span class="fc" id="L3012">                return qs.isEmpty();</span>
+            }
+
+            @Override
+            public void request(long n) {
+<span class="nc" id="L3017">                upstream.request(n);</span>
+<span class="nc" id="L3018">            }</span>
+
+            @Override
+            public void cancel() {
+<span class="fc" id="L3022">                upstream.cancel();</span>
+<span class="fc" id="L3023">            }</span>
+        }
+    }
+
+    public static &lt;T&gt; FlowableTransformer&lt;T, T&gt; flowableStripBoundary() {
+<span class="fc" id="L3028">        return new FlowableStripBoundary&lt;T&gt;(null);</span>
+    }
+
+    static final class ObservableStripBoundary&lt;T&gt; extends Observable&lt;T&gt; implements ObservableTransformer&lt;T, T&gt; {
+
+        final Observable&lt;T&gt; source;
+
+<span class="fc" id="L3035">        ObservableStripBoundary(Observable&lt;T&gt; source) {</span>
+<span class="fc" id="L3036">            this.source = source;</span>
+<span class="fc" id="L3037">        }</span>
+
+        @Override
+        public Observable&lt;T&gt; apply(Observable&lt;T&gt; upstream) {
+<span class="fc" id="L3041">            return new ObservableStripBoundary&lt;T&gt;(upstream);</span>
+        }
+
+        @Override
+        protected void subscribeActual(Observer&lt;? super T&gt; observer) {
+<span class="fc" id="L3046">            source.subscribe(new StripBoundaryObserver&lt;T&gt;(observer));</span>
+<span class="fc" id="L3047">        }</span>
+
+        static final class StripBoundaryObserver&lt;T&gt; implements Observer&lt;T&gt;, QueueDisposable&lt;T&gt; {
+
+            final Observer&lt;? super T&gt; downstream;
+
+            Disposable upstream;
+
+            QueueDisposable&lt;T&gt; qd;
+
+<span class="fc" id="L3057">            StripBoundaryObserver(Observer&lt;? super T&gt; downstream) {</span>
+<span class="fc" id="L3058">                this.downstream = downstream;</span>
+<span class="fc" id="L3059">            }</span>
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="fc" id="L3064">                this.upstream = d;</span>
+<span class="pc bpc" id="L3065" title="1 of 2 branches missed.">                if (d instanceof QueueDisposable) {</span>
+<span class="fc" id="L3066">                    qd = (QueueDisposable&lt;T&gt;)d;</span>
+                }
+<span class="fc" id="L3068">                downstream.onSubscribe(this);</span>
+<span class="fc" id="L3069">            }</span>
+
+            @Override
+            public void onNext(T t) {
+<span class="fc" id="L3073">                downstream.onNext(t);</span>
+<span class="fc" id="L3074">            }</span>
+
+            @Override
+            public void onError(Throwable throwable) {
+<span class="nc" id="L3078">                downstream.onError(throwable);</span>
+<span class="nc" id="L3079">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L3083">                downstream.onComplete();</span>
+<span class="fc" id="L3084">            }</span>
+
+            @Override
+            public int requestFusion(int mode) {
+<span class="fc" id="L3088">                QueueDisposable&lt;T&gt; fs = qd;</span>
+<span class="pc bpc" id="L3089" title="1 of 2 branches missed.">                if (fs != null) {</span>
+<span class="fc" id="L3090">                    return fs.requestFusion(mode &amp; ~BOUNDARY);</span>
+                }
+<span class="nc" id="L3092">                return NONE;</span>
+            }
+
+            @Override
+            public boolean offer(T value) {
+<span class="nc" id="L3097">                throw new UnsupportedOperationException(&quot;Should not be called&quot;);</span>
+            }
+
+            @Override
+            public boolean offer(T v1, T v2) {
+<span class="nc" id="L3102">                throw new UnsupportedOperationException(&quot;Should not be called&quot;);</span>
+            }
+
+            @Override
+            public T poll() throws Exception {
+<span class="nc" id="L3107">                return qd.poll();</span>
+            }
+
+            @Override
+            public void clear() {
+<span class="nc" id="L3112">                qd.clear();</span>
+<span class="nc" id="L3113">            }</span>
+
+            @Override
+            public boolean isEmpty() {
+<span class="nc" id="L3117">                return qd.isEmpty();</span>
+            }
+
+            @Override
+            public void dispose() {
+<span class="fc" id="L3122">                upstream.dispose();</span>
+<span class="fc" id="L3123">            }</span>
+
+            @Override
+            public boolean isDisposed() {
+<span class="nc" id="L3127">                return upstream.isDisposed();</span>
+            }
+        }
+    }
+
+    public static &lt;T&gt; ObservableTransformer&lt;T, T&gt; observableStripBoundary() {
+<span class="fc" id="L3133">        return new ObservableStripBoundary&lt;T&gt;(null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

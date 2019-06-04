@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableUsing.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableUsing.java</span></div><h1>FlowableUsing.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableUsing&lt;T, D&gt; extends Flowable&lt;T&gt; {
+    final Callable&lt;? extends D&gt; resourceSupplier;
+    final Function&lt;? super D, ? extends Publisher&lt;? extends T&gt;&gt; sourceSupplier;
+    final Consumer&lt;? super D&gt; disposer;
+    final boolean eager;
+
+    public FlowableUsing(Callable&lt;? extends D&gt; resourceSupplier,
+            Function&lt;? super D, ? extends Publisher&lt;? extends T&gt;&gt; sourceSupplier,
+            Consumer&lt;? super D&gt; disposer,
+<span class="fc" id="L37">            boolean eager) {</span>
+<span class="fc" id="L38">        this.resourceSupplier = resourceSupplier;</span>
+<span class="fc" id="L39">        this.sourceSupplier = sourceSupplier;</span>
+<span class="fc" id="L40">        this.disposer = disposer;</span>
+<span class="fc" id="L41">        this.eager = eager;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Override
+    public void subscribeActual(Subscriber&lt;? super T&gt; s) {
+        D resource;
+
+        try {
+<span class="fc" id="L49">            resource = resourceSupplier.call();</span>
+<span class="fc" id="L50">        } catch (Throwable e) {</span>
+<span class="fc" id="L51">            Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L52">            EmptySubscription.error(e, s);</span>
+<span class="fc" id="L53">            return;</span>
+<span class="fc" id="L54">        }</span>
+
+        Publisher&lt;? extends T&gt; source;
+        try {
+<span class="fc" id="L58">            source = ObjectHelper.requireNonNull(sourceSupplier.apply(resource), &quot;The sourceSupplier returned a null Publisher&quot;);</span>
+<span class="fc" id="L59">        } catch (Throwable e) {</span>
+<span class="fc" id="L60">            Exceptions.throwIfFatal(e);</span>
+            try {
+<span class="fc" id="L62">                disposer.accept(resource);</span>
+<span class="fc" id="L63">            } catch (Throwable ex) {</span>
+<span class="fc" id="L64">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L65">                EmptySubscription.error(new CompositeException(e, ex), s);</span>
+<span class="fc" id="L66">                return;</span>
+<span class="fc" id="L67">            }</span>
+<span class="fc" id="L68">            EmptySubscription.error(e, s);</span>
+<span class="fc" id="L69">            return;</span>
+<span class="fc" id="L70">        }</span>
+
+<span class="fc" id="L72">        UsingSubscriber&lt;T, D&gt; us = new UsingSubscriber&lt;T, D&gt;(s, resource, disposer, eager);</span>
+
+<span class="fc" id="L74">        source.subscribe(us);</span>
+<span class="fc" id="L75">    }</span>
+
+    static final class UsingSubscriber&lt;T, D&gt; extends AtomicBoolean implements FlowableSubscriber&lt;T&gt;, Subscription {
+
+        private static final long serialVersionUID = 5904473792286235046L;
+
+        final Subscriber&lt;? super T&gt; downstream;
+        final D resource;
+        final Consumer&lt;? super D&gt; disposer;
+        final boolean eager;
+
+        Subscription upstream;
+
+<span class="fc" id="L88">        UsingSubscriber(Subscriber&lt;? super T&gt; actual, D resource, Consumer&lt;? super D&gt; disposer, boolean eager) {</span>
+<span class="fc" id="L89">            this.downstream = actual;</span>
+<span class="fc" id="L90">            this.resource = resource;</span>
+<span class="fc" id="L91">            this.disposer = disposer;</span>
+<span class="fc" id="L92">            this.eager = eager;</span>
+<span class="fc" id="L93">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L98">                this.upstream = s;</span>
+<span class="fc" id="L99">                downstream.onSubscribe(this);</span>
+            }
+<span class="fc" id="L101">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc" id="L105">            downstream.onNext(t);</span>
+<span class="fc" id="L106">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (eager) {</span>
+<span class="fc" id="L111">                Throwable innerError = null;</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                if (compareAndSet(false, true)) {</span>
+                    try {
+<span class="fc" id="L114">                        disposer.accept(resource);</span>
+<span class="fc" id="L115">                    } catch (Throwable e) {</span>
+<span class="fc" id="L116">                        Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L117">                        innerError = e;</span>
+<span class="fc" id="L118">                    }</span>
+                }
+
+<span class="fc" id="L121">                upstream.cancel();</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                if (innerError != null) {</span>
+<span class="fc" id="L123">                    downstream.onError(new CompositeException(t, innerError));</span>
+                } else {
+<span class="fc" id="L125">                    downstream.onError(t);</span>
+                }
+<span class="fc" id="L127">            } else {</span>
+<span class="fc" id="L128">                downstream.onError(t);</span>
+<span class="fc" id="L129">                upstream.cancel();</span>
+<span class="fc" id="L130">                disposeAfter();</span>
+            }
+<span class="fc" id="L132">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (eager) {</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                if (compareAndSet(false, true)) {</span>
+                    try {
+<span class="fc" id="L139">                        disposer.accept(resource);</span>
+<span class="fc" id="L140">                    } catch (Throwable e) {</span>
+<span class="fc" id="L141">                        Exceptions.throwIfFatal(e);</span>
+<span class="fc" id="L142">                        downstream.onError(e);</span>
+<span class="fc" id="L143">                        return;</span>
+<span class="fc" id="L144">                    }</span>
+                }
+
+<span class="fc" id="L147">                upstream.cancel();</span>
+<span class="fc" id="L148">                downstream.onComplete();</span>
+            } else {
+<span class="fc" id="L150">                downstream.onComplete();</span>
+<span class="fc" id="L151">                upstream.cancel();</span>
+<span class="fc" id="L152">                disposeAfter();</span>
+            }
+<span class="fc" id="L154">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc" id="L158">            upstream.request(n);</span>
+<span class="fc" id="L159">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc" id="L163">            disposeAfter();</span>
+<span class="fc" id="L164">            upstream.cancel();</span>
+<span class="fc" id="L165">        }</span>
+
+        void disposeAfter() {
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (compareAndSet(false, true)) {</span>
+                try {
+<span class="fc" id="L170">                    disposer.accept(resource);</span>
+<span class="fc" id="L171">                } catch (Throwable e) {</span>
+<span class="fc" id="L172">                    Exceptions.throwIfFatal(e);</span>
+                    // can't call actual.onError unless it is serialized, which is expensive
+<span class="fc" id="L174">                    RxJavaPlugins.onError(e);</span>
+<span class="fc" id="L175">                }</span>
+            }
+<span class="fc" id="L177">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

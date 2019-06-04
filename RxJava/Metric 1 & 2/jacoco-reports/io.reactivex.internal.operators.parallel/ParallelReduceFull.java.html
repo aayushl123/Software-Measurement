@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParallelReduceFull.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.parallel</a> &gt; <span class="el_source">ParallelReduceFull.java</span></div><h1>ParallelReduceFull.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.parallel;
+
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.parallel.ParallelFlowable;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Reduces all 'rails' into a single value which then gets reduced into a single
+ * Publisher sequence.
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class ParallelReduceFull&lt;T&gt; extends Flowable&lt;T&gt; {
+
+    final ParallelFlowable&lt;? extends T&gt; source;
+
+    final BiFunction&lt;T, T, T&gt; reducer;
+
+<span class="fc" id="L40">    public ParallelReduceFull(ParallelFlowable&lt;? extends T&gt; source, BiFunction&lt;T, T, T&gt; reducer) {</span>
+<span class="fc" id="L41">        this.source = source;</span>
+<span class="fc" id="L42">        this.reducer = reducer;</span>
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    protected void subscribeActual(Subscriber&lt;? super T&gt; s) {
+<span class="fc" id="L47">        ParallelReduceFullMainSubscriber&lt;T&gt; parent = new ParallelReduceFullMainSubscriber&lt;T&gt;(s, source.parallelism(), reducer);</span>
+<span class="fc" id="L48">        s.onSubscribe(parent);</span>
+
+<span class="fc" id="L50">        source.subscribe(parent.subscribers);</span>
+<span class="fc" id="L51">    }</span>
+
+    static final class ParallelReduceFullMainSubscriber&lt;T&gt; extends DeferredScalarSubscription&lt;T&gt; {
+
+        private static final long serialVersionUID = -5370107872170712765L;
+
+        final ParallelReduceFullInnerSubscriber&lt;T&gt;[] subscribers;
+
+        final BiFunction&lt;T, T, T&gt; reducer;
+
+<span class="fc" id="L61">        final AtomicReference&lt;SlotPair&lt;T&gt;&gt; current = new AtomicReference&lt;SlotPair&lt;T&gt;&gt;();</span>
+
+<span class="fc" id="L63">        final AtomicInteger remaining = new AtomicInteger();</span>
+
+<span class="fc" id="L65">        final AtomicReference&lt;Throwable&gt; error = new AtomicReference&lt;Throwable&gt;();</span>
+
+        ParallelReduceFullMainSubscriber(Subscriber&lt;? super T&gt; subscriber, int n, BiFunction&lt;T, T, T&gt; reducer) {
+<span class="fc" id="L68">            super(subscriber);</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L70">            ParallelReduceFullInnerSubscriber&lt;T&gt;[] a = new ParallelReduceFullInnerSubscriber[n];</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L72">                a[i] = new ParallelReduceFullInnerSubscriber&lt;T&gt;(this, reducer);</span>
+            }
+<span class="fc" id="L74">            this.subscribers = a;</span>
+<span class="fc" id="L75">            this.reducer = reducer;</span>
+<span class="fc" id="L76">            remaining.lazySet(n);</span>
+<span class="fc" id="L77">        }</span>
+
+        SlotPair&lt;T&gt; addValue(T value) {
+            for (;;) {
+<span class="fc" id="L81">                SlotPair&lt;T&gt; curr = current.get();</span>
+
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                if (curr == null) {</span>
+<span class="fc" id="L84">                    curr = new SlotPair&lt;T&gt;();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                    if (!current.compareAndSet(null, curr)) {</span>
+<span class="fc" id="L86">                        continue;</span>
+                    }
+                }
+
+<span class="fc" id="L90">                int c = curr.tryAcquireSlot();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                if (c &lt; 0) {</span>
+<span class="fc" id="L92">                    current.compareAndSet(curr, null);</span>
+<span class="fc" id="L93">                    continue;</span>
+                }
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                if (c == 0) {</span>
+<span class="fc" id="L96">                    curr.first = value;</span>
+                } else {
+<span class="fc" id="L98">                    curr.second = value;</span>
+                }
+
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                if (curr.releaseSlot()) {</span>
+<span class="fc" id="L102">                    current.compareAndSet(curr, null);</span>
+<span class="fc" id="L103">                    return curr;</span>
+                }
+<span class="fc" id="L105">                return null;</span>
+            }
+        }
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            for (ParallelReduceFullInnerSubscriber&lt;T&gt; inner : subscribers) {</span>
+<span class="fc" id="L112">                inner.cancel();</span>
+            }
+<span class="fc" id="L114">        }</span>
+
+        void innerError(Throwable ex) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            if (error.compareAndSet(null, ex)) {</span>
+<span class="fc" id="L118">                cancel();</span>
+<span class="fc" id="L119">                downstream.onError(ex);</span>
+            } else {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                if (ex != error.get()) {</span>
+<span class="fc" id="L122">                    RxJavaPlugins.onError(ex);</span>
+                }
+            }
+<span class="fc" id="L125">        }</span>
+
+        void innerComplete(T value) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (value != null) {</span>
+                for (;;) {
+<span class="fc" id="L130">                    SlotPair&lt;T&gt; sp = addValue(value);</span>
+
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                    if (sp != null) {</span>
+
+                        try {
+<span class="fc" id="L135">                            value = ObjectHelper.requireNonNull(reducer.apply(sp.first, sp.second), &quot;The reducer returned a null value&quot;);</span>
+<span class="fc" id="L136">                        } catch (Throwable ex) {</span>
+<span class="fc" id="L137">                            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L138">                            innerError(ex);</span>
+<span class="fc" id="L139">                            return;</span>
+<span class="fc" id="L140">                        }</span>
+
+                    } else {
+                        break;
+                    }
+<span class="fc" id="L145">                }</span>
+            }
+
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (remaining.decrementAndGet() == 0) {</span>
+<span class="fc" id="L149">                SlotPair&lt;T&gt; sp = current.get();</span>
+<span class="fc" id="L150">                current.lazySet(null);</span>
+
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                if (sp != null) {</span>
+<span class="fc" id="L153">                    complete(sp.first);</span>
+                } else {
+<span class="fc" id="L155">                    downstream.onComplete();</span>
+                }
+            }
+<span class="fc" id="L158">        }</span>
+    }
+
+    static final class ParallelReduceFullInnerSubscriber&lt;T&gt;
+    extends AtomicReference&lt;Subscription&gt;
+    implements FlowableSubscriber&lt;T&gt; {
+
+        private static final long serialVersionUID = -7954444275102466525L;
+
+        final ParallelReduceFullMainSubscriber&lt;T&gt; parent;
+
+        final BiFunction&lt;T, T, T&gt; reducer;
+
+        T value;
+
+        boolean done;
+
+<span class="fc" id="L175">        ParallelReduceFullInnerSubscriber(ParallelReduceFullMainSubscriber&lt;T&gt; parent, BiFunction&lt;T, T, T&gt; reducer) {</span>
+<span class="fc" id="L176">            this.parent = parent;</span>
+<span class="fc" id="L177">            this.reducer = reducer;</span>
+<span class="fc" id="L178">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc" id="L182">            SubscriptionHelper.setOnce(this, s, Long.MAX_VALUE);</span>
+<span class="fc" id="L183">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L188">                T v = value;</span>
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                if (v == null) {</span>
+<span class="fc" id="L191">                    value = t;</span>
+                } else {
+
+                    try {
+<span class="fc" id="L195">                        v = ObjectHelper.requireNonNull(reducer.apply(v, t), &quot;The reducer returned a null value&quot;);</span>
+<span class="fc" id="L196">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L197">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L198">                        get().cancel();</span>
+<span class="fc" id="L199">                        onError(ex);</span>
+<span class="fc" id="L200">                        return;</span>
+<span class="fc" id="L201">                    }</span>
+
+<span class="fc" id="L203">                    value = v;</span>
+                }
+            }
+<span class="fc" id="L206">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L211">                RxJavaPlugins.onError(t);</span>
+<span class="fc" id="L212">                return;</span>
+            }
+<span class="fc" id="L214">            done = true;</span>
+<span class="fc" id="L215">            parent.innerError(t);</span>
+<span class="fc" id="L216">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            if (!done) {</span>
+<span class="fc" id="L221">                done = true;</span>
+<span class="fc" id="L222">                parent.innerComplete(value);</span>
+            }
+<span class="fc" id="L224">        }</span>
+
+        void cancel() {
+<span class="fc" id="L227">            SubscriptionHelper.cancel(this);</span>
+<span class="fc" id="L228">        }</span>
+    }
+
+<span class="fc" id="L231">    static final class SlotPair&lt;T&gt; extends AtomicInteger {</span>
+
+        private static final long serialVersionUID = 473971317683868662L;
+
+        T first;
+
+        T second;
+
+<span class="fc" id="L239">        final AtomicInteger releaseIndex = new AtomicInteger();</span>
+
+        int tryAcquireSlot() {
+            for (;;) {
+<span class="fc" id="L243">                int acquired = get();</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">                if (acquired &gt;= 2) {</span>
+<span class="fc" id="L245">                    return -1;</span>
+                }
+
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                if (compareAndSet(acquired, acquired + 1)) {</span>
+<span class="fc" id="L249">                    return acquired;</span>
+                }
+<span class="fc" id="L251">            }</span>
+        }
+
+        boolean releaseSlot() {
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            return releaseIndex.incrementAndGet() == 2;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

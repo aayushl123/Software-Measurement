@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableRange.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableRange.java</span></div><h1>FlowableRange.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.Flowable;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.internal.fuseable.ConditionalSubscriber;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.BackpressureHelper;
+
+/**
+ * Emits a range of integer values.
+ */
+public final class FlowableRange extends Flowable&lt;Integer&gt; {
+    final int start;
+    final int end;
+<span class="fc" id="L30">    public FlowableRange(int start, int count) {</span>
+<span class="fc" id="L31">        this.start = start;</span>
+<span class="fc" id="L32">        this.end = start + count;</span>
+<span class="fc" id="L33">    }</span>
+
+    @Override
+    public void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (s instanceof ConditionalSubscriber) {</span>
+<span class="fc" id="L38">            s.onSubscribe(new RangeConditionalSubscription(</span>
+                    (ConditionalSubscriber&lt;? super Integer&gt;)s, start, end));
+        } else {
+<span class="fc" id="L41">            s.onSubscribe(new RangeSubscription(s, start, end));</span>
+        }
+<span class="fc" id="L43">    }</span>
+
+    abstract static class BaseRangeSubscription extends BasicQueueSubscription&lt;Integer&gt; {
+        private static final long serialVersionUID = -2252972430506210021L;
+
+        final int end;
+
+        int index;
+
+        volatile boolean cancelled;
+
+<span class="fc" id="L54">        BaseRangeSubscription(int index, int end) {</span>
+<span class="fc" id="L55">            this.index = index;</span>
+<span class="fc" id="L56">            this.end = end;</span>
+<span class="fc" id="L57">        }</span>
+
+        @Override
+        public final int requestFusion(int mode) {
+<span class="fc" id="L61">            return mode &amp; SYNC;</span>
+        }
+
+        @Nullable
+        @Override
+        public final Integer poll() {
+<span class="fc" id="L67">            int i = index;</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (i == end) {</span>
+<span class="fc" id="L69">                return null;</span>
+            }
+<span class="fc" id="L71">            index = i + 1;</span>
+<span class="fc" id="L72">            return i;</span>
+        }
+
+        @Override
+        public final boolean isEmpty() {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            return index == end;</span>
+        }
+
+        @Override
+        public final void clear() {
+<span class="fc" id="L82">            index = end;</span>
+<span class="fc" id="L83">        }</span>
+
+        @Override
+        public final void request(long n) {
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                if (BackpressureHelper.add(this, n) == 0L) {</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                    if (n == Long.MAX_VALUE) {</span>
+<span class="fc" id="L90">                        fastPath();</span>
+                    } else {
+<span class="fc" id="L92">                        slowPath(n);</span>
+                    }
+                }
+            }
+<span class="fc" id="L96">        }</span>
+
+        @Override
+        public final void cancel() {
+<span class="fc" id="L100">            cancelled = true;</span>
+<span class="fc" id="L101">        }</span>
+
+        abstract void fastPath();
+
+        abstract void slowPath(long r);
+    }
+
+    static final class RangeSubscription extends BaseRangeSubscription {
+
+        private static final long serialVersionUID = 2587302975077663557L;
+
+        final Subscriber&lt;? super Integer&gt; downstream;
+
+        RangeSubscription(Subscriber&lt;? super Integer&gt; actual, int index, int end) {
+<span class="fc" id="L115">            super(index, end);</span>
+<span class="fc" id="L116">            this.downstream = actual;</span>
+<span class="fc" id="L117">        }</span>
+
+        @Override
+        void fastPath() {
+<span class="fc" id="L121">            int f = end;</span>
+<span class="fc" id="L122">            Subscriber&lt;? super Integer&gt; a = downstream;</span>
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            for (int i = index; i != f; i++) {</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L126">                    return;</span>
+                }
+<span class="fc" id="L128">                a.onNext(i);</span>
+            }
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L131">                return;</span>
+            }
+<span class="fc" id="L133">            a.onComplete();</span>
+<span class="fc" id="L134">        }</span>
+
+        @Override
+        void slowPath(long r) {
+<span class="fc" id="L138">            long e = 0;</span>
+<span class="fc" id="L139">            int f = end;</span>
+<span class="fc" id="L140">            int i = index;</span>
+<span class="fc" id="L141">            Subscriber&lt;? super Integer&gt; a = downstream;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L145" title="All 4 branches covered.">                while (e != r &amp;&amp; i != f) {</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L147">                        return;</span>
+                    }
+
+<span class="fc" id="L150">                    a.onNext(i);</span>
+
+<span class="fc" id="L152">                    e++;</span>
+<span class="fc" id="L153">                    i++;</span>
+                }
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                if (i == f) {</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                    if (!cancelled) {</span>
+<span class="fc" id="L158">                        a.onComplete();</span>
+                    }
+<span class="fc" id="L160">                    return;</span>
+                }
+
+<span class="fc" id="L163">                r = get();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc" id="L165">                    index = i;</span>
+<span class="fc" id="L166">                    r = addAndGet(-e);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                    if (r == 0L) {</span>
+<span class="fc" id="L168">                        return;</span>
+                    }
+<span class="fc" id="L170">                    e = 0L;</span>
+                }
+            }
+        }
+    }
+
+    static final class RangeConditionalSubscription extends BaseRangeSubscription {
+
+        private static final long serialVersionUID = 2587302975077663557L;
+
+        final ConditionalSubscriber&lt;? super Integer&gt; downstream;
+
+        RangeConditionalSubscription(ConditionalSubscriber&lt;? super Integer&gt; actual, int index, int end) {
+<span class="fc" id="L183">            super(index, end);</span>
+<span class="fc" id="L184">            this.downstream = actual;</span>
+<span class="fc" id="L185">        }</span>
+
+        @Override
+        void fastPath() {
+<span class="fc" id="L189">            int f = end;</span>
+<span class="fc" id="L190">            ConditionalSubscriber&lt;? super Integer&gt; a = downstream;</span>
+
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            for (int i = index; i != f; i++) {</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                if (cancelled) {</span>
+<span class="fc" id="L194">                    return;</span>
+                }
+<span class="fc" id="L196">                a.tryOnNext(i);</span>
+            }
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L199">                return;</span>
+            }
+<span class="fc" id="L201">            a.onComplete();</span>
+<span class="fc" id="L202">        }</span>
+
+        @Override
+        void slowPath(long r) {
+<span class="fc" id="L206">            long e = 0;</span>
+<span class="fc" id="L207">            int f = end;</span>
+<span class="fc" id="L208">            int i = index;</span>
+<span class="fc" id="L209">            ConditionalSubscriber&lt;? super Integer&gt; a = downstream;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L213" title="All 4 branches covered.">                while (e != r &amp;&amp; i != f) {</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                    if (cancelled) {</span>
+<span class="fc" id="L215">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L218" title="All 2 branches covered.">                    if (a.tryOnNext(i)) {</span>
+<span class="fc" id="L219">                        e++;</span>
+                    }
+
+<span class="fc" id="L222">                    i++;</span>
+                }
+
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                if (i == f) {</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                    if (!cancelled) {</span>
+<span class="fc" id="L227">                        a.onComplete();</span>
+                    }
+<span class="fc" id="L229">                    return;</span>
+                }
+
+<span class="fc" id="L232">                r = get();</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">                if (e == r) {</span>
+<span class="fc" id="L234">                    index = i;</span>
+<span class="fc" id="L235">                    r = addAndGet(-e);</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                    if (r == 0) {</span>
+<span class="fc" id="L237">                        return;</span>
+                    }
+<span class="nc" id="L239">                    e = 0;</span>
+                }
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

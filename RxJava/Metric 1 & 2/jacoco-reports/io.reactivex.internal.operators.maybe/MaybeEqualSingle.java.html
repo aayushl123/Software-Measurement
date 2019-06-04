@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaybeEqualSingle.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.maybe</a> &gt; <span class="el_source">MaybeEqualSingle.java</span></div><h1>MaybeEqualSingle.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.maybe;
+
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.BiPredicate;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/**
+ * Compares two MaybeSources to see if they are both empty or emit the same value compared
+ * via a BiPredicate.
+ *
+ * @param &lt;T&gt; the common base type of the sources
+ */
+public final class MaybeEqualSingle&lt;T&gt; extends Single&lt;Boolean&gt; {
+    final MaybeSource&lt;? extends T&gt; source1;
+
+    final MaybeSource&lt;? extends T&gt; source2;
+
+    final BiPredicate&lt;? super T, ? super T&gt; isEqual;
+
+    public MaybeEqualSingle(MaybeSource&lt;? extends T&gt; source1, MaybeSource&lt;? extends T&gt; source2,
+<span class="fc" id="L39">            BiPredicate&lt;? super T, ? super T&gt; isEqual) {</span>
+<span class="fc" id="L40">        this.source1 = source1;</span>
+<span class="fc" id="L41">        this.source2 = source2;</span>
+<span class="fc" id="L42">        this.isEqual = isEqual;</span>
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    protected void subscribeActual(SingleObserver&lt;? super Boolean&gt; observer) {
+<span class="fc" id="L47">        EqualCoordinator&lt;T&gt; parent = new EqualCoordinator&lt;T&gt;(observer, isEqual);</span>
+<span class="fc" id="L48">        observer.onSubscribe(parent);</span>
+<span class="fc" id="L49">        parent.subscribe(source1, source2);</span>
+<span class="fc" id="L50">    }</span>
+
+    @SuppressWarnings(&quot;serial&quot;)
+    static final class EqualCoordinator&lt;T&gt;
+    extends AtomicInteger
+    implements Disposable {
+        final SingleObserver&lt;? super Boolean&gt; downstream;
+
+        final EqualObserver&lt;T&gt; observer1;
+
+        final EqualObserver&lt;T&gt; observer2;
+
+        final BiPredicate&lt;? super T, ? super T&gt; isEqual;
+
+        EqualCoordinator(SingleObserver&lt;? super Boolean&gt; actual, BiPredicate&lt;? super T, ? super T&gt; isEqual) {
+<span class="fc" id="L65">            super(2);</span>
+<span class="fc" id="L66">            this.downstream = actual;</span>
+<span class="fc" id="L67">            this.isEqual = isEqual;</span>
+<span class="fc" id="L68">            this.observer1 = new EqualObserver&lt;T&gt;(this);</span>
+<span class="fc" id="L69">            this.observer2 = new EqualObserver&lt;T&gt;(this);</span>
+<span class="fc" id="L70">        }</span>
+
+        void subscribe(MaybeSource&lt;? extends T&gt; source1, MaybeSource&lt;? extends T&gt; source2) {
+<span class="fc" id="L73">            source1.subscribe(observer1);</span>
+<span class="fc" id="L74">            source2.subscribe(observer2);</span>
+<span class="fc" id="L75">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L79">            observer1.dispose();</span>
+<span class="fc" id="L80">            observer2.dispose();</span>
+<span class="fc" id="L81">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L85">            return DisposableHelper.isDisposed(observer1.get());</span>
+        }
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        void done() {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (decrementAndGet() == 0) {</span>
+<span class="fc" id="L91">                Object o1 = observer1.value;</span>
+<span class="fc" id="L92">                Object o2 = observer2.value;</span>
+
+<span class="fc bfc" id="L94" title="All 4 branches covered.">                if (o1 != null &amp;&amp; o2 != null) {</span>
+                    boolean b;
+
+                    try {
+<span class="fc" id="L98">                        b = isEqual.test((T)o1, (T)o2);</span>
+<span class="fc" id="L99">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L100">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L101">                        downstream.onError(ex);</span>
+<span class="fc" id="L102">                        return;</span>
+<span class="fc" id="L103">                    }</span>
+
+<span class="fc" id="L105">                    downstream.onSuccess(b);</span>
+<span class="fc" id="L106">                } else {</span>
+<span class="fc bfc" id="L107" title="All 4 branches covered.">                    downstream.onSuccess(o1 == null &amp;&amp; o2 == null);</span>
+                }
+            }
+<span class="fc" id="L110">        }</span>
+
+        void error(EqualObserver&lt;T&gt; sender, Throwable ex) {
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (getAndSet(0) &gt; 0) {</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                if (sender == observer1) {</span>
+<span class="fc" id="L115">                    observer2.dispose();</span>
+                } else {
+<span class="fc" id="L117">                    observer1.dispose();</span>
+                }
+<span class="fc" id="L119">                downstream.onError(ex);</span>
+            } else {
+<span class="fc" id="L121">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L123">        }</span>
+    }
+
+    static final class EqualObserver&lt;T&gt;
+    extends AtomicReference&lt;Disposable&gt;
+    implements MaybeObserver&lt;T&gt; {
+
+        private static final long serialVersionUID = -3031974433025990931L;
+
+        final EqualCoordinator&lt;T&gt; parent;
+
+        Object value;
+
+<span class="fc" id="L136">        EqualObserver(EqualCoordinator&lt;T&gt; parent) {</span>
+<span class="fc" id="L137">            this.parent = parent;</span>
+<span class="fc" id="L138">        }</span>
+
+        public void dispose() {
+<span class="fc" id="L141">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L142">        }</span>
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L146">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L147">        }</span>
+
+        @Override
+        public void onSuccess(T value) {
+<span class="fc" id="L151">            this.value = value;</span>
+<span class="fc" id="L152">            parent.done();</span>
+<span class="fc" id="L153">        }</span>
+
+        @Override
+        public void onError(Throwable e) {
+<span class="fc" id="L157">            parent.error(this, e);</span>
+<span class="fc" id="L158">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L162">            parent.done();</span>
+<span class="fc" id="L163">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

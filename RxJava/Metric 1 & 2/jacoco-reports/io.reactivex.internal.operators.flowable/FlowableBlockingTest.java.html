@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableBlockingTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableBlockingTest.java</span></div><h1>FlowableBlockingTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.assertEquals;
+
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subscribers.TestSubscriber;
+
+<span class="fc" id="L35">public class FlowableBlockingTest {</span>
+
+    @Test
+    public void blockingFirst() {
+<span class="fc" id="L39">        assertEquals(1, Flowable.range(1, 10)</span>
+<span class="fc" id="L40">                .subscribeOn(Schedulers.computation()).blockingFirst().intValue());</span>
+<span class="fc" id="L41">    }</span>
+
+    @Test
+    public void blockingFirstDefault() {
+<span class="fc" id="L45">        assertEquals(1, Flowable.&lt;Integer&gt;empty()</span>
+<span class="fc" id="L46">                .subscribeOn(Schedulers.computation()).blockingFirst(1).intValue());</span>
+<span class="fc" id="L47">    }</span>
+
+    @Test
+    public void blockingSubscribeConsumer() {
+<span class="fc" id="L51">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L53">        Flowable.range(1, 5)</span>
+<span class="fc" id="L54">        .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L55">        .blockingSubscribe(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L58">                list.add(v);</span>
+<span class="fc" id="L59">            }</span>
+        });
+
+<span class="fc" id="L62">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L63">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumer() {
+<span class="fc" id="L67">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L69">        Flowable.range(1, 5)</span>
+<span class="fc" id="L70">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L71">                .blockingSubscribe(new Consumer&lt;Integer&gt;() {</span>
+                    @Override
+                    public void accept(Integer v) throws Exception {
+<span class="fc" id="L74">                        list.add(v);</span>
+<span class="fc" id="L75">                    }</span>
+                }, 128);
+
+<span class="fc" id="L78">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L79">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumerBufferExceed() {
+<span class="fc" id="L83">        final List&lt;Integer&gt; list = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="fc" id="L85">        Flowable.range(1, 5)</span>
+<span class="fc" id="L86">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L87">                .blockingSubscribe(new Consumer&lt;Integer&gt;() {</span>
+                    @Override
+                    public void accept(Integer v) throws Exception {
+<span class="fc" id="L90">                        list.add(v);</span>
+<span class="fc" id="L91">                    }</span>
+                }, 3);
+
+<span class="fc" id="L94">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L95">    }</span>
+
+    @Test
+    public void blockingSubscribeConsumerConsumer() {
+<span class="fc" id="L99">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L101">        Flowable.range(1, 5)</span>
+<span class="fc" id="L102">        .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L103">        .blockingSubscribe(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer v) throws Exception {
+<span class="fc" id="L106">                list.add(v);</span>
+<span class="fc" id="L107">            }</span>
+<span class="fc" id="L108">        }, Functions.emptyConsumer());</span>
+
+<span class="fc" id="L110">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L111">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumerConsumer() {
+<span class="fc" id="L115">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L117">        Flowable.range(1, 5)</span>
+<span class="fc" id="L118">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L119">                .blockingSubscribe(new Consumer&lt;Integer&gt;() {</span>
+                    @Override
+                    public void accept(Integer v) throws Exception {
+<span class="fc" id="L122">                        list.add(v);</span>
+<span class="fc" id="L123">                    }</span>
+<span class="fc" id="L124">                }, Functions.emptyConsumer(), 128);</span>
+
+<span class="fc" id="L126">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L127">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumerConsumerBufferExceed() {
+<span class="fc" id="L131">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L133">        Flowable.range(1, 5)</span>
+<span class="fc" id="L134">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L135">                .blockingSubscribe(new Consumer&lt;Integer&gt;() {</span>
+                    @Override
+                    public void accept(Integer v) throws Exception {
+<span class="fc" id="L138">                        list.add(v);</span>
+<span class="fc" id="L139">                    }</span>
+<span class="fc" id="L140">                }, Functions.emptyConsumer(), 3);</span>
+
+<span class="fc" id="L142">        assertEquals(Arrays.asList(1, 2, 3, 4, 5), list);</span>
+<span class="fc" id="L143">    }</span>
+
+    @Test
+    public void blockingSubscribeConsumerConsumerError() {
+<span class="fc" id="L147">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L149">        TestException ex = new TestException();</span>
+
+<span class="fc" id="L151">        Consumer&lt;Object&gt; cons = new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L154">                list.add(v);</span>
+<span class="fc" id="L155">            }</span>
+        };
+
+<span class="fc" id="L158">        Flowable.range(1, 5).concatWith(Flowable.&lt;Integer&gt;error(ex))</span>
+<span class="fc" id="L159">        .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L160">        .blockingSubscribe(cons, cons);</span>
+
+<span class="fc" id="L162">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, ex), list);</span>
+<span class="fc" id="L163">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumerConsumerError() {
+<span class="fc" id="L167">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L169">        TestException ex = new TestException();</span>
+
+<span class="fc" id="L171">        Consumer&lt;Object&gt; cons = new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L174">                list.add(v);</span>
+<span class="fc" id="L175">            }</span>
+        };
+
+<span class="fc" id="L178">        Flowable.range(1, 5).concatWith(Flowable.&lt;Integer&gt;error(ex))</span>
+<span class="fc" id="L179">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L180">                .blockingSubscribe(cons, cons, 128);</span>
+
+<span class="fc" id="L182">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, ex), list);</span>
+<span class="fc" id="L183">    }</span>
+
+    @Test
+    public void blockingSubscribeConsumerConsumerAction() {
+<span class="fc" id="L187">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L189">        Consumer&lt;Object&gt; cons = new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L192">                list.add(v);</span>
+<span class="fc" id="L193">            }</span>
+        };
+
+<span class="fc" id="L196">        Flowable.range(1, 5)</span>
+<span class="fc" id="L197">        .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L198">        .blockingSubscribe(cons, cons, new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L201">                list.add(100);</span>
+<span class="fc" id="L202">            }</span>
+        });
+
+<span class="fc" id="L205">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 100), list);</span>
+<span class="fc" id="L206">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumerConsumerAction() {
+<span class="fc" id="L210">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L212">        Consumer&lt;Object&gt; cons = new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L215">                list.add(v);</span>
+<span class="fc" id="L216">            }</span>
+        };
+
+<span class="fc" id="L219">        Action action = new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L222">                list.add(100);</span>
+<span class="fc" id="L223">            }</span>
+        };
+
+<span class="fc" id="L226">        Flowable.range(1, 5)</span>
+<span class="fc" id="L227">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L228">                .blockingSubscribe(cons, cons, action, 128);</span>
+
+<span class="fc" id="L230">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 100), list);</span>
+<span class="fc" id="L231">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumerConsumerActionBufferExceed() {
+<span class="fc" id="L235">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L237">        Consumer&lt;Object&gt; cons = new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L240">                list.add(v);</span>
+<span class="fc" id="L241">            }</span>
+        };
+
+<span class="fc" id="L244">        Action action = new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L247">                list.add(100);</span>
+<span class="fc" id="L248">            }</span>
+        };
+
+<span class="fc" id="L251">        Flowable.range(1, 5)</span>
+<span class="fc" id="L252">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L253">                .blockingSubscribe(cons, cons, action, 3);</span>
+
+<span class="fc" id="L255">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 100), list);</span>
+<span class="fc" id="L256">    }</span>
+
+    @Test
+    public void boundedBlockingSubscribeConsumerConsumerActionBufferExceedMillionItem() {
+<span class="fc" id="L260">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L262">        Consumer&lt;Object&gt; cons = new Consumer&lt;Object&gt;() {</span>
+            @Override
+            public void accept(Object v) throws Exception {
+<span class="fc" id="L265">                list.add(v);</span>
+<span class="fc" id="L266">            }</span>
+        };
+
+<span class="fc" id="L269">        Action action = new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="fc" id="L272">                list.add(1000001);</span>
+<span class="fc" id="L273">            }</span>
+        };
+
+<span class="fc" id="L276">        Flowable.range(1, 1000000)</span>
+<span class="fc" id="L277">                .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L278">                .blockingSubscribe(cons, cons, action, 128);</span>
+
+<span class="fc" id="L280">        assertEquals(1000000 + 1, list.size());</span>
+<span class="fc" id="L281">    }</span>
+
+    @Test
+    public void blockingSubscribeObserver() {
+<span class="fc" id="L285">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L287">        Flowable.range(1, 5)</span>
+<span class="fc" id="L288">        .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L289">        .blockingSubscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="fc" id="L293">                s.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L294">            }</span>
+
+            @Override
+            public void onNext(Object value) {
+<span class="fc" id="L298">                list.add(value);</span>
+<span class="fc" id="L299">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L303">                list.add(e);</span>
+<span class="nc" id="L304">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L308">                list.add(100);</span>
+<span class="fc" id="L309">            }</span>
+
+        });
+
+<span class="fc" id="L313">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 100), list);</span>
+<span class="fc" id="L314">    }</span>
+
+    @Test
+    public void blockingSubscribeObserverError() {
+<span class="fc" id="L318">        final List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L320">        final TestException ex = new TestException();</span>
+
+<span class="fc" id="L322">        Flowable.range(1, 5).concatWith(Flowable.&lt;Integer&gt;error(ex))</span>
+<span class="fc" id="L323">        .subscribeOn(Schedulers.computation())</span>
+<span class="fc" id="L324">        .blockingSubscribe(new FlowableSubscriber&lt;Object&gt;() {</span>
+
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="fc" id="L328">                s.request(Long.MAX_VALUE);</span>
+<span class="fc" id="L329">            }</span>
+
+            @Override
+            public void onNext(Object value) {
+<span class="fc" id="L333">                list.add(value);</span>
+<span class="fc" id="L334">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="fc" id="L338">                list.add(e);</span>
+<span class="fc" id="L339">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L343">                list.add(100);</span>
+<span class="nc" id="L344">            }</span>
+
+        });
+
+<span class="fc" id="L348">        assertEquals(Arrays.asList(1, 2, 3, 4, 5, ex), list);</span>
+<span class="fc" id="L349">    }</span>
+
+    @Test(expected = TestException.class)
+    public void blockingForEachThrows() {
+<span class="fc" id="L353">        Flowable.just(1)</span>
+<span class="pc" id="L354">        .blockingForEach(new Consumer&lt;Integer&gt;() {</span>
+            @Override
+            public void accept(Integer e) throws Exception {
+<span class="fc" id="L357">                throw new TestException();</span>
+            }
+        });
+<span class="nc" id="L360">    }</span>
+
+    @Test(expected = NoSuchElementException.class)
+    public void blockingFirstEmpty() {
+<span class="nc" id="L364">        Flowable.empty().blockingFirst();</span>
+<span class="nc" id="L365">    }</span>
+
+    @Test(expected = NoSuchElementException.class)
+    public void blockingLastEmpty() {
+<span class="nc" id="L369">        Flowable.empty().blockingLast();</span>
+<span class="nc" id="L370">    }</span>
+
+    @Test
+    public void blockingFirstNormal() {
+<span class="fc" id="L374">        assertEquals(1, Flowable.just(1, 2).blockingFirst(3).intValue());</span>
+<span class="fc" id="L375">    }</span>
+
+    @Test
+    public void blockingLastNormal() {
+<span class="fc" id="L379">        assertEquals(2, Flowable.just(1, 2).blockingLast(3).intValue());</span>
+<span class="fc" id="L380">    }</span>
+
+    @Test
+    public void firstFgnoredCancelAndOnNext() {
+<span class="fc" id="L384">        Flowable&lt;Integer&gt; source = Flowable.fromPublisher(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L387">                s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L388">                s.onNext(1);</span>
+<span class="fc" id="L389">                s.onNext(2);</span>
+<span class="fc" id="L390">            }</span>
+        });
+
+<span class="fc" id="L393">        assertEquals(1, source.blockingFirst().intValue());</span>
+<span class="fc" id="L394">    }</span>
+
+    @Test
+    public void firstIgnoredCancelAndOnError() {
+<span class="fc" id="L398">        List&lt;Throwable&gt; list = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L400">            Flowable&lt;Integer&gt; source = Flowable.fromPublisher(new Publisher&lt;Integer&gt;() {</span>
+                @Override
+                public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L403">                    s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L404">                    s.onNext(1);</span>
+<span class="fc" id="L405">                    s.onError(new TestException());</span>
+<span class="fc" id="L406">                }</span>
+            });
+
+<span class="fc" id="L409">            assertEquals(1, source.blockingFirst().intValue());</span>
+
+<span class="fc" id="L411">            TestHelper.assertUndeliverable(list, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L413">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L415">    }</span>
+
+    @Test(expected = TestException.class)
+    public void firstOnError() {
+<span class="fc" id="L419">        Flowable&lt;Integer&gt; source = Flowable.fromPublisher(new Publisher&lt;Integer&gt;() {</span>
+            @Override
+            public void subscribe(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L422">                s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L423">                s.onError(new TestException());</span>
+<span class="fc" id="L424">            }</span>
+        });
+
+<span class="nc" id="L427">        source.blockingFirst();</span>
+<span class="nc" id="L428">    }</span>
+
+    @Test
+    public void interrupt() {
+<span class="fc" id="L432">        TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;(0L);</span>
+
+<span class="fc" id="L434">        Thread.currentThread().interrupt();</span>
+
+        try {
+<span class="fc" id="L437">            Flowable.just(1)</span>
+<span class="fc" id="L438">            .blockingSubscribe(ts);</span>
+
+<span class="fc" id="L440">            ts.assertFailure(InterruptedException.class);</span>
+        } finally {
+<span class="fc" id="L442">            Thread.interrupted(); // clear interrupted status just in case</span>
+        }
+<span class="fc" id="L444">    }</span>
+
+    @Test(expected = NoSuchElementException.class)
+    public void blockingSingleEmpty() {
+<span class="nc" id="L448">        Flowable.empty().blockingSingle();</span>
+<span class="nc" id="L449">    }</span>
+
+    @Test
+    public void onCompleteDelayed() {
+<span class="fc" id="L453">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+
+<span class="fc" id="L455">        Flowable.empty().delay(100, TimeUnit.MILLISECONDS)</span>
+<span class="fc" id="L456">        .blockingSubscribe(ts);</span>
+
+<span class="fc" id="L458">        ts.assertResult();</span>
+<span class="fc" id="L459">    }</span>
+
+    @Test
+    public void utilityClass() {
+<span class="fc" id="L463">        TestHelper.checkUtilityClass(FlowableBlockingSubscribe.class);</span>
+<span class="fc" id="L464">    }</span>
+
+    @Test
+    public void disposeUpFront() {
+<span class="fc" id="L468">        TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L469">        ts.dispose();</span>
+<span class="fc" id="L470">        Flowable.just(1).blockingSubscribe(ts);</span>
+
+<span class="fc" id="L472">        ts.assertEmpty();</span>
+<span class="fc" id="L473">    }</span>
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @Test
+    public void delayed() throws Exception {
+<span class="fc" id="L478">        final TestSubscriber&lt;Object&gt; ts = new TestSubscriber&lt;Object&gt;();</span>
+<span class="fc" id="L479">        final Subscriber[] s = { null };</span>
+
+<span class="fc" id="L481">        Schedulers.single().scheduleDirect(new Runnable() {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void run() {
+<span class="fc" id="L485">                ts.dispose();</span>
+<span class="fc" id="L486">                s[0].onNext(1);</span>
+<span class="fc" id="L487">            }</span>
+        }, 200, TimeUnit.MILLISECONDS);
+
+<span class="fc" id="L490">        new Flowable&lt;Integer&gt;() {</span>
+            @Override
+            protected void subscribeActual(Subscriber&lt;? super Integer&gt; subscriber) {
+<span class="fc" id="L493">                subscriber.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L494">                s[0] = subscriber;</span>
+<span class="fc" id="L495">            }</span>
+<span class="fc" id="L496">        }.blockingSubscribe(ts);</span>
+
+<span class="pc bpc" id="L498" title="1 of 2 branches missed.">        while (!ts.isDisposed()) {</span>
+<span class="nc" id="L499">            Thread.sleep(100);</span>
+        }
+
+<span class="fc" id="L502">        ts.assertEmpty();</span>
+<span class="fc" id="L503">    }</span>
+
+    @Test
+    public void blockinsSubscribeCancelAsync() {
+<span class="fc bfc" id="L507" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L508">            final TestSubscriber&lt;Integer&gt; ts = new TestSubscriber&lt;Integer&gt;();</span>
+
+<span class="fc" id="L510">            final PublishProcessor&lt;Integer&gt; pp = PublishProcessor.create();</span>
+
+<span class="fc" id="L512">            final Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L515">                    ts.cancel();</span>
+<span class="fc" id="L516">                }</span>
+            };
+
+<span class="fc" id="L519">            final Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L522">                    pp.onNext(1);</span>
+<span class="fc" id="L523">                }</span>
+            };
+
+<span class="fc" id="L526">            final AtomicInteger c = new AtomicInteger(2);</span>
+
+<span class="fc" id="L528">            Schedulers.computation().scheduleDirect(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L531">                    c.decrementAndGet();</span>
+<span class="pc bpc" id="L532" title="3 of 4 branches missed.">                    while (c.get() != 0 &amp;&amp; !pp.hasSubscribers()) { }</span>
+
+<span class="fc" id="L534">                    TestHelper.race(r1, r2);</span>
+<span class="fc" id="L535">                }</span>
+            });
+
+<span class="fc" id="L538">            c.decrementAndGet();</span>
+<span class="fc bfc" id="L539" title="All 2 branches covered.">            while (c.get() != 0) { }</span>
+
+<span class="fc" id="L541">            pp</span>
+<span class="fc" id="L542">            .blockingSubscribe(ts);</span>
+        }
+<span class="fc" id="L544">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

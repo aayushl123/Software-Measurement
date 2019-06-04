@@ -1,0 +1,482 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableGroupJoin.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableGroupJoin.java</span></div><h1>ObservableGroupJoin.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import java.util.*;
+import java.util.concurrent.atomic.*;
+
+import io.reactivex.Observable;
+import io.reactivex.ObservableSource;
+import io.reactivex.Observer;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.Exceptions;
+import io.reactivex.functions.*;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.queue.SpscLinkedArrayQueue;
+import io.reactivex.internal.util.ExceptionHelper;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.subjects.UnicastSubject;
+
+public final class ObservableGroupJoin&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt; extends AbstractObservableWithUpstream&lt;TLeft, R&gt; {
+
+    final ObservableSource&lt;? extends TRight&gt; other;
+
+    final Function&lt;? super TLeft, ? extends ObservableSource&lt;TLeftEnd&gt;&gt; leftEnd;
+
+    final Function&lt;? super TRight, ? extends ObservableSource&lt;TRightEnd&gt;&gt; rightEnd;
+
+    final BiFunction&lt;? super TLeft, ? super Observable&lt;TRight&gt;, ? extends R&gt; resultSelector;
+
+    public ObservableGroupJoin(
+            ObservableSource&lt;TLeft&gt; source,
+            ObservableSource&lt;? extends TRight&gt; other,
+            Function&lt;? super TLeft, ? extends ObservableSource&lt;TLeftEnd&gt;&gt; leftEnd,
+            Function&lt;? super TRight, ? extends ObservableSource&lt;TRightEnd&gt;&gt; rightEnd,
+            BiFunction&lt;? super TLeft, ? super Observable&lt;TRight&gt;, ? extends R&gt; resultSelector) {
+<span class="fc" id="L51">        super(source);</span>
+<span class="fc" id="L52">        this.other = other;</span>
+<span class="fc" id="L53">        this.leftEnd = leftEnd;</span>
+<span class="fc" id="L54">        this.rightEnd = rightEnd;</span>
+<span class="fc" id="L55">        this.resultSelector = resultSelector;</span>
+<span class="fc" id="L56">    }</span>
+
+    @Override
+    protected void subscribeActual(Observer&lt;? super R&gt; observer) {
+
+<span class="fc" id="L61">        GroupJoinDisposable&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt; parent =</span>
+                new GroupJoinDisposable&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt;(observer, leftEnd, rightEnd, resultSelector);
+
+<span class="fc" id="L64">        observer.onSubscribe(parent);</span>
+
+<span class="fc" id="L66">        LeftRightObserver left = new LeftRightObserver(parent, true);</span>
+<span class="fc" id="L67">        parent.disposables.add(left);</span>
+<span class="fc" id="L68">        LeftRightObserver right = new LeftRightObserver(parent, false);</span>
+<span class="fc" id="L69">        parent.disposables.add(right);</span>
+
+<span class="fc" id="L71">        source.subscribe(left);</span>
+<span class="fc" id="L72">        other.subscribe(right);</span>
+<span class="fc" id="L73">    }</span>
+
+    interface JoinSupport {
+
+        void innerError(Throwable ex);
+
+        void innerComplete(LeftRightObserver sender);
+
+        void innerValue(boolean isLeft, Object o);
+
+        void innerClose(boolean isLeft, LeftRightEndObserver index);
+
+        void innerCloseError(Throwable ex);
+    }
+
+    static final class GroupJoinDisposable&lt;TLeft, TRight, TLeftEnd, TRightEnd, R&gt;
+    extends AtomicInteger implements Disposable, JoinSupport {
+
+        private static final long serialVersionUID = -6071216598687999801L;
+
+        final Observer&lt;? super R&gt; downstream;
+
+        final SpscLinkedArrayQueue&lt;Object&gt; queue;
+
+        final CompositeDisposable disposables;
+
+        final Map&lt;Integer, UnicastSubject&lt;TRight&gt;&gt; lefts;
+
+        final Map&lt;Integer, TRight&gt; rights;
+
+        final AtomicReference&lt;Throwable&gt; error;
+
+        final Function&lt;? super TLeft, ? extends ObservableSource&lt;TLeftEnd&gt;&gt; leftEnd;
+
+        final Function&lt;? super TRight, ? extends ObservableSource&lt;TRightEnd&gt;&gt; rightEnd;
+
+        final BiFunction&lt;? super TLeft, ? super Observable&lt;TRight&gt;, ? extends R&gt; resultSelector;
+
+        final AtomicInteger active;
+
+        int leftIndex;
+
+        int rightIndex;
+
+        volatile boolean cancelled;
+
+<span class="fc" id="L119">        static final Integer LEFT_VALUE = 1;</span>
+
+<span class="fc" id="L121">        static final Integer RIGHT_VALUE = 2;</span>
+
+<span class="fc" id="L123">        static final Integer LEFT_CLOSE = 3;</span>
+
+<span class="fc" id="L125">        static final Integer RIGHT_CLOSE = 4;</span>
+
+        GroupJoinDisposable(
+                Observer&lt;? super R&gt; actual,
+                Function&lt;? super TLeft, ? extends ObservableSource&lt;TLeftEnd&gt;&gt; leftEnd,
+                Function&lt;? super TRight, ? extends ObservableSource&lt;TRightEnd&gt;&gt; rightEnd,
+<span class="fc" id="L131">                BiFunction&lt;? super TLeft, ? super Observable&lt;TRight&gt;, ? extends R&gt; resultSelector) {</span>
+<span class="fc" id="L132">            this.downstream = actual;</span>
+<span class="fc" id="L133">            this.disposables = new CompositeDisposable();</span>
+<span class="fc" id="L134">            this.queue = new SpscLinkedArrayQueue&lt;Object&gt;(bufferSize());</span>
+<span class="fc" id="L135">            this.lefts = new LinkedHashMap&lt;Integer, UnicastSubject&lt;TRight&gt;&gt;();</span>
+<span class="fc" id="L136">            this.rights = new LinkedHashMap&lt;Integer, TRight&gt;();</span>
+<span class="fc" id="L137">            this.error = new AtomicReference&lt;Throwable&gt;();</span>
+<span class="fc" id="L138">            this.leftEnd = leftEnd;</span>
+<span class="fc" id="L139">            this.rightEnd = rightEnd;</span>
+<span class="fc" id="L140">            this.resultSelector = resultSelector;</span>
+<span class="fc" id="L141">            this.active = new AtomicInteger(2);</span>
+<span class="fc" id="L142">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L147">                return;</span>
+            }
+<span class="fc" id="L149">            cancelled = true;</span>
+<span class="fc" id="L150">            cancelAll();</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L152">                queue.clear();</span>
+            }
+<span class="fc" id="L154">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L158">            return cancelled;</span>
+        }
+
+        void cancelAll() {
+<span class="fc" id="L162">            disposables.dispose();</span>
+<span class="fc" id="L163">        }</span>
+
+        void errorAll(Observer&lt;?&gt; a) {
+<span class="fc" id="L166">            Throwable ex = ExceptionHelper.terminate(error);</span>
+
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            for (UnicastSubject&lt;TRight&gt; up : lefts.values()) {</span>
+<span class="fc" id="L169">                up.onError(ex);</span>
+<span class="fc" id="L170">            }</span>
+
+<span class="fc" id="L172">            lefts.clear();</span>
+<span class="fc" id="L173">            rights.clear();</span>
+
+<span class="fc" id="L175">            a.onError(ex);</span>
+<span class="fc" id="L176">        }</span>
+
+        void fail(Throwable exc, Observer&lt;?&gt; a, SpscLinkedArrayQueue&lt;?&gt; q) {
+<span class="fc" id="L179">            Exceptions.throwIfFatal(exc);</span>
+<span class="fc" id="L180">            ExceptionHelper.addThrowable(error, exc);</span>
+<span class="fc" id="L181">            q.clear();</span>
+<span class="fc" id="L182">            cancelAll();</span>
+<span class="fc" id="L183">            errorAll(a);</span>
+<span class="fc" id="L184">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L188">                return;</span>
+            }
+
+<span class="fc" id="L191">            int missed = 1;</span>
+<span class="fc" id="L192">            SpscLinkedArrayQueue&lt;Object&gt; q = queue;</span>
+<span class="fc" id="L193">            Observer&lt;? super R&gt; a = downstream;</span>
+
+            for (;;) {
+                for (;;) {
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                    if (cancelled) {</span>
+<span class="nc" id="L198">                        q.clear();</span>
+<span class="nc" id="L199">                        return;</span>
+                    }
+
+<span class="fc" id="L202">                    Throwable ex = error.get();</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">                    if (ex != null) {</span>
+<span class="fc" id="L204">                        q.clear();</span>
+<span class="fc" id="L205">                        cancelAll();</span>
+<span class="fc" id="L206">                        errorAll(a);</span>
+<span class="fc" id="L207">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                    boolean d = active.get() == 0;</span>
+
+<span class="fc" id="L212">                    Integer mode = (Integer)q.poll();</span>
+
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                    boolean empty = mode == null;</span>
+
+<span class="pc bpc" id="L216" title="1 of 4 branches missed.">                    if (d &amp;&amp; empty) {</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                        for (UnicastSubject&lt;?&gt; up : lefts.values()) {</span>
+<span class="fc" id="L218">                            up.onComplete();</span>
+<span class="fc" id="L219">                        }</span>
+
+<span class="fc" id="L221">                        lefts.clear();</span>
+<span class="fc" id="L222">                        rights.clear();</span>
+<span class="fc" id="L223">                        disposables.dispose();</span>
+
+<span class="fc" id="L225">                        a.onComplete();</span>
+<span class="fc" id="L226">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                    if (empty) {</span>
+<span class="fc" id="L230">                        break;</span>
+                    }
+
+<span class="fc" id="L233">                    Object val = q.poll();</span>
+
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                    if (mode == LEFT_VALUE) {</span>
+                        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L237">                        TLeft left = (TLeft)val;</span>
+
+<span class="fc" id="L239">                        UnicastSubject&lt;TRight&gt; up = UnicastSubject.create();</span>
+<span class="fc" id="L240">                        int idx = leftIndex++;</span>
+<span class="fc" id="L241">                        lefts.put(idx, up);</span>
+
+                        ObservableSource&lt;TLeftEnd&gt; p;
+
+                        try {
+<span class="fc" id="L246">                            p = ObjectHelper.requireNonNull(leftEnd.apply(left), &quot;The leftEnd returned a null ObservableSource&quot;);</span>
+<span class="fc" id="L247">                        } catch (Throwable exc) {</span>
+<span class="fc" id="L248">                            fail(exc, a, q);</span>
+<span class="fc" id="L249">                            return;</span>
+<span class="fc" id="L250">                        }</span>
+
+<span class="fc" id="L252">                        LeftRightEndObserver end = new LeftRightEndObserver(this, true, idx);</span>
+<span class="fc" id="L253">                        disposables.add(end);</span>
+
+<span class="fc" id="L255">                        p.subscribe(end);</span>
+
+<span class="fc" id="L257">                        ex = error.get();</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L259">                            q.clear();</span>
+<span class="fc" id="L260">                            cancelAll();</span>
+<span class="fc" id="L261">                            errorAll(a);</span>
+<span class="fc" id="L262">                            return;</span>
+                        }
+
+                        R w;
+
+                        try {
+<span class="fc" id="L268">                            w = ObjectHelper.requireNonNull(resultSelector.apply(left, up), &quot;The resultSelector returned a null value&quot;);</span>
+<span class="fc" id="L269">                        } catch (Throwable exc) {</span>
+<span class="fc" id="L270">                            fail(exc, a, q);</span>
+<span class="fc" id="L271">                            return;</span>
+<span class="fc" id="L272">                        }</span>
+
+<span class="fc" id="L274">                        a.onNext(w);</span>
+
+<span class="fc bfc" id="L276" title="All 2 branches covered.">                        for (TRight right : rights.values()) {</span>
+<span class="fc" id="L277">                            up.onNext(right);</span>
+<span class="fc" id="L278">                        }</span>
+<span class="fc" id="L279">                    }</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                    else if (mode == RIGHT_VALUE) {</span>
+                        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L282">                        TRight right = (TRight)val;</span>
+
+<span class="fc" id="L284">                        int idx = rightIndex++;</span>
+
+<span class="fc" id="L286">                        rights.put(idx, right);</span>
+
+                        ObservableSource&lt;TRightEnd&gt; p;
+
+                        try {
+<span class="fc" id="L291">                            p = ObjectHelper.requireNonNull(rightEnd.apply(right), &quot;The rightEnd returned a null ObservableSource&quot;);</span>
+<span class="fc" id="L292">                        } catch (Throwable exc) {</span>
+<span class="fc" id="L293">                            fail(exc, a, q);</span>
+<span class="fc" id="L294">                            return;</span>
+<span class="fc" id="L295">                        }</span>
+
+<span class="fc" id="L297">                        LeftRightEndObserver end = new LeftRightEndObserver(this, false, idx);</span>
+<span class="fc" id="L298">                        disposables.add(end);</span>
+
+<span class="fc" id="L300">                        p.subscribe(end);</span>
+
+<span class="fc" id="L302">                        ex = error.get();</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                        if (ex != null) {</span>
+<span class="fc" id="L304">                            q.clear();</span>
+<span class="fc" id="L305">                            cancelAll();</span>
+<span class="fc" id="L306">                            errorAll(a);</span>
+<span class="fc" id="L307">                            return;</span>
+                        }
+
+<span class="fc bfc" id="L310" title="All 2 branches covered.">                        for (UnicastSubject&lt;TRight&gt; up : lefts.values()) {</span>
+<span class="fc" id="L311">                            up.onNext(right);</span>
+<span class="fc" id="L312">                        }</span>
+<span class="fc" id="L313">                    }</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                    else if (mode == LEFT_CLOSE) {</span>
+<span class="fc" id="L315">                        LeftRightEndObserver end = (LeftRightEndObserver)val;</span>
+
+<span class="fc" id="L317">                        UnicastSubject&lt;TRight&gt; up = lefts.remove(end.index);</span>
+<span class="fc" id="L318">                        disposables.remove(end);</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">                        if (up != null) {</span>
+<span class="fc" id="L320">                            up.onComplete();</span>
+                        }
+<span class="fc" id="L322">                    }</span>
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">                    else if (mode == RIGHT_CLOSE) {</span>
+<span class="fc" id="L324">                        LeftRightEndObserver end = (LeftRightEndObserver)val;</span>
+
+<span class="fc" id="L326">                        rights.remove(end.index);</span>
+<span class="fc" id="L327">                        disposables.remove(end);</span>
+                    }
+<span class="fc" id="L329">                }</span>
+
+<span class="fc" id="L331">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L333">                    break;</span>
+                }
+            }
+<span class="fc" id="L336">        }</span>
+
+        @Override
+        public void innerError(Throwable ex) {
+<span class="fc bfc" id="L340" title="All 2 branches covered.">            if (ExceptionHelper.addThrowable(error, ex)) {</span>
+<span class="fc" id="L341">                active.decrementAndGet();</span>
+<span class="fc" id="L342">                drain();</span>
+            } else {
+<span class="fc" id="L344">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L346">        }</span>
+
+        @Override
+        public void innerComplete(LeftRightObserver sender) {
+<span class="fc" id="L350">            disposables.delete(sender);</span>
+<span class="fc" id="L351">            active.decrementAndGet();</span>
+<span class="fc" id="L352">            drain();</span>
+<span class="fc" id="L353">        }</span>
+
+        @Override
+        public void innerValue(boolean isLeft, Object o) {
+<span class="fc" id="L357">            synchronized (this) {</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">                queue.offer(isLeft ? LEFT_VALUE : RIGHT_VALUE, o);</span>
+<span class="fc" id="L359">            }</span>
+<span class="fc" id="L360">            drain();</span>
+<span class="fc" id="L361">        }</span>
+
+        @Override
+        public void innerClose(boolean isLeft, LeftRightEndObserver index) {
+<span class="fc" id="L365">            synchronized (this) {</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">                queue.offer(isLeft ? LEFT_CLOSE : RIGHT_CLOSE, index);</span>
+<span class="fc" id="L367">            }</span>
+<span class="fc" id="L368">            drain();</span>
+<span class="fc" id="L369">        }</span>
+
+        @Override
+        public void innerCloseError(Throwable ex) {
+<span class="fc bfc" id="L373" title="All 2 branches covered.">            if (ExceptionHelper.addThrowable(error, ex)) {</span>
+<span class="fc" id="L374">                drain();</span>
+            } else {
+<span class="fc" id="L376">                RxJavaPlugins.onError(ex);</span>
+            }
+<span class="fc" id="L378">        }</span>
+    }
+
+    static final class LeftRightObserver
+    extends AtomicReference&lt;Disposable&gt;
+    implements Observer&lt;Object&gt;, Disposable {
+
+        private static final long serialVersionUID = 1883890389173668373L;
+
+        final JoinSupport parent;
+
+        final boolean isLeft;
+
+<span class="fc" id="L391">        LeftRightObserver(JoinSupport parent, boolean isLeft) {</span>
+<span class="fc" id="L392">            this.parent = parent;</span>
+<span class="fc" id="L393">            this.isLeft = isLeft;</span>
+<span class="fc" id="L394">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L398">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L399">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L403">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L408">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L409">        }</span>
+
+        @Override
+        public void onNext(Object t) {
+<span class="fc" id="L413">            parent.innerValue(isLeft, t);</span>
+<span class="fc" id="L414">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L418">            parent.innerError(t);</span>
+<span class="fc" id="L419">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L423">            parent.innerComplete(this);</span>
+<span class="fc" id="L424">        }</span>
+
+    }
+
+    static final class LeftRightEndObserver
+    extends AtomicReference&lt;Disposable&gt;
+    implements Observer&lt;Object&gt;, Disposable {
+
+        private static final long serialVersionUID = 1883890389173668373L;
+
+        final JoinSupport parent;
+
+        final boolean isLeft;
+
+        final int index;
+
+        LeftRightEndObserver(JoinSupport parent,
+<span class="fc" id="L441">                boolean isLeft, int index) {</span>
+<span class="fc" id="L442">            this.parent = parent;</span>
+<span class="fc" id="L443">            this.isLeft = isLeft;</span>
+<span class="fc" id="L444">            this.index = index;</span>
+<span class="fc" id="L445">        }</span>
+
+        @Override
+        public void dispose() {
+<span class="fc" id="L449">            DisposableHelper.dispose(this);</span>
+<span class="fc" id="L450">        }</span>
+
+        @Override
+        public boolean isDisposed() {
+<span class="fc" id="L454">            return DisposableHelper.isDisposed(get());</span>
+        }
+
+        @Override
+        public void onSubscribe(Disposable d) {
+<span class="fc" id="L459">            DisposableHelper.setOnce(this, d);</span>
+<span class="fc" id="L460">        }</span>
+
+        @Override
+        public void onNext(Object t) {
+<span class="fc bfc" id="L464" title="All 2 branches covered.">            if (DisposableHelper.dispose(this)) {</span>
+<span class="fc" id="L465">                parent.innerClose(isLeft, this);</span>
+            }
+<span class="fc" id="L467">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc" id="L471">            parent.innerCloseError(t);</span>
+<span class="fc" id="L472">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc" id="L476">            parent.innerClose(isLeft, this);</span>
+<span class="fc" id="L477">        }</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableDoOnLifecycleTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableDoOnLifecycleTest.java</span></div><h1>FlowableDoOnLifecycleTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
+
+<span class="fc" id="L30">public class FlowableDoOnLifecycleTest {</span>
+
+    @Test
+    public void onSubscribeCrashed() {
+<span class="fc" id="L34">        Flowable.just(1)</span>
+<span class="fc" id="L35">        .doOnLifecycle(new Consumer&lt;Subscription&gt;() {</span>
+            @Override
+            public void accept(Subscription s) throws Exception {
+<span class="fc" id="L38">                throw new TestException();</span>
+            }
+        }, Functions.EMPTY_LONG_CONSUMER, Functions.EMPTY_ACTION)
+<span class="fc" id="L41">        .test()</span>
+<span class="fc" id="L42">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L43">    }</span>
+
+    @Test
+    public void doubleOnSubscribe() {
+<span class="fc" id="L47">        final int[] calls = { 0, 0 };</span>
+
+<span class="fc" id="L49">        TestHelper.checkDoubleOnSubscribeFlowable(new Function&lt;Flowable&lt;Object&gt;, Publisher&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Publisher&lt;Object&gt; apply(Flowable&lt;Object&gt; f) throws Exception {
+<span class="fc" id="L52">                return f</span>
+<span class="fc" id="L53">                .doOnLifecycle(new Consumer&lt;Subscription&gt;() {</span>
+                    @Override
+                    public void accept(Subscription s) throws Exception {
+<span class="fc" id="L56">                        calls[0]++;</span>
+<span class="fc" id="L57">                    }</span>
+<span class="fc" id="L58">                }, Functions.EMPTY_LONG_CONSUMER, new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="nc" id="L61">                        calls[1]++;</span>
+<span class="nc" id="L62">                    }</span>
+                });
+            }
+        });
+
+<span class="fc" id="L67">        assertEquals(2, calls[0]);</span>
+<span class="fc" id="L68">        assertEquals(0, calls[1]);</span>
+<span class="fc" id="L69">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L73">        final int[] calls = { 0, 0 };</span>
+
+<span class="fc" id="L75">        TestHelper.checkDisposed(Flowable.just(1)</span>
+<span class="fc" id="L76">                .doOnLifecycle(new Consumer&lt;Subscription&gt;() {</span>
+                    @Override
+                    public void accept(Subscription s) throws Exception {
+<span class="fc" id="L79">                        calls[0]++;</span>
+<span class="fc" id="L80">                    }</span>
+<span class="fc" id="L81">                }, Functions.EMPTY_LONG_CONSUMER, new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="fc" id="L84">                        calls[1]++;</span>
+<span class="fc" id="L85">                    }</span>
+                })
+            );
+
+<span class="fc" id="L89">        assertEquals(1, calls[0]);</span>
+<span class="fc" id="L90">        assertEquals(1, calls[1]);</span>
+<span class="fc" id="L91">    }</span>
+
+    @Test
+    public void requestCrashed() {
+<span class="fc" id="L95">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L97">            Flowable.just(1)</span>
+<span class="fc" id="L98">            .doOnLifecycle(Functions.emptyConsumer(),</span>
+<span class="fc" id="L99">                    new LongConsumer() {</span>
+                        @Override
+                        public void accept(long v) throws Exception {
+<span class="fc" id="L102">                            throw new TestException();</span>
+                        }
+                    },
+                    Functions.EMPTY_ACTION)
+<span class="fc" id="L106">            .test()</span>
+<span class="fc" id="L107">            .assertResult(1);</span>
+
+<span class="fc" id="L109">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L111">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L113">    }</span>
+
+    @Test
+    public void cancelCrashed() {
+<span class="fc" id="L117">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L119">            Flowable.just(1)</span>
+<span class="fc" id="L120">            .doOnLifecycle(Functions.emptyConsumer(),</span>
+                    Functions.EMPTY_LONG_CONSUMER,
+<span class="fc" id="L122">                    new Action() {</span>
+                        @Override
+                        public void run() throws Exception {
+<span class="fc" id="L125">                            throw new TestException();</span>
+                        }
+                    })
+<span class="fc" id="L128">            .take(1)</span>
+<span class="fc" id="L129">            .test()</span>
+<span class="fc" id="L130">            .assertResult(1);</span>
+
+<span class="fc" id="L132">            TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+        } finally {
+<span class="fc" id="L134">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L136">    }</span>
+
+    @Test
+    public void onSubscribeCrash() {
+<span class="fc" id="L140">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L142">            final BooleanSubscription bs = new BooleanSubscription();</span>
+
+<span class="fc" id="L144">            new Flowable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Subscriber&lt;? super Integer&gt; s) {
+<span class="fc" id="L147">                    s.onSubscribe(bs);</span>
+<span class="fc" id="L148">                    s.onError(new TestException(&quot;Second&quot;));</span>
+<span class="fc" id="L149">                    s.onComplete();</span>
+<span class="fc" id="L150">                }</span>
+            }
+<span class="fc" id="L152">            .doOnSubscribe(new Consumer&lt;Subscription&gt;() {</span>
+                @Override
+                public void accept(Subscription s) throws Exception {
+<span class="fc" id="L155">                    throw new TestException(&quot;First&quot;);</span>
+                }
+            })
+<span class="fc" id="L158">            .test()</span>
+<span class="fc" id="L159">            .assertFailureAndMessage(TestException.class, &quot;First&quot;);</span>
+
+<span class="fc" id="L161">            assertTrue(bs.isCancelled());</span>
+
+<span class="fc" id="L163">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;Second&quot;);</span>
+        } finally {
+<span class="fc" id="L165">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L167">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

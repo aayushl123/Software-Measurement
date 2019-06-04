@@ -1,0 +1,2140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObservableBufferTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.observable</a> &gt; <span class="el_source">ObservableBufferTest.java</span></div><h1>ObservableBufferTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.observable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.*;
+import org.mockito.*;
+
+import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.operators.observable.ObservableBuffer.BufferExactObserver;
+import io.reactivex.internal.operators.observable.ObservableBufferBoundarySupplier.BufferBoundarySupplierObserver;
+import io.reactivex.internal.operators.observable.ObservableBufferTimed.*;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.*;
+import io.reactivex.subjects.*;
+
+<span class="fc" id="L44">public class ObservableBufferTest {</span>
+
+    private Observer&lt;List&lt;String&gt;&gt; observer;
+    private TestScheduler scheduler;
+    private Scheduler.Worker innerScheduler;
+
+    @Before
+    public void before() {
+<span class="fc" id="L52">        observer = TestHelper.mockObserver();</span>
+<span class="fc" id="L53">        scheduler = new TestScheduler();</span>
+<span class="fc" id="L54">        innerScheduler = scheduler.createWorker();</span>
+<span class="fc" id="L55">    }</span>
+
+    @Test
+    public void testComplete() {
+<span class="fc" id="L59">        Observable&lt;String&gt; source = Observable.empty();</span>
+
+<span class="fc" id="L61">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(3, 3);</span>
+<span class="fc" id="L62">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L64">        Mockito.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L65">        Mockito.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L66">        Mockito.verify(observer, Mockito.times(1)).onComplete();</span>
+<span class="fc" id="L67">    }</span>
+
+    @Test
+    public void testSkipAndCountOverlappingBuffers() {
+<span class="fc" id="L71">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L74">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L75">                observer.onNext(&quot;one&quot;);</span>
+<span class="fc" id="L76">                observer.onNext(&quot;two&quot;);</span>
+<span class="fc" id="L77">                observer.onNext(&quot;three&quot;);</span>
+<span class="fc" id="L78">                observer.onNext(&quot;four&quot;);</span>
+<span class="fc" id="L79">                observer.onNext(&quot;five&quot;);</span>
+<span class="fc" id="L80">            }</span>
+        });
+
+<span class="fc" id="L83">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(3, 1);</span>
+<span class="fc" id="L84">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L86">        InOrder inOrder = Mockito.inOrder(observer);</span>
+<span class="fc" id="L87">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L88">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;two&quot;, &quot;three&quot;, &quot;four&quot;));</span>
+<span class="fc" id="L89">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;three&quot;, &quot;four&quot;, &quot;five&quot;));</span>
+<span class="fc" id="L90">        inOrder.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L91">        inOrder.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L92">        inOrder.verify(observer, Mockito.never()).onComplete();</span>
+<span class="fc" id="L93">    }</span>
+
+    @Test
+    public void testSkipAndCountGaplessBuffers() {
+<span class="fc" id="L97">        Observable&lt;String&gt; source = Observable.just(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;, &quot;four&quot;, &quot;five&quot;);</span>
+
+<span class="fc" id="L99">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(3, 3);</span>
+<span class="fc" id="L100">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L102">        InOrder inOrder = Mockito.inOrder(observer);</span>
+<span class="fc" id="L103">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L104">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;four&quot;, &quot;five&quot;));</span>
+<span class="fc" id="L105">        inOrder.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L106">        inOrder.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L107">        inOrder.verify(observer, Mockito.times(1)).onComplete();</span>
+<span class="fc" id="L108">    }</span>
+
+    @Test
+    public void testSkipAndCountBuffersWithGaps() {
+<span class="fc" id="L112">        Observable&lt;String&gt; source = Observable.just(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;, &quot;four&quot;, &quot;five&quot;);</span>
+
+<span class="fc" id="L114">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(2, 3);</span>
+<span class="fc" id="L115">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L117">        InOrder inOrder = Mockito.inOrder(observer);</span>
+<span class="fc" id="L118">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;one&quot;, &quot;two&quot;));</span>
+<span class="fc" id="L119">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;four&quot;, &quot;five&quot;));</span>
+<span class="fc" id="L120">        inOrder.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L121">        inOrder.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L122">        inOrder.verify(observer, Mockito.times(1)).onComplete();</span>
+<span class="fc" id="L123">    }</span>
+
+    @Test
+    public void testTimedAndCount() {
+<span class="fc" id="L127">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L130">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L131">                push(observer, &quot;one&quot;, 10);</span>
+<span class="fc" id="L132">                push(observer, &quot;two&quot;, 90);</span>
+<span class="fc" id="L133">                push(observer, &quot;three&quot;, 110);</span>
+<span class="fc" id="L134">                push(observer, &quot;four&quot;, 190);</span>
+<span class="fc" id="L135">                push(observer, &quot;five&quot;, 210);</span>
+<span class="fc" id="L136">                complete(observer, 250);</span>
+<span class="fc" id="L137">            }</span>
+        });
+
+<span class="fc" id="L140">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(100, TimeUnit.MILLISECONDS, scheduler, 2);</span>
+<span class="fc" id="L141">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L143">        InOrder inOrder = Mockito.inOrder(observer);</span>
+<span class="fc" id="L144">        scheduler.advanceTimeTo(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L145">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;one&quot;, &quot;two&quot;));</span>
+
+<span class="fc" id="L147">        scheduler.advanceTimeTo(200, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L148">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;three&quot;, &quot;four&quot;));</span>
+
+<span class="fc" id="L150">        scheduler.advanceTimeTo(300, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L151">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;five&quot;));</span>
+<span class="fc" id="L152">        inOrder.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L153">        inOrder.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L154">        inOrder.verify(observer, Mockito.times(1)).onComplete();</span>
+<span class="fc" id="L155">    }</span>
+
+    @Test
+    public void testTimed() {
+<span class="fc" id="L159">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L162">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L163">                push(observer, &quot;one&quot;, 97);</span>
+<span class="fc" id="L164">                push(observer, &quot;two&quot;, 98);</span>
+                /**
+                 * Changed from 100. Because scheduling the cut to 100ms happens before this
+                 * Observable even runs due how lift works, pushing at 100ms would execute after the
+                 * buffer cut.
+                 */
+<span class="fc" id="L170">                push(observer, &quot;three&quot;, 99);</span>
+<span class="fc" id="L171">                push(observer, &quot;four&quot;, 101);</span>
+<span class="fc" id="L172">                push(observer, &quot;five&quot;, 102);</span>
+<span class="fc" id="L173">                complete(observer, 150);</span>
+<span class="fc" id="L174">            }</span>
+        });
+
+<span class="fc" id="L177">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(100, TimeUnit.MILLISECONDS, scheduler);</span>
+<span class="fc" id="L178">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L180">        InOrder inOrder = Mockito.inOrder(observer);</span>
+<span class="fc" id="L181">        scheduler.advanceTimeTo(101, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L182">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;one&quot;, &quot;two&quot;, &quot;three&quot;));</span>
+
+<span class="fc" id="L184">        scheduler.advanceTimeTo(201, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L185">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;four&quot;, &quot;five&quot;));</span>
+<span class="fc" id="L186">        inOrder.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L187">        inOrder.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L188">        inOrder.verify(observer, Mockito.times(1)).onComplete();</span>
+<span class="fc" id="L189">    }</span>
+
+    @Test
+    public void testObservableBasedOpenerAndCloser() {
+<span class="fc" id="L193">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L196">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L197">                push(observer, &quot;one&quot;, 10);</span>
+<span class="fc" id="L198">                push(observer, &quot;two&quot;, 60);</span>
+<span class="fc" id="L199">                push(observer, &quot;three&quot;, 110);</span>
+<span class="fc" id="L200">                push(observer, &quot;four&quot;, 160);</span>
+<span class="fc" id="L201">                push(observer, &quot;five&quot;, 210);</span>
+<span class="fc" id="L202">                complete(observer, 500);</span>
+<span class="fc" id="L203">            }</span>
+        });
+
+<span class="fc" id="L206">        Observable&lt;Object&gt; openings = Observable.unsafeCreate(new ObservableSource&lt;Object&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;Object&gt; observer) {
+<span class="fc" id="L209">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L210">                push(observer, new Object(), 50);</span>
+<span class="fc" id="L211">                push(observer, new Object(), 200);</span>
+<span class="fc" id="L212">                complete(observer, 250);</span>
+<span class="fc" id="L213">            }</span>
+        });
+
+<span class="fc" id="L216">        Function&lt;Object, Observable&lt;Object&gt;&gt; closer = new Function&lt;Object, Observable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Object&gt; apply(Object opening) {
+<span class="fc" id="L219">                return Observable.unsafeCreate(new ObservableSource&lt;Object&gt;() {</span>
+                    @Override
+                    public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L222">                        observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L223">                        push(observer, new Object(), 100);</span>
+<span class="fc" id="L224">                        complete(observer, 101);</span>
+<span class="fc" id="L225">                    }</span>
+                });
+            }
+        };
+
+<span class="fc" id="L230">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(openings, closer);</span>
+<span class="fc" id="L231">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L233">        InOrder inOrder = Mockito.inOrder(observer);</span>
+<span class="fc" id="L234">        scheduler.advanceTimeTo(500, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L235">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;two&quot;, &quot;three&quot;));</span>
+<span class="fc" id="L236">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;five&quot;));</span>
+<span class="fc" id="L237">        inOrder.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L238">        inOrder.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L239">        inOrder.verify(observer, Mockito.times(1)).onComplete();</span>
+<span class="fc" id="L240">    }</span>
+
+    @Test
+    public void testObservableBasedCloser() {
+<span class="fc" id="L244">        Observable&lt;String&gt; source = Observable.unsafeCreate(new ObservableSource&lt;String&gt;() {</span>
+            @Override
+            public void subscribe(Observer&lt;? super String&gt; observer) {
+<span class="fc" id="L247">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L248">                push(observer, &quot;one&quot;, 10);</span>
+<span class="fc" id="L249">                push(observer, &quot;two&quot;, 60);</span>
+<span class="fc" id="L250">                push(observer, &quot;three&quot;, 110);</span>
+<span class="fc" id="L251">                push(observer, &quot;four&quot;, 160);</span>
+<span class="fc" id="L252">                push(observer, &quot;five&quot;, 210);</span>
+<span class="fc" id="L253">                complete(observer, 250);</span>
+<span class="fc" id="L254">            }</span>
+        });
+
+<span class="fc" id="L257">        Callable&lt;Observable&lt;Object&gt;&gt; closer = new Callable&lt;Observable&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Object&gt; call() {
+<span class="fc" id="L260">                return Observable.unsafeCreate(new ObservableSource&lt;Object&gt;() {</span>
+                    @Override
+                    public void subscribe(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L263">                        observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L264">                        push(observer, new Object(), 100);</span>
+<span class="fc" id="L265">                        push(observer, new Object(), 200);</span>
+<span class="fc" id="L266">                        push(observer, new Object(), 300);</span>
+<span class="fc" id="L267">                        complete(observer, 301);</span>
+<span class="fc" id="L268">                    }</span>
+                });
+            }
+        };
+
+<span class="fc" id="L273">        Observable&lt;List&lt;String&gt;&gt; buffered = source.buffer(closer);</span>
+<span class="fc" id="L274">        buffered.subscribe(observer);</span>
+
+<span class="fc" id="L276">        InOrder inOrder = Mockito.inOrder(observer);</span>
+<span class="fc" id="L277">        scheduler.advanceTimeTo(500, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L278">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;one&quot;, &quot;two&quot;));</span>
+<span class="fc" id="L279">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;three&quot;, &quot;four&quot;));</span>
+<span class="fc" id="L280">        inOrder.verify(observer, Mockito.times(1)).onNext(list(&quot;five&quot;));</span>
+<span class="fc" id="L281">        inOrder.verify(observer, Mockito.never()).onNext(Mockito.&lt;String&gt;anyList());</span>
+<span class="fc" id="L282">        inOrder.verify(observer, Mockito.never()).onError(Mockito.any(Throwable.class));</span>
+<span class="fc" id="L283">        inOrder.verify(observer, Mockito.times(1)).onComplete();</span>
+<span class="fc" id="L284">    }</span>
+
+    @Test
+    public void testLongTimeAction() throws InterruptedException {
+<span class="fc" id="L288">        final CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L289">        LongTimeAction action = new LongTimeAction(latch);</span>
+<span class="fc" id="L290">        Observable.just(1).buffer(10, TimeUnit.MILLISECONDS, 10)</span>
+<span class="fc" id="L291">                .subscribe(action);</span>
+<span class="fc" id="L292">        latch.await();</span>
+<span class="fc" id="L293">        assertFalse(action.fail);</span>
+<span class="fc" id="L294">    }</span>
+
+    private static class LongTimeAction implements Consumer&lt;List&lt;Integer&gt;&gt; {
+
+        CountDownLatch latch;
+        boolean fail;
+
+<span class="fc" id="L301">        LongTimeAction(CountDownLatch latch) {</span>
+<span class="fc" id="L302">            this.latch = latch;</span>
+<span class="fc" id="L303">        }</span>
+
+        @Override
+        public void accept(List&lt;Integer&gt; t1) {
+            try {
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">                if (fail) {</span>
+<span class="nc" id="L309">                    return;</span>
+                }
+<span class="fc" id="L311">                Thread.sleep(200);</span>
+<span class="nc" id="L312">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L313">                fail = true;</span>
+            } finally {
+<span class="fc" id="L315">                latch.countDown();</span>
+            }
+<span class="fc" id="L317">        }</span>
+    }
+
+    private List&lt;String&gt; list(String... args) {
+<span class="fc" id="L321">        List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        for (String arg : args) {</span>
+<span class="fc" id="L323">            list.add(arg);</span>
+        }
+<span class="fc" id="L325">        return list;</span>
+    }
+
+    private &lt;T&gt; void push(final Observer&lt;T&gt; observer, final T value, int delay) {
+<span class="fc" id="L329">        innerScheduler.schedule(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L332">                observer.onNext(value);</span>
+<span class="fc" id="L333">            }</span>
+        }, delay, TimeUnit.MILLISECONDS);
+<span class="fc" id="L335">    }</span>
+
+    private void complete(final Observer&lt;?&gt; observer, int delay) {
+<span class="fc" id="L338">        innerScheduler.schedule(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L341">                observer.onComplete();</span>
+<span class="fc" id="L342">            }</span>
+        }, delay, TimeUnit.MILLISECONDS);
+<span class="fc" id="L344">    }</span>
+
+    @Test
+    public void testBufferStopsWhenUnsubscribed1() {
+<span class="fc" id="L348">        Observable&lt;Integer&gt; source = Observable.never();</span>
+
+<span class="fc" id="L350">        Observer&lt;List&lt;Integer&gt;&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L351">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;(o);</span>
+
+<span class="fc" id="L353">        source.buffer(100, 200, TimeUnit.MILLISECONDS, scheduler)</span>
+<span class="fc" id="L354">        .doOnNext(new Consumer&lt;List&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public void accept(List&lt;Integer&gt; pv) {
+<span class="fc" id="L357">                System.out.println(pv);</span>
+<span class="fc" id="L358">            }</span>
+        })
+<span class="fc" id="L360">        .subscribe(to);</span>
+
+<span class="fc" id="L362">        InOrder inOrder = Mockito.inOrder(o);</span>
+
+<span class="fc" id="L364">        scheduler.advanceTimeBy(1001, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L366">        inOrder.verify(o, times(5)).onNext(Arrays.&lt;Integer&gt; asList());</span>
+
+<span class="fc" id="L368">        to.dispose();</span>
+
+<span class="fc" id="L370">        scheduler.advanceTimeBy(999, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L372">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L373">    }</span>
+
+    @Test
+    public void bufferWithBONormal1() {
+<span class="fc" id="L377">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L378">        PublishSubject&lt;Integer&gt; boundary = PublishSubject.create();</span>
+
+<span class="fc" id="L380">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L381">        InOrder inOrder = Mockito.inOrder(o);</span>
+
+<span class="fc" id="L383">        source.buffer(boundary).subscribe(o);</span>
+
+<span class="fc" id="L385">        source.onNext(1);</span>
+<span class="fc" id="L386">        source.onNext(2);</span>
+<span class="fc" id="L387">        source.onNext(3);</span>
+
+<span class="fc" id="L389">        boundary.onNext(1);</span>
+
+<span class="fc" id="L391">        inOrder.verify(o, times(1)).onNext(Arrays.asList(1, 2, 3));</span>
+
+<span class="fc" id="L393">        source.onNext(4);</span>
+<span class="fc" id="L394">        source.onNext(5);</span>
+
+<span class="fc" id="L396">        boundary.onNext(2);</span>
+
+<span class="fc" id="L398">        inOrder.verify(o, times(1)).onNext(Arrays.asList(4, 5));</span>
+
+<span class="fc" id="L400">        source.onNext(6);</span>
+<span class="fc" id="L401">        boundary.onComplete();</span>
+
+<span class="fc" id="L403">        inOrder.verify(o, times(1)).onNext(Arrays.asList(6));</span>
+
+<span class="fc" id="L405">        inOrder.verify(o).onComplete();</span>
+
+<span class="fc" id="L407">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L408">    }</span>
+
+    @Test
+    public void bufferWithBOEmptyLastViaBoundary() {
+<span class="fc" id="L412">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L413">        PublishSubject&lt;Integer&gt; boundary = PublishSubject.create();</span>
+
+<span class="fc" id="L415">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L416">        InOrder inOrder = Mockito.inOrder(o);</span>
+
+<span class="fc" id="L418">        source.buffer(boundary).subscribe(o);</span>
+
+<span class="fc" id="L420">        boundary.onComplete();</span>
+
+<span class="fc" id="L422">        inOrder.verify(o, times(1)).onNext(Arrays.asList());</span>
+
+<span class="fc" id="L424">        inOrder.verify(o).onComplete();</span>
+
+<span class="fc" id="L426">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L427">    }</span>
+
+    @Test
+    public void bufferWithBOEmptyLastViaSource() {
+<span class="fc" id="L431">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L432">        PublishSubject&lt;Integer&gt; boundary = PublishSubject.create();</span>
+
+<span class="fc" id="L434">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L435">        InOrder inOrder = Mockito.inOrder(o);</span>
+
+<span class="fc" id="L437">        source.buffer(boundary).subscribe(o);</span>
+
+<span class="fc" id="L439">        source.onComplete();</span>
+
+<span class="fc" id="L441">        inOrder.verify(o, times(1)).onNext(Arrays.asList());</span>
+
+<span class="fc" id="L443">        inOrder.verify(o).onComplete();</span>
+
+<span class="fc" id="L445">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L446">    }</span>
+
+    @Test
+    public void bufferWithBOEmptyLastViaBoth() {
+<span class="fc" id="L450">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L451">        PublishSubject&lt;Integer&gt; boundary = PublishSubject.create();</span>
+
+<span class="fc" id="L453">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L454">        InOrder inOrder = Mockito.inOrder(o);</span>
+
+<span class="fc" id="L456">        source.buffer(boundary).subscribe(o);</span>
+
+<span class="fc" id="L458">        source.onComplete();</span>
+<span class="fc" id="L459">        boundary.onComplete();</span>
+
+<span class="fc" id="L461">        inOrder.verify(o, times(1)).onNext(Arrays.asList());</span>
+
+<span class="fc" id="L463">        inOrder.verify(o).onComplete();</span>
+
+<span class="fc" id="L465">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L466">    }</span>
+
+    @Test
+    public void bufferWithBOSourceThrows() {
+<span class="fc" id="L470">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L471">        PublishSubject&lt;Integer&gt; boundary = PublishSubject.create();</span>
+
+<span class="fc" id="L473">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L475">        source.buffer(boundary).subscribe(o);</span>
+<span class="fc" id="L476">        source.onNext(1);</span>
+<span class="fc" id="L477">        source.onError(new TestException());</span>
+
+<span class="fc" id="L479">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L480">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L481">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L482">    }</span>
+
+    @Test
+    public void bufferWithBOBoundaryThrows() {
+<span class="fc" id="L486">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+<span class="fc" id="L487">        PublishSubject&lt;Integer&gt; boundary = PublishSubject.create();</span>
+
+<span class="fc" id="L489">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L491">        source.buffer(boundary).subscribe(o);</span>
+
+<span class="fc" id="L493">        source.onNext(1);</span>
+<span class="fc" id="L494">        boundary.onError(new TestException());</span>
+
+<span class="fc" id="L496">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L497">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L498">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L499">    }</span>
+
+    @Test(timeout = 2000)
+    public void bufferWithSizeTake1() {
+<span class="fc" id="L503">        Observable&lt;Integer&gt; source = Observable.just(1).repeat();</span>
+
+<span class="fc" id="L505">        Observable&lt;List&lt;Integer&gt;&gt; result = source.buffer(2).take(1);</span>
+
+<span class="fc" id="L507">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L509">        result.subscribe(o);</span>
+
+<span class="fc" id="L511">        verify(o).onNext(Arrays.asList(1, 1));</span>
+<span class="fc" id="L512">        verify(o).onComplete();</span>
+<span class="fc" id="L513">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L514">    }</span>
+
+    @Test(timeout = 2000)
+    public void bufferWithSizeSkipTake1() {
+<span class="fc" id="L518">        Observable&lt;Integer&gt; source = Observable.just(1).repeat();</span>
+
+<span class="fc" id="L520">        Observable&lt;List&lt;Integer&gt;&gt; result = source.buffer(2, 3).take(1);</span>
+
+<span class="fc" id="L522">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L524">        result.subscribe(o);</span>
+
+<span class="fc" id="L526">        verify(o).onNext(Arrays.asList(1, 1));</span>
+<span class="fc" id="L527">        verify(o).onComplete();</span>
+<span class="fc" id="L528">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L529">    }</span>
+
+    @Test(timeout = 2000)
+    public void bufferWithTimeTake1() {
+<span class="fc" id="L533">        Observable&lt;Long&gt; source = Observable.interval(40, 40, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L535">        Observable&lt;List&lt;Long&gt;&gt; result = source.buffer(100, TimeUnit.MILLISECONDS, scheduler).take(1);</span>
+
+<span class="fc" id="L537">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L539">        result.subscribe(o);</span>
+
+<span class="fc" id="L541">        scheduler.advanceTimeBy(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L543">        verify(o).onNext(Arrays.asList(0L, 1L));</span>
+<span class="fc" id="L544">        verify(o).onComplete();</span>
+<span class="fc" id="L545">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L546">    }</span>
+
+    @Test(timeout = 2000)
+    public void bufferWithTimeSkipTake2() {
+<span class="fc" id="L550">        Observable&lt;Long&gt; source = Observable.interval(40, 40, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L552">        Observable&lt;List&lt;Long&gt;&gt; result = source.buffer(100, 60, TimeUnit.MILLISECONDS, scheduler).take(2);</span>
+
+<span class="fc" id="L554">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L555">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L557">        result.subscribe(o);</span>
+
+<span class="fc" id="L559">        scheduler.advanceTimeBy(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L561">        inOrder.verify(o).onNext(Arrays.asList(0L, 1L));</span>
+<span class="fc" id="L562">        inOrder.verify(o).onNext(Arrays.asList(1L, 2L));</span>
+<span class="fc" id="L563">        inOrder.verify(o).onComplete();</span>
+<span class="fc" id="L564">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L565">    }</span>
+
+    @Test(timeout = 2000)
+    public void bufferWithBoundaryTake2() {
+<span class="fc" id="L569">        Observable&lt;Long&gt; boundary = Observable.interval(60, 60, TimeUnit.MILLISECONDS, scheduler);</span>
+<span class="fc" id="L570">        Observable&lt;Long&gt; source = Observable.interval(40, 40, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L572">        Observable&lt;List&lt;Long&gt;&gt; result = source.buffer(boundary).take(2);</span>
+
+<span class="fc" id="L574">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L575">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L577">        result.subscribe(o);</span>
+
+<span class="fc" id="L579">        scheduler.advanceTimeBy(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L581">        inOrder.verify(o).onNext(Arrays.asList(0L));</span>
+<span class="fc" id="L582">        inOrder.verify(o).onNext(Arrays.asList(1L));</span>
+<span class="fc" id="L583">        inOrder.verify(o).onComplete();</span>
+<span class="fc" id="L584">        verify(o, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L586">    }</span>
+
+    @Test(timeout = 2000)
+    public void bufferWithStartEndBoundaryTake2() {
+<span class="fc" id="L590">        Observable&lt;Long&gt; start = Observable.interval(61, 61, TimeUnit.MILLISECONDS, scheduler);</span>
+<span class="fc" id="L591">        Function&lt;Long, Observable&lt;Long&gt;&gt; end = new Function&lt;Long, Observable&lt;Long&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Long&gt; apply(Long t1) {
+<span class="fc" id="L594">                return Observable.interval(100, 100, TimeUnit.MILLISECONDS, scheduler);</span>
+            }
+        };
+
+<span class="fc" id="L598">        Observable&lt;Long&gt; source = Observable.interval(40, 40, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L600">        Observable&lt;List&lt;Long&gt;&gt; result = source.buffer(start, end).take(2);</span>
+
+<span class="fc" id="L602">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L603">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L605">        result</span>
+<span class="fc" id="L606">        .doOnNext(new Consumer&lt;List&lt;Long&gt;&gt;() {</span>
+            @Override
+            public void accept(List&lt;Long&gt; pv) {
+<span class="fc" id="L609">                System.out.println(pv);</span>
+<span class="fc" id="L610">            }</span>
+        })
+<span class="fc" id="L612">        .subscribe(o);</span>
+
+<span class="fc" id="L614">        scheduler.advanceTimeBy(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L616">        inOrder.verify(o).onNext(Arrays.asList(1L, 2L, 3L));</span>
+<span class="fc" id="L617">        inOrder.verify(o).onNext(Arrays.asList(3L, 4L));</span>
+<span class="fc" id="L618">        inOrder.verify(o).onComplete();</span>
+<span class="fc" id="L619">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L620">    }</span>
+
+    @Test
+    public void bufferWithSizeThrows() {
+<span class="fc" id="L624">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L626">        Observable&lt;List&lt;Integer&gt;&gt; result = source.buffer(2);</span>
+
+<span class="fc" id="L628">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L630">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L632">        result.subscribe(o);</span>
+
+<span class="fc" id="L634">        source.onNext(1);</span>
+<span class="fc" id="L635">        source.onNext(2);</span>
+<span class="fc" id="L636">        source.onNext(3);</span>
+<span class="fc" id="L637">        source.onError(new TestException());</span>
+
+<span class="fc" id="L639">        inOrder.verify(o).onNext(Arrays.asList(1, 2));</span>
+<span class="fc" id="L640">        inOrder.verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L641">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L642">        verify(o, never()).onNext(Arrays.asList(3));</span>
+<span class="fc" id="L643">        verify(o, never()).onComplete();</span>
+
+<span class="fc" id="L645">    }</span>
+
+    @Test
+    public void bufferWithTimeThrows() {
+<span class="fc" id="L649">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L651">        Observable&lt;List&lt;Integer&gt;&gt; result = source.buffer(100, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L653">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L654">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L656">        result.subscribe(o);</span>
+
+<span class="fc" id="L658">        source.onNext(1);</span>
+<span class="fc" id="L659">        source.onNext(2);</span>
+<span class="fc" id="L660">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L661">        source.onNext(3);</span>
+<span class="fc" id="L662">        source.onError(new TestException());</span>
+<span class="fc" id="L663">        scheduler.advanceTimeBy(100, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L665">        inOrder.verify(o).onNext(Arrays.asList(1, 2));</span>
+<span class="fc" id="L666">        inOrder.verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L667">        inOrder.verifyNoMoreInteractions();</span>
+<span class="fc" id="L668">        verify(o, never()).onNext(Arrays.asList(3));</span>
+<span class="fc" id="L669">        verify(o, never()).onComplete();</span>
+
+<span class="fc" id="L671">    }</span>
+
+    @Test
+    public void bufferWithTimeAndSize() {
+<span class="fc" id="L675">        Observable&lt;Long&gt; source = Observable.interval(30, 30, TimeUnit.MILLISECONDS, scheduler);</span>
+
+<span class="fc" id="L677">        Observable&lt;List&lt;Long&gt;&gt; result = source.buffer(100, TimeUnit.MILLISECONDS, scheduler, 2).take(3);</span>
+
+<span class="fc" id="L679">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+<span class="fc" id="L680">        InOrder inOrder = inOrder(o);</span>
+
+<span class="fc" id="L682">        result.subscribe(o);</span>
+
+<span class="fc" id="L684">        scheduler.advanceTimeBy(5, TimeUnit.SECONDS);</span>
+
+<span class="fc" id="L686">        inOrder.verify(o).onNext(Arrays.asList(0L, 1L));</span>
+<span class="fc" id="L687">        inOrder.verify(o).onNext(Arrays.asList(2L));</span>
+<span class="fc" id="L688">        inOrder.verify(o).onComplete();</span>
+<span class="fc" id="L689">        verify(o, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L690">    }</span>
+
+    @Test
+    public void bufferWithStartEndStartThrows() {
+<span class="fc" id="L694">        PublishSubject&lt;Integer&gt; start = PublishSubject.create();</span>
+
+<span class="fc" id="L696">        Function&lt;Integer, Observable&lt;Integer&gt;&gt; end = new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L699">                return Observable.never();</span>
+            }
+        };
+
+<span class="fc" id="L703">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L705">        Observable&lt;List&lt;Integer&gt;&gt; result = source.buffer(start, end);</span>
+
+<span class="fc" id="L707">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L709">        result.subscribe(o);</span>
+
+<span class="fc" id="L711">        start.onNext(1);</span>
+<span class="fc" id="L712">        source.onNext(1);</span>
+<span class="fc" id="L713">        source.onNext(2);</span>
+<span class="fc" id="L714">        start.onError(new TestException());</span>
+
+<span class="fc" id="L716">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L717">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L718">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L719">    }</span>
+
+    @Test
+    public void bufferWithStartEndEndFunctionThrows() {
+<span class="fc" id="L723">        PublishSubject&lt;Integer&gt; start = PublishSubject.create();</span>
+
+<span class="fc" id="L725">        Function&lt;Integer, Observable&lt;Integer&gt;&gt; end = new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L728">                throw new TestException();</span>
+            }
+        };
+
+<span class="fc" id="L732">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L734">        Observable&lt;List&lt;Integer&gt;&gt; result = source.buffer(start, end);</span>
+
+<span class="fc" id="L736">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L738">        result.subscribe(o);</span>
+
+<span class="fc" id="L740">        start.onNext(1);</span>
+<span class="fc" id="L741">        source.onNext(1);</span>
+<span class="fc" id="L742">        source.onNext(2);</span>
+
+<span class="fc" id="L744">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L745">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L746">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L747">    }</span>
+
+    @Test
+    public void bufferWithStartEndEndThrows() {
+<span class="fc" id="L751">        PublishSubject&lt;Integer&gt; start = PublishSubject.create();</span>
+
+<span class="fc" id="L753">        Function&lt;Integer, Observable&lt;Integer&gt;&gt; end = new Function&lt;Integer, Observable&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;Integer&gt; apply(Integer t1) {
+<span class="fc" id="L756">                return Observable.error(new TestException());</span>
+            }
+        };
+
+<span class="fc" id="L760">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L762">        Observable&lt;List&lt;Integer&gt;&gt; result = source.buffer(start, end);</span>
+
+<span class="fc" id="L764">        Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L766">        result.subscribe(o);</span>
+
+<span class="fc" id="L768">        start.onNext(1);</span>
+<span class="fc" id="L769">        source.onNext(1);</span>
+<span class="fc" id="L770">        source.onNext(2);</span>
+
+<span class="fc" id="L772">        verify(o, never()).onNext(any());</span>
+<span class="fc" id="L773">        verify(o, never()).onComplete();</span>
+<span class="fc" id="L774">        verify(o).onError(any(TestException.class));</span>
+<span class="fc" id="L775">    }</span>
+
+    @Test(timeout = 3000)
+    public void testBufferWithTimeDoesntUnsubscribeDownstream() throws InterruptedException {
+<span class="fc" id="L779">        final Observer&lt;Object&gt; o = TestHelper.mockObserver();</span>
+
+<span class="fc" id="L781">        final CountDownLatch cdl = new CountDownLatch(1);</span>
+<span class="fc" id="L782">        DisposableObserver&lt;Object&gt; observer = new DisposableObserver&lt;Object&gt;() {</span>
+            @Override
+            public void onNext(Object t) {
+<span class="fc" id="L785">                o.onNext(t);</span>
+<span class="fc" id="L786">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L790">                o.onError(e);</span>
+<span class="nc" id="L791">                cdl.countDown();</span>
+<span class="nc" id="L792">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L796">                o.onComplete();</span>
+<span class="fc" id="L797">                cdl.countDown();</span>
+<span class="fc" id="L798">            }</span>
+        };
+
+<span class="fc" id="L801">        Observable.range(1, 1).delay(1, TimeUnit.SECONDS).buffer(2, TimeUnit.SECONDS).subscribe(observer);</span>
+
+<span class="fc" id="L803">        cdl.await();</span>
+
+<span class="fc" id="L805">        verify(o).onNext(Arrays.asList(1));</span>
+<span class="fc" id="L806">        verify(o).onComplete();</span>
+<span class="fc" id="L807">        verify(o, never()).onError(any(Throwable.class));</span>
+
+<span class="fc" id="L809">        assertFalse(observer.isDisposed());</span>
+<span class="fc" id="L810">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimeSkipDefault() {
+<span class="fc" id="L815">        Observable.range(1, 5).buffer(1, 1, TimeUnit.MINUTES)</span>
+<span class="fc" id="L816">        .test()</span>
+<span class="fc" id="L817">        .assertResult(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L818">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferBoundaryHint() {
+<span class="fc" id="L823">        Observable.range(1, 5).buffer(Observable.timer(1, TimeUnit.MINUTES), 2)</span>
+<span class="fc" id="L824">        .test()</span>
+<span class="fc" id="L825">        .assertResult(Arrays.asList(1, 2, 3, 4, 5));</span>
+<span class="fc" id="L826">    }</span>
+
+    static HashSet&lt;Integer&gt; set(Integer... values) {
+<span class="fc" id="L829">        return new HashSet&lt;Integer&gt;(Arrays.asList(values));</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferIntoCustomCollection() {
+<span class="fc" id="L835">        Observable.just(1, 1, 2, 2, 3, 3, 4, 4)</span>
+<span class="fc" id="L836">        .buffer(3, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc" id="L839">                return new HashSet&lt;Integer&gt;();</span>
+            }
+        })
+<span class="fc" id="L842">        .test()</span>
+<span class="fc" id="L843">        .assertResult(set(1, 2), set(2, 3), set(4));</span>
+<span class="fc" id="L844">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferSkipIntoCustomCollection() {
+<span class="fc" id="L849">        Observable.just(1, 1, 2, 2, 3, 3, 4, 4)</span>
+<span class="fc" id="L850">        .buffer(3, 3, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc" id="L853">                return new HashSet&lt;Integer&gt;();</span>
+            }
+        })
+<span class="fc" id="L856">        .test()</span>
+<span class="fc" id="L857">        .assertResult(set(1, 2), set(2, 3), set(4));</span>
+<span class="fc" id="L858">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierThrows() {
+<span class="fc" id="L863">        Observable.just(1)</span>
+<span class="fc" id="L864">        .buffer(1, TimeUnit.SECONDS, Schedulers.single(), Integer.MAX_VALUE, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc" id="L867">                throw new TestException();</span>
+            }
+        }, false)
+<span class="fc" id="L870">        .test()</span>
+<span class="fc" id="L871">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L872">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierThrows2() {
+<span class="fc" id="L877">        Observable.just(1)</span>
+<span class="fc" id="L878">        .buffer(1, TimeUnit.SECONDS, Schedulers.single(), 10, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc" id="L881">                throw new TestException();</span>
+            }
+        }, false)
+<span class="fc" id="L884">        .test()</span>
+<span class="fc" id="L885">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L886">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierThrows3() {
+<span class="fc" id="L891">        Observable.just(1)</span>
+<span class="fc" id="L892">        .buffer(2, 1, TimeUnit.SECONDS, Schedulers.single(), new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc" id="L895">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L898">        .test()</span>
+<span class="fc" id="L899">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L900">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierThrows4() {
+<span class="fc" id="L905">        Observable.&lt;Integer&gt;never()</span>
+<span class="fc" id="L906">        .buffer(1, TimeUnit.MILLISECONDS, Schedulers.single(), Integer.MAX_VALUE, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L910" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L911">                    throw new TestException();</span>
+                } else {
+<span class="fc" id="L913">                    return new ArrayList&lt;Integer&gt;();</span>
+                }
+            }
+        }, false)
+<span class="fc" id="L917">        .test()</span>
+<span class="fc" id="L918">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L919">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L920">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierThrows5() {
+<span class="fc" id="L925">        Observable.&lt;Integer&gt;never()</span>
+<span class="fc" id="L926">        .buffer(1, TimeUnit.MILLISECONDS, Schedulers.single(), 10, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L930" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L931">                    throw new TestException();</span>
+                } else {
+<span class="fc" id="L933">                    return new ArrayList&lt;Integer&gt;();</span>
+                }
+            }
+        }, false)
+<span class="fc" id="L937">        .test()</span>
+<span class="fc" id="L938">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L939">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L940">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierThrows6() {
+<span class="fc" id="L945">        Observable.&lt;Integer&gt;never()</span>
+<span class="fc" id="L946">        .buffer(2, 1, TimeUnit.MILLISECONDS, Schedulers.single(), new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L950" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L951">                    throw new TestException();</span>
+                } else {
+<span class="fc" id="L953">                    return new ArrayList&lt;Integer&gt;();</span>
+                }
+            }
+        })
+<span class="fc" id="L957">        .test()</span>
+<span class="fc" id="L958">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L959">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L960">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierReturnsNull() {
+<span class="fc" id="L965">        Observable.&lt;Integer&gt;never()</span>
+<span class="fc" id="L966">        .buffer(1, TimeUnit.MILLISECONDS, Schedulers.single(), Integer.MAX_VALUE, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L970" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L971">                    return null;</span>
+                } else {
+<span class="fc" id="L973">                    return new ArrayList&lt;Integer&gt;();</span>
+                }
+            }
+        }, false)
+<span class="fc" id="L977">        .test()</span>
+<span class="fc" id="L978">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L979">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L980">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierReturnsNull2() {
+<span class="fc" id="L985">        Observable.&lt;Integer&gt;never()</span>
+<span class="fc" id="L986">        .buffer(1, TimeUnit.MILLISECONDS, Schedulers.single(), 10, new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L990" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L991">                    return null;</span>
+                } else {
+<span class="fc" id="L993">                    return new ArrayList&lt;Integer&gt;();</span>
+                }
+            }
+        }, false)
+<span class="fc" id="L997">        .test()</span>
+<span class="fc" id="L998">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L999">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L1000">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void supplierReturnsNull3() {
+<span class="fc" id="L1005">        Observable.&lt;Integer&gt;never()</span>
+<span class="fc" id="L1006">        .buffer(2, 1, TimeUnit.MILLISECONDS, Schedulers.single(), new Callable&lt;Collection&lt;Integer&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1010" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L1011">                    return null;</span>
+                } else {
+<span class="fc" id="L1013">                    return new ArrayList&lt;Integer&gt;();</span>
+                }
+            }
+        })
+<span class="fc" id="L1017">        .test()</span>
+<span class="fc" id="L1018">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1019">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L1020">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryBufferSupplierThrows() {
+<span class="fc" id="L1025">        Observable.never()</span>
+<span class="fc" id="L1026">        .buffer(Functions.justCallable(Observable.never()), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1029">                throw new TestException();</span>
+            }
+        })
+<span class="fc" id="L1032">        .test()</span>
+<span class="fc" id="L1033">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1034">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryBoundarySupplierThrows() {
+<span class="fc" id="L1039">        Observable.never()</span>
+<span class="fc" id="L1040">        .buffer(new Callable&lt;ObservableSource&lt;Object&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1043">                throw new TestException();</span>
+            }
+<span class="fc" id="L1045">        }, new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1048">                return new ArrayList&lt;Object&gt;();</span>
+            }
+        })
+<span class="fc" id="L1051">        .test()</span>
+<span class="fc" id="L1052">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1053">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryBufferSupplierThrows2() {
+<span class="fc" id="L1058">        Observable.never()</span>
+<span class="fc" id="L1059">        .buffer(Functions.justCallable(Observable.timer(1, TimeUnit.MILLISECONDS)), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc bfc" id="L1063" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L1064">                    throw new TestException();</span>
+                } else {
+<span class="fc" id="L1066">                    return new ArrayList&lt;Object&gt;();</span>
+                }
+            }
+        })
+<span class="fc" id="L1070">        .test()</span>
+<span class="fc" id="L1071">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1072">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1073">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryBufferSupplierReturnsNull() {
+<span class="fc" id="L1078">        Observable.never()</span>
+<span class="fc" id="L1079">        .buffer(Functions.justCallable(Observable.timer(1, TimeUnit.MILLISECONDS)), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            int count;
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc bfc" id="L1083" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L1084">                    return null;</span>
+                } else {
+<span class="fc" id="L1086">                    return new ArrayList&lt;Object&gt;();</span>
+                }
+            }
+        })
+<span class="fc" id="L1090">        .test()</span>
+<span class="fc" id="L1091">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1092">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L1093">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryBoundarySupplierThrows2() {
+<span class="fc" id="L1098">        Observable.never()</span>
+<span class="fc" id="L1099">        .buffer(new Callable&lt;ObservableSource&lt;Long&gt;&gt;() {</span>
+            int count;
+            @Override
+            public ObservableSource&lt;Long&gt; call() throws Exception {
+<span class="fc bfc" id="L1103" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L1104">                    throw new TestException();</span>
+                }
+<span class="fc" id="L1106">                return Observable.timer(1, TimeUnit.MILLISECONDS);</span>
+            }
+<span class="fc" id="L1108">        }, new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1111">                return new ArrayList&lt;Object&gt;();</span>
+            }
+        })
+<span class="fc" id="L1114">        .test()</span>
+<span class="fc" id="L1115">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1116">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1117">    }</span>
+
+    @Test
+    public void boundaryCancel() {
+<span class="fc" id="L1121">        PublishSubject&lt;Object&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L1123">        TestObserver&lt;Collection&lt;Object&gt;&gt; to = ps</span>
+<span class="fc" id="L1124">        .buffer(Functions.justCallable(Observable.never()), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1127">                return new ArrayList&lt;Object&gt;();</span>
+            }
+        })
+<span class="fc" id="L1130">        .test();</span>
+
+<span class="fc" id="L1132">        assertTrue(ps.hasObservers());</span>
+
+<span class="fc" id="L1134">        to.dispose();</span>
+
+<span class="fc" id="L1136">        assertFalse(ps.hasObservers());</span>
+<span class="fc" id="L1137">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryBoundarySupplierReturnsNull() {
+<span class="fc" id="L1142">        Observable.never()</span>
+<span class="fc" id="L1143">        .buffer(new Callable&lt;ObservableSource&lt;Long&gt;&gt;() {</span>
+            int count;
+            @Override
+            public ObservableSource&lt;Long&gt; call() throws Exception {
+<span class="fc bfc" id="L1147" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L1148">                    return null;</span>
+                }
+<span class="fc" id="L1150">                return Observable.timer(1, TimeUnit.MILLISECONDS);</span>
+            }
+<span class="fc" id="L1152">        }, new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1155">                return new ArrayList&lt;Object&gt;();</span>
+            }
+        })
+<span class="fc" id="L1158">        .test()</span>
+<span class="fc" id="L1159">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1160">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L1161">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryBoundarySupplierReturnsNull2() {
+<span class="fc" id="L1166">        Observable.never()</span>
+<span class="fc" id="L1167">        .buffer(new Callable&lt;ObservableSource&lt;Long&gt;&gt;() {</span>
+            int count;
+            @Override
+            public ObservableSource&lt;Long&gt; call() throws Exception {
+<span class="fc bfc" id="L1171" title="All 2 branches covered.">                if (count++ == 1) {</span>
+<span class="fc" id="L1172">                    return null;</span>
+                }
+<span class="fc" id="L1174">                return Observable.empty();</span>
+            }
+<span class="fc" id="L1176">        }, new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1179">                return new ArrayList&lt;Object&gt;();</span>
+            }
+        })
+<span class="fc" id="L1182">        .test()</span>
+<span class="fc" id="L1183">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1184">        .assertFailure(NullPointerException.class);</span>
+<span class="fc" id="L1185">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void boundaryMainError() {
+<span class="fc" id="L1190">        PublishSubject&lt;Object&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L1192">        TestObserver&lt;Collection&lt;Object&gt;&gt; to = ps</span>
+<span class="fc" id="L1193">        .buffer(Functions.justCallable(Observable.never()), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1196">                return new ArrayList&lt;Object&gt;();</span>
+            }
+        })
+<span class="fc" id="L1199">        .test();</span>
+
+<span class="fc" id="L1201">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L1203">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L1204">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void boundaryBoundaryError() {
+<span class="fc" id="L1209">        PublishSubject&lt;Object&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L1211">        TestObserver&lt;Collection&lt;Object&gt;&gt; to = ps</span>
+<span class="fc" id="L1212">        .buffer(Functions.justCallable(Observable.error(new TestException())), new Callable&lt;Collection&lt;Object&gt;&gt;() {</span>
+            @Override
+            public Collection&lt;Object&gt; call() throws Exception {
+<span class="fc" id="L1215">                return new ArrayList&lt;Object&gt;();</span>
+            }
+        })
+<span class="fc" id="L1218">        .test();</span>
+
+<span class="fc" id="L1220">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L1222">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L1223">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L1227">        TestHelper.checkDisposed(Observable.range(1, 5).buffer(1, TimeUnit.DAYS, Schedulers.single()));</span>
+
+<span class="fc" id="L1229">        TestHelper.checkDisposed(Observable.range(1, 5).buffer(2, 1, TimeUnit.DAYS, Schedulers.single()));</span>
+
+<span class="fc" id="L1231">        TestHelper.checkDisposed(Observable.range(1, 5).buffer(1, 2, TimeUnit.DAYS, Schedulers.single()));</span>
+
+<span class="fc" id="L1233">        TestHelper.checkDisposed(Observable.range(1, 5)</span>
+<span class="fc" id="L1234">                .buffer(1, TimeUnit.DAYS, Schedulers.single(), 2, Functions.&lt;Integer&gt;createArrayList(16), true));</span>
+
+<span class="fc" id="L1236">        TestHelper.checkDisposed(Observable.range(1, 5).buffer(1));</span>
+
+<span class="fc" id="L1238">        TestHelper.checkDisposed(Observable.range(1, 5).buffer(2, 1));</span>
+
+<span class="fc" id="L1240">        TestHelper.checkDisposed(Observable.range(1, 5).buffer(1, 2));</span>
+
+<span class="fc" id="L1242">        TestHelper.checkDisposed(PublishSubject.create().buffer(Observable.never()));</span>
+
+<span class="fc" id="L1244">        TestHelper.checkDisposed(PublishSubject.create().buffer(Functions.justCallable(Observable.never())));</span>
+
+<span class="fc" id="L1246">        TestHelper.checkDisposed(PublishSubject.create().buffer(Observable.never(), Functions.justFunction(Observable.never())));</span>
+<span class="fc" id="L1247">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void restartTimer() {
+<span class="fc" id="L1252">        Observable.range(1, 5)</span>
+<span class="fc" id="L1253">        .buffer(1, TimeUnit.DAYS, Schedulers.single(), 2, Functions.&lt;Integer&gt;createArrayList(16), true)</span>
+<span class="fc" id="L1254">        .test()</span>
+<span class="fc" id="L1255">        .assertResult(Arrays.asList(1, 2), Arrays.asList(3, 4), Arrays.asList(5));</span>
+<span class="fc" id="L1256">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferSupplierCrash2() {
+<span class="fc" id="L1261">        Observable.range(1, 2)</span>
+<span class="fc" id="L1262">        .buffer(1, new Callable&lt;List&lt;Integer&gt;&gt;() {</span>
+            int calls;
+            @Override
+            public List&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1266" title="All 2 branches covered.">                if (++calls == 2) {</span>
+<span class="fc" id="L1267">                    throw new TestException();</span>
+                }
+<span class="fc" id="L1269">                return new ArrayList&lt;Integer&gt;();</span>
+            }
+        })
+<span class="fc" id="L1272">        .test()</span>
+<span class="fc" id="L1273">        .assertFailure(TestException.class, Arrays.asList(1));</span>
+<span class="fc" id="L1274">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferSkipSupplierCrash2() {
+<span class="fc" id="L1279">        Observable.range(1, 2)</span>
+<span class="fc" id="L1280">        .buffer(2, 1, new Callable&lt;List&lt;Integer&gt;&gt;() {</span>
+            int calls;
+            @Override
+            public List&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1284" title="All 2 branches covered.">                if (++calls == 2) {</span>
+<span class="fc" id="L1285">                    throw new TestException();</span>
+                }
+<span class="fc" id="L1287">                return new ArrayList&lt;Integer&gt;();</span>
+            }
+        })
+<span class="fc" id="L1290">        .test()</span>
+<span class="fc" id="L1291">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1292">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferSkipError() {
+<span class="fc" id="L1297">        Observable.&lt;Integer&gt;error(new TestException())</span>
+<span class="fc" id="L1298">        .buffer(2, 1)</span>
+<span class="fc" id="L1299">        .test()</span>
+<span class="fc" id="L1300">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1301">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferSkipOverlap() {
+<span class="fc" id="L1306">        Observable.range(1, 5)</span>
+<span class="fc" id="L1307">        .buffer(5, 1)</span>
+<span class="fc" id="L1308">        .test()</span>
+<span class="fc" id="L1309">        .assertResult(</span>
+<span class="fc" id="L1310">            Arrays.asList(1, 2, 3, 4, 5),</span>
+<span class="fc" id="L1311">            Arrays.asList(2, 3, 4, 5),</span>
+<span class="fc" id="L1312">            Arrays.asList(3, 4, 5),</span>
+<span class="fc" id="L1313">            Arrays.asList(4, 5),</span>
+<span class="fc" id="L1314">            Arrays.asList(5)</span>
+        );
+<span class="fc" id="L1316">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedExactError() {
+<span class="fc" id="L1321">        Observable.error(new TestException())</span>
+<span class="fc" id="L1322">        .buffer(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L1323">        .test()</span>
+<span class="fc" id="L1324">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1325">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedSkipError() {
+<span class="fc" id="L1330">        Observable.error(new TestException())</span>
+<span class="fc" id="L1331">        .buffer(1, 2, TimeUnit.DAYS)</span>
+<span class="fc" id="L1332">        .test()</span>
+<span class="fc" id="L1333">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1334">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedOverlapError() {
+<span class="fc" id="L1339">        Observable.error(new TestException())</span>
+<span class="fc" id="L1340">        .buffer(2, 1, TimeUnit.DAYS)</span>
+<span class="fc" id="L1341">        .test()</span>
+<span class="fc" id="L1342">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1343">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedExactEmpty() {
+<span class="fc" id="L1348">        Observable.empty()</span>
+<span class="fc" id="L1349">        .buffer(1, TimeUnit.DAYS)</span>
+<span class="fc" id="L1350">        .test()</span>
+<span class="fc" id="L1351">        .assertResult(Collections.emptyList());</span>
+<span class="fc" id="L1352">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedSkipEmpty() {
+<span class="fc" id="L1357">        Observable.empty()</span>
+<span class="fc" id="L1358">        .buffer(1, 2, TimeUnit.DAYS)</span>
+<span class="fc" id="L1359">        .test()</span>
+<span class="fc" id="L1360">        .assertResult(Collections.emptyList());</span>
+<span class="fc" id="L1361">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedOverlapEmpty() {
+<span class="fc" id="L1366">        Observable.empty()</span>
+<span class="fc" id="L1367">        .buffer(2, 1, TimeUnit.DAYS)</span>
+<span class="fc" id="L1368">        .test()</span>
+<span class="fc" id="L1369">        .assertResult(Collections.emptyList());</span>
+<span class="fc" id="L1370">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedExactSupplierCrash() {
+<span class="fc" id="L1375">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1377">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L1379">        TestObserver&lt;List&lt;Integer&gt;&gt; to = ps</span>
+<span class="fc" id="L1380">        .buffer(1, TimeUnit.MILLISECONDS, scheduler, 1, new Callable&lt;List&lt;Integer&gt;&gt;() {</span>
+            int calls;
+            @Override
+            public List&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1384" title="All 2 branches covered.">                if (++calls == 2) {</span>
+<span class="fc" id="L1385">                    throw new TestException();</span>
+                }
+<span class="fc" id="L1387">                return new ArrayList&lt;Integer&gt;();</span>
+            }
+        }, true)
+<span class="fc" id="L1390">        .test();</span>
+
+<span class="fc" id="L1392">        ps.onNext(1);</span>
+
+<span class="fc" id="L1394">        scheduler.advanceTimeBy(1, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L1396">        ps.onNext(2);</span>
+
+<span class="fc" id="L1398">        to</span>
+<span class="fc" id="L1399">        .assertFailure(TestException.class, Arrays.asList(1));</span>
+<span class="fc" id="L1400">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferTimedExactBoundedError() {
+<span class="fc" id="L1405">        TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1407">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L1409">        TestObserver&lt;List&lt;Integer&gt;&gt; to = ps</span>
+<span class="fc" id="L1410">        .buffer(1, TimeUnit.MILLISECONDS, scheduler, 1, Functions.&lt;Integer&gt;createArrayList(16), true)</span>
+<span class="fc" id="L1411">        .test();</span>
+
+<span class="fc" id="L1413">        ps.onError(new TestException());</span>
+
+<span class="fc" id="L1415">        to</span>
+<span class="fc" id="L1416">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1417">    }</span>
+
+    @Test
+    public void withTimeAndSizeCapacityRace() {
+<span class="fc bfc" id="L1421" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L1422">            final TestScheduler scheduler = new TestScheduler();</span>
+
+<span class="fc" id="L1424">            final PublishSubject&lt;Object&gt; ps = PublishSubject.create();</span>
+
+<span class="fc" id="L1426">            TestObserver&lt;List&lt;Object&gt;&gt; to = ps.buffer(1, TimeUnit.SECONDS, scheduler, 5).test();</span>
+
+<span class="fc" id="L1428">            ps.onNext(1);</span>
+<span class="fc" id="L1429">            ps.onNext(2);</span>
+<span class="fc" id="L1430">            ps.onNext(3);</span>
+<span class="fc" id="L1431">            ps.onNext(4);</span>
+
+<span class="fc" id="L1433">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1436">                    ps.onNext(5);</span>
+<span class="fc" id="L1437">                }</span>
+            };
+
+<span class="fc" id="L1440">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L1443">                    scheduler.advanceTimeBy(1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L1444">                }</span>
+            };
+
+<span class="fc" id="L1447">            TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L1449">            ps.onComplete();</span>
+
+<span class="fc" id="L1451">            int items = 0;</span>
+<span class="fc bfc" id="L1452" title="All 2 branches covered.">            for (List&lt;Object&gt; o : to.values()) {</span>
+<span class="fc" id="L1453">                items += o.size();</span>
+<span class="fc" id="L1454">            }</span>
+
+<span class="fc" id="L1456">            assertEquals(&quot;Round: &quot; + i, 5, items);</span>
+        }
+<span class="fc" id="L1458">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noCompletionCancelExact() {
+<span class="fc" id="L1463">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1465">        Observable.&lt;Integer&gt;empty()</span>
+<span class="fc" id="L1466">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1469">                counter.getAndIncrement();</span>
+<span class="nc" id="L1470">            }</span>
+        })
+<span class="fc" id="L1472">        .buffer(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1473">        .test()</span>
+<span class="fc" id="L1474">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1475">        .assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+
+<span class="fc" id="L1477">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1478">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noCompletionCancelSkip() {
+<span class="fc" id="L1483">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1485">        Observable.&lt;Integer&gt;empty()</span>
+<span class="fc" id="L1486">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1489">                counter.getAndIncrement();</span>
+<span class="nc" id="L1490">            }</span>
+        })
+<span class="fc" id="L1492">        .buffer(5, 10, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1493">        .test()</span>
+<span class="fc" id="L1494">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1495">        .assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+
+<span class="fc" id="L1497">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1498">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void noCompletionCancelOverlap() {
+<span class="fc" id="L1503">        final AtomicInteger counter = new AtomicInteger();</span>
+
+<span class="fc" id="L1505">        Observable.&lt;Integer&gt;empty()</span>
+<span class="fc" id="L1506">        .doOnDispose(new Action() {</span>
+            @Override
+            public void run() throws Exception {
+<span class="nc" id="L1509">                counter.getAndIncrement();</span>
+<span class="nc" id="L1510">            }</span>
+        })
+<span class="fc" id="L1512">        .buffer(10, 5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1513">        .test()</span>
+<span class="fc" id="L1514">        .awaitDone(5, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1515">        .assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+
+<span class="fc" id="L1517">        assertEquals(0, counter.get());</span>
+<span class="fc" id="L1518">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void boundaryOpenCloseDisposedOnComplete() {
+<span class="fc" id="L1523">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L1525">        PublishSubject&lt;Integer&gt; openIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1527">        PublishSubject&lt;Integer&gt; closeIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1529">        TestObserver&lt;List&lt;Integer&gt;&gt; to = source</span>
+<span class="fc" id="L1530">        .buffer(openIndicator, Functions.justFunction(closeIndicator))</span>
+<span class="fc" id="L1531">        .test();</span>
+
+<span class="fc" id="L1533">        assertTrue(source.hasObservers());</span>
+<span class="fc" id="L1534">        assertTrue(openIndicator.hasObservers());</span>
+<span class="fc" id="L1535">        assertFalse(closeIndicator.hasObservers());</span>
+
+<span class="fc" id="L1537">        openIndicator.onNext(1);</span>
+
+<span class="fc" id="L1539">        assertTrue(openIndicator.hasObservers());</span>
+<span class="fc" id="L1540">        assertTrue(closeIndicator.hasObservers());</span>
+
+<span class="fc" id="L1542">        source.onComplete();</span>
+
+<span class="fc" id="L1544">        to.assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+
+<span class="fc" id="L1546">        assertFalse(openIndicator.hasObservers());</span>
+<span class="fc" id="L1547">        assertFalse(closeIndicator.hasObservers());</span>
+<span class="fc" id="L1548">    }</span>
+
+    @Test
+    public void bufferedCanCompleteIfOpenNeverCompletesDropping() {
+<span class="fc" id="L1552">        Observable.range(1, 50)</span>
+<span class="fc" id="L1553">                .zipWith(Observable.interval(5, TimeUnit.MILLISECONDS),</span>
+<span class="fc" id="L1554">                        new BiFunction&lt;Integer, Long, Integer&gt;() {</span>
+                            @Override
+                            public Integer apply(Integer integer, Long aLong) {
+<span class="fc" id="L1557">                                return integer;</span>
+                            }
+                        })
+<span class="fc" id="L1560">                .buffer(Observable.interval(0, 200, TimeUnit.MILLISECONDS),</span>
+<span class="fc" id="L1561">                        new Function&lt;Long, Observable&lt;?&gt;&gt;() {</span>
+                            @Override
+                            public Observable&lt;?&gt; apply(Long a) {
+<span class="fc" id="L1564">                                return Observable.just(a).delay(100, TimeUnit.MILLISECONDS);</span>
+                            }
+                        })
+<span class="fc" id="L1567">                .test()</span>
+<span class="fc" id="L1568">                .assertSubscribed()</span>
+<span class="fc" id="L1569">                .awaitDone(3, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1570">                .assertComplete();</span>
+<span class="fc" id="L1571">    }</span>
+
+    @Test
+    public void bufferedCanCompleteIfOpenNeverCompletesOverlapping() {
+<span class="fc" id="L1575">        Observable.range(1, 50)</span>
+<span class="fc" id="L1576">                .zipWith(Observable.interval(5, TimeUnit.MILLISECONDS),</span>
+<span class="fc" id="L1577">                        new BiFunction&lt;Integer, Long, Integer&gt;() {</span>
+                            @Override
+                            public Integer apply(Integer integer, Long aLong) {
+<span class="fc" id="L1580">                                return integer;</span>
+                            }
+                        })
+<span class="fc" id="L1583">                .buffer(Observable.interval(0, 100, TimeUnit.MILLISECONDS),</span>
+<span class="fc" id="L1584">                        new Function&lt;Long, Observable&lt;?&gt;&gt;() {</span>
+                            @Override
+                            public Observable&lt;?&gt; apply(Long a) {
+<span class="fc" id="L1587">                                return Observable.just(a).delay(200, TimeUnit.MILLISECONDS);</span>
+                            }
+                        })
+<span class="fc" id="L1590">                .test()</span>
+<span class="fc" id="L1591">                .assertSubscribed()</span>
+<span class="fc" id="L1592">                .awaitDone(3, TimeUnit.SECONDS)</span>
+<span class="fc" id="L1593">                .assertComplete();</span>
+<span class="fc" id="L1594">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void openClosemainError() {
+<span class="fc" id="L1599">        Observable.error(new TestException())</span>
+<span class="fc" id="L1600">        .buffer(Observable.never(), Functions.justFunction(Observable.never()))</span>
+<span class="fc" id="L1601">        .test()</span>
+<span class="fc" id="L1602">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L1603">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void openClosebadSource() {
+<span class="fc" id="L1608">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1610">            new Observable&lt;Object&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Object&gt; observer) {
+<span class="fc" id="L1613">                    Disposable bs1 = Disposables.empty();</span>
+<span class="fc" id="L1614">                    Disposable bs2 = Disposables.empty();</span>
+
+<span class="fc" id="L1616">                    observer.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1618">                    assertFalse(bs1.isDisposed());</span>
+<span class="fc" id="L1619">                    assertFalse(bs2.isDisposed());</span>
+
+<span class="fc" id="L1621">                    observer.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1623">                    assertFalse(bs1.isDisposed());</span>
+<span class="fc" id="L1624">                    assertTrue(bs2.isDisposed());</span>
+
+<span class="fc" id="L1626">                    observer.onError(new IOException());</span>
+<span class="fc" id="L1627">                    observer.onComplete();</span>
+<span class="fc" id="L1628">                    observer.onNext(1);</span>
+<span class="fc" id="L1629">                    observer.onError(new TestException());</span>
+<span class="fc" id="L1630">                }</span>
+            }
+<span class="fc" id="L1632">            .buffer(Observable.never(), Functions.justFunction(Observable.never()))</span>
+<span class="fc" id="L1633">            .test()</span>
+<span class="fc" id="L1634">            .assertFailure(IOException.class);</span>
+
+<span class="fc" id="L1636">            TestHelper.assertError(errors, 0, ProtocolViolationException.class);</span>
+<span class="fc" id="L1637">            TestHelper.assertUndeliverable(errors, 1, TestException.class);</span>
+        } finally {
+<span class="fc" id="L1639">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1641">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void openCloseOpenCompletes() {
+<span class="fc" id="L1646">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L1648">        PublishSubject&lt;Integer&gt; openIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1650">        PublishSubject&lt;Integer&gt; closeIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1652">        TestObserver&lt;List&lt;Integer&gt;&gt; to = source</span>
+<span class="fc" id="L1653">        .buffer(openIndicator, Functions.justFunction(closeIndicator))</span>
+<span class="fc" id="L1654">        .test();</span>
+
+<span class="fc" id="L1656">        openIndicator.onNext(1);</span>
+
+<span class="fc" id="L1658">        assertTrue(closeIndicator.hasObservers());</span>
+
+<span class="fc" id="L1660">        openIndicator.onComplete();</span>
+
+<span class="fc" id="L1662">        assertTrue(source.hasObservers());</span>
+<span class="fc" id="L1663">        assertTrue(closeIndicator.hasObservers());</span>
+
+<span class="fc" id="L1665">        closeIndicator.onComplete();</span>
+
+<span class="fc" id="L1667">        assertFalse(source.hasObservers());</span>
+
+<span class="fc" id="L1669">        to.assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+<span class="fc" id="L1670">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void openCloseOpenCompletesNoBuffers() {
+<span class="fc" id="L1675">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L1677">        PublishSubject&lt;Integer&gt; openIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1679">        PublishSubject&lt;Integer&gt; closeIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1681">        TestObserver&lt;List&lt;Integer&gt;&gt; to = source</span>
+<span class="fc" id="L1682">        .buffer(openIndicator, Functions.justFunction(closeIndicator))</span>
+<span class="fc" id="L1683">        .test();</span>
+
+<span class="fc" id="L1685">        openIndicator.onNext(1);</span>
+
+<span class="fc" id="L1687">        assertTrue(closeIndicator.hasObservers());</span>
+
+<span class="fc" id="L1689">        closeIndicator.onComplete();</span>
+
+<span class="fc" id="L1691">        assertTrue(source.hasObservers());</span>
+<span class="fc" id="L1692">        assertTrue(openIndicator.hasObservers());</span>
+
+<span class="fc" id="L1694">        openIndicator.onComplete();</span>
+
+<span class="fc" id="L1696">        assertFalse(source.hasObservers());</span>
+
+<span class="fc" id="L1698">        to.assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+<span class="fc" id="L1699">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void openCloseTake() {
+<span class="fc" id="L1704">        PublishSubject&lt;Integer&gt; source = PublishSubject.create();</span>
+
+<span class="fc" id="L1706">        PublishSubject&lt;Integer&gt; openIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1708">        PublishSubject&lt;Integer&gt; closeIndicator = PublishSubject.create();</span>
+
+<span class="fc" id="L1710">        TestObserver&lt;List&lt;Integer&gt;&gt; to = source</span>
+<span class="fc" id="L1711">        .buffer(openIndicator, Functions.justFunction(closeIndicator))</span>
+<span class="fc" id="L1712">        .take(1)</span>
+<span class="fc" id="L1713">        .test();</span>
+
+<span class="fc" id="L1715">        openIndicator.onNext(1);</span>
+<span class="fc" id="L1716">        closeIndicator.onComplete();</span>
+
+<span class="fc" id="L1718">        assertFalse(source.hasObservers());</span>
+<span class="fc" id="L1719">        assertFalse(openIndicator.hasObservers());</span>
+<span class="fc" id="L1720">        assertFalse(closeIndicator.hasObservers());</span>
+
+<span class="fc" id="L1722">        to.assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+<span class="fc" id="L1723">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void openCloseBadOpen() {
+<span class="fc" id="L1728">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1730">            Observable.never()</span>
+<span class="fc" id="L1731">            .buffer(new Observable&lt;Object&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Object&gt; observer) {
+
+<span class="fc" id="L1735">                    assertFalse(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L1737">                    Disposable bs1 = Disposables.empty();</span>
+<span class="fc" id="L1738">                    Disposable bs2 = Disposables.empty();</span>
+
+<span class="fc" id="L1740">                    observer.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1742">                    assertFalse(bs1.isDisposed());</span>
+<span class="fc" id="L1743">                    assertFalse(bs2.isDisposed());</span>
+
+<span class="fc" id="L1745">                    observer.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1747">                    assertFalse(bs1.isDisposed());</span>
+<span class="fc" id="L1748">                    assertTrue(bs2.isDisposed());</span>
+
+<span class="fc" id="L1750">                    observer.onError(new IOException());</span>
+
+<span class="fc" id="L1752">                    assertTrue(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L1754">                    observer.onComplete();</span>
+<span class="fc" id="L1755">                    observer.onNext(1);</span>
+<span class="fc" id="L1756">                    observer.onError(new TestException());</span>
+<span class="fc" id="L1757">                }</span>
+<span class="fc" id="L1758">            }, Functions.justFunction(Observable.never()))</span>
+<span class="fc" id="L1759">            .test()</span>
+<span class="fc" id="L1760">            .assertFailure(IOException.class);</span>
+
+<span class="fc" id="L1762">            TestHelper.assertError(errors, 0, ProtocolViolationException.class);</span>
+<span class="fc" id="L1763">            TestHelper.assertUndeliverable(errors, 1, TestException.class);</span>
+        } finally {
+<span class="fc" id="L1765">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1767">    }</span>
+
+    @Test
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void openCloseBadClose() {
+<span class="fc" id="L1772">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1774">            Observable.never()</span>
+<span class="fc" id="L1775">            .buffer(Observable.just(1).concatWith(Observable.&lt;Integer&gt;never()),</span>
+<span class="fc" id="L1776">                    Functions.justFunction(new Observable&lt;Object&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Object&gt; observer) {
+
+<span class="fc" id="L1780">                    assertFalse(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L1782">                    Disposable bs1 = Disposables.empty();</span>
+<span class="fc" id="L1783">                    Disposable bs2 = Disposables.empty();</span>
+
+<span class="fc" id="L1785">                    observer.onSubscribe(bs1);</span>
+
+<span class="fc" id="L1787">                    assertFalse(bs1.isDisposed());</span>
+<span class="fc" id="L1788">                    assertFalse(bs2.isDisposed());</span>
+
+<span class="fc" id="L1790">                    observer.onSubscribe(bs2);</span>
+
+<span class="fc" id="L1792">                    assertFalse(bs1.isDisposed());</span>
+<span class="fc" id="L1793">                    assertTrue(bs2.isDisposed());</span>
+
+<span class="fc" id="L1795">                    observer.onError(new IOException());</span>
+
+<span class="fc" id="L1797">                    assertTrue(((Disposable)observer).isDisposed());</span>
+
+<span class="fc" id="L1799">                    observer.onComplete();</span>
+<span class="fc" id="L1800">                    observer.onNext(1);</span>
+<span class="fc" id="L1801">                    observer.onError(new TestException());</span>
+<span class="fc" id="L1802">                }</span>
+            }))
+<span class="fc" id="L1804">            .test()</span>
+<span class="fc" id="L1805">            .assertFailure(IOException.class);</span>
+
+<span class="fc" id="L1807">            TestHelper.assertError(errors, 0, ProtocolViolationException.class);</span>
+<span class="fc" id="L1808">            TestHelper.assertUndeliverable(errors, 1, TestException.class);</span>
+        } finally {
+<span class="fc" id="L1810">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1812">    }</span>
+
+    @Test
+    public void bufferExactBoundaryDoubleOnSubscribe() {
+<span class="fc" id="L1816">        TestHelper.checkDoubleOnSubscribeObservable(</span>
+<span class="fc" id="L1817">                new Function&lt;Observable&lt;Object&gt;, ObservableSource&lt;List&lt;Object&gt;&gt;&gt;() {</span>
+                    @Override
+                    public ObservableSource&lt;List&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; f)
+                            throws Exception {
+<span class="fc" id="L1821">                        return f.buffer(Observable.never());</span>
+                    }
+                }
+        );
+<span class="fc" id="L1825">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferExactBoundarySecondBufferCrash() {
+<span class="fc" id="L1830">        PublishSubject&lt;Integer&gt; ps = PublishSubject.create();</span>
+<span class="fc" id="L1831">        PublishSubject&lt;Integer&gt; b = PublishSubject.create();</span>
+
+<span class="fc" id="L1833">        TestObserver&lt;List&lt;Integer&gt;&gt; to = ps.buffer(b, new Callable&lt;List&lt;Integer&gt;&gt;() {</span>
+            int calls;
+            @Override
+            public List&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L1837" title="All 2 branches covered.">                if (++calls == 2) {</span>
+<span class="fc" id="L1838">                    throw new TestException();</span>
+                }
+<span class="fc" id="L1840">                return new ArrayList&lt;Integer&gt;();</span>
+            }
+<span class="fc" id="L1842">        }).test();</span>
+
+<span class="fc" id="L1844">        b.onNext(1);</span>
+
+<span class="fc" id="L1846">        to.assertFailure(TestException.class);</span>
+<span class="fc" id="L1847">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Test
+    public void bufferExactBoundaryBadSource() {
+<span class="fc" id="L1852">        Observable&lt;Integer&gt; ps = new Observable&lt;Integer&gt;() {</span>
+            @Override
+            protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L1855">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L1856">                observer.onComplete();</span>
+<span class="fc" id="L1857">                observer.onNext(1);</span>
+<span class="fc" id="L1858">                observer.onComplete();</span>
+<span class="fc" id="L1859">            }</span>
+        };
+
+<span class="fc" id="L1862">        final AtomicReference&lt;Observer&lt;? super Integer&gt;&gt; ref = new AtomicReference&lt;Observer&lt;? super Integer&gt;&gt;();</span>
+<span class="fc" id="L1863">        Observable&lt;Integer&gt; b = new Observable&lt;Integer&gt;() {</span>
+            @Override
+            protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L1866">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L1867">                ref.set(observer);</span>
+<span class="fc" id="L1868">            }</span>
+        };
+
+<span class="fc" id="L1871">        TestObserver&lt;List&lt;Integer&gt;&gt; to = ps.buffer(b).test();</span>
+
+<span class="fc" id="L1873">        ref.get().onNext(1);</span>
+
+<span class="fc" id="L1875">        to.assertResult(Collections.&lt;Integer&gt;emptyList());</span>
+<span class="fc" id="L1876">    }</span>
+
+    @Test
+    public void bufferBoundaryErrorTwice() {
+<span class="fc" id="L1880">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L1882">            BehaviorSubject.createDefault(1)</span>
+<span class="fc" id="L1883">            .buffer(Functions.justCallable(new Observable&lt;Integer&gt;() {</span>
+                @Override
+                protected void subscribeActual(Observer&lt;? super Integer&gt; observer) {
+<span class="fc" id="L1886">                    observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L1887">                    observer.onError(new TestException(&quot;first&quot;));</span>
+<span class="fc" id="L1888">                    observer.onError(new TestException(&quot;second&quot;));</span>
+<span class="fc" id="L1889">                }</span>
+            }))
+<span class="fc" id="L1891">            .test()</span>
+<span class="fc" id="L1892">            .assertError(TestException.class)</span>
+<span class="fc" id="L1893">            .assertErrorMessage(&quot;first&quot;)</span>
+<span class="fc" id="L1894">            .assertNotComplete();</span>
+
+<span class="fc" id="L1896">            TestHelper.assertUndeliverable(errors, 0, TestException.class, &quot;second&quot;);</span>
+        } finally {
+<span class="fc" id="L1898">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L1900">    }</span>
+
+    @Test
+    public void bufferBoundarySupplierDisposed() {
+<span class="fc" id="L1904">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+<span class="fc" id="L1905">        BufferBoundarySupplierObserver&lt;Integer, List&lt;Integer&gt;, Integer&gt; sub =</span>
+                new BufferBoundarySupplierObserver&lt;Integer, List&lt;Integer&gt;, Integer&gt;(
+<span class="fc" id="L1907">                        to, Functions.justCallable((List&lt;Integer&gt;)new ArrayList&lt;Integer&gt;()),</span>
+<span class="fc" id="L1908">                        Functions.justCallable(Observable.&lt;Integer&gt;never())</span>
+        );
+
+<span class="fc" id="L1911">        Disposable bs = Disposables.empty();</span>
+
+<span class="fc" id="L1913">        sub.onSubscribe(bs);</span>
+
+<span class="fc" id="L1915">        assertFalse(sub.isDisposed());</span>
+
+<span class="fc" id="L1917">        sub.dispose();</span>
+
+<span class="fc" id="L1919">        assertTrue(sub.isDisposed());</span>
+
+<span class="fc" id="L1921">        sub.next();</span>
+
+<span class="fc" id="L1923">        assertSame(DisposableHelper.DISPOSED, sub.other.get());</span>
+
+<span class="fc" id="L1925">        sub.dispose();</span>
+<span class="fc" id="L1926">        sub.dispose();</span>
+
+<span class="fc" id="L1928">        assertTrue(bs.isDisposed());</span>
+<span class="fc" id="L1929">    }</span>
+
+    @Test
+    public void bufferBoundarySupplierBufferAlreadyCleared() {
+<span class="fc" id="L1933">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+<span class="fc" id="L1934">        BufferBoundarySupplierObserver&lt;Integer, List&lt;Integer&gt;, Integer&gt; sub =</span>
+                new BufferBoundarySupplierObserver&lt;Integer, List&lt;Integer&gt;, Integer&gt;(
+<span class="fc" id="L1936">                        to, Functions.justCallable((List&lt;Integer&gt;)new ArrayList&lt;Integer&gt;()),</span>
+<span class="fc" id="L1937">                        Functions.justCallable(Observable.&lt;Integer&gt;never())</span>
+        );
+
+<span class="fc" id="L1940">        Disposable bs = Disposables.empty();</span>
+
+<span class="fc" id="L1942">        sub.onSubscribe(bs);</span>
+
+<span class="fc" id="L1944">        sub.buffer = null;</span>
+
+<span class="fc" id="L1946">        sub.next();</span>
+
+<span class="fc" id="L1948">        sub.onNext(1);</span>
+
+<span class="fc" id="L1950">        sub.onComplete();</span>
+<span class="fc" id="L1951">    }</span>
+
+    @Test
+    public void timedDoubleOnSubscribe() {
+<span class="fc" id="L1955">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, Observable&lt;List&lt;Object&gt;&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;List&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; f)
+                    throws Exception {
+<span class="fc" id="L1959">                return f.buffer(1, TimeUnit.SECONDS);</span>
+            }
+        });
+<span class="fc" id="L1962">    }</span>
+
+    @Test
+    public void timedCancelledUpfront() {
+<span class="fc" id="L1966">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L1968">        TestObserver&lt;List&lt;Object&gt;&gt; to = Observable.never()</span>
+<span class="fc" id="L1969">        .buffer(1, TimeUnit.MILLISECONDS, sch)</span>
+<span class="fc" id="L1970">        .test(true);</span>
+
+<span class="fc" id="L1972">        sch.advanceTimeBy(1, TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L1974">        to.assertEmpty();</span>
+<span class="fc" id="L1975">    }</span>
+
+    @Test
+    public void timedInternalState() {
+<span class="fc" id="L1979">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L1981">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+
+<span class="fc" id="L1983">        BufferExactUnboundedObserver&lt;Integer, List&lt;Integer&gt;&gt; sub = new BufferExactUnboundedObserver&lt;Integer, List&lt;Integer&gt;&gt;(</span>
+<span class="fc" id="L1984">                to, Functions.justCallable((List&lt;Integer&gt;)new ArrayList&lt;Integer&gt;()), 1, TimeUnit.SECONDS, sch);</span>
+
+<span class="fc" id="L1986">        sub.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L1988">        assertFalse(sub.isDisposed());</span>
+
+<span class="fc" id="L1990">        sub.onError(new TestException());</span>
+<span class="fc" id="L1991">        sub.onNext(1);</span>
+<span class="fc" id="L1992">        sub.onComplete();</span>
+
+<span class="fc" id="L1994">        sub.run();</span>
+
+<span class="fc" id="L1996">        sub.dispose();</span>
+
+<span class="fc" id="L1998">        assertTrue(sub.isDisposed());</span>
+
+<span class="fc" id="L2000">        sub.buffer = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc" id="L2001">        sub.enter();</span>
+<span class="fc" id="L2002">        sub.onComplete();</span>
+<span class="fc" id="L2003">    }</span>
+
+    @Test
+    public void timedSkipDoubleOnSubscribe() {
+<span class="fc" id="L2007">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, Observable&lt;List&lt;Object&gt;&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;List&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; f)
+                    throws Exception {
+<span class="fc" id="L2011">                return f.buffer(2, 1, TimeUnit.SECONDS);</span>
+            }
+        });
+<span class="fc" id="L2014">    }</span>
+
+    @Test
+    public void timedSizedDoubleOnSubscribe() {
+<span class="fc" id="L2018">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, Observable&lt;List&lt;Object&gt;&gt;&gt;() {</span>
+            @Override
+            public Observable&lt;List&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; f)
+                    throws Exception {
+<span class="fc" id="L2022">                return f.buffer(2, TimeUnit.SECONDS, 10);</span>
+            }
+        });
+<span class="fc" id="L2025">    }</span>
+
+    @Test
+    public void timedSkipInternalState() {
+<span class="fc" id="L2029">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L2031">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+
+<span class="fc" id="L2033">        BufferSkipBoundedObserver&lt;Integer, List&lt;Integer&gt;&gt; sub = new BufferSkipBoundedObserver&lt;Integer, List&lt;Integer&gt;&gt;(</span>
+<span class="fc" id="L2034">                to, Functions.justCallable((List&lt;Integer&gt;)new ArrayList&lt;Integer&gt;()), 1, 1, TimeUnit.SECONDS, sch.createWorker());</span>
+
+<span class="fc" id="L2036">        sub.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L2038">        sub.enter();</span>
+<span class="fc" id="L2039">        sub.onComplete();</span>
+
+<span class="fc" id="L2041">        sub.dispose();</span>
+
+<span class="fc" id="L2043">        sub.run();</span>
+<span class="fc" id="L2044">    }</span>
+
+    @Test
+    public void timedSkipCancelWhenSecondBuffer() {
+<span class="fc" id="L2048">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L2050">        final TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+
+<span class="fc" id="L2052">        BufferSkipBoundedObserver&lt;Integer, List&lt;Integer&gt;&gt; sub = new BufferSkipBoundedObserver&lt;Integer, List&lt;Integer&gt;&gt;(</span>
+<span class="fc" id="L2053">                to, new Callable&lt;List&lt;Integer&gt;&gt;() {</span>
+                    int calls;
+                    @Override
+                    public List&lt;Integer&gt; call() throws Exception {
+<span class="fc bfc" id="L2057" title="All 2 branches covered.">                        if (++calls == 2) {</span>
+<span class="fc" id="L2058">                            to.cancel();</span>
+                        }
+<span class="fc" id="L2060">                        return new ArrayList&lt;Integer&gt;();</span>
+                    }
+<span class="fc" id="L2062">                }, 1, 1, TimeUnit.SECONDS, sch.createWorker());</span>
+
+<span class="fc" id="L2064">        sub.onSubscribe(Disposables.empty());</span>
+
+<span class="fc" id="L2066">        sub.run();</span>
+
+<span class="fc" id="L2068">        assertTrue(to.isCancelled());</span>
+<span class="fc" id="L2069">    }</span>
+
+    @Test
+    public void timedSizeBufferAlreadyCleared() {
+<span class="fc" id="L2073">        TestScheduler sch = new TestScheduler();</span>
+
+<span class="fc" id="L2075">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+
+<span class="fc" id="L2077">        BufferExactBoundedObserver&lt;Integer, List&lt;Integer&gt;&gt; sub =</span>
+                new BufferExactBoundedObserver&lt;Integer, List&lt;Integer&gt;&gt;(
+<span class="fc" id="L2079">                        to, Functions.justCallable((List&lt;Integer&gt;)new ArrayList&lt;Integer&gt;()),</span>
+<span class="fc" id="L2080">                        1, TimeUnit.SECONDS, 1, false, sch.createWorker())</span>
+        ;
+
+<span class="fc" id="L2083">        Disposable bs = Disposables.empty();</span>
+
+<span class="fc" id="L2085">        sub.onSubscribe(bs);</span>
+
+<span class="fc" id="L2087">        sub.producerIndex++;</span>
+
+<span class="fc" id="L2089">        sub.run();</span>
+
+<span class="fc" id="L2091">        assertFalse(sub.isDisposed());</span>
+
+<span class="fc" id="L2093">        sub.enter();</span>
+<span class="fc" id="L2094">        sub.onComplete();</span>
+
+<span class="fc" id="L2096">        sub.dispose();</span>
+
+<span class="fc" id="L2098">        assertTrue(sub.isDisposed());</span>
+
+<span class="fc" id="L2100">        sub.run();</span>
+
+<span class="fc" id="L2102">        sub.onNext(1);</span>
+<span class="fc" id="L2103">    }</span>
+
+    @Test
+    public void bufferExactDoubleOnSubscribe() {
+<span class="fc" id="L2107">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, ObservableSource&lt;List&lt;Object&gt;&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;List&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; o)
+                    throws Exception {
+<span class="fc" id="L2111">                return o.buffer(1);</span>
+            }
+        });
+<span class="fc" id="L2114">    }</span>
+
+    @Test
+    public void bufferExactState() {
+<span class="fc" id="L2118">        TestObserver&lt;List&lt;Integer&gt;&gt; to = new TestObserver&lt;List&lt;Integer&gt;&gt;();</span>
+
+<span class="fc" id="L2120">        BufferExactObserver&lt;Integer, List&lt;Integer&gt;&gt; sub = new BufferExactObserver&lt;Integer, List&lt;Integer&gt;&gt;(</span>
+<span class="fc" id="L2121">                to, 1, Functions.justCallable((List&lt;Integer&gt;)new ArrayList&lt;Integer&gt;())</span>
+        );
+
+<span class="fc" id="L2124">        sub.onComplete();</span>
+<span class="fc" id="L2125">        sub.onNext(1);</span>
+<span class="fc" id="L2126">        sub.onComplete();</span>
+<span class="fc" id="L2127">    }</span>
+
+    @Test
+    public void bufferSkipDoubleOnSubscribe() {
+<span class="fc" id="L2131">        TestHelper.checkDoubleOnSubscribeObservable(new Function&lt;Observable&lt;Object&gt;, ObservableSource&lt;List&lt;Object&gt;&gt;&gt;() {</span>
+            @Override
+            public ObservableSource&lt;List&lt;Object&gt;&gt; apply(Observable&lt;Object&gt; o)
+                    throws Exception {
+<span class="fc" id="L2135">                return o.buffer(1, 2);</span>
+            }
+        });
+<span class="fc" id="L2138">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

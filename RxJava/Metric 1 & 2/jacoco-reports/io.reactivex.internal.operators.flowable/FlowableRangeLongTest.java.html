@@ -1,0 +1,542 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableRangeLongTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableRangeLongTest.java</span></div><h1>FlowableRangeLongTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+import java.util.concurrent.atomic.*;
+
+import org.junit.Test;
+import org.reactivestreams.Subscriber;
+
+import io.reactivex.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.subscribers.*;
+
+<span class="fc" id="L32">public class FlowableRangeLongTest {</span>
+
+    @Test
+    public void testRangeStartAt2Count3() {
+<span class="fc" id="L36">        Subscriber&lt;Long&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L38">        Flowable.rangeLong(2, 3).subscribe(subscriber);</span>
+
+<span class="fc" id="L40">        verify(subscriber, times(1)).onNext(2L);</span>
+<span class="fc" id="L41">        verify(subscriber, times(1)).onNext(3L);</span>
+<span class="fc" id="L42">        verify(subscriber, times(1)).onNext(4L);</span>
+<span class="fc" id="L43">        verify(subscriber, never()).onNext(5L);</span>
+<span class="fc" id="L44">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L45">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L46">    }</span>
+
+    @Test
+    public void testRangeUnsubscribe() {
+<span class="fc" id="L50">        Subscriber&lt;Long&gt; subscriber = TestHelper.mockSubscriber();</span>
+
+<span class="fc" id="L52">        final AtomicInteger count = new AtomicInteger();</span>
+
+<span class="fc" id="L54">        Flowable.rangeLong(1, 1000).doOnNext(new Consumer&lt;Long&gt;() {</span>
+            @Override
+            public void accept(Long t1) {
+<span class="fc" id="L57">                count.incrementAndGet();</span>
+<span class="fc" id="L58">            }</span>
+        })
+<span class="fc" id="L60">        .take(3).subscribe(subscriber);</span>
+
+<span class="fc" id="L62">        verify(subscriber, times(1)).onNext(1L);</span>
+<span class="fc" id="L63">        verify(subscriber, times(1)).onNext(2L);</span>
+<span class="fc" id="L64">        verify(subscriber, times(1)).onNext(3L);</span>
+<span class="fc" id="L65">        verify(subscriber, never()).onNext(4L);</span>
+<span class="fc" id="L66">        verify(subscriber, never()).onError(any(Throwable.class));</span>
+<span class="fc" id="L67">        verify(subscriber, times(1)).onComplete();</span>
+<span class="fc" id="L68">        assertEquals(3, count.get());</span>
+<span class="fc" id="L69">    }</span>
+
+    @Test
+    public void testRangeWithZero() {
+<span class="fc" id="L73">        Flowable.rangeLong(1, 0);</span>
+<span class="fc" id="L74">    }</span>
+
+    @Test
+    public void testRangeWithOverflow2() {
+<span class="fc" id="L78">        Flowable.rangeLong(Long.MAX_VALUE, 0);</span>
+<span class="fc" id="L79">    }</span>
+
+    @Test
+    public void testRangeWithOverflow3() {
+<span class="fc" id="L83">        Flowable.rangeLong(1, Long.MAX_VALUE);</span>
+<span class="fc" id="L84">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testRangeWithOverflow4() {
+<span class="nc" id="L88">        Flowable.rangeLong(2, Long.MAX_VALUE);</span>
+<span class="nc" id="L89">    }</span>
+
+    @Test
+    public void testRangeWithOverflow5() {
+<span class="fc" id="L93">        assertFalse(Flowable.rangeLong(Long.MIN_VALUE, 0).blockingIterable().iterator().hasNext());</span>
+<span class="fc" id="L94">    }</span>
+
+    @Test
+    public void testBackpressureViaRequest() {
+<span class="fc" id="L98">        Flowable&lt;Long&gt; f = Flowable.rangeLong(1, Flowable.bufferSize());</span>
+
+<span class="fc" id="L100">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+
+<span class="fc" id="L102">        ts.assertNoValues();</span>
+<span class="fc" id="L103">        ts.request(1);</span>
+
+<span class="fc" id="L105">        f.subscribe(ts);</span>
+
+<span class="fc" id="L107">        ts.assertValue(1L);</span>
+
+<span class="fc" id="L109">        ts.request(2);</span>
+<span class="fc" id="L110">        ts.assertValues(1L, 2L, 3L);</span>
+
+<span class="fc" id="L112">        ts.request(3);</span>
+<span class="fc" id="L113">        ts.assertValues(1L, 2L, 3L, 4L, 5L, 6L);</span>
+
+<span class="fc" id="L115">        ts.request(Flowable.bufferSize());</span>
+<span class="fc" id="L116">        ts.assertTerminated();</span>
+<span class="fc" id="L117">    }</span>
+
+    @Test
+    public void testNoBackpressure() {
+<span class="fc" id="L121">        ArrayList&lt;Long&gt; list = new ArrayList&lt;Long&gt;(Flowable.bufferSize() * 2);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (long i = 1; i &lt;= Flowable.bufferSize() * 2 + 1; i++) {</span>
+<span class="fc" id="L123">            list.add(i);</span>
+        }
+
+<span class="fc" id="L126">        Flowable&lt;Long&gt; f = Flowable.rangeLong(1, list.size());</span>
+
+<span class="fc" id="L128">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+
+<span class="fc" id="L130">        ts.assertNoValues();</span>
+<span class="fc" id="L131">        ts.request(Long.MAX_VALUE); // infinite</span>
+
+<span class="fc" id="L133">        f.subscribe(ts);</span>
+
+<span class="fc" id="L135">        ts.assertValueSequence(list);</span>
+<span class="fc" id="L136">        ts.assertTerminated();</span>
+<span class="fc" id="L137">    }</span>
+    void testWithBackpressureOneByOne(long start) {
+<span class="fc" id="L139">        Flowable&lt;Long&gt; source = Flowable.rangeLong(start, 100);</span>
+
+<span class="fc" id="L141">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+<span class="fc" id="L142">        ts.request(1);</span>
+<span class="fc" id="L143">        source.subscribe(ts);</span>
+
+<span class="fc" id="L145">        List&lt;Long&gt; list = new ArrayList&lt;Long&gt;(100);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for (long i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L147">            list.add(i + start);</span>
+<span class="fc" id="L148">            ts.request(1);</span>
+        }
+<span class="fc" id="L150">        ts.assertValueSequence(list);</span>
+<span class="fc" id="L151">        ts.assertTerminated();</span>
+<span class="fc" id="L152">    }</span>
+    void testWithBackpressureAllAtOnce(long start) {
+<span class="fc" id="L154">        Flowable&lt;Long&gt; source = Flowable.rangeLong(start, 100);</span>
+
+<span class="fc" id="L156">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+<span class="fc" id="L157">        ts.request(100);</span>
+<span class="fc" id="L158">        source.subscribe(ts);</span>
+
+<span class="fc" id="L160">        List&lt;Long&gt; list = new ArrayList&lt;Long&gt;(100);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (long i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L162">            list.add(i + start);</span>
+        }
+<span class="fc" id="L164">        ts.assertValueSequence(list);</span>
+<span class="fc" id="L165">        ts.assertTerminated();</span>
+<span class="fc" id="L166">    }</span>
+
+    @Test
+    public void testWithBackpressure1() {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        for (long i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L171">            testWithBackpressureOneByOne(i);</span>
+        }
+<span class="fc" id="L173">    }</span>
+
+    @Test
+    public void testWithBackpressureAllAtOnce() {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for (long i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L178">            testWithBackpressureAllAtOnce(i);</span>
+        }
+<span class="fc" id="L180">    }</span>
+
+    @Test
+    public void testWithBackpressureRequestWayMore() {
+<span class="fc" id="L184">        Flowable&lt;Long&gt; source = Flowable.rangeLong(50, 100);</span>
+
+<span class="fc" id="L186">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(0L);</span>
+<span class="fc" id="L187">        ts.request(150);</span>
+<span class="fc" id="L188">        source.subscribe(ts);</span>
+
+<span class="fc" id="L190">        List&lt;Long&gt; list = new ArrayList&lt;Long&gt;(100);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        for (long i = 0; i &lt; 100; i++) {</span>
+<span class="fc" id="L192">            list.add(i + 50);</span>
+        }
+
+<span class="fc" id="L195">        ts.request(50); // and then some</span>
+
+<span class="fc" id="L197">        ts.assertValueSequence(list);</span>
+<span class="fc" id="L198">        ts.assertTerminated();</span>
+<span class="fc" id="L199">    }</span>
+
+    @Test
+    public void testRequestOverflow() {
+<span class="fc" id="L203">        final AtomicInteger count = new AtomicInteger();</span>
+<span class="fc" id="L204">        int n = 10;</span>
+<span class="fc" id="L205">        Flowable.rangeLong(1, n).subscribe(new DefaultSubscriber&lt;Long&gt;() {</span>
+
+            @Override
+            public void onStart() {
+<span class="fc" id="L209">                request(2);</span>
+<span class="fc" id="L210">            }</span>
+
+            @Override
+            public void onComplete() {
+                //do nothing
+<span class="fc" id="L215">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+<span class="nc" id="L219">                throw new RuntimeException(e);</span>
+            }
+
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L224">                count.incrementAndGet();</span>
+<span class="fc" id="L225">                request(Long.MAX_VALUE - 1);</span>
+<span class="fc" id="L226">            }});</span>
+<span class="fc" id="L227">        assertEquals(n, count.get());</span>
+<span class="fc" id="L228">    }</span>
+
+    @Test
+    public void testEmptyRangeSendsOnCompleteEagerlyWithRequestZero() {
+<span class="fc" id="L232">        final AtomicBoolean completed = new AtomicBoolean(false);</span>
+<span class="fc" id="L233">        Flowable.rangeLong(1, 0).subscribe(new DefaultSubscriber&lt;Long&gt;() {</span>
+
+            @Override
+            public void onStart() {
+//                request(0);
+<span class="fc" id="L238">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="fc" id="L242">                completed.set(true);</span>
+<span class="fc" id="L243">            }</span>
+
+            @Override
+            public void onError(Throwable e) {
+
+<span class="nc" id="L248">            }</span>
+
+            @Override
+            public void onNext(Long t) {
+
+<span class="nc" id="L253">            }});</span>
+<span class="fc" id="L254">        assertTrue(completed.get());</span>
+<span class="fc" id="L255">    }</span>
+
+    @Test(timeout = 1000)
+    public void testNearMaxValueWithoutBackpressure() {
+<span class="fc" id="L259">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;();</span>
+<span class="fc" id="L260">        Flowable.rangeLong(Long.MAX_VALUE - 1L, 2L).subscribe(ts);</span>
+
+<span class="fc" id="L262">        ts.assertComplete();</span>
+<span class="fc" id="L263">        ts.assertNoErrors();</span>
+<span class="fc" id="L264">        ts.assertValues(Long.MAX_VALUE - 1L, Long.MAX_VALUE);</span>
+<span class="fc" id="L265">    }</span>
+
+    @Test(timeout = 1000)
+    public void testNearMaxValueWithBackpressure() {
+<span class="fc" id="L269">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(3L);</span>
+<span class="fc" id="L270">        Flowable.rangeLong(Long.MAX_VALUE - 1L, 2L).subscribe(ts);</span>
+
+<span class="fc" id="L272">        ts.assertComplete();</span>
+<span class="fc" id="L273">        ts.assertNoErrors();</span>
+<span class="fc" id="L274">        ts.assertValues(Long.MAX_VALUE - 1L, Long.MAX_VALUE);</span>
+<span class="fc" id="L275">    }</span>
+
+    @Test
+    public void negativeCount() {
+        try {
+<span class="nc" id="L280">            Flowable.rangeLong(1L, -1L);</span>
+<span class="nc" id="L281">            fail(&quot;Should have thrown IllegalArgumentException&quot;);</span>
+<span class="fc" id="L282">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L283">            assertEquals(&quot;count &gt;= 0 required but it was -1&quot;, ex.getMessage());</span>
+<span class="nc" id="L284">        }</span>
+<span class="fc" id="L285">    }</span>
+
+    @Test
+    public void countOne() {
+<span class="fc" id="L289">        Flowable.rangeLong(5495454L, 1L)</span>
+<span class="fc" id="L290">            .test()</span>
+<span class="fc" id="L291">            .assertResult(5495454L);</span>
+<span class="fc" id="L292">    }</span>
+
+    @Test
+    public void fused() {
+<span class="fc" id="L296">        TestSubscriber&lt;Long&gt; ts = SubscriberFusion.newTest(QueueFuseable.ANY);</span>
+
+<span class="fc" id="L298">        Flowable.rangeLong(1, 2).subscribe(ts);</span>
+
+<span class="fc" id="L300">        SubscriberFusion.assertFusion(ts, QueueFuseable.SYNC)</span>
+<span class="fc" id="L301">        .assertResult(1L, 2L);</span>
+<span class="fc" id="L302">    }</span>
+
+    @Test
+    public void fusedReject() {
+<span class="fc" id="L306">        TestSubscriber&lt;Long&gt; ts = SubscriberFusion.newTest(QueueFuseable.ASYNC);</span>
+
+<span class="fc" id="L308">        Flowable.rangeLong(1, 2).subscribe(ts);</span>
+
+<span class="fc" id="L310">        SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)</span>
+<span class="fc" id="L311">        .assertResult(1L, 2L);</span>
+<span class="fc" id="L312">    }</span>
+
+    @Test
+    public void disposed() {
+<span class="fc" id="L316">        TestHelper.checkDisposed(Flowable.rangeLong(1, 2));</span>
+<span class="fc" id="L317">    }</span>
+
+    @Test
+    public void fusedClearIsEmpty() {
+<span class="fc" id="L321">        TestHelper.checkFusedIsEmptyClear(Flowable.rangeLong(1, 2));</span>
+<span class="fc" id="L322">    }</span>
+
+    @Test
+    public void noOverflow() {
+<span class="fc" id="L326">        Flowable.rangeLong(Long.MAX_VALUE - 1, 2);</span>
+<span class="fc" id="L327">        Flowable.rangeLong(Long.MIN_VALUE, 2);</span>
+<span class="fc" id="L328">        Flowable.rangeLong(Long.MIN_VALUE, Long.MAX_VALUE);</span>
+<span class="fc" id="L329">    }</span>
+
+    @Test
+    public void conditionalNormal() {
+<span class="fc" id="L333">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L334">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L335">        .test()</span>
+<span class="fc" id="L336">        .assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L337">    }</span>
+
+    @Test
+    public void badRequest() {
+<span class="fc" id="L341">        TestHelper.assertBadRequestReported(Flowable.rangeLong(1L, 5L));</span>
+
+<span class="fc" id="L343">        TestHelper.assertBadRequestReported(Flowable.rangeLong(1L, 5L).filter(Functions.alwaysTrue()));</span>
+<span class="fc" id="L344">    }</span>
+
+    @Test
+    public void conditionalNormalSlowpath() {
+<span class="fc" id="L348">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L349">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L350">        .test(5)</span>
+<span class="fc" id="L351">        .assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L352">    }</span>
+
+    @Test
+    public void conditionalSlowPathTakeExact() {
+<span class="fc" id="L356">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L357">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L358">        .take(5)</span>
+<span class="fc" id="L359">        .test()</span>
+<span class="fc" id="L360">        .assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L361">    }</span>
+
+    @Test
+    public void slowPathTakeExact() {
+<span class="fc" id="L365">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L366">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L367">        .take(5)</span>
+<span class="fc" id="L368">        .test()</span>
+<span class="fc" id="L369">        .assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L370">    }</span>
+
+    @Test
+    public void conditionalSlowPathRebatch() {
+<span class="fc" id="L374">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L375">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L376">        .rebatchRequests(1)</span>
+<span class="fc" id="L377">        .test()</span>
+<span class="fc" id="L378">        .assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L379">    }</span>
+
+    @Test
+    public void slowPathRebatch() {
+<span class="fc" id="L383">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L384">        .rebatchRequests(1)</span>
+<span class="fc" id="L385">        .test()</span>
+<span class="fc" id="L386">        .assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L387">    }</span>
+
+    @Test
+    public void slowPathCancel() {
+<span class="fc" id="L391">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(2L) {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L394">                super.onNext(t);</span>
+<span class="fc" id="L395">                cancel();</span>
+<span class="fc" id="L396">                onComplete();</span>
+<span class="fc" id="L397">            }</span>
+        };
+
+<span class="fc" id="L400">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L401">        .subscribe(ts);</span>
+
+<span class="fc" id="L403">        ts.assertResult(1L);</span>
+<span class="fc" id="L404">    }</span>
+
+    @Test
+    public void fastPathCancel() {
+<span class="fc" id="L408">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;() {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L411">                super.onNext(t);</span>
+<span class="fc" id="L412">                cancel();</span>
+<span class="fc" id="L413">                onComplete();</span>
+<span class="fc" id="L414">            }</span>
+        };
+
+<span class="fc" id="L417">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L418">        .subscribe(ts);</span>
+
+<span class="fc" id="L420">        ts.assertResult(1L);</span>
+<span class="fc" id="L421">    }</span>
+
+    @Test
+    public void conditionalSlowPathCancel() {
+<span class="fc" id="L425">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(1L) {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L428">                super.onNext(t);</span>
+<span class="fc" id="L429">                cancel();</span>
+<span class="fc" id="L430">                onComplete();</span>
+<span class="fc" id="L431">            }</span>
+        };
+
+<span class="fc" id="L434">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L435">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L436">        .subscribe(ts);</span>
+
+<span class="fc" id="L438">        ts.assertResult(1L);</span>
+<span class="fc" id="L439">    }</span>
+
+    @Test
+    public void conditionalFastPathCancel() {
+<span class="fc" id="L443">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;() {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L446">                super.onNext(t);</span>
+<span class="fc" id="L447">                cancel();</span>
+<span class="fc" id="L448">                onComplete();</span>
+<span class="fc" id="L449">            }</span>
+        };
+
+<span class="fc" id="L452">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L453">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L454">        .subscribe(ts);</span>
+
+<span class="fc" id="L456">        ts.assertResult(1L);</span>
+<span class="fc" id="L457">    }</span>
+
+    @Test
+    public void conditionalRequestOneByOne() {
+<span class="fc" id="L461">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(1L) {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L464">                super.onNext(t);</span>
+<span class="fc" id="L465">                request(1);</span>
+<span class="fc" id="L466">            }</span>
+        };
+
+<span class="fc" id="L469">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L470">        .filter(new Predicate&lt;Long&gt;() {</span>
+            @Override
+            public boolean test(Long v) throws Exception {
+<span class="fc bfc" id="L473" title="All 2 branches covered.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L476">        .subscribe(ts);</span>
+
+<span class="fc" id="L478">        ts.assertResult(2L, 4L);</span>
+<span class="fc" id="L479">    }</span>
+
+    @Test
+    public void conditionalRequestOneByOne2() {
+<span class="fc" id="L483">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;(1L) {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L486">                super.onNext(t);</span>
+<span class="fc" id="L487">                request(1);</span>
+<span class="fc" id="L488">            }</span>
+        };
+
+<span class="fc" id="L491">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L492">        .filter(Functions.alwaysTrue())</span>
+<span class="fc" id="L493">        .subscribe(ts);</span>
+
+<span class="fc" id="L495">        ts.assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L496">    }</span>
+
+    @Test
+    public void fastPathCancelExact() {
+<span class="fc" id="L500">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;() {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L503">                super.onNext(t);</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">                if (t == 5L) {</span>
+<span class="fc" id="L505">                    cancel();</span>
+<span class="fc" id="L506">                    onComplete();</span>
+                }
+<span class="fc" id="L508">            }</span>
+        };
+
+<span class="fc" id="L511">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L512">        .subscribe(ts);</span>
+
+<span class="fc" id="L514">        ts.assertResult(1L, 2L, 3L, 4L, 5L);</span>
+<span class="fc" id="L515">    }</span>
+
+    @Test
+    public void conditionalFastPathCancelExact() {
+<span class="fc" id="L519">        TestSubscriber&lt;Long&gt; ts = new TestSubscriber&lt;Long&gt;() {</span>
+            @Override
+            public void onNext(Long t) {
+<span class="fc" id="L522">                super.onNext(t);</span>
+<span class="pc bpc" id="L523" title="1 of 2 branches missed.">                if (t == 5L) {</span>
+<span class="nc" id="L524">                    cancel();</span>
+<span class="nc" id="L525">                    onComplete();</span>
+                }
+<span class="fc" id="L527">            }</span>
+        };
+
+<span class="fc" id="L530">        Flowable.rangeLong(1L, 5L)</span>
+<span class="fc" id="L531">        .filter(new Predicate&lt;Long&gt;() {</span>
+            @Override
+            public boolean test(Long v) throws Exception {
+<span class="fc bfc" id="L534" title="All 2 branches covered.">                return v % 2 == 0;</span>
+            }
+        })
+<span class="fc" id="L537">        .subscribe(ts);</span>
+
+<span class="fc" id="L539">        ts.assertResult(2L, 4L);</span>
+<span class="fc" id="L540">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

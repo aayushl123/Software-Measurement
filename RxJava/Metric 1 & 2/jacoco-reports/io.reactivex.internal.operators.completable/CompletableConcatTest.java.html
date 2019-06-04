@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompletableConcatTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.completable</a> &gt; <span class="el_source">CompletableConcatTest.java</span></div><h1>CompletableConcatTest.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.completable;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+
+import org.junit.Test;
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.*;
+import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.observers.*;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.*;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="fc" id="L34">public class CompletableConcatTest {</span>
+
+    @Test
+    public void overflowReported() {
+<span class="fc" id="L38">        List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+        try {
+<span class="fc" id="L40">            Completable.concat(</span>
+<span class="fc" id="L41">                Flowable.fromPublisher(new Publisher&lt;Completable&gt;() {</span>
+                    @Override
+                    public void subscribe(Subscriber&lt;? super Completable&gt; s) {
+<span class="fc" id="L44">                        s.onSubscribe(new BooleanSubscription());</span>
+<span class="fc" id="L45">                        s.onNext(Completable.never());</span>
+<span class="fc" id="L46">                        s.onNext(Completable.never());</span>
+<span class="fc" id="L47">                        s.onNext(Completable.never());</span>
+<span class="fc" id="L48">                        s.onNext(Completable.never());</span>
+<span class="fc" id="L49">                        s.onComplete();</span>
+<span class="fc" id="L50">                    }</span>
+                }), 1
+            )
+<span class="fc" id="L53">            .test()</span>
+<span class="fc" id="L54">            .assertFailure(MissingBackpressureException.class);</span>
+
+<span class="fc" id="L56">            TestHelper.assertError(errors, 0, MissingBackpressureException.class);</span>
+        } finally {
+<span class="fc" id="L58">            RxJavaPlugins.reset();</span>
+        }
+<span class="fc" id="L60">    }</span>
+
+    @Test
+    public void invalidPrefetch() {
+        try {
+<span class="nc" id="L65">            Completable.concat(Flowable.just(Completable.complete()), -99);</span>
+<span class="nc" id="L66">            fail(&quot;Should have thrown IllegalArgumentExceptio&quot;);</span>
+<span class="fc" id="L67">        } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L68">            assertEquals(&quot;prefetch &gt; 0 required but it was -99&quot;, ex.getMessage());</span>
+<span class="nc" id="L69">        }</span>
+<span class="fc" id="L70">    }</span>
+
+    @Test
+    public void dispose() {
+<span class="fc" id="L74">        TestHelper.checkDisposed(Completable.concat(Flowable.just(Completable.complete())));</span>
+<span class="fc" id="L75">    }</span>
+
+    @Test
+    public void errorRace() {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+<span class="fc" id="L80">            List&lt;Throwable&gt; errors = TestHelper.trackPluginErrors();</span>
+
+            try {
+<span class="fc" id="L83">                final PublishProcessor&lt;Integer&gt; pp1 = PublishProcessor.create();</span>
+<span class="fc" id="L84">                final PublishProcessor&lt;Integer&gt; pp2 = PublishProcessor.create();</span>
+
+<span class="fc" id="L86">                TestObserver&lt;Void&gt; to = Completable.concat(pp1.map(new Function&lt;Integer, Completable&gt;() {</span>
+                    @Override
+                    public Completable apply(Integer v) throws Exception {
+<span class="fc" id="L89">                        return pp2.ignoreElements();</span>
+                    }
+<span class="fc" id="L91">                })).test();</span>
+
+<span class="fc" id="L93">                pp1.onNext(1);</span>
+
+<span class="fc" id="L95">                final TestException ex = new TestException();</span>
+
+<span class="fc" id="L97">                Runnable r1 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L100">                        pp1.onError(ex);</span>
+<span class="fc" id="L101">                    }</span>
+                };
+<span class="fc" id="L103">                Runnable r2 = new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L106">                        pp2.onError(ex);</span>
+<span class="fc" id="L107">                    }</span>
+                };
+
+<span class="fc" id="L110">                TestHelper.race(r1, r2);</span>
+
+<span class="fc" id="L112">                to.assertFailure(TestException.class);</span>
+
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                if (!errors.isEmpty()) {</span>
+<span class="fc" id="L115">                    TestHelper.assertUndeliverable(errors, 0, TestException.class);</span>
+                }
+            } finally {
+<span class="fc" id="L118">                RxJavaPlugins.reset();</span>
+            }
+        }
+<span class="fc" id="L121">    }</span>
+
+    @Test
+    public void synchronousFusedCrash() {
+<span class="fc" id="L125">        Completable.concat(Flowable.range(1, 2).map(new Function&lt;Integer, Completable&gt;() {</span>
+            @Override
+            public Completable apply(Integer v) throws Exception {
+<span class="fc" id="L128">                throw new TestException();</span>
+            }
+        }))
+<span class="fc" id="L131">        .test()</span>
+<span class="fc" id="L132">        .assertFailure(TestException.class);</span>
+<span class="fc" id="L133">    }</span>
+
+    @Test
+    public void unboundedIn() {
+<span class="fc" id="L137">        Completable.concat(Flowable.just(Completable.complete()).hide(), Integer.MAX_VALUE)</span>
+<span class="fc" id="L138">        .test()</span>
+<span class="fc" id="L139">        .assertResult();</span>
+<span class="fc" id="L140">    }</span>
+
+    @Test
+    public void syncFusedUnboundedIn() {
+<span class="fc" id="L144">        Completable.concat(Flowable.just(Completable.complete()), Integer.MAX_VALUE)</span>
+<span class="fc" id="L145">        .test()</span>
+<span class="fc" id="L146">        .assertResult();</span>
+<span class="fc" id="L147">    }</span>
+
+    @Test
+    public void asyncFusedUnboundedIn() {
+<span class="fc" id="L151">        UnicastProcessor&lt;Completable&gt; up = UnicastProcessor.create();</span>
+<span class="fc" id="L152">        up.onNext(Completable.complete());</span>
+<span class="fc" id="L153">        up.onComplete();</span>
+
+<span class="fc" id="L155">        Completable.concat(up, Integer.MAX_VALUE)</span>
+<span class="fc" id="L156">        .test()</span>
+<span class="fc" id="L157">        .assertResult();</span>
+<span class="fc" id="L158">    }</span>
+
+    @Test
+    public void arrayCancelled() {
+<span class="fc" id="L162">        Completable.concatArray(Completable.complete(), Completable.complete())</span>
+<span class="fc" id="L163">        .test(true)</span>
+<span class="fc" id="L164">        .assertEmpty();</span>
+<span class="fc" id="L165">    }</span>
+
+    @Test
+    public void arrayFirstCancels() {
+<span class="fc" id="L169">        final TestObserver&lt;Void&gt; to = new TestObserver&lt;Void&gt;();</span>
+
+<span class="fc" id="L171">        Completable.concatArray(new Completable() {</span>
+            @Override
+            protected void subscribeActual(CompletableObserver observer) {
+<span class="fc" id="L174">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L175">                to.cancel();</span>
+<span class="fc" id="L176">                observer.onComplete();</span>
+<span class="fc" id="L177">            }</span>
+<span class="fc" id="L178">        }, Completable.complete())</span>
+<span class="fc" id="L179">        .subscribe(to);</span>
+
+<span class="fc" id="L181">        to.assertEmpty();</span>
+<span class="fc" id="L182">    }</span>
+
+    @Test
+    public void iterableCancelled() {
+<span class="fc" id="L186">        Completable.concat(Arrays.asList(Completable.complete(), Completable.complete()))</span>
+<span class="fc" id="L187">        .test(true)</span>
+<span class="fc" id="L188">        .assertEmpty();</span>
+<span class="fc" id="L189">    }</span>
+
+    @Test
+    public void iterableFirstCancels() {
+<span class="fc" id="L193">        final TestObserver&lt;Void&gt; to = new TestObserver&lt;Void&gt;();</span>
+
+<span class="fc" id="L195">        Completable.concat(Arrays.asList(new Completable() {</span>
+            @Override
+            protected void subscribeActual(CompletableObserver observer) {
+<span class="fc" id="L198">                observer.onSubscribe(Disposables.empty());</span>
+<span class="fc" id="L199">                to.cancel();</span>
+<span class="fc" id="L200">                observer.onComplete();</span>
+<span class="fc" id="L201">            }</span>
+<span class="fc" id="L202">        }, Completable.complete()))</span>
+<span class="fc" id="L203">        .subscribe(to);</span>
+
+<span class="fc" id="L205">        to.assertEmpty();</span>
+<span class="fc" id="L206">    }</span>
+
+    @Test
+    public void arrayCancelRace() {
+<span class="fc" id="L210">        Completable[] a = new Completable[1024];</span>
+<span class="fc" id="L211">        Arrays.fill(a, Completable.complete());</span>
+
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L215">            final Completable c = Completable.concatArray(a);</span>
+
+<span class="fc" id="L217">            final TestObserver&lt;Void&gt; to = new TestObserver&lt;Void&gt;();</span>
+
+<span class="fc" id="L219">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L222">                    c.subscribe(to);</span>
+<span class="fc" id="L223">                }</span>
+            };
+
+<span class="fc" id="L226">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L229">                    to.cancel();</span>
+<span class="fc" id="L230">                }</span>
+            };
+
+<span class="fc" id="L233">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L235">    }</span>
+
+    @Test
+    public void iterableCancelRace() {
+<span class="fc" id="L239">        Completable[] a = new Completable[1024];</span>
+<span class="fc" id="L240">        Arrays.fill(a, Completable.complete());</span>
+
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        for (int i = 0; i &lt; TestHelper.RACE_DEFAULT_LOOPS; i++) {</span>
+
+<span class="fc" id="L244">            final Completable c = Completable.concat(Arrays.asList(a));</span>
+
+<span class="fc" id="L246">            final TestObserver&lt;Void&gt; to = new TestObserver&lt;Void&gt;();</span>
+
+<span class="fc" id="L248">            Runnable r1 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L251">                    c.subscribe(to);</span>
+<span class="fc" id="L252">                }</span>
+            };
+
+<span class="fc" id="L255">            Runnable r2 = new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="fc" id="L258">                    to.cancel();</span>
+<span class="fc" id="L259">                }</span>
+            };
+
+<span class="fc" id="L262">            TestHelper.race(r1, r2);</span>
+        }
+<span class="fc" id="L264">    }</span>
+
+    @Test
+    public void noInterrupt() throws InterruptedException {
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        for (int k = 0; k &lt; 100; k++) {</span>
+<span class="fc" id="L269">            final int count = 10;</span>
+<span class="fc" id="L270">            final CountDownLatch latch = new CountDownLatch(count);</span>
+<span class="fc" id="L271">            final boolean[] interrupted = { false };</span>
+
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            for (int i = 0; i &lt; count; i++) {</span>
+<span class="fc" id="L274">                Completable c0 = Completable.fromAction(new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+                        try {
+<span class="fc" id="L278">                            Thread.sleep(30);</span>
+<span class="nc" id="L279">                        } catch (InterruptedException e) {</span>
+<span class="nc" id="L280">                            System.out.println(&quot;Interrupted! &quot; + Thread.currentThread());</span>
+<span class="nc" id="L281">                            interrupted[0] = true;</span>
+<span class="fc" id="L282">                        }</span>
+<span class="fc" id="L283">                    }</span>
+                });
+<span class="fc" id="L285">                Completable.concat(Arrays.asList(Completable.complete()</span>
+<span class="fc" id="L286">                    .subscribeOn(Schedulers.io())</span>
+<span class="fc" id="L287">                    .observeOn(Schedulers.io()),</span>
+                    c0)
+                )
+<span class="fc" id="L290">                .subscribe(new Action() {</span>
+                    @Override
+                    public void run() throws Exception {
+<span class="fc" id="L293">                        latch.countDown();</span>
+<span class="fc" id="L294">                    }</span>
+                });
+            }
+
+<span class="fc" id="L298">            latch.await();</span>
+<span class="fc" id="L299">            assertFalse(&quot;The second Completable was interrupted!&quot;, interrupted[0]);</span>
+        }
+<span class="fc" id="L301">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,455 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowableFlattenIterable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">RxJava_2_x$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">io.reactivex.internal.operators.flowable</a> &gt; <span class="el_source">FlowableFlattenIterable.java</span></div><h1>FlowableFlattenIterable.java</h1><pre class="source lang-java linenums">/**
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+ * the License for the specific language governing permissions and limitations under the License.
+ */
+
+package io.reactivex.internal.operators.flowable;
+
+import java.util.Iterator;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.*;
+
+import org.reactivestreams.*;
+
+import io.reactivex.*;
+import io.reactivex.annotations.Nullable;
+import io.reactivex.exceptions.*;
+import io.reactivex.functions.Function;
+import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.queue.SpscArrayQueue;
+import io.reactivex.internal.subscriptions.*;
+import io.reactivex.internal.util.*;
+import io.reactivex.plugins.RxJavaPlugins;
+
+public final class FlowableFlattenIterable&lt;T, R&gt; extends AbstractFlowableWithUpstream&lt;T, R&gt; {
+
+    final Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper;
+
+    final int prefetch;
+
+    public FlowableFlattenIterable(Flowable&lt;T&gt; source,
+            Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper, int prefetch) {
+<span class="fc" id="L41">        super(source);</span>
+<span class="fc" id="L42">        this.mapper = mapper;</span>
+<span class="fc" id="L43">        this.prefetch = prefetch;</span>
+<span class="fc" id="L44">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void subscribeActual(Subscriber&lt;? super R&gt; s) {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (source instanceof Callable) {</span>
+            T v;
+
+            try {
+<span class="fc" id="L53">                v = ((Callable&lt;T&gt;)source).call();</span>
+<span class="fc" id="L54">            } catch (Throwable ex) {</span>
+<span class="fc" id="L55">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L56">                EmptySubscription.error(ex, s);</span>
+<span class="fc" id="L57">                return;</span>
+<span class="fc" id="L58">            }</span>
+
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (v == null) {</span>
+<span class="fc" id="L61">                EmptySubscription.complete(s);</span>
+<span class="fc" id="L62">                return;</span>
+            }
+
+            Iterator&lt;? extends R&gt; it;
+
+            try {
+<span class="fc" id="L68">                Iterable&lt;? extends R&gt; iterable = mapper.apply(v);</span>
+
+<span class="fc" id="L70">                it = iterable.iterator();</span>
+<span class="fc" id="L71">            } catch (Throwable ex) {</span>
+<span class="fc" id="L72">                Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L73">                EmptySubscription.error(ex, s);</span>
+<span class="fc" id="L74">                return;</span>
+<span class="fc" id="L75">            }</span>
+
+<span class="fc" id="L77">            FlowableFromIterable.subscribe(s, it);</span>
+
+<span class="fc" id="L79">            return;</span>
+        }
+<span class="fc" id="L81">        source.subscribe(new FlattenIterableSubscriber&lt;T, R&gt;(s, mapper, prefetch));</span>
+<span class="fc" id="L82">    }</span>
+
+    static final class FlattenIterableSubscriber&lt;T, R&gt;
+    extends BasicIntQueueSubscription&lt;R&gt;
+    implements FlowableSubscriber&lt;T&gt; {
+
+        private static final long serialVersionUID = -3096000382929934955L;
+
+        final Subscriber&lt;? super R&gt; downstream;
+
+        final Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper;
+
+        final int prefetch;
+
+        final int limit;
+
+        final AtomicLong requested;
+
+        Subscription upstream;
+
+        SimpleQueue&lt;T&gt; queue;
+
+        volatile boolean done;
+
+        volatile boolean cancelled;
+
+        final AtomicReference&lt;Throwable&gt; error;
+
+        Iterator&lt;? extends R&gt; current;
+
+        int consumed;
+
+        int fusionMode;
+
+        FlattenIterableSubscriber(Subscriber&lt;? super R&gt; actual,
+<span class="fc" id="L117">                Function&lt;? super T, ? extends Iterable&lt;? extends R&gt;&gt; mapper, int prefetch) {</span>
+<span class="fc" id="L118">            this.downstream = actual;</span>
+<span class="fc" id="L119">            this.mapper = mapper;</span>
+<span class="fc" id="L120">            this.prefetch = prefetch;</span>
+<span class="fc" id="L121">            this.limit = prefetch - (prefetch &gt;&gt; 2);</span>
+<span class="fc" id="L122">            this.error = new AtomicReference&lt;Throwable&gt;();</span>
+<span class="fc" id="L123">            this.requested = new AtomicLong();</span>
+<span class="fc" id="L124">        }</span>
+
+        @Override
+        public void onSubscribe(Subscription s) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (SubscriptionHelper.validate(this.upstream, s)) {</span>
+<span class="fc" id="L129">                this.upstream = s;</span>
+
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                if (s instanceof QueueSubscription) {</span>
+                    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L133">                    QueueSubscription&lt;T&gt; qs = (QueueSubscription&lt;T&gt;) s;</span>
+
+<span class="fc" id="L135">                    int m = qs.requestFusion(ANY);</span>
+
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                    if (m == SYNC) {</span>
+<span class="fc" id="L138">                        fusionMode = m;</span>
+<span class="fc" id="L139">                        this.queue = qs;</span>
+<span class="fc" id="L140">                        done = true;</span>
+
+<span class="fc" id="L142">                        downstream.onSubscribe(this);</span>
+
+<span class="fc" id="L144">                        return;</span>
+                    }
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                    if (m == ASYNC) {</span>
+<span class="fc" id="L147">                        fusionMode = m;</span>
+<span class="fc" id="L148">                        this.queue = qs;</span>
+
+<span class="fc" id="L150">                        downstream.onSubscribe(this);</span>
+
+<span class="fc" id="L152">                        s.request(prefetch);</span>
+<span class="fc" id="L153">                        return;</span>
+                    }
+                }
+
+<span class="fc" id="L157">                queue = new SpscArrayQueue&lt;T&gt;(prefetch);</span>
+
+<span class="fc" id="L159">                downstream.onSubscribe(this);</span>
+
+<span class="fc" id="L161">                s.request(prefetch);</span>
+            }
+<span class="fc" id="L163">        }</span>
+
+        @Override
+        public void onNext(T t) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L168">                return;</span>
+            }
+<span class="fc bfc" id="L170" title="All 4 branches covered.">            if (fusionMode == NONE &amp;&amp; !queue.offer(t)) {</span>
+<span class="fc" id="L171">                onError(new MissingBackpressureException(&quot;Queue is full?!&quot;));</span>
+<span class="fc" id="L172">                return;</span>
+            }
+<span class="fc" id="L174">            drain();</span>
+<span class="fc" id="L175">        }</span>
+
+        @Override
+        public void onError(Throwable t) {
+<span class="fc bfc" id="L179" title="All 4 branches covered.">            if (!done &amp;&amp; ExceptionHelper.addThrowable(error, t)) {</span>
+<span class="fc" id="L180">                done = true;</span>
+<span class="fc" id="L181">                drain();</span>
+            } else {
+<span class="fc" id="L183">                RxJavaPlugins.onError(t);</span>
+            }
+<span class="fc" id="L185">        }</span>
+
+        @Override
+        public void onComplete() {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (done) {</span>
+<span class="fc" id="L190">                return;</span>
+            }
+<span class="fc" id="L192">            done = true;</span>
+<span class="fc" id="L193">            drain();</span>
+<span class="fc" id="L194">        }</span>
+
+        @Override
+        public void request(long n) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (SubscriptionHelper.validate(n)) {</span>
+<span class="fc" id="L199">                BackpressureHelper.add(requested, n);</span>
+<span class="fc" id="L200">                drain();</span>
+            }
+<span class="fc" id="L202">        }</span>
+
+        @Override
+        public void cancel() {
+<span class="fc bfc" id="L206" title="All 2 branches covered.">            if (!cancelled) {</span>
+<span class="fc" id="L207">                cancelled = true;</span>
+
+<span class="fc" id="L209">                upstream.cancel();</span>
+
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                if (getAndIncrement() == 0) {</span>
+<span class="fc" id="L212">                    queue.clear();</span>
+                }
+            }
+<span class="fc" id="L215">        }</span>
+
+        void drain() {
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            if (getAndIncrement() != 0) {</span>
+<span class="fc" id="L219">                return;</span>
+            }
+
+<span class="fc" id="L222">            final Subscriber&lt;? super R&gt; a = downstream;</span>
+<span class="fc" id="L223">            final SimpleQueue&lt;T&gt; q = queue;</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            final boolean replenish = fusionMode != SYNC;</span>
+
+<span class="fc" id="L226">            int missed = 1;</span>
+
+<span class="fc" id="L228">            Iterator&lt;? extends R&gt; it = current;</span>
+
+            for (;;) {
+
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                if (it == null) {</span>
+
+<span class="fc" id="L234">                    boolean d = done;</span>
+
+                    T t;
+
+                    try {
+<span class="fc" id="L239">                        t = q.poll();</span>
+<span class="fc" id="L240">                    } catch (Throwable ex) {</span>
+<span class="fc" id="L241">                        Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L242">                        upstream.cancel();</span>
+<span class="fc" id="L243">                        ExceptionHelper.addThrowable(error, ex);</span>
+<span class="fc" id="L244">                        ex = ExceptionHelper.terminate(error);</span>
+
+<span class="fc" id="L246">                        current = null;</span>
+<span class="fc" id="L247">                        q.clear();</span>
+
+<span class="fc" id="L249">                        a.onError(ex);</span>
+<span class="fc" id="L250">                        return;</span>
+<span class="fc" id="L251">                    }</span>
+
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                    boolean empty = t == null;</span>
+
+<span class="fc bfc" id="L255" title="All 2 branches covered.">                    if (checkTerminated(d, empty, a, q)) {</span>
+<span class="fc" id="L256">                        return;</span>
+                    }
+
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                    if (t != null) {</span>
+                        Iterable&lt;? extends R&gt; iterable;
+
+                        boolean b;
+
+                        try {
+<span class="fc" id="L265">                            iterable = mapper.apply(t);</span>
+
+<span class="fc" id="L267">                            it = iterable.iterator();</span>
+
+<span class="fc" id="L269">                            b = it.hasNext();</span>
+<span class="fc" id="L270">                        } catch (Throwable ex) {</span>
+<span class="fc" id="L271">                            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L272">                            upstream.cancel();</span>
+<span class="fc" id="L273">                            ExceptionHelper.addThrowable(error, ex);</span>
+<span class="fc" id="L274">                            ex = ExceptionHelper.terminate(error);</span>
+<span class="fc" id="L275">                            a.onError(ex);</span>
+<span class="fc" id="L276">                            return;</span>
+<span class="fc" id="L277">                        }</span>
+
+<span class="fc bfc" id="L279" title="All 2 branches covered.">                        if (!b) {</span>
+<span class="fc" id="L280">                            it = null;</span>
+<span class="fc" id="L281">                            consumedOne(replenish);</span>
+<span class="fc" id="L282">                            continue;</span>
+                        }
+
+<span class="fc" id="L285">                        current = it;</span>
+                    }
+                }
+
+<span class="fc bfc" id="L289" title="All 2 branches covered.">                if (it != null) {</span>
+<span class="fc" id="L290">                    long r = requested.get();</span>
+<span class="fc" id="L291">                    long e = 0L;</span>
+
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                    while (e != r) {</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">                        if (checkTerminated(done, false, a, q)) {</span>
+<span class="fc" id="L295">                            return;</span>
+                        }
+
+                        R v;
+
+                        try {
+<span class="fc" id="L301">                            v = ObjectHelper.requireNonNull(it.next(), &quot;The iterator returned a null value&quot;);</span>
+<span class="fc" id="L302">                        } catch (Throwable ex) {</span>
+<span class="fc" id="L303">                            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L304">                            current = null;</span>
+<span class="fc" id="L305">                            upstream.cancel();</span>
+<span class="fc" id="L306">                            ExceptionHelper.addThrowable(error, ex);</span>
+<span class="fc" id="L307">                            ex = ExceptionHelper.terminate(error);</span>
+<span class="fc" id="L308">                            a.onError(ex);</span>
+<span class="fc" id="L309">                            return;</span>
+<span class="fc" id="L310">                        }</span>
+
+<span class="fc" id="L312">                        a.onNext(v);</span>
+
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                        if (checkTerminated(done, false, a, q)) {</span>
+<span class="fc" id="L315">                            return;</span>
+                        }
+
+<span class="fc" id="L318">                        e++;</span>
+
+                        boolean b;
+
+                        try {
+<span class="fc" id="L323">                            b = it.hasNext();</span>
+<span class="fc" id="L324">                        } catch (Throwable ex) {</span>
+<span class="fc" id="L325">                            Exceptions.throwIfFatal(ex);</span>
+<span class="fc" id="L326">                            current = null;</span>
+<span class="fc" id="L327">                            upstream.cancel();</span>
+<span class="fc" id="L328">                            ExceptionHelper.addThrowable(error, ex);</span>
+<span class="fc" id="L329">                            ex = ExceptionHelper.terminate(error);</span>
+<span class="fc" id="L330">                            a.onError(ex);</span>
+<span class="fc" id="L331">                            return;</span>
+<span class="fc" id="L332">                        }</span>
+
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                        if (!b) {</span>
+<span class="fc" id="L335">                            consumedOne(replenish);</span>
+<span class="fc" id="L336">                            it = null;</span>
+<span class="fc" id="L337">                            current = null;</span>
+<span class="fc" id="L338">                            break;</span>
+                        }
+<span class="fc" id="L340">                    }</span>
+
+<span class="fc bfc" id="L342" title="All 2 branches covered.">                    if (e == r) {</span>
+<span class="fc" id="L343">                        boolean d = done;</span>
+<span class="fc bfc" id="L344" title="All 4 branches covered.">                        boolean empty = q.isEmpty() &amp;&amp; it == null;</span>
+
+<span class="fc bfc" id="L346" title="All 2 branches covered.">                        if (checkTerminated(d, empty, a, q)) {</span>
+<span class="fc" id="L347">                            return;</span>
+                        }
+                    }
+
+<span class="fc bfc" id="L351" title="All 2 branches covered.">                    if (e != 0L) {</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">                        if (r != Long.MAX_VALUE) {</span>
+<span class="fc" id="L353">                            requested.addAndGet(-e);</span>
+                        }
+                    }
+
+<span class="fc bfc" id="L357" title="All 2 branches covered.">                    if (it == null) {</span>
+<span class="fc" id="L358">                        continue;</span>
+                    }
+                }
+
+<span class="fc" id="L362">                missed = addAndGet(-missed);</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">                if (missed == 0) {</span>
+<span class="fc" id="L364">                    break;</span>
+                }
+            }
+<span class="fc" id="L367">        }</span>
+
+        void consumedOne(boolean enabled) {
+<span class="fc bfc" id="L370" title="All 2 branches covered.">            if (enabled) {</span>
+<span class="fc" id="L371">                int c = consumed + 1;</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">                if (c == limit) {</span>
+<span class="fc" id="L373">                    consumed = 0;</span>
+<span class="fc" id="L374">                    upstream.request(c);</span>
+                } else {
+<span class="fc" id="L376">                    consumed = c;</span>
+                }
+            }
+<span class="fc" id="L379">        }</span>
+
+        boolean checkTerminated(boolean d, boolean empty, Subscriber&lt;?&gt; a, SimpleQueue&lt;?&gt; q) {
+<span class="fc bfc" id="L382" title="All 2 branches covered.">            if (cancelled) {</span>
+<span class="fc" id="L383">                current = null;</span>
+<span class="fc" id="L384">                q.clear();</span>
+<span class="fc" id="L385">                return true;</span>
+            }
+<span class="fc bfc" id="L387" title="All 2 branches covered.">            if (d) {</span>
+<span class="fc" id="L388">                Throwable ex = error.get();</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">                if (ex != null) {</span>
+<span class="fc" id="L390">                    ex = ExceptionHelper.terminate(error);</span>
+
+<span class="fc" id="L392">                    current = null;</span>
+<span class="fc" id="L393">                    q.clear();</span>
+
+<span class="fc" id="L395">                    a.onError(ex);</span>
+<span class="fc" id="L396">                    return true;</span>
+<span class="fc bfc" id="L397" title="All 2 branches covered.">                } else if (empty) {</span>
+<span class="fc" id="L398">                    a.onComplete();</span>
+<span class="fc" id="L399">                    return true;</span>
+                }
+            }
+<span class="fc" id="L402">            return false;</span>
+        }
+
+        @Override
+        public void clear() {
+<span class="fc" id="L407">            current = null;</span>
+<span class="fc" id="L408">            queue.clear();</span>
+<span class="fc" id="L409">        }</span>
+
+        @Override
+        public boolean isEmpty() {
+<span class="fc bfc" id="L413" title="All 4 branches covered.">            return current == null &amp;&amp; queue.isEmpty();</span>
+        }
+
+        @Nullable
+        @Override
+        public R poll() throws Exception {
+<span class="fc" id="L419">            Iterator&lt;? extends R&gt; it = current;</span>
+            for (;;) {
+<span class="fc bfc" id="L421" title="All 2 branches covered.">                if (it == null) {</span>
+<span class="fc" id="L422">                    T v = queue.poll();</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">                    if (v == null) {</span>
+<span class="fc" id="L424">                        return null;</span>
+                    }
+
+<span class="fc" id="L427">                    it = mapper.apply(v).iterator();</span>
+
+<span class="fc bfc" id="L429" title="All 2 branches covered.">                    if (!it.hasNext()) {</span>
+<span class="fc" id="L430">                        it = null;</span>
+<span class="fc" id="L431">                        continue;</span>
+                    }
+<span class="fc" id="L433">                    current = it;</span>
+                }
+
+<span class="fc" id="L436">                R r = ObjectHelper.requireNonNull(it.next(), &quot;The iterator returned a null value&quot;);</span>
+
+<span class="fc bfc" id="L438" title="All 2 branches covered.">                if (!it.hasNext()) {</span>
+<span class="fc" id="L439">                    current = null;</span>
+                }
+
+<span class="fc" id="L442">                return r;</span>
+            }
+        }
+
+        @Override
+        public int requestFusion(int requestedMode) {
+<span class="fc bfc" id="L448" title="All 4 branches covered.">            if ((requestedMode &amp; SYNC) != 0 &amp;&amp; fusionMode == SYNC) {</span>
+<span class="fc" id="L449">                return SYNC;</span>
+            }
+<span class="fc" id="L451">            return NONE;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>
