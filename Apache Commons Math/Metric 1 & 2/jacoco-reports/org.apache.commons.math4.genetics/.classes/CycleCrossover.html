@@ -1,0 +1,265 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: CycleCrossover</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.genetics</a> ]
+</div>
+
+<h1>Coverage Summary for Class: CycleCrossover (org.apache.commons.math4.genetics)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">CycleCrossover</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    80%
+  </span>
+  <span class="absValue">
+    (4/ 5)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    95.5%
+  </span>
+  <span class="absValue">
+    (42/ 44)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;package org.apache.commons.math4.genetics;
+<i>18</i>&nbsp;
+<i>19</i>&nbsp;import java.util.ArrayList;
+<i>20</i>&nbsp;import java.util.HashSet;
+<i>21</i>&nbsp;import java.util.List;
+<i>22</i>&nbsp;import java.util.Set;
+<i>23</i>&nbsp;
+<i>24</i>&nbsp;import org.apache.commons.math4.exception.DimensionMismatchException;
+<i>25</i>&nbsp;import org.apache.commons.math4.exception.MathIllegalArgumentException;
+<i>26</i>&nbsp;import org.apache.commons.math4.exception.util.LocalizedFormats;
+<i>27</i>&nbsp;
+<i>28</i>&nbsp;/**
+<i>29</i>&nbsp; * Cycle Crossover [CX] builds offspring from &lt;b&gt;ordered&lt;/b&gt; chromosomes by identifying cycles
+<i>30</i>&nbsp; * between two parent chromosomes. To form the children, the cycles are copied from the
+<i>31</i>&nbsp; * respective parents.
+<i>32</i>&nbsp; * &lt;p&gt;
+<i>33</i>&nbsp; * To form a cycle the following procedure is applied:
+<i>34</i>&nbsp; * &lt;ol&gt;
+<i>35</i>&nbsp; *   &lt;li&gt;start with the first gene of parent 1&lt;/li&gt;
+<i>36</i>&nbsp; *   &lt;li&gt;look at the gene at the same position of parent 2&lt;/li&gt;
+<i>37</i>&nbsp; *   &lt;li&gt;go to the position with the same gene in parent 1&lt;/li&gt;
+<i>38</i>&nbsp; *   &lt;li&gt;add this gene index to the cycle&lt;/li&gt;
+<i>39</i>&nbsp; *   &lt;li&gt;repeat the steps 2-5 until we arrive at the starting gene of this cycle&lt;/li&gt;
+<i>40</i>&nbsp; * &lt;/ol&gt;
+<i>41</i>&nbsp; * The indices that form a cycle are then used to form the children in alternating order, i.e.
+<i>42</i>&nbsp; * in cycle 1, the genes of parent 1 are copied to child 1, while in cycle 2 the genes of parent 1
+<i>43</i>&nbsp; * are copied to child 2, and so forth ...
+<i>44</i>&nbsp; *
+<i>45</i>&nbsp; * Example (zero-start cycle):
+<i>46</i>&nbsp; * &lt;pre&gt;
+<i>47</i>&nbsp; * p1 = (8 4 7 3 6 2 5 1 9 0)    X   c1 = (8 1 2 3 4 5 6 7 9 0)
+<i>48</i>&nbsp; * p2 = (0 1 2 3 4 5 6 7 8 9)    X   c2 = (0 4 7 3 6 2 5 1 8 9)
+<i>49</i>&nbsp; *
+<i>50</i>&nbsp; * cycle 1: 8 0 9
+<i>51</i>&nbsp; * cycle 2: 4 1 7 2 5 6
+<i>52</i>&nbsp; * cycle 3: 3
+<i>53</i>&nbsp; * &lt;/pre&gt;
+<i>54</i>&nbsp; *
+<i>55</i>&nbsp; * This policy works only on {@link AbstractListChromosome}, and therefore it
+<i>56</i>&nbsp; * is parameterized by T. Moreover, the chromosomes must have same lengths.
+<i>57</i>&nbsp; *
+<i>58</i>&nbsp; * @see &lt;a href=&quot;http://www.rubicite.com/Tutorials/GeneticAlgorithms/CrossoverOperators/CycleCrossoverOperator.aspx&quot;&gt;
+<i>59</i>&nbsp; * Cycle Crossover Operator&lt;/a&gt;
+<i>60</i>&nbsp; *
+<i>61</i>&nbsp; * @param &lt;T&gt; generic type of the {@link AbstractListChromosome}s for crossover
+<i>62</i>&nbsp; * @since 3.1
+<i>63</i>&nbsp; */
+<i>64</i>&nbsp;public class CycleCrossover&lt;T&gt; implements CrossoverPolicy {
+<i>65</i>&nbsp;
+<i>66</i>&nbsp;    /** If the start index shall be chosen randomly. */
+<i>67</i>&nbsp;    private final boolean randomStart;
+<i>68</i>&nbsp;
+<i>69</i>&nbsp;    /**
+<i>70</i>&nbsp;     * Creates a new {@link CycleCrossover} policy.
+<i>71</i>&nbsp;     */
+<i>72</i>&nbsp;    public CycleCrossover() {
+<b class="fc"><i>73</i>&nbsp;        this(false);</b>
+<b class="fc"><i>74</i>&nbsp;    }</b>
+<i>75</i>&nbsp;
+<i>76</i>&nbsp;    /**
+<i>77</i>&nbsp;     * Creates a new {@link CycleCrossover} policy using the given {@code randomStart} behavior.
+<i>78</i>&nbsp;     *
+<i>79</i>&nbsp;     * @param randomStart whether the start index shall be chosen randomly or be set to 0
+<i>80</i>&nbsp;     */
+<b class="fc"><i>81</i>&nbsp;    public CycleCrossover(final boolean randomStart) {</b>
+<b class="fc"><i>82</i>&nbsp;        this.randomStart = randomStart;</b>
+<b class="fc"><i>83</i>&nbsp;    }</b>
+<i>84</i>&nbsp;
+<i>85</i>&nbsp;    /**
+<i>86</i>&nbsp;     * Returns whether the starting index is chosen randomly or set to zero.
+<i>87</i>&nbsp;     *
+<i>88</i>&nbsp;     * @return {@code true} if the starting index is chosen randomly, {@code false} otherwise
+<i>89</i>&nbsp;     */
+<i>90</i>&nbsp;    public boolean isRandomStart() {
+<b class="nc"><i>91</i>&nbsp;        return randomStart;</b>
+<i>92</i>&nbsp;    }
+<i>93</i>&nbsp;
+<i>94</i>&nbsp;    /**
+<i>95</i>&nbsp;     * {@inheritDoc}
+<i>96</i>&nbsp;     *
+<i>97</i>&nbsp;     * @throws MathIllegalArgumentException if the chromosomes are not an instance of {@link AbstractListChromosome}
+<i>98</i>&nbsp;     * @throws DimensionMismatchException if the length of the two chromosomes is different
+<i>99</i>&nbsp;     */
+<i>100</i>&nbsp;    @Override
+<i>101</i>&nbsp;    @SuppressWarnings(&quot;unchecked&quot;)
+<i>102</i>&nbsp;    public ChromosomePair crossover(final Chromosome first, final Chromosome second)
+<i>103</i>&nbsp;        throws DimensionMismatchException, MathIllegalArgumentException {
+<i>104</i>&nbsp;
+<b class="fc"><i>105</i>&nbsp;        if (!(first instanceof AbstractListChromosome&lt;?&gt; &amp;&amp; second instanceof AbstractListChromosome&lt;?&gt;)) {</b>
+<b class="fc"><i>106</i>&nbsp;            throw new MathIllegalArgumentException(LocalizedFormats.INVALID_FIXED_LENGTH_CHROMOSOME);</b>
+<i>107</i>&nbsp;        }
+<b class="fc"><i>108</i>&nbsp;        return mate((AbstractListChromosome&lt;T&gt;) first, (AbstractListChromosome&lt;T&gt;) second);</b>
+<i>109</i>&nbsp;    }
+<i>110</i>&nbsp;
+<i>111</i>&nbsp;    /**
+<i>112</i>&nbsp;     * Helper for {@link #crossover(Chromosome, Chromosome)}. Performs the actual crossover.
+<i>113</i>&nbsp;     *
+<i>114</i>&nbsp;     * @param first the first chromosome
+<i>115</i>&nbsp;     * @param second the second chromosome
+<i>116</i>&nbsp;     * @return the pair of new chromosomes that resulted from the crossover
+<i>117</i>&nbsp;     * @throws DimensionMismatchException if the length of the two chromosomes is different
+<i>118</i>&nbsp;     */
+<i>119</i>&nbsp;    protected ChromosomePair mate(final AbstractListChromosome&lt;T&gt; first, final AbstractListChromosome&lt;T&gt; second)
+<i>120</i>&nbsp;        throws DimensionMismatchException {
+<i>121</i>&nbsp;
+<b class="fc"><i>122</i>&nbsp;        final int length = first.getLength();</b>
+<b class="fc"><i>123</i>&nbsp;        if (length != second.getLength()) {</b>
+<b class="fc"><i>124</i>&nbsp;            throw new DimensionMismatchException(second.getLength(), length);</b>
+<i>125</i>&nbsp;        }
+<i>126</i>&nbsp;
+<i>127</i>&nbsp;        // array representations of the parents
+<b class="fc"><i>128</i>&nbsp;        final List&lt;T&gt; parent1Rep = first.getRepresentation();</b>
+<b class="fc"><i>129</i>&nbsp;        final List&lt;T&gt; parent2Rep = second.getRepresentation();</b>
+<i>130</i>&nbsp;        // and of the children: do a crossover copy to simplify the later processing
+<b class="fc"><i>131</i>&nbsp;        final List&lt;T&gt; child1Rep = new ArrayList&lt;&gt;(second.getRepresentation());</b>
+<b class="fc"><i>132</i>&nbsp;        final List&lt;T&gt; child2Rep = new ArrayList&lt;&gt;(first.getRepresentation());</b>
+<i>133</i>&nbsp;
+<i>134</i>&nbsp;        // the set of all visited indices so far
+<b class="fc"><i>135</i>&nbsp;        final Set&lt;Integer&gt; visitedIndices = new HashSet&lt;&gt;(length);</b>
+<i>136</i>&nbsp;        // the indices of the current cycle
+<b class="fc"><i>137</i>&nbsp;        final List&lt;Integer&gt; indices = new ArrayList&lt;&gt;(length);</b>
+<i>138</i>&nbsp;
+<i>139</i>&nbsp;        // determine the starting index
+<b class="fc"><i>140</i>&nbsp;        int idx = randomStart ? GeneticAlgorithm.getRandomGenerator().nextInt(length) : 0;</b>
+<b class="fc"><i>141</i>&nbsp;        int cycle = 1;</b>
+<i>142</i>&nbsp;
+<b class="fc"><i>143</i>&nbsp;        while (visitedIndices.size() &lt; length) {</b>
+<b class="fc"><i>144</i>&nbsp;            indices.add(idx);</b>
+<i>145</i>&nbsp;
+<b class="fc"><i>146</i>&nbsp;            T item = parent2Rep.get(idx);</b>
+<b class="fc"><i>147</i>&nbsp;            idx = parent1Rep.indexOf(item);</b>
+<i>148</i>&nbsp;
+<b class="fc"><i>149</i>&nbsp;            while (idx != indices.get(0)) {</b>
+<i>150</i>&nbsp;                // add that index to the cycle indices
+<b class="fc"><i>151</i>&nbsp;                indices.add(idx);</b>
+<i>152</i>&nbsp;                // get the item in the second parent at that index
+<b class="fc"><i>153</i>&nbsp;                item = parent2Rep.get(idx);</b>
+<i>154</i>&nbsp;                // get the index of that item in the first parent
+<b class="fc"><i>155</i>&nbsp;                idx = parent1Rep.indexOf(item);</b>
+<i>156</i>&nbsp;            }
+<i>157</i>&nbsp;
+<i>158</i>&nbsp;            // for even cycles: swap the child elements on the indices found in this cycle
+<b class="fc"><i>159</i>&nbsp;            if (cycle++ % 2 != 0) {</b>
+<b class="fc"><i>160</i>&nbsp;                for (int i : indices) {</b>
+<b class="fc"><i>161</i>&nbsp;                    T tmp = child1Rep.get(i);</b>
+<b class="fc"><i>162</i>&nbsp;                    child1Rep.set(i, child2Rep.get(i));</b>
+<b class="fc"><i>163</i>&nbsp;                    child2Rep.set(i, tmp);</b>
+<b class="fc"><i>164</i>&nbsp;                }</b>
+<i>165</i>&nbsp;            }
+<i>166</i>&nbsp;
+<b class="fc"><i>167</i>&nbsp;            visitedIndices.addAll(indices);</b>
+<i>168</i>&nbsp;            // find next starting index: last one + 1 until we find an unvisited index
+<b class="fc"><i>169</i>&nbsp;            idx = (indices.get(0) + 1) % length;</b>
+<b class="fc"><i>170</i>&nbsp;            while (visitedIndices.contains(idx) &amp;&amp; visitedIndices.size() &lt; length) {</b>
+<b class="fc"><i>171</i>&nbsp;                idx++;</b>
+<b class="fc"><i>172</i>&nbsp;                if (idx &gt;= length) {</b>
+<b class="nc"><i>173</i>&nbsp;                    idx = 0;</b>
+<i>174</i>&nbsp;                }
+<i>175</i>&nbsp;            }
+<b class="fc"><i>176</i>&nbsp;            indices.clear();</b>
+<b class="fc"><i>177</i>&nbsp;        }</b>
+<i>178</i>&nbsp;
+<b class="fc"><i>179</i>&nbsp;        return new ChromosomePair(first.newFixedLengthChromosome(child1Rep),</b>
+<b class="fc"><i>180</i>&nbsp;                                  second.newFixedLengthChromosome(child2Rep));</b>
+<i>181</i>&nbsp;    }
+<i>182</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

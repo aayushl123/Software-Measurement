@@ -1,0 +1,619 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: QRDecomposition</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.linear</a> ]
+</div>
+
+<h1>Coverage Summary for Class: QRDecomposition (org.apache.commons.math4.linear)</h1>
+
+<table class="coverageStats">
+
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">QRDecomposition</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (9/ 9)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (77/ 77)
+  </span>
+</td>
+</tr>
+  <tr>
+    <td class="name">QRDecomposition$1</td>
+  </tr>
+  <tr>
+    <td class="name">QRDecomposition$Solver</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (7/ 7)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (91/ 91)
+  </span>
+</td>
+  </tr>
+<tr>
+  <td class="name"><strong>total</strong></td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (16/ 16)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (168/ 168)
+  </span>
+</td>
+</tr>
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;
+<i>18</i>&nbsp;package org.apache.commons.math4.linear;
+<i>19</i>&nbsp;
+<i>20</i>&nbsp;import java.util.Arrays;
+<i>21</i>&nbsp;
+<i>22</i>&nbsp;import org.apache.commons.math4.exception.DimensionMismatchException;
+<i>23</i>&nbsp;import org.apache.commons.math4.util.FastMath;
+<i>24</i>&nbsp;import org.apache.commons.math4.exception.util.LocalizedFormats;
+<i>25</i>&nbsp;
+<i>26</i>&nbsp;
+<i>27</i>&nbsp;/**
+<i>28</i>&nbsp; * Calculates the QR-decomposition of a matrix.
+<i>29</i>&nbsp; * &lt;p&gt;The QR-decomposition of a matrix A consists of two matrices Q and R
+<i>30</i>&nbsp; * that satisfy: A = QR, Q is orthogonal (Q&lt;sup&gt;T&lt;/sup&gt;Q = I), and R is
+<i>31</i>&nbsp; * upper triangular. If A is m&amp;times;n, Q is m&amp;times;m and R m&amp;times;n.&lt;/p&gt;
+<i>32</i>&nbsp; * &lt;p&gt;This class compute the decomposition using Householder reflectors.&lt;/p&gt;
+<i>33</i>&nbsp; * &lt;p&gt;For efficiency purposes, the decomposition in packed form is transposed.
+<i>34</i>&nbsp; * This allows inner loop to iterate inside rows, which is much more cache-efficient
+<i>35</i>&nbsp; * in Java.&lt;/p&gt;
+<i>36</i>&nbsp; * &lt;p&gt;This class is based on the class with similar name from the
+<i>37</i>&nbsp; * &lt;a href=&quot;http://math.nist.gov/javanumerics/jama/&quot;&gt;JAMA&lt;/a&gt; library, with the
+<i>38</i>&nbsp; * following changes:&lt;/p&gt;
+<i>39</i>&nbsp; * &lt;ul&gt;
+<i>40</i>&nbsp; *   &lt;li&gt;a {@link #getQT() getQT} method has been added,&lt;/li&gt;
+<i>41</i>&nbsp; *   &lt;li&gt;the {@code solve} and {@code isFullRank} methods have been replaced
+<i>42</i>&nbsp; *   by a {@link #getSolver() getSolver} method and the equivalent methods
+<i>43</i>&nbsp; *   provided by the returned {@link DecompositionSolver}.&lt;/li&gt;
+<i>44</i>&nbsp; * &lt;/ul&gt;
+<i>45</i>&nbsp; *
+<i>46</i>&nbsp; * @see &lt;a href=&quot;http://mathworld.wolfram.com/QRDecomposition.html&quot;&gt;MathWorld&lt;/a&gt;
+<i>47</i>&nbsp; * @see &lt;a href=&quot;http://en.wikipedia.org/wiki/QR_decomposition&quot;&gt;Wikipedia&lt;/a&gt;
+<i>48</i>&nbsp; *
+<i>49</i>&nbsp; * @since 1.2 (changed to concrete class in 3.0)
+<i>50</i>&nbsp; */
+<i>51</i>&nbsp;public class QRDecomposition {
+<i>52</i>&nbsp;    /**
+<i>53</i>&nbsp;     * A packed TRANSPOSED representation of the QR decomposition.
+<i>54</i>&nbsp;     * &lt;p&gt;The elements BELOW the diagonal are the elements of the UPPER triangular
+<i>55</i>&nbsp;     * matrix R, and the rows ABOVE the diagonal are the Householder reflector vectors
+<i>56</i>&nbsp;     * from which an explicit form of Q can be recomputed if desired.&lt;/p&gt;
+<i>57</i>&nbsp;     */
+<i>58</i>&nbsp;    private double[][] qrt;
+<i>59</i>&nbsp;    /** The diagonal elements of R. */
+<i>60</i>&nbsp;    private double[] rDiag;
+<i>61</i>&nbsp;    /** Cached value of Q. */
+<i>62</i>&nbsp;    private RealMatrix cachedQ;
+<i>63</i>&nbsp;    /** Cached value of QT. */
+<i>64</i>&nbsp;    private RealMatrix cachedQT;
+<i>65</i>&nbsp;    /** Cached value of R. */
+<i>66</i>&nbsp;    private RealMatrix cachedR;
+<i>67</i>&nbsp;    /** Cached value of H. */
+<i>68</i>&nbsp;    private RealMatrix cachedH;
+<i>69</i>&nbsp;    /** Singularity threshold. */
+<i>70</i>&nbsp;    private final double threshold;
+<i>71</i>&nbsp;
+<i>72</i>&nbsp;    /**
+<i>73</i>&nbsp;     * Calculates the QR-decomposition of the given matrix.
+<i>74</i>&nbsp;     * The singularity threshold defaults to zero.
+<i>75</i>&nbsp;     *
+<i>76</i>&nbsp;     * @param matrix The matrix to decompose.
+<i>77</i>&nbsp;     *
+<i>78</i>&nbsp;     * @see #QRDecomposition(RealMatrix,double)
+<i>79</i>&nbsp;     */
+<i>80</i>&nbsp;    public QRDecomposition(RealMatrix matrix) {
+<b class="fc"><i>81</i>&nbsp;        this(matrix, 0d);</b>
+<b class="fc"><i>82</i>&nbsp;    }</b>
+<i>83</i>&nbsp;
+<i>84</i>&nbsp;    /**
+<i>85</i>&nbsp;     * Calculates the QR-decomposition of the given matrix.
+<i>86</i>&nbsp;     *
+<i>87</i>&nbsp;     * @param matrix The matrix to decompose.
+<i>88</i>&nbsp;     * @param threshold Singularity threshold.
+<i>89</i>&nbsp;     * The matrix will be considered singular if the absolute value of
+<i>90</i>&nbsp;     * any of the diagonal elements of the &quot;R&quot; matrix is smaller than
+<i>91</i>&nbsp;     * the threshold.
+<i>92</i>&nbsp;     */
+<i>93</i>&nbsp;    public QRDecomposition(RealMatrix matrix,
+<b class="fc"><i>94</i>&nbsp;                           double threshold) {</b>
+<b class="fc"><i>95</i>&nbsp;        this.threshold = threshold;</b>
+<i>96</i>&nbsp;
+<b class="fc"><i>97</i>&nbsp;        final int m = matrix.getRowDimension();</b>
+<b class="fc"><i>98</i>&nbsp;        final int n = matrix.getColumnDimension();</b>
+<b class="fc"><i>99</i>&nbsp;        qrt = matrix.transpose().getData();</b>
+<b class="fc"><i>100</i>&nbsp;        rDiag = new double[FastMath.min(m, n)];</b>
+<b class="fc"><i>101</i>&nbsp;        cachedQ  = null;</b>
+<b class="fc"><i>102</i>&nbsp;        cachedQT = null;</b>
+<b class="fc"><i>103</i>&nbsp;        cachedR  = null;</b>
+<b class="fc"><i>104</i>&nbsp;        cachedH  = null;</b>
+<i>105</i>&nbsp;
+<b class="fc"><i>106</i>&nbsp;        decompose(qrt);</b>
+<i>107</i>&nbsp;
+<b class="fc"><i>108</i>&nbsp;    }</b>
+<i>109</i>&nbsp;
+<i>110</i>&nbsp;    /** Decompose matrix.
+<i>111</i>&nbsp;     * @param matrix transposed matrix
+<i>112</i>&nbsp;     * @since 3.2
+<i>113</i>&nbsp;     */
+<i>114</i>&nbsp;    protected void decompose(double[][] matrix) {
+<b class="fc"><i>115</i>&nbsp;        for (int minor = 0; minor &lt; FastMath.min(matrix.length, matrix[0].length); minor++) {</b>
+<b class="fc"><i>116</i>&nbsp;            performHouseholderReflection(minor, matrix);</b>
+<i>117</i>&nbsp;        }
+<b class="fc"><i>118</i>&nbsp;    }</b>
+<i>119</i>&nbsp;
+<i>120</i>&nbsp;    /** Perform Householder reflection for a minor A(minor, minor) of A.
+<i>121</i>&nbsp;     * @param minor minor index
+<i>122</i>&nbsp;     * @param matrix transposed matrix
+<i>123</i>&nbsp;     * @since 3.2
+<i>124</i>&nbsp;     */
+<i>125</i>&nbsp;    protected void performHouseholderReflection(int minor, double[][] matrix) {
+<i>126</i>&nbsp;
+<b class="fc"><i>127</i>&nbsp;        final double[] qrtMinor = matrix[minor];</b>
+<i>128</i>&nbsp;
+<i>129</i>&nbsp;        /*
+<i>130</i>&nbsp;         * Let x be the first column of the minor, and a^2 = |x|^2.
+<i>131</i>&nbsp;         * x will be in the positions qr[minor][minor] through qr[m][minor].
+<i>132</i>&nbsp;         * The first column of the transformed minor will be (a,0,0,..)&#39;
+<i>133</i>&nbsp;         * The sign of a is chosen to be opposite to the sign of the first
+<i>134</i>&nbsp;         * component of x. Let&#39;s find a:
+<i>135</i>&nbsp;         */
+<b class="fc"><i>136</i>&nbsp;        double xNormSqr = 0;</b>
+<b class="fc"><i>137</i>&nbsp;        for (int row = minor; row &lt; qrtMinor.length; row++) {</b>
+<b class="fc"><i>138</i>&nbsp;            final double c = qrtMinor[row];</b>
+<b class="fc"><i>139</i>&nbsp;            xNormSqr += c * c;</b>
+<i>140</i>&nbsp;        }
+<b class="fc"><i>141</i>&nbsp;        final double a = (qrtMinor[minor] &gt; 0) ? -FastMath.sqrt(xNormSqr) : FastMath.sqrt(xNormSqr);</b>
+<b class="fc"><i>142</i>&nbsp;        rDiag[minor] = a;</b>
+<i>143</i>&nbsp;
+<b class="fc"><i>144</i>&nbsp;        if (a != 0.0) {</b>
+<i>145</i>&nbsp;
+<i>146</i>&nbsp;            /*
+<i>147</i>&nbsp;             * Calculate the normalized reflection vector v and transform
+<i>148</i>&nbsp;             * the first column. We know the norm of v beforehand: v = x-ae
+<i>149</i>&nbsp;             * so |v|^2 = &lt;x-ae,x-ae&gt; = &lt;x,x&gt;-2a&lt;x,e&gt;+a^2&lt;e,e&gt; =
+<i>150</i>&nbsp;             * a^2+a^2-2a&lt;x,e&gt; = 2a*(a - &lt;x,e&gt;).
+<i>151</i>&nbsp;             * Here &lt;x, e&gt; is now qr[minor][minor].
+<i>152</i>&nbsp;             * v = x-ae is stored in the column at qr:
+<i>153</i>&nbsp;             */
+<b class="fc"><i>154</i>&nbsp;            qrtMinor[minor] -= a; // now |v|^2 = -2a*(qr[minor][minor])</b>
+<i>155</i>&nbsp;
+<i>156</i>&nbsp;            /*
+<i>157</i>&nbsp;             * Transform the rest of the columns of the minor:
+<i>158</i>&nbsp;             * They will be transformed by the matrix H = I-2vv&#39;/|v|^2.
+<i>159</i>&nbsp;             * If x is a column vector of the minor, then
+<i>160</i>&nbsp;             * Hx = (I-2vv&#39;/|v|^2)x = x-2vv&#39;x/|v|^2 = x - 2&lt;x,v&gt;/|v|^2 v.
+<i>161</i>&nbsp;             * Therefore the transformation is easily calculated by
+<i>162</i>&nbsp;             * subtracting the column vector (2&lt;x,v&gt;/|v|^2)v from x.
+<i>163</i>&nbsp;             *
+<i>164</i>&nbsp;             * Let 2&lt;x,v&gt;/|v|^2 = alpha. From above we have
+<i>165</i>&nbsp;             * |v|^2 = -2a*(qr[minor][minor]), so
+<i>166</i>&nbsp;             * alpha = -&lt;x,v&gt;/(a*qr[minor][minor])
+<i>167</i>&nbsp;             */
+<b class="fc"><i>168</i>&nbsp;            for (int col = minor+1; col &lt; matrix.length; col++) {</b>
+<b class="fc"><i>169</i>&nbsp;                final double[] qrtCol = matrix[col];</b>
+<b class="fc"><i>170</i>&nbsp;                double alpha = 0;</b>
+<b class="fc"><i>171</i>&nbsp;                for (int row = minor; row &lt; qrtCol.length; row++) {</b>
+<b class="fc"><i>172</i>&nbsp;                    alpha -= qrtCol[row] * qrtMinor[row];</b>
+<i>173</i>&nbsp;                }
+<b class="fc"><i>174</i>&nbsp;                alpha /= a * qrtMinor[minor];</b>
+<i>175</i>&nbsp;
+<i>176</i>&nbsp;                // Subtract the column vector alpha*v from x.
+<b class="fc"><i>177</i>&nbsp;                for (int row = minor; row &lt; qrtCol.length; row++) {</b>
+<b class="fc"><i>178</i>&nbsp;                    qrtCol[row] -= alpha * qrtMinor[row];</b>
+<i>179</i>&nbsp;                }
+<i>180</i>&nbsp;            }
+<i>181</i>&nbsp;        }
+<b class="fc"><i>182</i>&nbsp;    }</b>
+<i>183</i>&nbsp;
+<i>184</i>&nbsp;
+<i>185</i>&nbsp;    /**
+<i>186</i>&nbsp;     * Returns the matrix R of the decomposition.
+<i>187</i>&nbsp;     * &lt;p&gt;R is an upper-triangular matrix&lt;/p&gt;
+<i>188</i>&nbsp;     * @return the R matrix
+<i>189</i>&nbsp;     */
+<i>190</i>&nbsp;    public RealMatrix getR() {
+<i>191</i>&nbsp;
+<b class="fc"><i>192</i>&nbsp;        if (cachedR == null) {</b>
+<i>193</i>&nbsp;
+<i>194</i>&nbsp;            // R is supposed to be m x n
+<b class="fc"><i>195</i>&nbsp;            final int n = qrt.length;</b>
+<b class="fc"><i>196</i>&nbsp;            final int m = qrt[0].length;</b>
+<b class="fc"><i>197</i>&nbsp;            double[][] ra = new double[m][n];</b>
+<i>198</i>&nbsp;            // copy the diagonal from rDiag and the upper triangle of qr
+<b class="fc"><i>199</i>&nbsp;            for (int row = FastMath.min(m, n) - 1; row &gt;= 0; row--) {</b>
+<b class="fc"><i>200</i>&nbsp;                ra[row][row] = rDiag[row];</b>
+<b class="fc"><i>201</i>&nbsp;                for (int col = row + 1; col &lt; n; col++) {</b>
+<b class="fc"><i>202</i>&nbsp;                    ra[row][col] = qrt[col][row];</b>
+<i>203</i>&nbsp;                }
+<i>204</i>&nbsp;            }
+<b class="fc"><i>205</i>&nbsp;            cachedR = MatrixUtils.createRealMatrix(ra);</b>
+<i>206</i>&nbsp;        }
+<i>207</i>&nbsp;
+<i>208</i>&nbsp;        // return the cached matrix
+<b class="fc"><i>209</i>&nbsp;        return cachedR;</b>
+<i>210</i>&nbsp;    }
+<i>211</i>&nbsp;
+<i>212</i>&nbsp;    /**
+<i>213</i>&nbsp;     * Returns the matrix Q of the decomposition.
+<i>214</i>&nbsp;     * &lt;p&gt;Q is an orthogonal matrix&lt;/p&gt;
+<i>215</i>&nbsp;     * @return the Q matrix
+<i>216</i>&nbsp;     */
+<i>217</i>&nbsp;    public RealMatrix getQ() {
+<b class="fc"><i>218</i>&nbsp;        if (cachedQ == null) {</b>
+<b class="fc"><i>219</i>&nbsp;            cachedQ = getQT().transpose();</b>
+<i>220</i>&nbsp;        }
+<b class="fc"><i>221</i>&nbsp;        return cachedQ;</b>
+<i>222</i>&nbsp;    }
+<i>223</i>&nbsp;
+<i>224</i>&nbsp;    /**
+<i>225</i>&nbsp;     * Returns the transpose of the matrix Q of the decomposition.
+<i>226</i>&nbsp;     * &lt;p&gt;Q is an orthogonal matrix&lt;/p&gt;
+<i>227</i>&nbsp;     * @return the transpose of the Q matrix, Q&lt;sup&gt;T&lt;/sup&gt;
+<i>228</i>&nbsp;     */
+<i>229</i>&nbsp;    public RealMatrix getQT() {
+<b class="fc"><i>230</i>&nbsp;        if (cachedQT == null) {</b>
+<i>231</i>&nbsp;
+<i>232</i>&nbsp;            // QT is supposed to be m x m
+<b class="fc"><i>233</i>&nbsp;            final int n = qrt.length;</b>
+<b class="fc"><i>234</i>&nbsp;            final int m = qrt[0].length;</b>
+<b class="fc"><i>235</i>&nbsp;            double[][] qta = new double[m][m];</b>
+<i>236</i>&nbsp;
+<i>237</i>&nbsp;            /*
+<i>238</i>&nbsp;             * Q = Q1 Q2 ... Q_m, so Q is formed by first constructing Q_m and then
+<i>239</i>&nbsp;             * applying the Householder transformations Q_(m-1),Q_(m-2),...,Q1 in
+<i>240</i>&nbsp;             * succession to the result
+<i>241</i>&nbsp;             */
+<b class="fc"><i>242</i>&nbsp;            for (int minor = m - 1; minor &gt;= FastMath.min(m, n); minor--) {</b>
+<b class="fc"><i>243</i>&nbsp;                qta[minor][minor] = 1.0d;</b>
+<i>244</i>&nbsp;            }
+<i>245</i>&nbsp;
+<b class="fc"><i>246</i>&nbsp;            for (int minor = FastMath.min(m, n)-1; minor &gt;= 0; minor--){</b>
+<b class="fc"><i>247</i>&nbsp;                final double[] qrtMinor = qrt[minor];</b>
+<b class="fc"><i>248</i>&nbsp;                qta[minor][minor] = 1.0d;</b>
+<b class="fc"><i>249</i>&nbsp;                if (qrtMinor[minor] != 0.0) {</b>
+<b class="fc"><i>250</i>&nbsp;                    for (int col = minor; col &lt; m; col++) {</b>
+<b class="fc"><i>251</i>&nbsp;                        double alpha = 0;</b>
+<b class="fc"><i>252</i>&nbsp;                        for (int row = minor; row &lt; m; row++) {</b>
+<b class="fc"><i>253</i>&nbsp;                            alpha -= qta[col][row] * qrtMinor[row];</b>
+<i>254</i>&nbsp;                        }
+<b class="fc"><i>255</i>&nbsp;                        alpha /= rDiag[minor] * qrtMinor[minor];</b>
+<i>256</i>&nbsp;
+<b class="fc"><i>257</i>&nbsp;                        for (int row = minor; row &lt; m; row++) {</b>
+<b class="fc"><i>258</i>&nbsp;                            qta[col][row] += -alpha * qrtMinor[row];</b>
+<i>259</i>&nbsp;                        }
+<i>260</i>&nbsp;                    }
+<i>261</i>&nbsp;                }
+<i>262</i>&nbsp;            }
+<b class="fc"><i>263</i>&nbsp;            cachedQT = MatrixUtils.createRealMatrix(qta);</b>
+<i>264</i>&nbsp;        }
+<i>265</i>&nbsp;
+<i>266</i>&nbsp;        // return the cached matrix
+<b class="fc"><i>267</i>&nbsp;        return cachedQT;</b>
+<i>268</i>&nbsp;    }
+<i>269</i>&nbsp;
+<i>270</i>&nbsp;    /**
+<i>271</i>&nbsp;     * Returns the Householder reflector vectors.
+<i>272</i>&nbsp;     * &lt;p&gt;H is a lower trapezoidal matrix whose columns represent
+<i>273</i>&nbsp;     * each successive Householder reflector vector. This matrix is used
+<i>274</i>&nbsp;     * to compute Q.&lt;/p&gt;
+<i>275</i>&nbsp;     * @return a matrix containing the Householder reflector vectors
+<i>276</i>&nbsp;     */
+<i>277</i>&nbsp;    public RealMatrix getH() {
+<b class="fc"><i>278</i>&nbsp;        if (cachedH == null) {</b>
+<i>279</i>&nbsp;
+<b class="fc"><i>280</i>&nbsp;            final int n = qrt.length;</b>
+<b class="fc"><i>281</i>&nbsp;            final int m = qrt[0].length;</b>
+<b class="fc"><i>282</i>&nbsp;            double[][] ha = new double[m][n];</b>
+<b class="fc"><i>283</i>&nbsp;            for (int i = 0; i &lt; m; ++i) {</b>
+<b class="fc"><i>284</i>&nbsp;                for (int j = 0; j &lt; FastMath.min(i + 1, n); ++j) {</b>
+<b class="fc"><i>285</i>&nbsp;                    ha[i][j] = qrt[j][i] / -rDiag[j];</b>
+<i>286</i>&nbsp;                }
+<i>287</i>&nbsp;            }
+<b class="fc"><i>288</i>&nbsp;            cachedH = MatrixUtils.createRealMatrix(ha);</b>
+<i>289</i>&nbsp;        }
+<i>290</i>&nbsp;
+<i>291</i>&nbsp;        // return the cached matrix
+<b class="fc"><i>292</i>&nbsp;        return cachedH;</b>
+<i>293</i>&nbsp;    }
+<i>294</i>&nbsp;
+<i>295</i>&nbsp;    /**
+<i>296</i>&nbsp;     * Get a solver for finding the A &amp;times; X = B solution in least square sense.
+<i>297</i>&nbsp;     * &lt;p&gt;
+<i>298</i>&nbsp;     * Least Square sense means a solver can be computed for an overdetermined system,
+<i>299</i>&nbsp;     * (i.e. a system with more equations than unknowns, which corresponds to a tall A
+<i>300</i>&nbsp;     * matrix with more rows than columns). In any case, if the matrix is singular
+<i>301</i>&nbsp;     * within the tolerance set at {@link QRDecomposition#QRDecomposition(RealMatrix,
+<i>302</i>&nbsp;     * double) construction}, an error will be triggered when
+<i>303</i>&nbsp;     * the {@link DecompositionSolver#solve(RealVector) solve} method will be called.
+<i>304</i>&nbsp;     * &lt;/p&gt;
+<i>305</i>&nbsp;     * @return a solver
+<i>306</i>&nbsp;     */
+<i>307</i>&nbsp;    public DecompositionSolver getSolver() {
+<b class="fc"><i>308</i>&nbsp;        return new Solver(qrt, rDiag, threshold);</b>
+<i>309</i>&nbsp;    }
+<i>310</i>&nbsp;
+<i>311</i>&nbsp;    /** Specialized solver. */
+<b class="fc"><i>312</i>&nbsp;    private static class Solver implements DecompositionSolver {</b>
+<i>313</i>&nbsp;        /**
+<i>314</i>&nbsp;         * A packed TRANSPOSED representation of the QR decomposition.
+<i>315</i>&nbsp;         * &lt;p&gt;The elements BELOW the diagonal are the elements of the UPPER triangular
+<i>316</i>&nbsp;         * matrix R, and the rows ABOVE the diagonal are the Householder reflector vectors
+<i>317</i>&nbsp;         * from which an explicit form of Q can be recomputed if desired.&lt;/p&gt;
+<i>318</i>&nbsp;         */
+<i>319</i>&nbsp;        private final double[][] qrt;
+<i>320</i>&nbsp;        /** The diagonal elements of R. */
+<i>321</i>&nbsp;        private final double[] rDiag;
+<i>322</i>&nbsp;        /** Singularity threshold. */
+<i>323</i>&nbsp;        private final double threshold;
+<i>324</i>&nbsp;
+<i>325</i>&nbsp;        /**
+<i>326</i>&nbsp;         * Build a solver from decomposed matrix.
+<i>327</i>&nbsp;         *
+<i>328</i>&nbsp;         * @param qrt Packed TRANSPOSED representation of the QR decomposition.
+<i>329</i>&nbsp;         * @param rDiag Diagonal elements of R.
+<i>330</i>&nbsp;         * @param threshold Singularity threshold.
+<i>331</i>&nbsp;         */
+<i>332</i>&nbsp;        private Solver(final double[][] qrt,
+<i>333</i>&nbsp;                       final double[] rDiag,
+<b class="fc"><i>334</i>&nbsp;                       final double threshold) {</b>
+<b class="fc"><i>335</i>&nbsp;            this.qrt   = qrt;</b>
+<b class="fc"><i>336</i>&nbsp;            this.rDiag = rDiag;</b>
+<b class="fc"><i>337</i>&nbsp;            this.threshold = threshold;</b>
+<b class="fc"><i>338</i>&nbsp;        }</b>
+<i>339</i>&nbsp;
+<i>340</i>&nbsp;        /** {@inheritDoc} */
+<i>341</i>&nbsp;        @Override
+<i>342</i>&nbsp;        public boolean isNonSingular() {
+<b class="fc"><i>343</i>&nbsp;            return !checkSingular(rDiag, threshold, false);</b>
+<i>344</i>&nbsp;        }
+<i>345</i>&nbsp;
+<i>346</i>&nbsp;        /** {@inheritDoc} */
+<i>347</i>&nbsp;        @Override
+<i>348</i>&nbsp;        public RealVector solve(RealVector b) {
+<b class="fc"><i>349</i>&nbsp;            final int n = qrt.length;</b>
+<b class="fc"><i>350</i>&nbsp;            final int m = qrt[0].length;</b>
+<b class="fc"><i>351</i>&nbsp;            if (b.getDimension() != m) {</b>
+<b class="fc"><i>352</i>&nbsp;                throw new DimensionMismatchException(b.getDimension(), m);</b>
+<i>353</i>&nbsp;            }
+<b class="fc"><i>354</i>&nbsp;            checkSingular(rDiag, threshold, true);</b>
+<i>355</i>&nbsp;
+<b class="fc"><i>356</i>&nbsp;            final double[] x = new double[n];</b>
+<b class="fc"><i>357</i>&nbsp;            final double[] y = b.toArray();</b>
+<i>358</i>&nbsp;
+<i>359</i>&nbsp;            // apply Householder transforms to solve Q.y = b
+<b class="fc"><i>360</i>&nbsp;            for (int minor = 0; minor &lt; FastMath.min(m, n); minor++) {</b>
+<i>361</i>&nbsp;
+<b class="fc"><i>362</i>&nbsp;                final double[] qrtMinor = qrt[minor];</b>
+<b class="fc"><i>363</i>&nbsp;                double dotProduct = 0;</b>
+<b class="fc"><i>364</i>&nbsp;                for (int row = minor; row &lt; m; row++) {</b>
+<b class="fc"><i>365</i>&nbsp;                    dotProduct += y[row] * qrtMinor[row];</b>
+<i>366</i>&nbsp;                }
+<b class="fc"><i>367</i>&nbsp;                dotProduct /= rDiag[minor] * qrtMinor[minor];</b>
+<i>368</i>&nbsp;
+<b class="fc"><i>369</i>&nbsp;                for (int row = minor; row &lt; m; row++) {</b>
+<b class="fc"><i>370</i>&nbsp;                    y[row] += dotProduct * qrtMinor[row];</b>
+<i>371</i>&nbsp;                }
+<i>372</i>&nbsp;            }
+<i>373</i>&nbsp;
+<i>374</i>&nbsp;            // solve triangular system R.x = y
+<b class="fc"><i>375</i>&nbsp;            for (int row = rDiag.length - 1; row &gt;= 0; --row) {</b>
+<b class="fc"><i>376</i>&nbsp;                y[row] /= rDiag[row];</b>
+<b class="fc"><i>377</i>&nbsp;                final double yRow = y[row];</b>
+<b class="fc"><i>378</i>&nbsp;                final double[] qrtRow = qrt[row];</b>
+<b class="fc"><i>379</i>&nbsp;                x[row] = yRow;</b>
+<b class="fc"><i>380</i>&nbsp;                for (int i = 0; i &lt; row; i++) {</b>
+<b class="fc"><i>381</i>&nbsp;                    y[i] -= yRow * qrtRow[i];</b>
+<i>382</i>&nbsp;                }
+<i>383</i>&nbsp;            }
+<i>384</i>&nbsp;
+<b class="fc"><i>385</i>&nbsp;            return new ArrayRealVector(x, false);</b>
+<i>386</i>&nbsp;        }
+<i>387</i>&nbsp;
+<i>388</i>&nbsp;        /** {@inheritDoc} */
+<i>389</i>&nbsp;        @Override
+<i>390</i>&nbsp;        public RealMatrix solve(RealMatrix b) {
+<b class="fc"><i>391</i>&nbsp;            final int n = qrt.length;</b>
+<b class="fc"><i>392</i>&nbsp;            final int m = qrt[0].length;</b>
+<b class="fc"><i>393</i>&nbsp;            if (b.getRowDimension() != m) {</b>
+<b class="fc"><i>394</i>&nbsp;                throw new DimensionMismatchException(b.getRowDimension(), m);</b>
+<i>395</i>&nbsp;            }
+<b class="fc"><i>396</i>&nbsp;            checkSingular(rDiag, threshold, true);</b>
+<i>397</i>&nbsp;
+<b class="fc"><i>398</i>&nbsp;            final int columns        = b.getColumnDimension();</b>
+<b class="fc"><i>399</i>&nbsp;            final int blockSize      = BlockRealMatrix.BLOCK_SIZE;</b>
+<b class="fc"><i>400</i>&nbsp;            final int cBlocks        = (columns + blockSize - 1) / blockSize;</b>
+<b class="fc"><i>401</i>&nbsp;            final double[][] xBlocks = BlockRealMatrix.createBlocksLayout(n, columns);</b>
+<b class="fc"><i>402</i>&nbsp;            final double[][] y       = new double[b.getRowDimension()][blockSize];</b>
+<b class="fc"><i>403</i>&nbsp;            final double[]   alpha   = new double[blockSize];</b>
+<i>404</i>&nbsp;
+<b class="fc"><i>405</i>&nbsp;            for (int kBlock = 0; kBlock &lt; cBlocks; ++kBlock) {</b>
+<b class="fc"><i>406</i>&nbsp;                final int kStart = kBlock * blockSize;</b>
+<b class="fc"><i>407</i>&nbsp;                final int kEnd   = FastMath.min(kStart + blockSize, columns);</b>
+<b class="fc"><i>408</i>&nbsp;                final int kWidth = kEnd - kStart;</b>
+<i>409</i>&nbsp;
+<i>410</i>&nbsp;                // get the right hand side vector
+<b class="fc"><i>411</i>&nbsp;                b.copySubMatrix(0, m - 1, kStart, kEnd - 1, y);</b>
+<i>412</i>&nbsp;
+<i>413</i>&nbsp;                // apply Householder transforms to solve Q.y = b
+<b class="fc"><i>414</i>&nbsp;                for (int minor = 0; minor &lt; FastMath.min(m, n); minor++) {</b>
+<b class="fc"><i>415</i>&nbsp;                    final double[] qrtMinor = qrt[minor];</b>
+<b class="fc"><i>416</i>&nbsp;                    final double factor     = 1.0 / (rDiag[minor] * qrtMinor[minor]);</b>
+<i>417</i>&nbsp;
+<b class="fc"><i>418</i>&nbsp;                    Arrays.fill(alpha, 0, kWidth, 0.0);</b>
+<b class="fc"><i>419</i>&nbsp;                    for (int row = minor; row &lt; m; ++row) {</b>
+<b class="fc"><i>420</i>&nbsp;                        final double   d    = qrtMinor[row];</b>
+<b class="fc"><i>421</i>&nbsp;                        final double[] yRow = y[row];</b>
+<b class="fc"><i>422</i>&nbsp;                        for (int k = 0; k &lt; kWidth; ++k) {</b>
+<b class="fc"><i>423</i>&nbsp;                            alpha[k] += d * yRow[k];</b>
+<i>424</i>&nbsp;                        }
+<i>425</i>&nbsp;                    }
+<b class="fc"><i>426</i>&nbsp;                    for (int k = 0; k &lt; kWidth; ++k) {</b>
+<b class="fc"><i>427</i>&nbsp;                        alpha[k] *= factor;</b>
+<i>428</i>&nbsp;                    }
+<i>429</i>&nbsp;
+<b class="fc"><i>430</i>&nbsp;                    for (int row = minor; row &lt; m; ++row) {</b>
+<b class="fc"><i>431</i>&nbsp;                        final double   d    = qrtMinor[row];</b>
+<b class="fc"><i>432</i>&nbsp;                        final double[] yRow = y[row];</b>
+<b class="fc"><i>433</i>&nbsp;                        for (int k = 0; k &lt; kWidth; ++k) {</b>
+<b class="fc"><i>434</i>&nbsp;                            yRow[k] += alpha[k] * d;</b>
+<i>435</i>&nbsp;                        }
+<i>436</i>&nbsp;                    }
+<i>437</i>&nbsp;                }
+<i>438</i>&nbsp;
+<i>439</i>&nbsp;                // solve triangular system R.x = y
+<b class="fc"><i>440</i>&nbsp;                for (int j = rDiag.length - 1; j &gt;= 0; --j) {</b>
+<b class="fc"><i>441</i>&nbsp;                    final int      jBlock = j / blockSize;</b>
+<b class="fc"><i>442</i>&nbsp;                    final int      jStart = jBlock * blockSize;</b>
+<b class="fc"><i>443</i>&nbsp;                    final double   factor = 1.0 / rDiag[j];</b>
+<b class="fc"><i>444</i>&nbsp;                    final double[] yJ     = y[j];</b>
+<b class="fc"><i>445</i>&nbsp;                    final double[] xBlock = xBlocks[jBlock * cBlocks + kBlock];</b>
+<b class="fc"><i>446</i>&nbsp;                    int index = (j - jStart) * kWidth;</b>
+<b class="fc"><i>447</i>&nbsp;                    for (int k = 0; k &lt; kWidth; ++k) {</b>
+<b class="fc"><i>448</i>&nbsp;                        yJ[k]          *= factor;</b>
+<b class="fc"><i>449</i>&nbsp;                        xBlock[index++] = yJ[k];</b>
+<i>450</i>&nbsp;                    }
+<i>451</i>&nbsp;
+<b class="fc"><i>452</i>&nbsp;                    final double[] qrtJ = qrt[j];</b>
+<b class="fc"><i>453</i>&nbsp;                    for (int i = 0; i &lt; j; ++i) {</b>
+<b class="fc"><i>454</i>&nbsp;                        final double rIJ  = qrtJ[i];</b>
+<b class="fc"><i>455</i>&nbsp;                        final double[] yI = y[i];</b>
+<b class="fc"><i>456</i>&nbsp;                        for (int k = 0; k &lt; kWidth; ++k) {</b>
+<b class="fc"><i>457</i>&nbsp;                            yI[k] -= yJ[k] * rIJ;</b>
+<i>458</i>&nbsp;                        }
+<i>459</i>&nbsp;                    }
+<i>460</i>&nbsp;                }
+<i>461</i>&nbsp;            }
+<i>462</i>&nbsp;
+<b class="fc"><i>463</i>&nbsp;            return new BlockRealMatrix(n, columns, xBlocks, false);</b>
+<i>464</i>&nbsp;        }
+<i>465</i>&nbsp;
+<i>466</i>&nbsp;        /**
+<i>467</i>&nbsp;         * {@inheritDoc}
+<i>468</i>&nbsp;         * @throws SingularMatrixException if the decomposed matrix is singular.
+<i>469</i>&nbsp;         */
+<i>470</i>&nbsp;        @Override
+<i>471</i>&nbsp;        public RealMatrix getInverse() {
+<b class="fc"><i>472</i>&nbsp;            return solve(MatrixUtils.createRealIdentityMatrix(qrt[0].length));</b>
+<i>473</i>&nbsp;        }
+<i>474</i>&nbsp;
+<i>475</i>&nbsp;        /**
+<i>476</i>&nbsp;         * Check singularity.
+<i>477</i>&nbsp;         *
+<i>478</i>&nbsp;         * @param diag Diagonal elements of the R matrix.
+<i>479</i>&nbsp;         * @param min Singularity threshold.
+<i>480</i>&nbsp;         * @param raise Whether to raise a {@link SingularMatrixException}
+<i>481</i>&nbsp;         * if any element of the diagonal fails the check.
+<i>482</i>&nbsp;         * @return {@code true} if any element of the diagonal is smaller
+<i>483</i>&nbsp;         * or equal to {@code min}.
+<i>484</i>&nbsp;         * @throws SingularMatrixException if the matrix is singular and
+<i>485</i>&nbsp;         * {@code raise} is {@code true}.
+<i>486</i>&nbsp;         */
+<i>487</i>&nbsp;        private static boolean checkSingular(double[] diag,
+<i>488</i>&nbsp;                                             double min,
+<i>489</i>&nbsp;                                             boolean raise) {
+<b class="fc"><i>490</i>&nbsp;            final int len = diag.length;</b>
+<b class="fc"><i>491</i>&nbsp;            for (int i = 0; i &lt; len; i++) {</b>
+<b class="fc"><i>492</i>&nbsp;                final double d = diag[i];</b>
+<b class="fc"><i>493</i>&nbsp;                if (FastMath.abs(d) &lt;= min) {</b>
+<b class="fc"><i>494</i>&nbsp;                    if (raise) {</b>
+<b class="fc"><i>495</i>&nbsp;                        final SingularMatrixException e = new SingularMatrixException();</b>
+<b class="fc"><i>496</i>&nbsp;                        e.getContext().addMessage(LocalizedFormats.NUMBER_TOO_SMALL, d, min);</b>
+<b class="fc"><i>497</i>&nbsp;                        e.getContext().addMessage(LocalizedFormats.INDEX, i);</b>
+<b class="fc"><i>498</i>&nbsp;                        throw e;</b>
+<i>499</i>&nbsp;                    } else {
+<b class="fc"><i>500</i>&nbsp;                        return true;</b>
+<i>501</i>&nbsp;                    }
+<i>502</i>&nbsp;                }
+<i>503</i>&nbsp;            }
+<b class="fc"><i>504</i>&nbsp;            return false;</b>
+<i>505</i>&nbsp;        }
+<i>506</i>&nbsp;    }
+<i>507</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

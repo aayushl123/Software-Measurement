@@ -1,0 +1,1289 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: KolmogorovSmirnovTest</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.stat.inference</a> ]
+</div>
+
+<h1>Coverage Summary for Class: KolmogorovSmirnovTest (org.apache.commons.math4.stat.inference)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">KolmogorovSmirnovTest</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    87.1%
+  </span>
+  <span class="absValue">
+    (27/ 31)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    81.5%
+  </span>
+  <span class="absValue">
+    (291/ 357)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;
+<i>18</i>&nbsp;package org.apache.commons.math4.stat.inference;
+<i>19</i>&nbsp;
+<i>20</i>&nbsp;import java.math.BigDecimal;
+<i>21</i>&nbsp;import java.util.Arrays;
+<i>22</i>&nbsp;
+<i>23</i>&nbsp;import org.apache.commons.rng.simple.RandomSource;
+<i>24</i>&nbsp;import org.apache.commons.rng.UniformRandomProvider;
+<i>25</i>&nbsp;import org.apache.commons.statistics.distribution.ContinuousDistribution;
+<i>26</i>&nbsp;import org.apache.commons.numbers.combinatorics.BinomialCoefficientDouble;
+<i>27</i>&nbsp;import org.apache.commons.math4.distribution.EnumeratedRealDistribution;
+<i>28</i>&nbsp;import org.apache.commons.math4.distribution.AbstractRealDistribution;
+<i>29</i>&nbsp;import org.apache.commons.math4.exception.InsufficientDataException;
+<i>30</i>&nbsp;import org.apache.commons.math4.exception.MathArithmeticException;
+<i>31</i>&nbsp;import org.apache.commons.math4.exception.MathInternalError;
+<i>32</i>&nbsp;import org.apache.commons.math4.exception.NullArgumentException;
+<i>33</i>&nbsp;import org.apache.commons.math4.exception.NumberIsTooLargeException;
+<i>34</i>&nbsp;import org.apache.commons.math4.exception.OutOfRangeException;
+<i>35</i>&nbsp;import org.apache.commons.math4.exception.TooManyIterationsException;
+<i>36</i>&nbsp;import org.apache.commons.math4.exception.NotANumberException;
+<i>37</i>&nbsp;import org.apache.commons.math4.exception.util.LocalizedFormats;
+<i>38</i>&nbsp;import org.apache.commons.math4.fraction.BigFraction;
+<i>39</i>&nbsp;import org.apache.commons.math4.fraction.BigFractionField;
+<i>40</i>&nbsp;import org.apache.commons.math4.fraction.FractionConversionException;
+<i>41</i>&nbsp;import org.apache.commons.math4.linear.Array2DRowFieldMatrix;
+<i>42</i>&nbsp;import org.apache.commons.math4.linear.FieldMatrix;
+<i>43</i>&nbsp;import org.apache.commons.math4.linear.MatrixUtils;
+<i>44</i>&nbsp;import org.apache.commons.math4.linear.RealMatrix;
+<i>45</i>&nbsp;import org.apache.commons.math4.util.FastMath;
+<i>46</i>&nbsp;import org.apache.commons.math4.util.MathArrays;
+<i>47</i>&nbsp;import org.apache.commons.math4.util.MathUtils;
+<i>48</i>&nbsp;
+<i>49</i>&nbsp;/**
+<i>50</i>&nbsp; * Implementation of the &lt;a href=&quot;http://en.wikipedia.org/wiki/Kolmogorov-Smirnov_test&quot;&gt;
+<i>51</i>&nbsp; * Kolmogorov-Smirnov (K-S) test&lt;/a&gt; for equality of continuous distributions.
+<i>52</i>&nbsp; * &lt;p&gt;
+<i>53</i>&nbsp; * The K-S test uses a statistic based on the maximum deviation of the empirical distribution of
+<i>54</i>&nbsp; * sample data points from the distribution expected under the null hypothesis. For one-sample tests
+<i>55</i>&nbsp; * evaluating the null hypothesis that a set of sample data points follow a given distribution, the
+<i>56</i>&nbsp; * test statistic is \(D_n=\sup_x |F_n(x)-F(x)|\), where \(F\) is the expected distribution and
+<i>57</i>&nbsp; * \(F_n\) is the empirical distribution of the \(n\) sample data points. The distribution of
+<i>58</i>&nbsp; * \(D_n\) is estimated using a method based on [1] with certain quick decisions for extreme values
+<i>59</i>&nbsp; * given in [2].
+<i>60</i>&nbsp; * &lt;/p&gt;
+<i>61</i>&nbsp; * &lt;p&gt;
+<i>62</i>&nbsp; * Two-sample tests are also supported, evaluating the null hypothesis that the two samples
+<i>63</i>&nbsp; * {@code x} and {@code y} come from the same underlying distribution. In this case, the test
+<i>64</i>&nbsp; * statistic is \(D_{n,m}=\sup_t | F_n(t)-F_m(t)|\) where \(n\) is the length of {@code x}, \(m\) is
+<i>65</i>&nbsp; * the length of {@code y}, \(F_n\) is the empirical distribution that puts mass \(1/n\) at each of
+<i>66</i>&nbsp; * the values in {@code x} and \(F_m\) is the empirical distribution of the {@code y} values. The
+<i>67</i>&nbsp; * default 2-sample test method, {@link #kolmogorovSmirnovTest(double[], double[])} works as
+<i>68</i>&nbsp; * follows:
+<i>69</i>&nbsp; * &lt;ul&gt;
+<i>70</i>&nbsp; * &lt;li&gt;When the product of the sample sizes is less than 10000, the method presented in [4]
+<i>71</i>&nbsp; * is used to compute the exact p-value for the 2-sample test.&lt;/li&gt;
+<i>72</i>&nbsp; * &lt;li&gt;When the product of the sample sizes is larger, the asymptotic
+<i>73</i>&nbsp; * distribution of \(D_{n,m}\) is used. See {@link #approximateP(double, int, int)} for details on
+<i>74</i>&nbsp; * the approximation.&lt;/li&gt;
+<i>75</i>&nbsp; * &lt;/ul&gt;&lt;p&gt;
+<i>76</i>&nbsp; * For small samples (former case), if the data contains ties, random jitter is added
+<i>77</i>&nbsp; * to the sample data to break ties before applying the algorithm above. Alternatively,
+<i>78</i>&nbsp; * the {@link #bootstrap(double[],double[],int,boolean,UniformRandomProvider)}
+<i>79</i>&nbsp; * method, modeled after &lt;a href=&quot;http://sekhon.berkeley.edu/matching/ks.boot.html&quot;&gt;ks.boot&lt;/a&gt;
+<i>80</i>&nbsp; * in the R Matching package [3], can be used if ties are known to be present in the data.
+<i>81</i>&nbsp; * &lt;/p&gt;
+<i>82</i>&nbsp; * &lt;p&gt;
+<i>83</i>&nbsp; * In the two-sample case, \(D_{n,m}\) has a discrete distribution. This makes the p-value
+<i>84</i>&nbsp; * associated with the null hypothesis \(H_0 : D_{n,m} \ge d \) differ from \(H_0 : D_{n,m} \ge d \)
+<i>85</i>&nbsp; * by the mass of the observed value \(d\). To distinguish these, the two-sample tests use a boolean
+<i>86</i>&nbsp; * {@code strict} parameter. This parameter is ignored for large samples.
+<i>87</i>&nbsp; * &lt;/p&gt;
+<i>88</i>&nbsp; * &lt;p&gt;
+<i>89</i>&nbsp; * The methods used by the 2-sample default implementation are also exposed directly:
+<i>90</i>&nbsp; * &lt;ul&gt;
+<i>91</i>&nbsp; * &lt;li&gt;{@link #exactP(double, int, int, boolean)} computes exact 2-sample p-values&lt;/li&gt;
+<i>92</i>&nbsp; * &lt;li&gt;{@link #approximateP(double, int, int)} uses the asymptotic distribution The {@code boolean}
+<i>93</i>&nbsp; * arguments in the first two methods allow the probability used to estimate the p-value to be
+<i>94</i>&nbsp; * expressed using strict or non-strict inequality. See
+<i>95</i>&nbsp; * {@link #kolmogorovSmirnovTest(double[], double[], boolean)}.&lt;/li&gt;
+<i>96</i>&nbsp; * &lt;/ul&gt;
+<i>97</i>&nbsp; * &lt;p&gt;
+<i>98</i>&nbsp; * References:
+<i>99</i>&nbsp; * &lt;ul&gt;
+<i>100</i>&nbsp; * &lt;li&gt;[1] &lt;a href=&quot;http://www.jstatsoft.org/v08/i18/&quot;&gt; Evaluating Kolmogorov&#39;s Distribution&lt;/a&gt; by
+<i>101</i>&nbsp; * George Marsaglia, Wai Wan Tsang, and Jingbo Wang&lt;/li&gt;
+<i>102</i>&nbsp; * &lt;li&gt;[2] &lt;a href=&quot;http://www.jstatsoft.org/v39/i11/&quot;&gt; Computing the Two-Sided Kolmogorov-Smirnov
+<i>103</i>&nbsp; * Distribution&lt;/a&gt; by Richard Simard and Pierre L&#39;Ecuyer&lt;/li&gt;
+<i>104</i>&nbsp; * &lt;li&gt;[3] Jasjeet S. Sekhon. 2011. &lt;a href=&quot;http://www.jstatsoft.org/article/view/v042i07&quot;&gt;
+<i>105</i>&nbsp; * Multivariate and Propensity Score Matching Software with Automated Balance Optimization:
+<i>106</i>&nbsp; * The Matching package for R&lt;/a&gt; Journal of Statistical Software, 42(7): 1-52.&lt;/li&gt;
+<i>107</i>&nbsp; * &lt;li&gt;[4] Wilcox, Rand. 2012. Introduction to Robust Estimation and Hypothesis Testing,
+<i>108</i>&nbsp; * Chapter 5, 3rd Ed. Academic Press.&lt;/li&gt;
+<i>109</i>&nbsp; * &lt;/ul&gt;
+<i>110</i>&nbsp; * &lt;br&gt;
+<i>111</i>&nbsp; * Note that [1] contains an error in computing h, refer to &lt;a
+<i>112</i>&nbsp; * href=&quot;https://issues.apache.org/jira/browse/MATH-437&quot;&gt;MATH-437&lt;/a&gt; for details.
+<i>113</i>&nbsp; *
+<i>114</i>&nbsp; * @since 3.3
+<i>115</i>&nbsp; */
+<b class="fc"><i>116</i>&nbsp;public class KolmogorovSmirnovTest {</b>
+<i>117</i>&nbsp;    /**
+<i>118</i>&nbsp;     * Bound on the number of partial sums in {@link #ksSum(double, double, int)}
+<i>119</i>&nbsp;     */
+<i>120</i>&nbsp;    private static final int MAXIMUM_PARTIAL_SUM_COUNT = 100000;
+<i>121</i>&nbsp;    /** Convergence criterion for {@link #ksSum(double, double, int)} */
+<i>122</i>&nbsp;    private static final double KS_SUM_CAUCHY_CRITERION = 1e-20;
+<i>123</i>&nbsp;    /** Convergence criterion for the sums in {@link #pelzGood(double, int)} */
+<i>124</i>&nbsp;    private static final double PG_SUM_RELATIVE_ERROR = 1e-10;
+<i>125</i>&nbsp;
+<i>126</i>&nbsp;    /**
+<i>127</i>&nbsp;     * When product of sample sizes exceeds this value, 2-sample K-S test uses asymptotic
+<i>128</i>&nbsp;     * distribution to compute the p-value.
+<i>129</i>&nbsp;     */
+<i>130</i>&nbsp;    private static final int LARGE_SAMPLE_PRODUCT = 10000;
+<i>131</i>&nbsp;
+<i>132</i>&nbsp;    /**
+<i>133</i>&nbsp;     * Computes the &lt;i&gt;p-value&lt;/i&gt;, or &lt;i&gt;observed significance level&lt;/i&gt;, of a one-sample &lt;a
+<i>134</i>&nbsp;     * href=&quot;http://en.wikipedia.org/wiki/Kolmogorov-Smirnov_test&quot;&gt; Kolmogorov-Smirnov test&lt;/a&gt;
+<i>135</i>&nbsp;     * evaluating the null hypothesis that {@code data} conforms to {@code distribution}. If
+<i>136</i>&nbsp;     * {@code exact} is true, the distribution used to compute the p-value is computed using
+<i>137</i>&nbsp;     * extended precision. See {@link #cdfExact(double, int)}.
+<i>138</i>&nbsp;     *
+<i>139</i>&nbsp;     * @param distribution reference distribution
+<i>140</i>&nbsp;     * @param data sample being being evaluated
+<i>141</i>&nbsp;     * @param exact whether or not to force exact computation of the p-value
+<i>142</i>&nbsp;     * @return the p-value associated with the null hypothesis that {@code data} is a sample from
+<i>143</i>&nbsp;     *         {@code distribution}
+<i>144</i>&nbsp;     * @throws InsufficientDataException if {@code data} does not have length at least 2
+<i>145</i>&nbsp;     * @throws NullArgumentException if {@code data} is null
+<i>146</i>&nbsp;     */
+<i>147</i>&nbsp;    public double kolmogorovSmirnovTest(ContinuousDistribution distribution, double[] data, boolean exact) {
+<b class="fc"><i>148</i>&nbsp;        return 1d - cdf(kolmogorovSmirnovStatistic(distribution, data), data.length, exact);</b>
+<i>149</i>&nbsp;    }
+<i>150</i>&nbsp;
+<i>151</i>&nbsp;    /**
+<i>152</i>&nbsp;     * Computes the one-sample Kolmogorov-Smirnov test statistic, \(D_n=\sup_x |F_n(x)-F(x)|\) where
+<i>153</i>&nbsp;     * \(F\) is the distribution (cdf) function associated with {@code distribution}, \(n\) is the
+<i>154</i>&nbsp;     * length of {@code data} and \(F_n\) is the empirical distribution that puts mass \(1/n\) at
+<i>155</i>&nbsp;     * each of the values in {@code data}.
+<i>156</i>&nbsp;     *
+<i>157</i>&nbsp;     * @param distribution reference distribution
+<i>158</i>&nbsp;     * @param data sample being evaluated
+<i>159</i>&nbsp;     * @return Kolmogorov-Smirnov statistic \(D_n\)
+<i>160</i>&nbsp;     * @throws InsufficientDataException if {@code data} does not have length at least 2
+<i>161</i>&nbsp;     * @throws NullArgumentException if {@code data} is null
+<i>162</i>&nbsp;     */
+<i>163</i>&nbsp;    public double kolmogorovSmirnovStatistic(ContinuousDistribution distribution, double[] data) {
+<b class="fc"><i>164</i>&nbsp;        checkArray(data);</b>
+<b class="fc"><i>165</i>&nbsp;        final int n = data.length;</b>
+<b class="fc"><i>166</i>&nbsp;        final double nd = n;</b>
+<b class="fc"><i>167</i>&nbsp;        final double[] dataCopy = new double[n];</b>
+<b class="fc"><i>168</i>&nbsp;        System.arraycopy(data, 0, dataCopy, 0, n);</b>
+<b class="fc"><i>169</i>&nbsp;        Arrays.sort(dataCopy);</b>
+<b class="fc"><i>170</i>&nbsp;        double d = 0d;</b>
+<b class="fc"><i>171</i>&nbsp;        for (int i = 1; i &lt;= n; i++) {</b>
+<b class="fc"><i>172</i>&nbsp;            final double yi = distribution.cumulativeProbability(dataCopy[i - 1]);</b>
+<b class="fc"><i>173</i>&nbsp;            final double currD = FastMath.max(yi - (i - 1) / nd, i / nd - yi);</b>
+<b class="fc"><i>174</i>&nbsp;            if (currD &gt; d) {</b>
+<b class="fc"><i>175</i>&nbsp;                d = currD;</b>
+<i>176</i>&nbsp;            }
+<i>177</i>&nbsp;        }
+<b class="fc"><i>178</i>&nbsp;        return d;</b>
+<i>179</i>&nbsp;    }
+<i>180</i>&nbsp;
+<i>181</i>&nbsp;    /**
+<i>182</i>&nbsp;     * Computes the &lt;i&gt;p-value&lt;/i&gt;, or &lt;i&gt;observed significance level&lt;/i&gt;, of a two-sample &lt;a
+<i>183</i>&nbsp;     * href=&quot;http://en.wikipedia.org/wiki/Kolmogorov-Smirnov_test&quot;&gt; Kolmogorov-Smirnov test&lt;/a&gt;
+<i>184</i>&nbsp;     * evaluating the null hypothesis that {@code x} and {@code y} are samples drawn from the same
+<i>185</i>&nbsp;     * probability distribution. Specifically, what is returned is an estimate of the probability
+<i>186</i>&nbsp;     * that the {@link #kolmogorovSmirnovStatistic(double[], double[])} associated with a randomly
+<i>187</i>&nbsp;     * selected partition of the combined sample into subsamples of sizes {@code x.length} and
+<i>188</i>&nbsp;     * {@code y.length} will strictly exceed (if {@code strict} is {@code true}) or be at least as
+<i>189</i>&nbsp;     * large as (if {@code strict} is {@code false}) as {@code kolmogorovSmirnovStatistic(x, y)}.
+<i>190</i>&nbsp;     *
+<i>191</i>&nbsp;     * @param x first sample dataset.
+<i>192</i>&nbsp;     * @param y second sample dataset.
+<i>193</i>&nbsp;     * @param strict whether or not the probability to compute is expressed as
+<i>194</i>&nbsp;     * a strict inequality (ignored for large samples).
+<i>195</i>&nbsp;     * @return p-value associated with the null hypothesis that {@code x} and
+<i>196</i>&nbsp;     * {@code y} represent samples from the same distribution.
+<i>197</i>&nbsp;     * @throws InsufficientDataException if either {@code x} or {@code y} does
+<i>198</i>&nbsp;     * not have length at least 2.
+<i>199</i>&nbsp;     * @throws NullArgumentException if either {@code x} or {@code y} is null.
+<i>200</i>&nbsp;     * @throws NotANumberException if the input arrays contain NaN values.
+<i>201</i>&nbsp;     *
+<i>202</i>&nbsp;     * @see #bootstrap(double[],double[],int,boolean,UniformRandomProvider)
+<i>203</i>&nbsp;     */
+<i>204</i>&nbsp;    public double kolmogorovSmirnovTest(double[] x, double[] y, boolean strict) {
+<b class="fc"><i>205</i>&nbsp;        final long lengthProduct = (long) x.length * y.length;</b>
+<b class="fc"><i>206</i>&nbsp;        double[] xa = null;</b>
+<b class="fc"><i>207</i>&nbsp;        double[] ya = null;</b>
+<b class="fc"><i>208</i>&nbsp;        if (lengthProduct &lt; LARGE_SAMPLE_PRODUCT &amp;&amp; hasTies(x,y)) {</b>
+<b class="fc"><i>209</i>&nbsp;            xa = MathArrays.copyOf(x);</b>
+<b class="fc"><i>210</i>&nbsp;            ya = MathArrays.copyOf(y);</b>
+<b class="fc"><i>211</i>&nbsp;            fixTies(xa, ya);</b>
+<i>212</i>&nbsp;        } else {
+<b class="fc"><i>213</i>&nbsp;            xa = x;</b>
+<b class="fc"><i>214</i>&nbsp;            ya = y;</b>
+<i>215</i>&nbsp;        }
+<b class="fc"><i>216</i>&nbsp;        if (lengthProduct &lt; LARGE_SAMPLE_PRODUCT) {</b>
+<b class="fc"><i>217</i>&nbsp;            return exactP(kolmogorovSmirnovStatistic(xa, ya), x.length, y.length, strict);</b>
+<i>218</i>&nbsp;        }
+<b class="fc"><i>219</i>&nbsp;        return approximateP(kolmogorovSmirnovStatistic(x, y), x.length, y.length);</b>
+<i>220</i>&nbsp;    }
+<i>221</i>&nbsp;
+<i>222</i>&nbsp;    /**
+<i>223</i>&nbsp;     * Computes the &lt;i&gt;p-value&lt;/i&gt;, or &lt;i&gt;observed significance level&lt;/i&gt;, of a two-sample &lt;a
+<i>224</i>&nbsp;     * href=&quot;http://en.wikipedia.org/wiki/Kolmogorov-Smirnov_test&quot;&gt; Kolmogorov-Smirnov test&lt;/a&gt;
+<i>225</i>&nbsp;     * evaluating the null hypothesis that {@code x} and {@code y} are samples drawn from the same
+<i>226</i>&nbsp;     * probability distribution. Assumes the strict form of the inequality used to compute the
+<i>227</i>&nbsp;     * p-value. See {@link #kolmogorovSmirnovTest(ContinuousDistribution, double[], boolean)}.
+<i>228</i>&nbsp;     *
+<i>229</i>&nbsp;     * @param x first sample dataset
+<i>230</i>&nbsp;     * @param y second sample dataset
+<i>231</i>&nbsp;     * @return p-value associated with the null hypothesis that {@code x} and {@code y} represent
+<i>232</i>&nbsp;     *         samples from the same distribution
+<i>233</i>&nbsp;     * @throws InsufficientDataException if either {@code x} or {@code y} does not have length at
+<i>234</i>&nbsp;     *         least 2
+<i>235</i>&nbsp;     * @throws NullArgumentException if either {@code x} or {@code y} is null
+<i>236</i>&nbsp;     */
+<i>237</i>&nbsp;    public double kolmogorovSmirnovTest(double[] x, double[] y) {
+<b class="fc"><i>238</i>&nbsp;        return kolmogorovSmirnovTest(x, y, true);</b>
+<i>239</i>&nbsp;    }
+<i>240</i>&nbsp;
+<i>241</i>&nbsp;    /**
+<i>242</i>&nbsp;     * Computes the two-sample Kolmogorov-Smirnov test statistic, \(D_{n,m}=\sup_x |F_n(x)-F_m(x)|\)
+<i>243</i>&nbsp;     * where \(n\) is the length of {@code x}, \(m\) is the length of {@code y}, \(F_n\) is the
+<i>244</i>&nbsp;     * empirical distribution that puts mass \(1/n\) at each of the values in {@code x} and \(F_m\)
+<i>245</i>&nbsp;     * is the empirical distribution of the {@code y} values.
+<i>246</i>&nbsp;     *
+<i>247</i>&nbsp;     * @param x first sample
+<i>248</i>&nbsp;     * @param y second sample
+<i>249</i>&nbsp;     * @return test statistic \(D_{n,m}\) used to evaluate the null hypothesis that {@code x} and
+<i>250</i>&nbsp;     *         {@code y} represent samples from the same underlying distribution
+<i>251</i>&nbsp;     * @throws InsufficientDataException if either {@code x} or {@code y} does not have length at
+<i>252</i>&nbsp;     *         least 2
+<i>253</i>&nbsp;     * @throws NullArgumentException if either {@code x} or {@code y} is null
+<i>254</i>&nbsp;     */
+<i>255</i>&nbsp;    public double kolmogorovSmirnovStatistic(double[] x, double[] y) {
+<b class="fc"><i>256</i>&nbsp;        return integralKolmogorovSmirnovStatistic(x, y)/((double)(x.length * (long)y.length));</b>
+<i>257</i>&nbsp;    }
+<i>258</i>&nbsp;
+<i>259</i>&nbsp;    /**
+<i>260</i>&nbsp;     * Computes the two-sample Kolmogorov-Smirnov test statistic, \(D_{n,m}=\sup_x |F_n(x)-F_m(x)|\)
+<i>261</i>&nbsp;     * where \(n\) is the length of {@code x}, \(m\) is the length of {@code y}, \(F_n\) is the
+<i>262</i>&nbsp;     * empirical distribution that puts mass \(1/n\) at each of the values in {@code x} and \(F_m\)
+<i>263</i>&nbsp;     * is the empirical distribution of the {@code y} values. Finally \(n m D_{n,m}\) is returned
+<i>264</i>&nbsp;     * as long value.
+<i>265</i>&nbsp;     *
+<i>266</i>&nbsp;     * @param x first sample
+<i>267</i>&nbsp;     * @param y second sample
+<i>268</i>&nbsp;     * @return test statistic \(n m D_{n,m}\) used to evaluate the null hypothesis that {@code x} and
+<i>269</i>&nbsp;     *         {@code y} represent samples from the same underlying distribution
+<i>270</i>&nbsp;     * @throws InsufficientDataException if either {@code x} or {@code y} does not have length at
+<i>271</i>&nbsp;     *         least 2
+<i>272</i>&nbsp;     * @throws NullArgumentException if either {@code x} or {@code y} is null
+<i>273</i>&nbsp;     */
+<i>274</i>&nbsp;    private long integralKolmogorovSmirnovStatistic(double[] x, double[] y) {
+<b class="fc"><i>275</i>&nbsp;        checkArray(x);</b>
+<b class="fc"><i>276</i>&nbsp;        checkArray(y);</b>
+<i>277</i>&nbsp;        // Copy and sort the sample arrays
+<b class="fc"><i>278</i>&nbsp;        final double[] sx = MathArrays.copyOf(x);</b>
+<b class="fc"><i>279</i>&nbsp;        final double[] sy = MathArrays.copyOf(y);</b>
+<b class="fc"><i>280</i>&nbsp;        Arrays.sort(sx);</b>
+<b class="fc"><i>281</i>&nbsp;        Arrays.sort(sy);</b>
+<b class="fc"><i>282</i>&nbsp;        final int n = sx.length;</b>
+<b class="fc"><i>283</i>&nbsp;        final int m = sy.length;</b>
+<i>284</i>&nbsp;
+<b class="fc"><i>285</i>&nbsp;        int rankX = 0;</b>
+<b class="fc"><i>286</i>&nbsp;        int rankY = 0;</b>
+<b class="fc"><i>287</i>&nbsp;        long curD = 0l;</b>
+<i>288</i>&nbsp;
+<i>289</i>&nbsp;        // Find the max difference between cdf_x and cdf_y
+<b class="fc"><i>290</i>&nbsp;        long supD = 0l;</b>
+<i>291</i>&nbsp;        do {
+<b class="fc"><i>292</i>&nbsp;            double z = Double.compare(sx[rankX], sy[rankY]) &lt;= 0 ? sx[rankX] : sy[rankY];</b>
+<b class="fc"><i>293</i>&nbsp;            while(rankX &lt; n &amp;&amp; Double.compare(sx[rankX], z) == 0) {</b>
+<b class="fc"><i>294</i>&nbsp;                rankX += 1;</b>
+<b class="fc"><i>295</i>&nbsp;                curD += m;</b>
+<i>296</i>&nbsp;            }
+<b class="fc"><i>297</i>&nbsp;            while(rankY &lt; m &amp;&amp; Double.compare(sy[rankY], z) == 0) {</b>
+<b class="fc"><i>298</i>&nbsp;                rankY += 1;</b>
+<b class="fc"><i>299</i>&nbsp;                curD -= n;</b>
+<i>300</i>&nbsp;            }
+<b class="fc"><i>301</i>&nbsp;            if (curD &gt; supD) {</b>
+<b class="fc"><i>302</i>&nbsp;                supD = curD;</b>
+<i>303</i>&nbsp;            }
+<b class="fc"><i>304</i>&nbsp;            else if (-curD &gt; supD) {</b>
+<b class="fc"><i>305</i>&nbsp;                supD = -curD;</b>
+<i>306</i>&nbsp;            }
+<b class="fc"><i>307</i>&nbsp;        } while(rankX &lt; n &amp;&amp; rankY &lt; m);</b>
+<b class="fc"><i>308</i>&nbsp;        return supD;</b>
+<i>309</i>&nbsp;    }
+<i>310</i>&nbsp;
+<i>311</i>&nbsp;    /**
+<i>312</i>&nbsp;     * Computes the &lt;i&gt;p-value&lt;/i&gt;, or &lt;i&gt;observed significance level&lt;/i&gt;, of a one-sample &lt;a
+<i>313</i>&nbsp;     * href=&quot;http://en.wikipedia.org/wiki/Kolmogorov-Smirnov_test&quot;&gt; Kolmogorov-Smirnov test&lt;/a&gt;
+<i>314</i>&nbsp;     * evaluating the null hypothesis that {@code data} conforms to {@code distribution}.
+<i>315</i>&nbsp;     *
+<i>316</i>&nbsp;     * @param distribution reference distribution
+<i>317</i>&nbsp;     * @param data sample being being evaluated
+<i>318</i>&nbsp;     * @return the p-value associated with the null hypothesis that {@code data} is a sample from
+<i>319</i>&nbsp;     *         {@code distribution}
+<i>320</i>&nbsp;     * @throws InsufficientDataException if {@code data} does not have length at least 2
+<i>321</i>&nbsp;     * @throws NullArgumentException if {@code data} is null
+<i>322</i>&nbsp;     */
+<i>323</i>&nbsp;    public double kolmogorovSmirnovTest(ContinuousDistribution distribution, double[] data) {
+<b class="fc"><i>324</i>&nbsp;        return kolmogorovSmirnovTest(distribution, data, false);</b>
+<i>325</i>&nbsp;    }
+<i>326</i>&nbsp;
+<i>327</i>&nbsp;    /**
+<i>328</i>&nbsp;     * Performs a &lt;a href=&quot;http://en.wikipedia.org/wiki/Kolmogorov-Smirnov_test&quot;&gt; Kolmogorov-Smirnov
+<i>329</i>&nbsp;     * test&lt;/a&gt; evaluating the null hypothesis that {@code data} conforms to {@code distribution}.
+<i>330</i>&nbsp;     *
+<i>331</i>&nbsp;     * @param distribution reference distribution
+<i>332</i>&nbsp;     * @param data sample being being evaluated
+<i>333</i>&nbsp;     * @param alpha significance level of the test
+<i>334</i>&nbsp;     * @return true iff the null hypothesis that {@code data} is a sample from {@code distribution}
+<i>335</i>&nbsp;     *         can be rejected with confidence 1 - {@code alpha}
+<i>336</i>&nbsp;     * @throws InsufficientDataException if {@code data} does not have length at least 2
+<i>337</i>&nbsp;     * @throws NullArgumentException if {@code data} is null
+<i>338</i>&nbsp;     */
+<i>339</i>&nbsp;    public boolean kolmogorovSmirnovTest(ContinuousDistribution distribution, double[] data, double alpha) {
+<b class="fc"><i>340</i>&nbsp;        if ((alpha &lt;= 0) || (alpha &gt; 0.5)) {</b>
+<b class="nc"><i>341</i>&nbsp;            throw new OutOfRangeException(LocalizedFormats.OUT_OF_BOUND_SIGNIFICANCE_LEVEL, alpha, 0, 0.5);</b>
+<i>342</i>&nbsp;        }
+<b class="fc"><i>343</i>&nbsp;        return kolmogorovSmirnovTest(distribution, data) &lt; alpha;</b>
+<i>344</i>&nbsp;    }
+<i>345</i>&nbsp;
+<i>346</i>&nbsp;    /**
+<i>347</i>&nbsp;     * Estimates the &lt;i&gt;p-value&lt;/i&gt; of a two-sample
+<i>348</i>&nbsp;     * &lt;a href=&quot;http://en.wikipedia.org/wiki/Kolmogorov-Smirnov_test&quot;&gt;Kolmogorov-Smirnov test&lt;/a&gt;
+<i>349</i>&nbsp;     * evaluating the null hypothesis that {@code x} and {@code y} are samples
+<i>350</i>&nbsp;     * drawn from the same probability distribution.
+<i>351</i>&nbsp;     * This method estimates the p-value by repeatedly sampling sets of size
+<i>352</i>&nbsp;     * {@code x.length} and {@code y.length} from the empirical distribution
+<i>353</i>&nbsp;     * of the combined sample.
+<i>354</i>&nbsp;     * When {@code strict} is true, this is equivalent to the algorithm implemented
+<i>355</i>&nbsp;     * in the R function {@code ks.boot}, described in &lt;pre&gt;
+<i>356</i>&nbsp;     * Jasjeet S. Sekhon. 2011. &#39;Multivariate and Propensity Score Matching
+<i>357</i>&nbsp;     * Software with Automated Balance Optimization: The Matching package for R.&#39;
+<i>358</i>&nbsp;     * Journal of Statistical Software, 42(7): 1-52.
+<i>359</i>&nbsp;     * &lt;/pre&gt;
+<i>360</i>&nbsp;     *
+<i>361</i>&nbsp;     * @param x First sample.
+<i>362</i>&nbsp;     * @param y Second sample.
+<i>363</i>&nbsp;     * @param iterations Number of bootstrap resampling iterations.
+<i>364</i>&nbsp;     * @param strict Whether or not the null hypothesis is expressed as a strict inequality.
+<i>365</i>&nbsp;     * @param rng RNG for creating the sampling sets.
+<i>366</i>&nbsp;     * @return the estimated p-value.
+<i>367</i>&nbsp;     */
+<i>368</i>&nbsp;    public double bootstrap(double[] x,
+<i>369</i>&nbsp;                            double[] y,
+<i>370</i>&nbsp;                            int iterations,
+<i>371</i>&nbsp;                            boolean strict,
+<i>372</i>&nbsp;                            UniformRandomProvider rng) {
+<b class="fc"><i>373</i>&nbsp;        final int xLength = x.length;</b>
+<b class="fc"><i>374</i>&nbsp;        final int yLength = y.length;</b>
+<b class="fc"><i>375</i>&nbsp;        final double[] combined = new double[xLength + yLength];</b>
+<b class="fc"><i>376</i>&nbsp;        System.arraycopy(x, 0, combined, 0, xLength);</b>
+<b class="fc"><i>377</i>&nbsp;        System.arraycopy(y, 0, combined, xLength, yLength);</b>
+<b class="fc"><i>378</i>&nbsp;        final ContinuousDistribution.Sampler sampler = new EnumeratedRealDistribution(combined).createSampler(rng);</b>
+<b class="fc"><i>379</i>&nbsp;        final long d = integralKolmogorovSmirnovStatistic(x, y);</b>
+<b class="fc"><i>380</i>&nbsp;        int greaterCount = 0;</b>
+<b class="fc"><i>381</i>&nbsp;        int equalCount = 0;</b>
+<i>382</i>&nbsp;        double[] curX;
+<i>383</i>&nbsp;        double[] curY;
+<i>384</i>&nbsp;        long curD;
+<b class="fc"><i>385</i>&nbsp;        for (int i = 0; i &lt; iterations; i++) {</b>
+<b class="fc"><i>386</i>&nbsp;            curX = AbstractRealDistribution.sample(xLength, sampler);</b>
+<b class="fc"><i>387</i>&nbsp;            curY = AbstractRealDistribution.sample(yLength, sampler);</b>
+<b class="fc"><i>388</i>&nbsp;            curD = integralKolmogorovSmirnovStatistic(curX, curY);</b>
+<b class="fc"><i>389</i>&nbsp;            if (curD &gt; d) {</b>
+<b class="fc"><i>390</i>&nbsp;                greaterCount++;</b>
+<b class="fc"><i>391</i>&nbsp;            } else if (curD == d) {</b>
+<b class="fc"><i>392</i>&nbsp;                equalCount++;</b>
+<i>393</i>&nbsp;            }
+<i>394</i>&nbsp;        }
+<b class="fc"><i>395</i>&nbsp;        return strict ? greaterCount / (double) iterations :</b>
+<i>396</i>&nbsp;            (greaterCount + equalCount) / (double) iterations;
+<i>397</i>&nbsp;    }
+<i>398</i>&nbsp;
+<i>399</i>&nbsp;    /**
+<i>400</i>&nbsp;     * Calculates \(P(D_n &amp;lt; d)\) using the method described in [1] with quick decisions for extreme
+<i>401</i>&nbsp;     * values given in [2] (see above). The result is not exact as with
+<i>402</i>&nbsp;     * {@link #cdfExact(double, int)} because calculations are based on
+<i>403</i>&nbsp;     * {@code double} rather than {@link org.apache.commons.math4.fraction.BigFraction}.
+<i>404</i>&nbsp;     *
+<i>405</i>&nbsp;     * @param d statistic
+<i>406</i>&nbsp;     * @param n sample size
+<i>407</i>&nbsp;     * @return \(P(D_n &amp;lt; d)\)
+<i>408</i>&nbsp;     * @throws MathArithmeticException if algorithm fails to convert {@code h} to a
+<i>409</i>&nbsp;     *         {@link org.apache.commons.math4.fraction.BigFraction} in expressing {@code d} as \((k
+<i>410</i>&nbsp;     *         - h) / m\) for integer {@code k, m} and \(0 \le h &amp;lt; 1\)
+<i>411</i>&nbsp;     */
+<i>412</i>&nbsp;    public double cdf(double d, int n)
+<i>413</i>&nbsp;        throws MathArithmeticException {
+<b class="nc"><i>414</i>&nbsp;        return cdf(d, n, false);</b>
+<i>415</i>&nbsp;    }
+<i>416</i>&nbsp;
+<i>417</i>&nbsp;    /**
+<i>418</i>&nbsp;     * Calculates {@code P(D_n &lt; d)}. The result is exact in the sense that BigFraction/BigReal is
+<i>419</i>&nbsp;     * used everywhere at the expense of very slow execution time. Almost never choose this in real
+<i>420</i>&nbsp;     * applications unless you are very sure; this is almost solely for verification purposes.
+<i>421</i>&nbsp;     * Normally, you would choose {@link #cdf(double, int)}. See the class
+<i>422</i>&nbsp;     * javadoc for definitions and algorithm description.
+<i>423</i>&nbsp;     *
+<i>424</i>&nbsp;     * @param d statistic
+<i>425</i>&nbsp;     * @param n sample size
+<i>426</i>&nbsp;     * @return \(P(D_n &amp;lt; d)\)
+<i>427</i>&nbsp;     * @throws MathArithmeticException if the algorithm fails to convert {@code h} to a
+<i>428</i>&nbsp;     *         {@link org.apache.commons.math4.fraction.BigFraction} in expressing {@code d} as \((k
+<i>429</i>&nbsp;     *         - h) / m\) for integer {@code k, m} and \(0 \le h &amp;lt; 1\)
+<i>430</i>&nbsp;     */
+<i>431</i>&nbsp;    public double cdfExact(double d, int n)
+<i>432</i>&nbsp;        throws MathArithmeticException {
+<b class="nc"><i>433</i>&nbsp;        return cdf(d, n, true);</b>
+<i>434</i>&nbsp;    }
+<i>435</i>&nbsp;
+<i>436</i>&nbsp;    /**
+<i>437</i>&nbsp;     * Calculates {@code P(D_n &lt; d)} using method described in [1] with quick decisions for extreme
+<i>438</i>&nbsp;     * values given in [2] (see above).
+<i>439</i>&nbsp;     *
+<i>440</i>&nbsp;     * @param d statistic
+<i>441</i>&nbsp;     * @param n sample size
+<i>442</i>&nbsp;     * @param exact whether the probability should be calculated exact using
+<i>443</i>&nbsp;     *        {@link org.apache.commons.math4.fraction.BigFraction} everywhere at the expense of
+<i>444</i>&nbsp;     *        very slow execution time, or if {@code double} should be used convenient places to
+<i>445</i>&nbsp;     *        gain speed. Almost never choose {@code true} in real applications unless you are very
+<i>446</i>&nbsp;     *        sure; {@code true} is almost solely for verification purposes.
+<i>447</i>&nbsp;     * @return \(P(D_n &amp;lt; d)\)
+<i>448</i>&nbsp;     * @throws MathArithmeticException if algorithm fails to convert {@code h} to a
+<i>449</i>&nbsp;     *         {@link org.apache.commons.math4.fraction.BigFraction} in expressing {@code d} as \((k
+<i>450</i>&nbsp;     *         - h) / m\) for integer {@code k, m} and \(0 \le h &amp;lt; 1\).
+<i>451</i>&nbsp;     */
+<i>452</i>&nbsp;    public double cdf(double d, int n, boolean exact)
+<i>453</i>&nbsp;        throws MathArithmeticException {
+<i>454</i>&nbsp;
+<b class="fc"><i>455</i>&nbsp;        final double ninv = 1 / ((double) n);</b>
+<b class="fc"><i>456</i>&nbsp;        final double ninvhalf = 0.5 * ninv;</b>
+<i>457</i>&nbsp;
+<b class="fc"><i>458</i>&nbsp;        if (d &lt;= ninvhalf) {</b>
+<b class="nc"><i>459</i>&nbsp;            return 0;</b>
+<b class="fc"><i>460</i>&nbsp;        } else if (ninvhalf &lt; d &amp;&amp; d &lt;= ninv) {</b>
+<b class="nc"><i>461</i>&nbsp;            double res = 1;</b>
+<b class="nc"><i>462</i>&nbsp;            final double f = 2 * d - ninv;</b>
+<i>463</i>&nbsp;            // n! f^n = n*f * (n-1)*f * ... * 1*x
+<b class="nc"><i>464</i>&nbsp;            for (int i = 1; i &lt;= n; ++i) {</b>
+<b class="nc"><i>465</i>&nbsp;                res *= i * f;</b>
+<i>466</i>&nbsp;            }
+<b class="nc"><i>467</i>&nbsp;            return res;</b>
+<b class="fc"><i>468</i>&nbsp;        } else if (1 - ninv &lt;= d &amp;&amp; d &lt; 1) {</b>
+<b class="nc"><i>469</i>&nbsp;            return 1 - 2 * Math.pow(1 - d, n);</b>
+<b class="fc"><i>470</i>&nbsp;        } else if (1 &lt;= d) {</b>
+<b class="nc"><i>471</i>&nbsp;            return 1;</b>
+<i>472</i>&nbsp;        }
+<b class="fc"><i>473</i>&nbsp;        if (exact) {</b>
+<b class="nc"><i>474</i>&nbsp;            return exactK(d, n);</b>
+<i>475</i>&nbsp;        }
+<b class="fc"><i>476</i>&nbsp;        if (n &lt;= 140) {</b>
+<b class="fc"><i>477</i>&nbsp;            return roundedK(d, n);</b>
+<i>478</i>&nbsp;        }
+<b class="nc"><i>479</i>&nbsp;        return pelzGood(d, n);</b>
+<i>480</i>&nbsp;    }
+<i>481</i>&nbsp;
+<i>482</i>&nbsp;    /**
+<i>483</i>&nbsp;     * Calculates the exact value of {@code P(D_n &lt; d)} using the method described in [1] (reference
+<i>484</i>&nbsp;     * in class javadoc above) and {@link org.apache.commons.math4.fraction.BigFraction} (see
+<i>485</i>&nbsp;     * above).
+<i>486</i>&nbsp;     *
+<i>487</i>&nbsp;     * @param d statistic
+<i>488</i>&nbsp;     * @param n sample size
+<i>489</i>&nbsp;     * @return the two-sided probability of \(P(D_n &amp;lt; d)\)
+<i>490</i>&nbsp;     * @throws MathArithmeticException if algorithm fails to convert {@code h} to a
+<i>491</i>&nbsp;     *         {@link org.apache.commons.math4.fraction.BigFraction} in expressing {@code d} as \((k
+<i>492</i>&nbsp;     *         - h) / m\) for integer {@code k, m} and \(0 \le h &amp;lt; 1\).
+<i>493</i>&nbsp;     */
+<i>494</i>&nbsp;    private double exactK(double d, int n)
+<i>495</i>&nbsp;        throws MathArithmeticException {
+<i>496</i>&nbsp;
+<b class="nc"><i>497</i>&nbsp;        final int k = (int) Math.ceil(n * d);</b>
+<i>498</i>&nbsp;
+<b class="nc"><i>499</i>&nbsp;        final FieldMatrix&lt;BigFraction&gt; H = this.createExactH(d, n);</b>
+<b class="nc"><i>500</i>&nbsp;        final FieldMatrix&lt;BigFraction&gt; Hpower = H.power(n);</b>
+<i>501</i>&nbsp;
+<b class="nc"><i>502</i>&nbsp;        BigFraction pFrac = Hpower.getEntry(k - 1, k - 1);</b>
+<i>503</i>&nbsp;
+<b class="nc"><i>504</i>&nbsp;        for (int i = 1; i &lt;= n; ++i) {</b>
+<b class="nc"><i>505</i>&nbsp;            pFrac = pFrac.multiply(i).divide(n);</b>
+<i>506</i>&nbsp;        }
+<i>507</i>&nbsp;
+<i>508</i>&nbsp;        /*
+<i>509</i>&nbsp;         * BigFraction.doubleValue converts numerator to double and the denominator to double and
+<i>510</i>&nbsp;         * divides afterwards. That gives NaN quite easy. This does not (scale is the number of
+<i>511</i>&nbsp;         * digits):
+<i>512</i>&nbsp;         */
+<b class="nc"><i>513</i>&nbsp;        return pFrac.bigDecimalValue(20, BigDecimal.ROUND_HALF_UP).doubleValue();</b>
+<i>514</i>&nbsp;    }
+<i>515</i>&nbsp;
+<i>516</i>&nbsp;    /**
+<i>517</i>&nbsp;     * Calculates {@code P(D_n &lt; d)} using method described in [1] and doubles (see above).
+<i>518</i>&nbsp;     *
+<i>519</i>&nbsp;     * @param d statistic
+<i>520</i>&nbsp;     * @param n sample size
+<i>521</i>&nbsp;     * @return \(P(D_n &amp;lt; d)\)
+<i>522</i>&nbsp;     */
+<i>523</i>&nbsp;    private double roundedK(double d, int n) {
+<i>524</i>&nbsp;
+<b class="fc"><i>525</i>&nbsp;        final int k = (int) Math.ceil(n * d);</b>
+<b class="fc"><i>526</i>&nbsp;        final RealMatrix H = this.createRoundedH(d, n);</b>
+<b class="fc"><i>527</i>&nbsp;        final RealMatrix Hpower = H.power(n);</b>
+<i>528</i>&nbsp;
+<b class="fc"><i>529</i>&nbsp;        double pFrac = Hpower.getEntry(k - 1, k - 1);</b>
+<b class="fc"><i>530</i>&nbsp;        for (int i = 1; i &lt;= n; ++i) {</b>
+<b class="fc"><i>531</i>&nbsp;            pFrac *= (double) i / (double) n;</b>
+<i>532</i>&nbsp;        }
+<i>533</i>&nbsp;
+<b class="fc"><i>534</i>&nbsp;        return pFrac;</b>
+<i>535</i>&nbsp;    }
+<i>536</i>&nbsp;
+<i>537</i>&nbsp;    /**
+<i>538</i>&nbsp;     * Computes the Pelz-Good approximation for \(P(D_n &amp;lt; d)\) as described in [2] in the class javadoc.
+<i>539</i>&nbsp;     *
+<i>540</i>&nbsp;     * @param d value of d-statistic (x in [2])
+<i>541</i>&nbsp;     * @param n sample size
+<i>542</i>&nbsp;     * @return \(P(D_n &amp;lt; d)\)
+<i>543</i>&nbsp;     * @since 3.4
+<i>544</i>&nbsp;     */
+<i>545</i>&nbsp;    public double pelzGood(double d, int n) {
+<i>546</i>&nbsp;        // Change the variable since approximation is for the distribution evaluated at d / sqrt(n)
+<b class="fc"><i>547</i>&nbsp;        final double sqrtN = FastMath.sqrt(n);</b>
+<b class="fc"><i>548</i>&nbsp;        final double z = d * sqrtN;</b>
+<b class="fc"><i>549</i>&nbsp;        final double z2 = d * d * n;</b>
+<b class="fc"><i>550</i>&nbsp;        final double z4 = z2 * z2;</b>
+<b class="fc"><i>551</i>&nbsp;        final double z6 = z4 * z2;</b>
+<b class="fc"><i>552</i>&nbsp;        final double z8 = z4 * z4;</b>
+<i>553</i>&nbsp;
+<i>554</i>&nbsp;        // Eventual return value
+<b class="fc"><i>555</i>&nbsp;        double ret = 0;</b>
+<i>556</i>&nbsp;
+<i>557</i>&nbsp;        // Compute K_0(z)
+<b class="fc"><i>558</i>&nbsp;        double sum = 0;</b>
+<b class="fc"><i>559</i>&nbsp;        double increment = 0;</b>
+<b class="fc"><i>560</i>&nbsp;        double kTerm = 0;</b>
+<b class="fc"><i>561</i>&nbsp;        double z2Term = MathUtils.PI_SQUARED / (8 * z2);</b>
+<b class="fc"><i>562</i>&nbsp;        int k = 1;</b>
+<b class="fc"><i>563</i>&nbsp;        for (; k &lt; MAXIMUM_PARTIAL_SUM_COUNT; k++) {</b>
+<b class="fc"><i>564</i>&nbsp;            kTerm = 2 * k - 1;</b>
+<b class="fc"><i>565</i>&nbsp;            increment = FastMath.exp(-z2Term * kTerm * kTerm);</b>
+<b class="fc"><i>566</i>&nbsp;            sum += increment;</b>
+<b class="fc"><i>567</i>&nbsp;            if (increment &lt;= PG_SUM_RELATIVE_ERROR * sum) {</b>
+<b class="fc"><i>568</i>&nbsp;                break;</b>
+<i>569</i>&nbsp;            }
+<i>570</i>&nbsp;        }
+<b class="fc"><i>571</i>&nbsp;        if (k == MAXIMUM_PARTIAL_SUM_COUNT) {</b>
+<b class="nc"><i>572</i>&nbsp;            throw new TooManyIterationsException(MAXIMUM_PARTIAL_SUM_COUNT);</b>
+<i>573</i>&nbsp;        }
+<b class="fc"><i>574</i>&nbsp;        ret = sum * FastMath.sqrt(2 * FastMath.PI) / z;</b>
+<i>575</i>&nbsp;
+<i>576</i>&nbsp;        // K_1(z)
+<i>577</i>&nbsp;        // Sum is -inf to inf, but k term is always (k + 1/2) ^ 2, so really have
+<i>578</i>&nbsp;        // twice the sum from k = 0 to inf (k = -1 is same as 0, -2 same as 1, ...)
+<b class="fc"><i>579</i>&nbsp;        final double twoZ2 = 2 * z2;</b>
+<b class="fc"><i>580</i>&nbsp;        sum = 0;</b>
+<b class="fc"><i>581</i>&nbsp;        kTerm = 0;</b>
+<b class="fc"><i>582</i>&nbsp;        double kTerm2 = 0;</b>
+<b class="fc"><i>583</i>&nbsp;        for (k = 0; k &lt; MAXIMUM_PARTIAL_SUM_COUNT; k++) {</b>
+<b class="fc"><i>584</i>&nbsp;            kTerm = k + 0.5;</b>
+<b class="fc"><i>585</i>&nbsp;            kTerm2 = kTerm * kTerm;</b>
+<b class="fc"><i>586</i>&nbsp;            increment = (MathUtils.PI_SQUARED * kTerm2 - z2) * FastMath.exp(-MathUtils.PI_SQUARED * kTerm2 / twoZ2);</b>
+<b class="fc"><i>587</i>&nbsp;            sum += increment;</b>
+<b class="fc"><i>588</i>&nbsp;            if (FastMath.abs(increment) &lt; PG_SUM_RELATIVE_ERROR * FastMath.abs(sum)) {</b>
+<b class="fc"><i>589</i>&nbsp;                break;</b>
+<i>590</i>&nbsp;            }
+<i>591</i>&nbsp;        }
+<b class="fc"><i>592</i>&nbsp;        if (k == MAXIMUM_PARTIAL_SUM_COUNT) {</b>
+<b class="nc"><i>593</i>&nbsp;            throw new TooManyIterationsException(MAXIMUM_PARTIAL_SUM_COUNT);</b>
+<i>594</i>&nbsp;        }
+<b class="fc"><i>595</i>&nbsp;        final double sqrtHalfPi = FastMath.sqrt(FastMath.PI / 2);</b>
+<i>596</i>&nbsp;        // Instead of doubling sum, divide by 3 instead of 6
+<b class="fc"><i>597</i>&nbsp;        ret += sum * sqrtHalfPi / (3 * z4 * sqrtN);</b>
+<i>598</i>&nbsp;
+<i>599</i>&nbsp;        // K_2(z)
+<i>600</i>&nbsp;        // Same drill as K_1, but with two doubly infinite sums, all k terms are even powers.
+<b class="fc"><i>601</i>&nbsp;        final double z4Term = 2 * z4;</b>
+<b class="fc"><i>602</i>&nbsp;        final double z6Term = 6 * z6;</b>
+<b class="fc"><i>603</i>&nbsp;        z2Term = 5 * z2;</b>
+<b class="fc"><i>604</i>&nbsp;        final double pi4 = MathUtils.PI_SQUARED * MathUtils.PI_SQUARED;</b>
+<b class="fc"><i>605</i>&nbsp;        sum = 0;</b>
+<b class="fc"><i>606</i>&nbsp;        kTerm = 0;</b>
+<b class="fc"><i>607</i>&nbsp;        kTerm2 = 0;</b>
+<b class="fc"><i>608</i>&nbsp;        for (k = 0; k &lt; MAXIMUM_PARTIAL_SUM_COUNT; k++) {</b>
+<b class="fc"><i>609</i>&nbsp;            kTerm = k + 0.5;</b>
+<b class="fc"><i>610</i>&nbsp;            kTerm2 = kTerm * kTerm;</b>
+<b class="fc"><i>611</i>&nbsp;            increment =  (z6Term + z4Term + MathUtils.PI_SQUARED * (z4Term - z2Term) * kTerm2 +</b>
+<b class="fc"><i>612</i>&nbsp;                    pi4 * (1 - twoZ2) * kTerm2 * kTerm2) * FastMath.exp(-MathUtils.PI_SQUARED * kTerm2 / twoZ2);</b>
+<b class="fc"><i>613</i>&nbsp;            sum += increment;</b>
+<b class="fc"><i>614</i>&nbsp;            if (FastMath.abs(increment) &lt; PG_SUM_RELATIVE_ERROR * FastMath.abs(sum)) {</b>
+<b class="fc"><i>615</i>&nbsp;                break;</b>
+<i>616</i>&nbsp;            }
+<i>617</i>&nbsp;        }
+<b class="fc"><i>618</i>&nbsp;        if (k == MAXIMUM_PARTIAL_SUM_COUNT) {</b>
+<b class="nc"><i>619</i>&nbsp;            throw new TooManyIterationsException(MAXIMUM_PARTIAL_SUM_COUNT);</b>
+<i>620</i>&nbsp;        }
+<b class="fc"><i>621</i>&nbsp;        double sum2 = 0;</b>
+<b class="fc"><i>622</i>&nbsp;        kTerm2 = 0;</b>
+<b class="fc"><i>623</i>&nbsp;        for (k = 1; k &lt; MAXIMUM_PARTIAL_SUM_COUNT; k++) {</b>
+<b class="fc"><i>624</i>&nbsp;            kTerm2 = k * k;</b>
+<b class="fc"><i>625</i>&nbsp;            increment = MathUtils.PI_SQUARED * kTerm2 * FastMath.exp(-MathUtils.PI_SQUARED * kTerm2 / twoZ2);</b>
+<b class="fc"><i>626</i>&nbsp;            sum2 += increment;</b>
+<b class="fc"><i>627</i>&nbsp;            if (FastMath.abs(increment) &lt; PG_SUM_RELATIVE_ERROR * FastMath.abs(sum2)) {</b>
+<b class="fc"><i>628</i>&nbsp;                break;</b>
+<i>629</i>&nbsp;            }
+<i>630</i>&nbsp;        }
+<b class="fc"><i>631</i>&nbsp;        if (k == MAXIMUM_PARTIAL_SUM_COUNT) {</b>
+<b class="nc"><i>632</i>&nbsp;            throw new TooManyIterationsException(MAXIMUM_PARTIAL_SUM_COUNT);</b>
+<i>633</i>&nbsp;        }
+<i>634</i>&nbsp;        // Again, adjust coefficients instead of doubling sum, sum2
+<b class="fc"><i>635</i>&nbsp;        ret += (sqrtHalfPi / n) * (sum / (36 * z2 * z2 * z2 * z) - sum2 / (18 * z2 * z));</b>
+<i>636</i>&nbsp;
+<i>637</i>&nbsp;        // K_3(z) One more time with feeling - two doubly infinite sums, all k powers even.
+<i>638</i>&nbsp;        // Multiply coefficient denominators by 2, so omit doubling sums.
+<b class="fc"><i>639</i>&nbsp;        final double pi6 = pi4 * MathUtils.PI_SQUARED;</b>
+<b class="fc"><i>640</i>&nbsp;        sum = 0;</b>
+<b class="fc"><i>641</i>&nbsp;        double kTerm4 = 0;</b>
+<b class="fc"><i>642</i>&nbsp;        double kTerm6 = 0;</b>
+<b class="fc"><i>643</i>&nbsp;        for (k = 0; k &lt; MAXIMUM_PARTIAL_SUM_COUNT; k++) {</b>
+<b class="fc"><i>644</i>&nbsp;            kTerm = k + 0.5;</b>
+<b class="fc"><i>645</i>&nbsp;            kTerm2 = kTerm * kTerm;</b>
+<b class="fc"><i>646</i>&nbsp;            kTerm4 = kTerm2 * kTerm2;</b>
+<b class="fc"><i>647</i>&nbsp;            kTerm6 = kTerm4 * kTerm2;</b>
+<b class="fc"><i>648</i>&nbsp;            increment = (pi6 * kTerm6 * (5 - 30 * z2) + pi4 * kTerm4 * (-60 * z2 + 212 * z4) +</b>
+<i>649</i>&nbsp;                            MathUtils.PI_SQUARED * kTerm2 * (135 * z4 - 96 * z6) - 30 * z6 - 90 * z8) *
+<b class="fc"><i>650</i>&nbsp;                    FastMath.exp(-MathUtils.PI_SQUARED * kTerm2 / twoZ2);</b>
+<b class="fc"><i>651</i>&nbsp;            sum += increment;</b>
+<b class="fc"><i>652</i>&nbsp;            if (FastMath.abs(increment) &lt; PG_SUM_RELATIVE_ERROR * FastMath.abs(sum)) {</b>
+<b class="fc"><i>653</i>&nbsp;                break;</b>
+<i>654</i>&nbsp;            }
+<i>655</i>&nbsp;        }
+<b class="fc"><i>656</i>&nbsp;        if (k == MAXIMUM_PARTIAL_SUM_COUNT) {</b>
+<b class="nc"><i>657</i>&nbsp;            throw new TooManyIterationsException(MAXIMUM_PARTIAL_SUM_COUNT);</b>
+<i>658</i>&nbsp;        }
+<b class="fc"><i>659</i>&nbsp;        sum2 = 0;</b>
+<b class="fc"><i>660</i>&nbsp;        for (k = 1; k &lt; MAXIMUM_PARTIAL_SUM_COUNT; k++) {</b>
+<b class="fc"><i>661</i>&nbsp;            kTerm2 = k * k;</b>
+<b class="fc"><i>662</i>&nbsp;            kTerm4 = kTerm2 * kTerm2;</b>
+<b class="fc"><i>663</i>&nbsp;            increment = (-pi4 * kTerm4 + 3 * MathUtils.PI_SQUARED * kTerm2 * z2) *</b>
+<b class="fc"><i>664</i>&nbsp;                    FastMath.exp(-MathUtils.PI_SQUARED * kTerm2 / twoZ2);</b>
+<b class="fc"><i>665</i>&nbsp;            sum2 += increment;</b>
+<b class="fc"><i>666</i>&nbsp;            if (FastMath.abs(increment) &lt; PG_SUM_RELATIVE_ERROR * FastMath.abs(sum2)) {</b>
+<b class="fc"><i>667</i>&nbsp;                break;</b>
+<i>668</i>&nbsp;            }
+<i>669</i>&nbsp;        }
+<b class="fc"><i>670</i>&nbsp;        if (k == MAXIMUM_PARTIAL_SUM_COUNT) {</b>
+<b class="nc"><i>671</i>&nbsp;            throw new TooManyIterationsException(MAXIMUM_PARTIAL_SUM_COUNT);</b>
+<i>672</i>&nbsp;        }
+<b class="fc"><i>673</i>&nbsp;        return ret + (sqrtHalfPi / (sqrtN * n)) * (sum / (3240 * z6 * z4) +</b>
+<i>674</i>&nbsp;                + sum2 / (108 * z6));
+<i>675</i>&nbsp;
+<i>676</i>&nbsp;    }
+<i>677</i>&nbsp;
+<i>678</i>&nbsp;    /***
+<i>679</i>&nbsp;     * Creates {@code H} of size {@code m x m} as described in [1] (see above).
+<i>680</i>&nbsp;     *
+<i>681</i>&nbsp;     * @param d statistic
+<i>682</i>&nbsp;     * @param n sample size
+<i>683</i>&nbsp;     * @return H matrix
+<i>684</i>&nbsp;     * @throws NumberIsTooLargeException if fractional part is greater than 1
+<i>685</i>&nbsp;     * @throws FractionConversionException if algorithm fails to convert {@code h} to a
+<i>686</i>&nbsp;     *         {@link org.apache.commons.math4.fraction.BigFraction} in expressing {@code d} as \((k
+<i>687</i>&nbsp;     *         - h) / m\) for integer {@code k, m} and \(0 &lt;= h &lt; 1\).
+<i>688</i>&nbsp;     */
+<i>689</i>&nbsp;    private FieldMatrix&lt;BigFraction&gt; createExactH(double d, int n)
+<i>690</i>&nbsp;        throws NumberIsTooLargeException, FractionConversionException {
+<i>691</i>&nbsp;
+<b class="nc"><i>692</i>&nbsp;        final int k = (int) Math.ceil(n * d);</b>
+<b class="nc"><i>693</i>&nbsp;        final int m = 2 * k - 1;</b>
+<b class="nc"><i>694</i>&nbsp;        final double hDouble = k - n * d;</b>
+<b class="nc"><i>695</i>&nbsp;        if (hDouble &gt;= 1) {</b>
+<b class="nc"><i>696</i>&nbsp;            throw new NumberIsTooLargeException(hDouble, 1.0, false);</b>
+<i>697</i>&nbsp;        }
+<b class="nc"><i>698</i>&nbsp;        BigFraction h = null;</b>
+<i>699</i>&nbsp;        try {
+<b class="nc"><i>700</i>&nbsp;            h = new BigFraction(hDouble, 1.0e-20, 10000);</b>
+<b class="nc"><i>701</i>&nbsp;        } catch (final FractionConversionException e1) {</b>
+<i>702</i>&nbsp;            try {
+<b class="nc"><i>703</i>&nbsp;                h = new BigFraction(hDouble, 1.0e-10, 10000);</b>
+<b class="nc"><i>704</i>&nbsp;            } catch (final FractionConversionException e2) {</b>
+<b class="nc"><i>705</i>&nbsp;                h = new BigFraction(hDouble, 1.0e-5, 10000);</b>
+<b class="nc"><i>706</i>&nbsp;            }</b>
+<b class="nc"><i>707</i>&nbsp;        }</b>
+<b class="nc"><i>708</i>&nbsp;        final BigFraction[][] Hdata = new BigFraction[m][m];</b>
+<i>709</i>&nbsp;
+<i>710</i>&nbsp;        /*
+<i>711</i>&nbsp;         * Start by filling everything with either 0 or 1.
+<i>712</i>&nbsp;         */
+<b class="nc"><i>713</i>&nbsp;        for (int i = 0; i &lt; m; ++i) {</b>
+<b class="nc"><i>714</i>&nbsp;            for (int j = 0; j &lt; m; ++j) {</b>
+<b class="nc"><i>715</i>&nbsp;                if (i - j + 1 &lt; 0) {</b>
+<b class="nc"><i>716</i>&nbsp;                    Hdata[i][j] = BigFraction.ZERO;</b>
+<i>717</i>&nbsp;                } else {
+<b class="nc"><i>718</i>&nbsp;                    Hdata[i][j] = BigFraction.ONE;</b>
+<i>719</i>&nbsp;                }
+<i>720</i>&nbsp;            }
+<i>721</i>&nbsp;        }
+<i>722</i>&nbsp;
+<i>723</i>&nbsp;        /*
+<i>724</i>&nbsp;         * Setting up power-array to avoid calculating the same value twice: hPowers[0] = h^1 ...
+<i>725</i>&nbsp;         * hPowers[m-1] = h^m
+<i>726</i>&nbsp;         */
+<b class="nc"><i>727</i>&nbsp;        final BigFraction[] hPowers = new BigFraction[m];</b>
+<b class="nc"><i>728</i>&nbsp;        hPowers[0] = h;</b>
+<b class="nc"><i>729</i>&nbsp;        for (int i = 1; i &lt; m; ++i) {</b>
+<b class="nc"><i>730</i>&nbsp;            hPowers[i] = h.multiply(hPowers[i - 1]);</b>
+<i>731</i>&nbsp;        }
+<i>732</i>&nbsp;
+<i>733</i>&nbsp;        /*
+<i>734</i>&nbsp;         * First column and last row has special values (each other reversed).
+<i>735</i>&nbsp;         */
+<b class="nc"><i>736</i>&nbsp;        for (int i = 0; i &lt; m; ++i) {</b>
+<b class="nc"><i>737</i>&nbsp;            Hdata[i][0] = Hdata[i][0].subtract(hPowers[i]);</b>
+<b class="nc"><i>738</i>&nbsp;            Hdata[m - 1][i] = Hdata[m - 1][i].subtract(hPowers[m - i - 1]);</b>
+<i>739</i>&nbsp;        }
+<i>740</i>&nbsp;
+<i>741</i>&nbsp;        /*
+<i>742</i>&nbsp;         * [1] states: &quot;For 1/2 &lt; h &lt; 1 the bottom left element of the matrix should be (1 - 2*h^m +
+<i>743</i>&nbsp;         * (2h - 1)^m )/m!&quot; Since 0 &lt;= h &lt; 1, then if h &gt; 1/2 is sufficient to check:
+<i>744</i>&nbsp;         */
+<b class="nc"><i>745</i>&nbsp;        if (h.compareTo(BigFraction.ONE_HALF) == 1) {</b>
+<b class="nc"><i>746</i>&nbsp;            Hdata[m - 1][0] = Hdata[m - 1][0].add(h.multiply(2).subtract(1).pow(m));</b>
+<i>747</i>&nbsp;        }
+<i>748</i>&nbsp;
+<i>749</i>&nbsp;        /*
+<i>750</i>&nbsp;         * Aside from the first column and last row, the (i, j)-th element is 1/(i - j + 1)! if i -
+<i>751</i>&nbsp;         * j + 1 &gt;= 0, else 0. 1&#39;s and 0&#39;s are already put, so only division with (i - j + 1)! is
+<i>752</i>&nbsp;         * needed in the elements that have 1&#39;s. There is no need to calculate (i - j + 1)! and then
+<i>753</i>&nbsp;         * divide - small steps avoid overflows. Note that i - j + 1 &gt; 0 &lt;=&gt; i + 1 &gt; j instead of
+<i>754</i>&nbsp;         * j&#39;ing all the way to m. Also note that it is started at g = 2 because dividing by 1 isn&#39;t
+<i>755</i>&nbsp;         * really necessary.
+<i>756</i>&nbsp;         */
+<b class="nc"><i>757</i>&nbsp;        for (int i = 0; i &lt; m; ++i) {</b>
+<b class="nc"><i>758</i>&nbsp;            for (int j = 0; j &lt; i + 1; ++j) {</b>
+<b class="nc"><i>759</i>&nbsp;                if (i - j + 1 &gt; 0) {</b>
+<b class="nc"><i>760</i>&nbsp;                    for (int g = 2; g &lt;= i - j + 1; ++g) {</b>
+<b class="nc"><i>761</i>&nbsp;                        Hdata[i][j] = Hdata[i][j].divide(g);</b>
+<i>762</i>&nbsp;                    }
+<i>763</i>&nbsp;                }
+<i>764</i>&nbsp;            }
+<i>765</i>&nbsp;        }
+<b class="nc"><i>766</i>&nbsp;        return new Array2DRowFieldMatrix&lt;&gt;(BigFractionField.getInstance(), Hdata);</b>
+<i>767</i>&nbsp;    }
+<i>768</i>&nbsp;
+<i>769</i>&nbsp;    /***
+<i>770</i>&nbsp;     * Creates {@code H} of size {@code m x m} as described in [1] (see above)
+<i>771</i>&nbsp;     * using double-precision.
+<i>772</i>&nbsp;     *
+<i>773</i>&nbsp;     * @param d statistic
+<i>774</i>&nbsp;     * @param n sample size
+<i>775</i>&nbsp;     * @return H matrix
+<i>776</i>&nbsp;     * @throws NumberIsTooLargeException if fractional part is greater than 1
+<i>777</i>&nbsp;     */
+<i>778</i>&nbsp;    private RealMatrix createRoundedH(double d, int n)
+<i>779</i>&nbsp;        throws NumberIsTooLargeException {
+<i>780</i>&nbsp;
+<b class="fc"><i>781</i>&nbsp;        final int k = (int) Math.ceil(n * d);</b>
+<b class="fc"><i>782</i>&nbsp;        final int m = 2 * k - 1;</b>
+<b class="fc"><i>783</i>&nbsp;        final double h = k - n * d;</b>
+<b class="fc"><i>784</i>&nbsp;        if (h &gt;= 1) {</b>
+<b class="nc"><i>785</i>&nbsp;            throw new NumberIsTooLargeException(h, 1.0, false);</b>
+<i>786</i>&nbsp;        }
+<b class="fc"><i>787</i>&nbsp;        final double[][] Hdata = new double[m][m];</b>
+<i>788</i>&nbsp;
+<i>789</i>&nbsp;        /*
+<i>790</i>&nbsp;         * Start by filling everything with either 0 or 1.
+<i>791</i>&nbsp;         */
+<b class="fc"><i>792</i>&nbsp;        for (int i = 0; i &lt; m; ++i) {</b>
+<b class="fc"><i>793</i>&nbsp;            for (int j = 0; j &lt; m; ++j) {</b>
+<b class="fc"><i>794</i>&nbsp;                if (i - j + 1 &lt; 0) {</b>
+<b class="fc"><i>795</i>&nbsp;                    Hdata[i][j] = 0;</b>
+<i>796</i>&nbsp;                } else {
+<b class="fc"><i>797</i>&nbsp;                    Hdata[i][j] = 1;</b>
+<i>798</i>&nbsp;                }
+<i>799</i>&nbsp;            }
+<i>800</i>&nbsp;        }
+<i>801</i>&nbsp;
+<i>802</i>&nbsp;        /*
+<i>803</i>&nbsp;         * Setting up power-array to avoid calculating the same value twice: hPowers[0] = h^1 ...
+<i>804</i>&nbsp;         * hPowers[m-1] = h^m
+<i>805</i>&nbsp;         */
+<b class="fc"><i>806</i>&nbsp;        final double[] hPowers = new double[m];</b>
+<b class="fc"><i>807</i>&nbsp;        hPowers[0] = h;</b>
+<b class="fc"><i>808</i>&nbsp;        for (int i = 1; i &lt; m; ++i) {</b>
+<b class="fc"><i>809</i>&nbsp;            hPowers[i] = h * hPowers[i - 1];</b>
+<i>810</i>&nbsp;        }
+<i>811</i>&nbsp;
+<i>812</i>&nbsp;        /*
+<i>813</i>&nbsp;         * First column and last row has special values (each other reversed).
+<i>814</i>&nbsp;         */
+<b class="fc"><i>815</i>&nbsp;        for (int i = 0; i &lt; m; ++i) {</b>
+<b class="fc"><i>816</i>&nbsp;            Hdata[i][0] = Hdata[i][0] - hPowers[i];</b>
+<b class="fc"><i>817</i>&nbsp;            Hdata[m - 1][i] -= hPowers[m - i - 1];</b>
+<i>818</i>&nbsp;        }
+<i>819</i>&nbsp;
+<i>820</i>&nbsp;        /*
+<i>821</i>&nbsp;         * [1] states: &quot;For 1/2 &lt; h &lt; 1 the bottom left element of the matrix should be (1 - 2*h^m +
+<i>822</i>&nbsp;         * (2h - 1)^m )/m!&quot; Since 0 &lt;= h &lt; 1, then if h &gt; 1/2 is sufficient to check:
+<i>823</i>&nbsp;         */
+<b class="fc"><i>824</i>&nbsp;        if (Double.compare(h, 0.5) &gt; 0) {</b>
+<b class="fc"><i>825</i>&nbsp;            Hdata[m - 1][0] += FastMath.pow(2 * h - 1, m);</b>
+<i>826</i>&nbsp;        }
+<i>827</i>&nbsp;
+<i>828</i>&nbsp;        /*
+<i>829</i>&nbsp;         * Aside from the first column and last row, the (i, j)-th element is 1/(i - j + 1)! if i -
+<i>830</i>&nbsp;         * j + 1 &gt;= 0, else 0. 1&#39;s and 0&#39;s are already put, so only division with (i - j + 1)! is
+<i>831</i>&nbsp;         * needed in the elements that have 1&#39;s. There is no need to calculate (i - j + 1)! and then
+<i>832</i>&nbsp;         * divide - small steps avoid overflows. Note that i - j + 1 &gt; 0 &lt;=&gt; i + 1 &gt; j instead of
+<i>833</i>&nbsp;         * j&#39;ing all the way to m. Also note that it is started at g = 2 because dividing by 1 isn&#39;t
+<i>834</i>&nbsp;         * really necessary.
+<i>835</i>&nbsp;         */
+<b class="fc"><i>836</i>&nbsp;        for (int i = 0; i &lt; m; ++i) {</b>
+<b class="fc"><i>837</i>&nbsp;            for (int j = 0; j &lt; i + 1; ++j) {</b>
+<b class="fc"><i>838</i>&nbsp;                if (i - j + 1 &gt; 0) {</b>
+<b class="fc"><i>839</i>&nbsp;                    for (int g = 2; g &lt;= i - j + 1; ++g) {</b>
+<b class="fc"><i>840</i>&nbsp;                        Hdata[i][j] /= g;</b>
+<i>841</i>&nbsp;                    }
+<i>842</i>&nbsp;                }
+<i>843</i>&nbsp;            }
+<i>844</i>&nbsp;        }
+<b class="fc"><i>845</i>&nbsp;        return MatrixUtils.createRealMatrix(Hdata);</b>
+<i>846</i>&nbsp;    }
+<i>847</i>&nbsp;
+<i>848</i>&nbsp;    /**
+<i>849</i>&nbsp;     * Verifies that {@code array} has length at least 2.
+<i>850</i>&nbsp;     *
+<i>851</i>&nbsp;     * @param array array to test
+<i>852</i>&nbsp;     * @throws NullArgumentException if array is null
+<i>853</i>&nbsp;     * @throws InsufficientDataException if array is too short
+<i>854</i>&nbsp;     */
+<i>855</i>&nbsp;    private void checkArray(double[] array) {
+<b class="fc"><i>856</i>&nbsp;        if (array == null) {</b>
+<b class="nc"><i>857</i>&nbsp;            throw new NullArgumentException(LocalizedFormats.NULL_NOT_ALLOWED);</b>
+<i>858</i>&nbsp;        }
+<b class="fc"><i>859</i>&nbsp;        if (array.length &lt; 2) {</b>
+<b class="nc"><i>860</i>&nbsp;            throw new InsufficientDataException(LocalizedFormats.INSUFFICIENT_OBSERVED_POINTS_IN_SAMPLE, array.length,</b>
+<b class="nc"><i>861</i>&nbsp;                                                2);</b>
+<i>862</i>&nbsp;        }
+<b class="fc"><i>863</i>&nbsp;    }</b>
+<i>864</i>&nbsp;
+<i>865</i>&nbsp;    /**
+<i>866</i>&nbsp;     * Computes \( 1 + 2 \sum_{i=1}^\infty (-1)^i e^{-2 i^2 t^2} \) stopping when successive partial
+<i>867</i>&nbsp;     * sums are within {@code tolerance} of one another, or when {@code maxIterations} partial sums
+<i>868</i>&nbsp;     * have been computed. If the sum does not converge before {@code maxIterations} iterations a
+<i>869</i>&nbsp;     * {@link TooManyIterationsException} is thrown.
+<i>870</i>&nbsp;     *
+<i>871</i>&nbsp;     * @param t argument
+<i>872</i>&nbsp;     * @param tolerance Cauchy criterion for partial sums
+<i>873</i>&nbsp;     * @param maxIterations maximum number of partial sums to compute
+<i>874</i>&nbsp;     * @return Kolmogorov sum evaluated at t
+<i>875</i>&nbsp;     * @throws TooManyIterationsException if the series does not converge
+<i>876</i>&nbsp;     */
+<i>877</i>&nbsp;    public double ksSum(double t, double tolerance, int maxIterations) {
+<b class="fc"><i>878</i>&nbsp;        if (t == 0.0) {</b>
+<b class="fc"><i>879</i>&nbsp;            return 0.0;</b>
+<i>880</i>&nbsp;        }
+<i>881</i>&nbsp;
+<i>882</i>&nbsp;        // TODO: for small t (say less than 1), the alternative expansion in part 3 of [1]
+<i>883</i>&nbsp;        // from class javadoc should be used.
+<i>884</i>&nbsp;
+<b class="fc"><i>885</i>&nbsp;        final double x = -2 * t * t;</b>
+<b class="fc"><i>886</i>&nbsp;        int sign = -1;</b>
+<b class="fc"><i>887</i>&nbsp;        long i = 1;</b>
+<b class="fc"><i>888</i>&nbsp;        double partialSum = 0.5d;</b>
+<b class="fc"><i>889</i>&nbsp;        double delta = 1;</b>
+<b class="fc"><i>890</i>&nbsp;        while (delta &gt; tolerance &amp;&amp; i &lt; maxIterations) {</b>
+<b class="fc"><i>891</i>&nbsp;            delta = FastMath.exp(x * i * i);</b>
+<b class="fc"><i>892</i>&nbsp;            partialSum += sign * delta;</b>
+<b class="fc"><i>893</i>&nbsp;            sign *= -1;</b>
+<b class="fc"><i>894</i>&nbsp;            i++;</b>
+<i>895</i>&nbsp;        }
+<b class="fc"><i>896</i>&nbsp;        if (i == maxIterations) {</b>
+<b class="nc"><i>897</i>&nbsp;            throw new TooManyIterationsException(maxIterations);</b>
+<i>898</i>&nbsp;        }
+<b class="fc"><i>899</i>&nbsp;        return partialSum * 2;</b>
+<i>900</i>&nbsp;    }
+<i>901</i>&nbsp;
+<i>902</i>&nbsp;    /**
+<i>903</i>&nbsp;     * Given a d-statistic in the range [0, 1] and the two sample sizes n and m,
+<i>904</i>&nbsp;     * an integral d-statistic in the range [0, n*m] is calculated, that can be used for
+<i>905</i>&nbsp;     * comparison with other integral d-statistics. Depending whether {@code strict} is
+<i>906</i>&nbsp;     * {@code true} or not, the returned value divided by (n*m) is greater than
+<i>907</i>&nbsp;     * (resp greater than or equal to) the given d value (allowing some tolerance).
+<i>908</i>&nbsp;     *
+<i>909</i>&nbsp;     * @param d a d-statistic in the range [0, 1]
+<i>910</i>&nbsp;     * @param n first sample size
+<i>911</i>&nbsp;     * @param m second sample size
+<i>912</i>&nbsp;     * @param strict whether the returned value divided by (n*m) is allowed to be equal to d
+<i>913</i>&nbsp;     * @return the integral d-statistic in the range [0, n*m]
+<i>914</i>&nbsp;     */
+<i>915</i>&nbsp;    private static long calculateIntegralD(double d, int n, int m, boolean strict) {
+<b class="fc"><i>916</i>&nbsp;        final double tol = 1e-12;  // d-values within tol of one another are considered equal</b>
+<b class="fc"><i>917</i>&nbsp;        long nm = n * (long)m;</b>
+<b class="fc"><i>918</i>&nbsp;        long upperBound = (long)FastMath.ceil((d - tol) * nm);</b>
+<b class="fc"><i>919</i>&nbsp;        long lowerBound = (long)FastMath.floor((d + tol) * nm);</b>
+<b class="fc"><i>920</i>&nbsp;        if (strict &amp;&amp; lowerBound == upperBound) {</b>
+<b class="fc"><i>921</i>&nbsp;            return upperBound + 1l;</b>
+<i>922</i>&nbsp;        }
+<i>923</i>&nbsp;        else {
+<b class="fc"><i>924</i>&nbsp;            return upperBound;</b>
+<i>925</i>&nbsp;        }
+<i>926</i>&nbsp;    }
+<i>927</i>&nbsp;
+<i>928</i>&nbsp;    /**
+<i>929</i>&nbsp;     * Computes \(P(D_{n,m} &amp;gt; d)\) if {@code strict} is {@code true}; otherwise \(P(D_{n,m} \ge
+<i>930</i>&nbsp;     * d)\), where \(D_{n,m}\) is the 2-sample Kolmogorov-Smirnov statistic. See
+<i>931</i>&nbsp;     * {@link #kolmogorovSmirnovStatistic(double[], double[])} for the definition of \(D_{n,m}\).
+<i>932</i>&nbsp;     * &lt;p&gt;
+<i>933</i>&nbsp;     * The returned probability is exact, implemented by unwinding the recursive function
+<i>934</i>&nbsp;     * definitions presented in [4] (class javadoc).
+<i>935</i>&nbsp;     * &lt;/p&gt;
+<i>936</i>&nbsp;     *
+<i>937</i>&nbsp;     * @param d D-statistic value
+<i>938</i>&nbsp;     * @param n first sample size
+<i>939</i>&nbsp;     * @param m second sample size
+<i>940</i>&nbsp;     * @param strict whether or not the probability to compute is expressed as a strict inequality
+<i>941</i>&nbsp;     * @return probability that a randomly selected m-n partition of m + n generates \(D_{n,m}\)
+<i>942</i>&nbsp;     *         greater than (resp. greater than or equal to) {@code d}
+<i>943</i>&nbsp;     */
+<i>944</i>&nbsp;    public double exactP(double d, int n, int m, boolean strict) {
+<b class="fc"><i>945</i>&nbsp;       return 1 - n(m, n, m, n, calculateIntegralD(d, m, n, strict), strict) /</b>
+<b class="fc"><i>946</i>&nbsp;           BinomialCoefficientDouble.value(n + m, m);</b>
+<i>947</i>&nbsp;    }
+<i>948</i>&nbsp;
+<i>949</i>&nbsp;    /**
+<i>950</i>&nbsp;     * Uses the Kolmogorov-Smirnov distribution to approximate \(P(D_{n,m} &amp;gt; d)\) where \(D_{n,m}\)
+<i>951</i>&nbsp;     * is the 2-sample Kolmogorov-Smirnov statistic. See
+<i>952</i>&nbsp;     * {@link #kolmogorovSmirnovStatistic(double[], double[])} for the definition of \(D_{n,m}\).
+<i>953</i>&nbsp;     * &lt;p&gt;
+<i>954</i>&nbsp;     * Specifically, what is returned is \(1 - k(d \sqrt{mn / (m + n)})\) where \(k(t) = 1 + 2
+<i>955</i>&nbsp;     * \sum_{i=1}^\infty (-1)^i e^{-2 i^2 t^2}\). See {@link #ksSum(double, double, int)} for
+<i>956</i>&nbsp;     * details on how convergence of the sum is determined.
+<i>957</i>&nbsp;     * &lt;/p&gt;
+<i>958</i>&nbsp;     *
+<i>959</i>&nbsp;     * @param d D-statistic value
+<i>960</i>&nbsp;     * @param n first sample size
+<i>961</i>&nbsp;     * @param m second sample size
+<i>962</i>&nbsp;     * @return approximate probability that a randomly selected m-n partition of m + n generates
+<i>963</i>&nbsp;     *         \(D_{n,m}\) greater than {@code d}
+<i>964</i>&nbsp;     */
+<i>965</i>&nbsp;    public double approximateP(double d, int n, int m) {
+<b class="fc"><i>966</i>&nbsp;        final double dm = m;</b>
+<b class="fc"><i>967</i>&nbsp;        final double dn = n;</b>
+<b class="fc"><i>968</i>&nbsp;        return 1 - ksSum(d * FastMath.sqrt((dm * dn) / (dm + dn)),</b>
+<i>969</i>&nbsp;                         KS_SUM_CAUCHY_CRITERION, MAXIMUM_PARTIAL_SUM_COUNT);
+<i>970</i>&nbsp;    }
+<i>971</i>&nbsp;
+<i>972</i>&nbsp;    /**
+<i>973</i>&nbsp;     * Fills a boolean array randomly with a fixed number of {@code true} values.
+<i>974</i>&nbsp;     * The method uses a simplified version of the Fisher-Yates shuffle algorithm.
+<i>975</i>&nbsp;     * By processing first the {@code true} values followed by the remaining {@code false} values
+<i>976</i>&nbsp;     * less random numbers need to be generated. The method is optimized for the case
+<i>977</i>&nbsp;     * that the number of {@code true} values is larger than or equal to the number of
+<i>978</i>&nbsp;     * {@code false} values.
+<i>979</i>&nbsp;     *
+<i>980</i>&nbsp;     * @param b boolean array
+<i>981</i>&nbsp;     * @param numberOfTrueValues number of {@code true} values the boolean array should finally have
+<i>982</i>&nbsp;     * @param rng random data generator
+<i>983</i>&nbsp;     */
+<i>984</i>&nbsp;    private static void fillBooleanArrayRandomlyWithFixedNumberTrueValues(final boolean[] b, final int numberOfTrueValues, final UniformRandomProvider rng) {
+<b class="fc"><i>985</i>&nbsp;        Arrays.fill(b, true);</b>
+<b class="fc"><i>986</i>&nbsp;        for (int k = numberOfTrueValues; k &lt; b.length; k++) {</b>
+<b class="fc"><i>987</i>&nbsp;            final int r = rng.nextInt(k + 1);</b>
+<b class="fc"><i>988</i>&nbsp;            b[(b[r]) ? r : k] = false;</b>
+<i>989</i>&nbsp;        }
+<b class="fc"><i>990</i>&nbsp;    }</b>
+<i>991</i>&nbsp;
+<i>992</i>&nbsp;    /**
+<i>993</i>&nbsp;     * Uses Monte Carlo simulation to approximate \(P(D_{n,m} &amp;gt; d)\) where \(D_{n,m}\) is the
+<i>994</i>&nbsp;     * 2-sample Kolmogorov-Smirnov statistic. See
+<i>995</i>&nbsp;     * {@link #kolmogorovSmirnovStatistic(double[], double[])} for the definition of \(D_{n,m}\).
+<i>996</i>&nbsp;     * &lt;p&gt;
+<i>997</i>&nbsp;     * The simulation generates {@code iterations} random partitions of {@code m + n} into an
+<i>998</i>&nbsp;     * {@code n} set and an {@code m} set, computing \(D_{n,m}\) for each partition and returning
+<i>999</i>&nbsp;     * the proportion of values that are greater than {@code d}, or greater than or equal to
+<i>1000</i>&nbsp;     * {@code d} if {@code strict} is {@code false}.
+<i>1001</i>&nbsp;     * &lt;/p&gt;
+<i>1002</i>&nbsp;     *
+<i>1003</i>&nbsp;     * @param d D-statistic value.
+<i>1004</i>&nbsp;     * @param n First sample size.
+<i>1005</i>&nbsp;     * @param m Second sample size.
+<i>1006</i>&nbsp;     * @param iterations Number of random partitions to generate.
+<i>1007</i>&nbsp;     * @param strict whether or not the probability to compute is expressed as a strict inequality
+<i>1008</i>&nbsp;     * @param rng RNG used for generating the partitions.
+<i>1009</i>&nbsp;     * @return proportion of randomly generated m-n partitions of m + n that result in \(D_{n,m}\)
+<i>1010</i>&nbsp;     * greater than (resp. greater than or equal to) {@code d}.
+<i>1011</i>&nbsp;     */
+<i>1012</i>&nbsp;    public double monteCarloP(final double d,
+<i>1013</i>&nbsp;                              final int n,
+<i>1014</i>&nbsp;                              final int m,
+<i>1015</i>&nbsp;                              final boolean strict,
+<i>1016</i>&nbsp;                              final int iterations,
+<i>1017</i>&nbsp;                              UniformRandomProvider rng) {
+<b class="fc"><i>1018</i>&nbsp;        return integralMonteCarloP(calculateIntegralD(d, n, m, strict), n, m, iterations, rng);</b>
+<i>1019</i>&nbsp;    }
+<i>1020</i>&nbsp;
+<i>1021</i>&nbsp;    /**
+<i>1022</i>&nbsp;     * Uses Monte Carlo simulation to approximate \(P(D_{n,m} &gt;= d / (n * m))\)
+<i>1023</i>&nbsp;     * where \(D_{n,m}\) is the 2-sample Kolmogorov-Smirnov statistic.
+<i>1024</i>&nbsp;     * &lt;p&gt;
+<i>1025</i>&nbsp;     * Here {@code d} is the D-statistic represented as long value.
+<i>1026</i>&nbsp;     * The real D-statistic is obtained by dividing {@code d} by {@code n * m}.
+<i>1027</i>&nbsp;     * See also {@link #monteCarloP(double,int,int,boolean,int,UniformRandomProvider)}.
+<i>1028</i>&nbsp;     *
+<i>1029</i>&nbsp;     * @param d Integral D-statistic.
+<i>1030</i>&nbsp;     * @param n First sample size.
+<i>1031</i>&nbsp;     * @param m Second sample size.
+<i>1032</i>&nbsp;     * @param iterations Number of random partitions to generate.
+<i>1033</i>&nbsp;     * @param rng RNG used for generating the partitions.
+<i>1034</i>&nbsp;     * @return proportion of randomly generated m-n partitions of m + n that result in \(D_{n,m}\)
+<i>1035</i>&nbsp;     * greater than or equal to {@code d / (n * m))}.
+<i>1036</i>&nbsp;     */
+<i>1037</i>&nbsp;    private double integralMonteCarloP(final long d,
+<i>1038</i>&nbsp;                                       final int n,
+<i>1039</i>&nbsp;                                       final int m,
+<i>1040</i>&nbsp;                                       final int iterations,
+<i>1041</i>&nbsp;                                       UniformRandomProvider rng) {
+<i>1042</i>&nbsp;        // ensure that nn is always the max of (n, m) to require fewer random numbers
+<b class="fc"><i>1043</i>&nbsp;        final int nn = FastMath.max(n, m);</b>
+<b class="fc"><i>1044</i>&nbsp;        final int mm = FastMath.min(n, m);</b>
+<b class="fc"><i>1045</i>&nbsp;        final int sum = nn + mm;</b>
+<i>1046</i>&nbsp;
+<b class="fc"><i>1047</i>&nbsp;        int tail = 0;</b>
+<b class="fc"><i>1048</i>&nbsp;        final boolean b[] = new boolean[sum];</b>
+<b class="fc"><i>1049</i>&nbsp;        for (int i = 0; i &lt; iterations; i++) {</b>
+<b class="fc"><i>1050</i>&nbsp;            fillBooleanArrayRandomlyWithFixedNumberTrueValues(b, nn, rng);</b>
+<b class="fc"><i>1051</i>&nbsp;            long curD = 0l;</b>
+<b class="fc"><i>1052</i>&nbsp;            for(int j = 0; j &lt; b.length; ++j) {</b>
+<b class="fc"><i>1053</i>&nbsp;                if (b[j]) {</b>
+<b class="fc"><i>1054</i>&nbsp;                    curD += mm;</b>
+<b class="fc"><i>1055</i>&nbsp;                    if (curD &gt;= d) {</b>
+<b class="fc"><i>1056</i>&nbsp;                        tail++;</b>
+<b class="fc"><i>1057</i>&nbsp;                        break;</b>
+<i>1058</i>&nbsp;                    }
+<i>1059</i>&nbsp;                } else {
+<b class="fc"><i>1060</i>&nbsp;                    curD -= nn;</b>
+<b class="fc"><i>1061</i>&nbsp;                    if (curD &lt;= -d) {</b>
+<b class="fc"><i>1062</i>&nbsp;                        tail++;</b>
+<b class="fc"><i>1063</i>&nbsp;                        break;</b>
+<i>1064</i>&nbsp;                    }
+<i>1065</i>&nbsp;                }
+<i>1066</i>&nbsp;            }
+<i>1067</i>&nbsp;        }
+<b class="fc"><i>1068</i>&nbsp;        return (double) tail / iterations;</b>
+<i>1069</i>&nbsp;    }
+<i>1070</i>&nbsp;
+<i>1071</i>&nbsp;    /**
+<i>1072</i>&nbsp;     * If there are no ties in the combined dataset formed from x and y,
+<i>1073</i>&nbsp;     * this method is a no-op.
+<i>1074</i>&nbsp;     * If there are ties, a uniform random deviate in
+<i>1075</i>&nbsp;     * is added to each value in x and y, and this method overwrites the
+<i>1076</i>&nbsp;     * data in x and y with the jittered values.
+<i>1077</i>&nbsp;     *
+<i>1078</i>&nbsp;     * @param x First sample.
+<i>1079</i>&nbsp;     * @param y Second sample.
+<i>1080</i>&nbsp;     * @throw NotANumberException if any of the input arrays contain
+<i>1081</i>&nbsp;     * a NaN value.
+<i>1082</i>&nbsp;     */
+<i>1083</i>&nbsp;    private static void fixTies(double[] x, double[] y) {
+<b class="fc"><i>1084</i>&nbsp;        if (hasTies(x, y)) {</b>
+<i>1085</i>&nbsp;            // Add jitter using a fixed seed (so same arguments always give same results),
+<i>1086</i>&nbsp;            // low-initialization-overhead generator.
+<b class="fc"><i>1087</i>&nbsp;            final UniformRandomProvider rng = RandomSource.create(RandomSource.TWO_CMRES, 7654321);</b>
+<i>1088</i>&nbsp;
+<i>1089</i>&nbsp;            // It is theoretically possible that jitter does not break ties, so repeat
+<i>1090</i>&nbsp;            // until all ties are gone.  Bound the loop and throw MIE if bound is exceeded.
+<b class="fc"><i>1091</i>&nbsp;            int ct = 0;</b>
+<b class="fc"><i>1092</i>&nbsp;            boolean ties = true;</b>
+<i>1093</i>&nbsp;            do {
+<b class="fc"><i>1094</i>&nbsp;                jitter(x, rng, 10);</b>
+<b class="fc"><i>1095</i>&nbsp;                jitter(y, rng, 10);</b>
+<b class="fc"><i>1096</i>&nbsp;                ties = hasTies(x, y);</b>
+<b class="fc"><i>1097</i>&nbsp;                ++ct;</b>
+<b class="fc"><i>1098</i>&nbsp;            } while (ties &amp;&amp; ct &lt; 10);</b>
+<b class="fc"><i>1099</i>&nbsp;            if (ties) {</b>
+<b class="nc"><i>1100</i>&nbsp;                throw new MathInternalError(); // Should never happen.</b>
+<i>1101</i>&nbsp;            }
+<i>1102</i>&nbsp;        }
+<b class="fc"><i>1103</i>&nbsp;    }</b>
+<i>1104</i>&nbsp;
+<i>1105</i>&nbsp;    /**
+<i>1106</i>&nbsp;     * Returns true iff there are ties in the combined sample formed from
+<i>1107</i>&nbsp;     * x and y.
+<i>1108</i>&nbsp;     *
+<i>1109</i>&nbsp;     * @param x First sample.
+<i>1110</i>&nbsp;     * @param y Second sample.
+<i>1111</i>&nbsp;     * @return true if x and y together contain ties.
+<i>1112</i>&nbsp;     * @throw NotANumberException if any of the input arrays contain
+<i>1113</i>&nbsp;     * a NaN value.
+<i>1114</i>&nbsp;     */
+<i>1115</i>&nbsp;    private static boolean hasTies(double[] x, double[] y) {
+<b class="fc"><i>1116</i>&nbsp;       final double[] values = MathArrays.unique(MathArrays.concatenate(x, y));</b>
+<i>1117</i>&nbsp;
+<i>1118</i>&nbsp;       // &quot;unique&quot; moves NaN to the head of the output array.
+<b class="fc"><i>1119</i>&nbsp;       if (Double.isNaN(values[0])) {</b>
+<b class="fc"><i>1120</i>&nbsp;           throw new NotANumberException();</b>
+<i>1121</i>&nbsp;       }
+<b class="fc"><i>1122</i>&nbsp;       if (values.length == x.length + y.length) {</b>
+<b class="fc"><i>1123</i>&nbsp;           return false;  // There are no ties.</b>
+<i>1124</i>&nbsp;       }
+<i>1125</i>&nbsp;
+<b class="fc"><i>1126</i>&nbsp;       return true;</b>
+<i>1127</i>&nbsp;    }
+<i>1128</i>&nbsp;
+<i>1129</i>&nbsp;    /**
+<i>1130</i>&nbsp;     * Adds random jitter to {@code data} using deviates sampled from {@code dist}.
+<i>1131</i>&nbsp;     * &lt;p&gt;
+<i>1132</i>&nbsp;     * Note that jitter is applied in-place - i.e., the array
+<i>1133</i>&nbsp;     * values are overwritten with the result of applying jitter.&lt;/p&gt;
+<i>1134</i>&nbsp;     *
+<i>1135</i>&nbsp;     * @param data input/output data array - entries overwritten by the method
+<i>1136</i>&nbsp;     * @param rng probability distribution to sample for jitter values
+<i>1137</i>&nbsp;     * @param ulp ulp used when generating random numbers
+<i>1138</i>&nbsp;     * @throws NullPointerException if either of the parameters is null
+<i>1139</i>&nbsp;     */
+<i>1140</i>&nbsp;    private static void jitter(double[] data,
+<i>1141</i>&nbsp;                               UniformRandomProvider rng,
+<i>1142</i>&nbsp;                               int ulp) {
+<b class="fc"><i>1143</i>&nbsp;        final int range = ulp * 2;</b>
+<b class="fc"><i>1144</i>&nbsp;        for (int i = 0; i &lt; data.length; i++) {</b>
+<b class="fc"><i>1145</i>&nbsp;            final int rand = rng.nextInt(range) - ulp;</b>
+<b class="fc"><i>1146</i>&nbsp;            data[i] += rand * Math.ulp(data[i]);</b>
+<i>1147</i>&nbsp;        }
+<b class="fc"><i>1148</i>&nbsp;    }</b>
+<i>1149</i>&nbsp;
+<i>1150</i>&nbsp;    /**
+<i>1151</i>&nbsp;     * The function C(i, j) defined in [4] (class javadoc), formula (5.5).
+<i>1152</i>&nbsp;     * defined to return 1 if |i/n - j/m| &lt;= c; 0 otherwise. Here c is scaled up
+<i>1153</i>&nbsp;     * and recoded as a long to avoid rounding errors in comparison tests, so what
+<i>1154</i>&nbsp;     * is actually tested is |im - jn| &lt;= cmn.
+<i>1155</i>&nbsp;     *
+<i>1156</i>&nbsp;     * @param i first path parameter
+<i>1157</i>&nbsp;     * @param j second path paramter
+<i>1158</i>&nbsp;     * @param m first sample size
+<i>1159</i>&nbsp;     * @param n second sample size
+<i>1160</i>&nbsp;     * @param cmn integral D-statistic (see {@link #calculateIntegralD(double, int, int, boolean)})
+<i>1161</i>&nbsp;     * @param strict whether or not the null hypothesis uses strict inequality
+<i>1162</i>&nbsp;     * @return C(i,j) for given m, n, c
+<i>1163</i>&nbsp;     */
+<i>1164</i>&nbsp;    private static int c(int i, int j, int m, int n, long cmn, boolean strict) {
+<b class="fc"><i>1165</i>&nbsp;        if (strict) {</b>
+<b class="fc"><i>1166</i>&nbsp;            return FastMath.abs(i*(long)n - j*(long)m) &lt;= cmn ? 1 : 0;</b>
+<i>1167</i>&nbsp;        }
+<b class="fc"><i>1168</i>&nbsp;        return FastMath.abs(i*(long)n - j*(long)m) &lt; cmn ? 1 : 0;</b>
+<i>1169</i>&nbsp;    }
+<i>1170</i>&nbsp;
+<i>1171</i>&nbsp;    /**
+<i>1172</i>&nbsp;     * The function N(i, j) defined in [4] (class javadoc).
+<i>1173</i>&nbsp;     * Returns the number of paths over the lattice {(i,j) : 0 &lt;= i &lt;= n, 0 &lt;= j &lt;= m}
+<i>1174</i>&nbsp;     * from (0,0) to (i,j) satisfying C(h,k, m, n, c) = 1 for each (h,k) on the path.
+<i>1175</i>&nbsp;     * The return value is integral, but subject to overflow, so it is maintained and
+<i>1176</i>&nbsp;     * returned as a double.
+<i>1177</i>&nbsp;     *
+<i>1178</i>&nbsp;     * @param i first path parameter
+<i>1179</i>&nbsp;     * @param j second path parameter
+<i>1180</i>&nbsp;     * @param m first sample size
+<i>1181</i>&nbsp;     * @param n second sample size
+<i>1182</i>&nbsp;     * @param cnm integral D-statistic (see {@link #calculateIntegralD(double, int, int, boolean)})
+<i>1183</i>&nbsp;     * @param strict whether or not the null hypothesis uses strict inequality
+<i>1184</i>&nbsp;     * @return number or paths to (i, j) from (0,0) representing D-values as large as c for given m, n
+<i>1185</i>&nbsp;     */
+<i>1186</i>&nbsp;    private static double n(int i, int j, int m, int n, long cnm, boolean strict) {
+<i>1187</i>&nbsp;        /*
+<i>1188</i>&nbsp;         * Unwind the recursive definition given in [4].
+<i>1189</i>&nbsp;         * Compute n(1,1), n(1,2)...n(2,1), n(2,2)... up to n(i,j), one row at a time.
+<i>1190</i>&nbsp;         * When n(i,*) are being computed, lag[] holds the values of n(i - 1, *).
+<i>1191</i>&nbsp;         */
+<b class="fc"><i>1192</i>&nbsp;        final double[] lag = new double[n];</b>
+<b class="fc"><i>1193</i>&nbsp;        double last = 0;</b>
+<b class="fc"><i>1194</i>&nbsp;        for (int k = 0; k &lt; n; k++) {</b>
+<b class="fc"><i>1195</i>&nbsp;            lag[k] = c(0, k + 1, m, n, cnm, strict);</b>
+<i>1196</i>&nbsp;        }
+<b class="fc"><i>1197</i>&nbsp;        for (int k = 1; k &lt;= i; k++) {</b>
+<b class="fc"><i>1198</i>&nbsp;            last = c(k, 0, m, n, cnm, strict);</b>
+<b class="fc"><i>1199</i>&nbsp;            for (int l = 1; l &lt;= j; l++) {</b>
+<b class="fc"><i>1200</i>&nbsp;                lag[l - 1] = c(k, l, m, n, cnm, strict) * (last + lag[l - 1]);</b>
+<b class="fc"><i>1201</i>&nbsp;                last = lag[l - 1];</b>
+<i>1202</i>&nbsp;            }
+<i>1203</i>&nbsp;        }
+<b class="fc"><i>1204</i>&nbsp;        return last;</b>
+<i>1205</i>&nbsp;    }
+<i>1206</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

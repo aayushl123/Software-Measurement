@@ -1,0 +1,710 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: Variance</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.stat.descriptive.moment</a> ]
+</div>
+
+<h1>Coverage Summary for Class: Variance (org.apache.commons.math4.stat.descriptive.moment)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">Variance</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    85.7%
+  </span>
+  <span class="absValue">
+    (18/ 21)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    90.7%
+  </span>
+  <span class="absValue">
+    (98/ 108)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;package org.apache.commons.math4.stat.descriptive.moment;
+<i>18</i>&nbsp;
+<i>19</i>&nbsp;import java.io.Serializable;
+<i>20</i>&nbsp;
+<i>21</i>&nbsp;import org.apache.commons.math4.exception.MathIllegalArgumentException;
+<i>22</i>&nbsp;import org.apache.commons.math4.exception.NullArgumentException;
+<i>23</i>&nbsp;import org.apache.commons.math4.exception.util.LocalizedFormats;
+<i>24</i>&nbsp;import org.apache.commons.math4.stat.descriptive.AbstractStorelessUnivariateStatistic;
+<i>25</i>&nbsp;import org.apache.commons.math4.stat.descriptive.WeightedEvaluation;
+<i>26</i>&nbsp;import org.apache.commons.math4.util.MathArrays;
+<i>27</i>&nbsp;import org.apache.commons.math4.util.MathUtils;
+<i>28</i>&nbsp;
+<i>29</i>&nbsp;/**
+<i>30</i>&nbsp; * Computes the variance of the available values.  By default, the unbiased
+<i>31</i>&nbsp; * &quot;sample variance&quot; definitional formula is used:
+<i>32</i>&nbsp; * &lt;p&gt;
+<i>33</i>&nbsp; * variance = sum((x_i - mean)^2) / (n - 1) &lt;/p&gt;
+<i>34</i>&nbsp; * &lt;p&gt;
+<i>35</i>&nbsp; * where mean is the {@link Mean} and &lt;code&gt;n&lt;/code&gt; is the number
+<i>36</i>&nbsp; * of sample observations.&lt;/p&gt;
+<i>37</i>&nbsp; * &lt;p&gt;
+<i>38</i>&nbsp; * The definitional formula does not have good numerical properties, so
+<i>39</i>&nbsp; * this implementation does not compute the statistic using the definitional
+<i>40</i>&nbsp; * formula. &lt;ul&gt;
+<i>41</i>&nbsp; * &lt;li&gt; The &lt;code&gt;getResult&lt;/code&gt; method computes the variance using
+<i>42</i>&nbsp; * updating formulas based on West&#39;s algorithm, as described in
+<i>43</i>&nbsp; * &lt;a href=&quot;http://doi.acm.org/10.1145/359146.359152&quot;&gt; Chan, T. F. and
+<i>44</i>&nbsp; * J. G. Lewis 1979, &lt;i&gt;Communications of the ACM&lt;/i&gt;,
+<i>45</i>&nbsp; * vol. 22 no. 9, pp. 526-531.&lt;/a&gt;&lt;/li&gt;
+<i>46</i>&nbsp; * &lt;li&gt; The &lt;code&gt;evaluate&lt;/code&gt; methods leverage the fact that they have the
+<i>47</i>&nbsp; * full array of values in memory to execute a two-pass algorithm.
+<i>48</i>&nbsp; * Specifically, these methods use the &quot;corrected two-pass algorithm&quot; from
+<i>49</i>&nbsp; * Chan, Golub, Levesque, &lt;i&gt;Algorithms for Computing the Sample Variance&lt;/i&gt;,
+<i>50</i>&nbsp; * American Statistician, vol. 37, no. 3 (1983) pp. 242-247.&lt;/li&gt;&lt;/ul&gt;
+<i>51</i>&nbsp; * Note that adding values using &lt;code&gt;increment&lt;/code&gt; or
+<i>52</i>&nbsp; * &lt;code&gt;incrementAll&lt;/code&gt; and then executing &lt;code&gt;getResult&lt;/code&gt; will
+<i>53</i>&nbsp; * sometimes give a different, less accurate, result than executing
+<i>54</i>&nbsp; * &lt;code&gt;evaluate&lt;/code&gt; with the full array of values. The former approach
+<i>55</i>&nbsp; * should only be used when the full array of values is not available.
+<i>56</i>&nbsp; * &lt;p&gt;
+<i>57</i>&nbsp; * The &quot;population variance&quot;  ( sum((x_i - mean)^2) / n ) can also
+<i>58</i>&nbsp; * be computed using this statistic.  The &lt;code&gt;isBiasCorrected&lt;/code&gt;
+<i>59</i>&nbsp; * property determines whether the &quot;population&quot; or &quot;sample&quot; value is
+<i>60</i>&nbsp; * returned by the &lt;code&gt;evaluate&lt;/code&gt; and &lt;code&gt;getResult&lt;/code&gt; methods.
+<i>61</i>&nbsp; * To compute population variances, set this property to &lt;code&gt;false.&lt;/code&gt;
+<i>62</i>&nbsp; * &lt;/p&gt;
+<i>63</i>&nbsp; * &lt;p&gt;
+<i>64</i>&nbsp; * &lt;strong&gt;Note that this implementation is not synchronized.&lt;/strong&gt; If
+<i>65</i>&nbsp; * multiple threads access an instance of this class concurrently, and at least
+<i>66</i>&nbsp; * one of the threads invokes the &lt;code&gt;increment()&lt;/code&gt; or
+<i>67</i>&nbsp; * &lt;code&gt;clear()&lt;/code&gt; method, it must be synchronized externally.&lt;/p&gt;
+<i>68</i>&nbsp; */
+<i>69</i>&nbsp;public class Variance extends AbstractStorelessUnivariateStatistic implements Serializable, WeightedEvaluation {
+<i>70</i>&nbsp;
+<i>71</i>&nbsp;    /** Serializable version identifier */
+<i>72</i>&nbsp;    private static final long serialVersionUID = 20150412L;
+<i>73</i>&nbsp;
+<i>74</i>&nbsp;    /** SecondMoment is used in incremental calculation of Variance*/
+<b class="fc"><i>75</i>&nbsp;    protected SecondMoment moment = null;</b>
+<i>76</i>&nbsp;
+<i>77</i>&nbsp;    /**
+<i>78</i>&nbsp;     * Whether or not {@link #increment(double)} should increment
+<i>79</i>&nbsp;     * the internal second moment. When a Variance is constructed with an
+<i>80</i>&nbsp;     * external SecondMoment as a constructor parameter, this property is
+<i>81</i>&nbsp;     * set to false and increments must be applied to the second moment
+<i>82</i>&nbsp;     * directly.
+<i>83</i>&nbsp;     */
+<b class="fc"><i>84</i>&nbsp;    protected boolean incMoment = true;</b>
+<i>85</i>&nbsp;
+<i>86</i>&nbsp;    /**
+<i>87</i>&nbsp;     * Whether or not bias correction is applied when computing the
+<i>88</i>&nbsp;     * value of the statistic. True means that bias is corrected.  See
+<i>89</i>&nbsp;     * {@link Variance} for details on the formula.
+<i>90</i>&nbsp;     */
+<b class="fc"><i>91</i>&nbsp;    private boolean isBiasCorrected = true;</b>
+<i>92</i>&nbsp;
+<i>93</i>&nbsp;    /**
+<i>94</i>&nbsp;     * Constructs a Variance with default (true) &lt;code&gt;isBiasCorrected&lt;/code&gt;
+<i>95</i>&nbsp;     * property.
+<i>96</i>&nbsp;     */
+<b class="fc"><i>97</i>&nbsp;    public Variance() {</b>
+<b class="fc"><i>98</i>&nbsp;        moment = new SecondMoment();</b>
+<b class="fc"><i>99</i>&nbsp;    }</b>
+<i>100</i>&nbsp;
+<i>101</i>&nbsp;    /**
+<i>102</i>&nbsp;     * Constructs a Variance based on an external second moment.
+<i>103</i>&nbsp;     * &lt;p&gt;
+<i>104</i>&nbsp;     * When this constructor is used, the statistic may only be
+<i>105</i>&nbsp;     * incremented via the moment, i.e., {@link #increment(double)}
+<i>106</i>&nbsp;     * does nothing; whereas {@code m2.increment(value)} increments
+<i>107</i>&nbsp;     * both {@code m2} and the Variance instance constructed from it.
+<i>108</i>&nbsp;     *
+<i>109</i>&nbsp;     * @param m2 the SecondMoment (Third or Fourth moments work here as well.)
+<i>110</i>&nbsp;     */
+<b class="fc"><i>111</i>&nbsp;    public Variance(final SecondMoment m2) {</b>
+<b class="fc"><i>112</i>&nbsp;        incMoment = false;</b>
+<b class="fc"><i>113</i>&nbsp;        this.moment = m2;</b>
+<b class="fc"><i>114</i>&nbsp;    }</b>
+<i>115</i>&nbsp;
+<i>116</i>&nbsp;    /**
+<i>117</i>&nbsp;     * Constructs a Variance with the specified &lt;code&gt;isBiasCorrected&lt;/code&gt;
+<i>118</i>&nbsp;     * property.
+<i>119</i>&nbsp;     *
+<i>120</i>&nbsp;     * @param isBiasCorrected  setting for bias correction - true means
+<i>121</i>&nbsp;     * bias will be corrected and is equivalent to using the argumentless
+<i>122</i>&nbsp;     * constructor
+<i>123</i>&nbsp;     */
+<b class="fc"><i>124</i>&nbsp;    public Variance(boolean isBiasCorrected) {</b>
+<b class="fc"><i>125</i>&nbsp;        moment = new SecondMoment();</b>
+<b class="fc"><i>126</i>&nbsp;        this.isBiasCorrected = isBiasCorrected;</b>
+<b class="fc"><i>127</i>&nbsp;    }</b>
+<i>128</i>&nbsp;
+<i>129</i>&nbsp;    /**
+<i>130</i>&nbsp;     * Constructs a Variance with the specified &lt;code&gt;isBiasCorrected&lt;/code&gt;
+<i>131</i>&nbsp;     * property and the supplied external second moment.
+<i>132</i>&nbsp;     *
+<i>133</i>&nbsp;     * @param isBiasCorrected  setting for bias correction - true means
+<i>134</i>&nbsp;     * bias will be corrected
+<i>135</i>&nbsp;     * @param m2 the SecondMoment (Third or Fourth moments work
+<i>136</i>&nbsp;     * here as well.)
+<i>137</i>&nbsp;     */
+<b class="fc"><i>138</i>&nbsp;    public Variance(boolean isBiasCorrected, SecondMoment m2) {</b>
+<b class="fc"><i>139</i>&nbsp;        incMoment = false;</b>
+<b class="fc"><i>140</i>&nbsp;        this.moment = m2;</b>
+<b class="fc"><i>141</i>&nbsp;        this.isBiasCorrected = isBiasCorrected;</b>
+<b class="fc"><i>142</i>&nbsp;    }</b>
+<i>143</i>&nbsp;
+<i>144</i>&nbsp;    /**
+<i>145</i>&nbsp;     * Copy constructor, creates a new {@code Variance} identical
+<i>146</i>&nbsp;     * to the {@code original}.
+<i>147</i>&nbsp;     *
+<i>148</i>&nbsp;     * @param original the {@code Variance} instance to copy
+<i>149</i>&nbsp;     * @throws NullArgumentException if original is null
+<i>150</i>&nbsp;     */
+<b class="nc"><i>151</i>&nbsp;    public Variance(Variance original) throws NullArgumentException {</b>
+<b class="nc"><i>152</i>&nbsp;        copy(original, this);</b>
+<b class="nc"><i>153</i>&nbsp;    }</b>
+<i>154</i>&nbsp;
+<i>155</i>&nbsp;    /**
+<i>156</i>&nbsp;     * {@inheritDoc}
+<i>157</i>&nbsp;     * &lt;p&gt;If all values are available, it is more accurate to use
+<i>158</i>&nbsp;     * {@link #evaluate(double[])} rather than adding values one at a time
+<i>159</i>&nbsp;     * using this method and then executing {@link #getResult}, since
+<i>160</i>&nbsp;     * &lt;code&gt;evaluate&lt;/code&gt; leverages the fact that is has the full
+<i>161</i>&nbsp;     * list of values together to execute a two-pass algorithm.
+<i>162</i>&nbsp;     * See {@link Variance}.&lt;/p&gt;
+<i>163</i>&nbsp;     *
+<i>164</i>&nbsp;     * &lt;p&gt;Note also that when {@link #Variance(SecondMoment)} is used to
+<i>165</i>&nbsp;     * create a Variance, this method does nothing. In that case, the
+<i>166</i>&nbsp;     * SecondMoment should be incremented directly.&lt;/p&gt;
+<i>167</i>&nbsp;     */
+<i>168</i>&nbsp;    @Override
+<i>169</i>&nbsp;    public void increment(final double d) {
+<b class="fc"><i>170</i>&nbsp;        if (incMoment) {</b>
+<b class="fc"><i>171</i>&nbsp;            moment.increment(d);</b>
+<i>172</i>&nbsp;        }
+<b class="fc"><i>173</i>&nbsp;    }</b>
+<i>174</i>&nbsp;
+<i>175</i>&nbsp;    /**
+<i>176</i>&nbsp;     * {@inheritDoc}
+<i>177</i>&nbsp;     */
+<i>178</i>&nbsp;    @Override
+<i>179</i>&nbsp;    public double getResult() {
+<b class="fc"><i>180</i>&nbsp;        if (moment.n == 0) {</b>
+<b class="fc"><i>181</i>&nbsp;            return Double.NaN;</b>
+<b class="fc"><i>182</i>&nbsp;        } else if (moment.n == 1) {</b>
+<b class="fc"><i>183</i>&nbsp;            return 0d;</b>
+<i>184</i>&nbsp;        } else {
+<b class="fc"><i>185</i>&nbsp;            if (isBiasCorrected) {</b>
+<b class="fc"><i>186</i>&nbsp;                return moment.m2 / (moment.n - 1d);</b>
+<i>187</i>&nbsp;            } else {
+<b class="fc"><i>188</i>&nbsp;                return moment.m2 / (moment.n);</b>
+<i>189</i>&nbsp;            }
+<i>190</i>&nbsp;        }
+<i>191</i>&nbsp;    }
+<i>192</i>&nbsp;
+<i>193</i>&nbsp;    /**
+<i>194</i>&nbsp;     * {@inheritDoc}
+<i>195</i>&nbsp;     */
+<i>196</i>&nbsp;    @Override
+<i>197</i>&nbsp;    public long getN() {
+<b class="fc"><i>198</i>&nbsp;        return moment.getN();</b>
+<i>199</i>&nbsp;    }
+<i>200</i>&nbsp;
+<i>201</i>&nbsp;    /**
+<i>202</i>&nbsp;     * {@inheritDoc}
+<i>203</i>&nbsp;     */
+<i>204</i>&nbsp;    @Override
+<i>205</i>&nbsp;    public void clear() {
+<b class="fc"><i>206</i>&nbsp;        if (incMoment) {</b>
+<b class="fc"><i>207</i>&nbsp;            moment.clear();</b>
+<i>208</i>&nbsp;        }
+<b class="fc"><i>209</i>&nbsp;    }</b>
+<i>210</i>&nbsp;
+<i>211</i>&nbsp;    /**
+<i>212</i>&nbsp;     * Returns the variance of the entries in the input array, or
+<i>213</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt; if the array is empty.
+<i>214</i>&nbsp;     * &lt;p&gt;
+<i>215</i>&nbsp;     * See {@link Variance} for details on the computing algorithm.&lt;/p&gt;
+<i>216</i>&nbsp;     * &lt;p&gt;
+<i>217</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>218</i>&nbsp;     * &lt;p&gt;
+<i>219</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if the array is null.&lt;/p&gt;
+<i>220</i>&nbsp;     * &lt;p&gt;
+<i>221</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>222</i>&nbsp;     *
+<i>223</i>&nbsp;     * @param values the input array
+<i>224</i>&nbsp;     * @return the variance of the values or Double.NaN if length = 0
+<i>225</i>&nbsp;     * @throws MathIllegalArgumentException if the array is null
+<i>226</i>&nbsp;     */
+<i>227</i>&nbsp;    @Override
+<i>228</i>&nbsp;    public double evaluate(final double[] values) throws MathIllegalArgumentException {
+<b class="fc"><i>229</i>&nbsp;        if (values == null) {</b>
+<b class="nc"><i>230</i>&nbsp;            throw new NullArgumentException(LocalizedFormats.INPUT_ARRAY);</b>
+<i>231</i>&nbsp;        }
+<b class="fc"><i>232</i>&nbsp;        return evaluate(values, 0, values.length);</b>
+<i>233</i>&nbsp;    }
+<i>234</i>&nbsp;
+<i>235</i>&nbsp;    /**
+<i>236</i>&nbsp;     * Returns the variance of the entries in the specified portion of
+<i>237</i>&nbsp;     * the input array, or &lt;code&gt;Double.NaN&lt;/code&gt; if the designated subarray
+<i>238</i>&nbsp;     * is empty.  Note that Double.NaN may also be returned if the input
+<i>239</i>&nbsp;     * includes NaN and / or infinite values.
+<i>240</i>&nbsp;     * &lt;p&gt;
+<i>241</i>&nbsp;     * See {@link Variance} for details on the computing algorithm.&lt;/p&gt;
+<i>242</i>&nbsp;     * &lt;p&gt;
+<i>243</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>244</i>&nbsp;     * &lt;p&gt;
+<i>245</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>246</i>&nbsp;     * &lt;p&gt;
+<i>247</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if the array is null.&lt;/p&gt;
+<i>248</i>&nbsp;     *
+<i>249</i>&nbsp;     * @param values the input array
+<i>250</i>&nbsp;     * @param begin index of the first array element to include
+<i>251</i>&nbsp;     * @param length the number of elements to include
+<i>252</i>&nbsp;     * @return the variance of the values or Double.NaN if length = 0
+<i>253</i>&nbsp;     * @throws MathIllegalArgumentException if the array is null or the array index
+<i>254</i>&nbsp;     *  parameters are not valid
+<i>255</i>&nbsp;     */
+<i>256</i>&nbsp;    @Override
+<i>257</i>&nbsp;    public double evaluate(final double[] values, final int begin, final int length)
+<i>258</i>&nbsp;        throws MathIllegalArgumentException {
+<i>259</i>&nbsp;
+<b class="fc"><i>260</i>&nbsp;        double var = Double.NaN;</b>
+<i>261</i>&nbsp;
+<b class="fc"><i>262</i>&nbsp;        if (MathArrays.verifyValues(values, begin, length)) {</b>
+<b class="fc"><i>263</i>&nbsp;            if (length == 1) {</b>
+<b class="fc"><i>264</i>&nbsp;                var = 0.0;</b>
+<b class="fc"><i>265</i>&nbsp;            } else if (length &gt; 1) {</b>
+<b class="fc"><i>266</i>&nbsp;                Mean mean = new Mean();</b>
+<b class="fc"><i>267</i>&nbsp;                double m = mean.evaluate(values, begin, length);</b>
+<b class="fc"><i>268</i>&nbsp;                var = evaluate(values, m, begin, length);</b>
+<i>269</i>&nbsp;            }
+<i>270</i>&nbsp;        }
+<b class="fc"><i>271</i>&nbsp;        return var;</b>
+<i>272</i>&nbsp;    }
+<i>273</i>&nbsp;
+<i>274</i>&nbsp;    /**
+<i>275</i>&nbsp;     * &lt;p&gt;Returns the weighted variance of the entries in the specified portion of
+<i>276</i>&nbsp;     * the input array, or &lt;code&gt;Double.NaN&lt;/code&gt; if the designated subarray
+<i>277</i>&nbsp;     * is empty.&lt;/p&gt;
+<i>278</i>&nbsp;     * &lt;p&gt;
+<i>279</i>&nbsp;     * Uses the formula &lt;div style=&quot;white-space: pre&quot;&gt;&lt;code&gt;
+<i>280</i>&nbsp;     *   &amp;Sigma;(weights[i]*(values[i] - weightedMean)&lt;sup&gt;2&lt;/sup&gt;)/(&amp;Sigma;(weights[i]) - 1)
+<i>281</i>&nbsp;     * &lt;/code&gt;&lt;/div&gt;
+<i>282</i>&nbsp;     * where weightedMean is the weighted mean
+<i>283</i>&nbsp;     * &lt;p&gt;
+<i>284</i>&nbsp;     * This formula will not return the same result as the unweighted variance when all
+<i>285</i>&nbsp;     * weights are equal, unless all weights are equal to 1. The formula assumes that
+<i>286</i>&nbsp;     * weights are to be treated as &quot;expansion values,&quot; as will be the case if for example
+<i>287</i>&nbsp;     * the weights represent frequency counts. To normalize weights so that the denominator
+<i>288</i>&nbsp;     * in the variance computation equals the length of the input vector minus one, use &lt;pre&gt;
+<i>289</i>&nbsp;     *   &lt;code&gt;evaluate(values, MathArrays.normalizeArray(weights, values.length)); &lt;/code&gt;
+<i>290</i>&nbsp;     * &lt;/pre&gt;
+<i>291</i>&nbsp;     * &lt;p&gt;
+<i>292</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>293</i>&nbsp;     * &lt;p&gt;
+<i>294</i>&nbsp;     * Throws &lt;code&gt;IllegalArgumentException&lt;/code&gt; if any of the following are true:
+<i>295</i>&nbsp;     * &lt;ul&gt;&lt;li&gt;the values array is null&lt;/li&gt;
+<i>296</i>&nbsp;     *     &lt;li&gt;the weights array is null&lt;/li&gt;
+<i>297</i>&nbsp;     *     &lt;li&gt;the weights array does not have the same length as the values array&lt;/li&gt;
+<i>298</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more infinite values&lt;/li&gt;
+<i>299</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more NaN values&lt;/li&gt;
+<i>300</i>&nbsp;     *     &lt;li&gt;the weights array contains negative values&lt;/li&gt;
+<i>301</i>&nbsp;     *     &lt;li&gt;the start and length arguments do not determine a valid array&lt;/li&gt;
+<i>302</i>&nbsp;     * &lt;/ul&gt;
+<i>303</i>&nbsp;     * &lt;p&gt;
+<i>304</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>305</i>&nbsp;     * &lt;p&gt;
+<i>306</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if either array is null.&lt;/p&gt;
+<i>307</i>&nbsp;     *
+<i>308</i>&nbsp;     * @param values the input array
+<i>309</i>&nbsp;     * @param weights the weights array
+<i>310</i>&nbsp;     * @param begin index of the first array element to include
+<i>311</i>&nbsp;     * @param length the number of elements to include
+<i>312</i>&nbsp;     * @return the weighted variance of the values or Double.NaN if length = 0
+<i>313</i>&nbsp;     * @throws MathIllegalArgumentException if the parameters are not valid
+<i>314</i>&nbsp;     * @since 2.1
+<i>315</i>&nbsp;     */
+<i>316</i>&nbsp;    @Override
+<i>317</i>&nbsp;    public double evaluate(final double[] values, final double[] weights,
+<i>318</i>&nbsp;                           final int begin, final int length) throws MathIllegalArgumentException {
+<i>319</i>&nbsp;
+<b class="fc"><i>320</i>&nbsp;        double var = Double.NaN;</b>
+<i>321</i>&nbsp;
+<b class="fc"><i>322</i>&nbsp;        if (MathArrays.verifyValues(values, weights,begin, length)) {</b>
+<b class="fc"><i>323</i>&nbsp;            if (length == 1) {</b>
+<b class="nc"><i>324</i>&nbsp;                var = 0.0;</b>
+<b class="fc"><i>325</i>&nbsp;            } else if (length &gt; 1) {</b>
+<b class="fc"><i>326</i>&nbsp;                Mean mean = new Mean();</b>
+<b class="fc"><i>327</i>&nbsp;                double m = mean.evaluate(values, weights, begin, length);</b>
+<b class="fc"><i>328</i>&nbsp;                var = evaluate(values, weights, m, begin, length);</b>
+<i>329</i>&nbsp;            }
+<i>330</i>&nbsp;        }
+<b class="fc"><i>331</i>&nbsp;        return var;</b>
+<i>332</i>&nbsp;    }
+<i>333</i>&nbsp;
+<i>334</i>&nbsp;    /**
+<i>335</i>&nbsp;     * &lt;p&gt;
+<i>336</i>&nbsp;     * Returns the weighted variance of the entries in the input array.&lt;/p&gt;
+<i>337</i>&nbsp;     * &lt;p&gt;
+<i>338</i>&nbsp;     * Uses the formula &lt;div style=&quot;white-space:pre&quot;&gt;&lt;code&gt;
+<i>339</i>&nbsp;     *   &amp;Sigma;(weights[i]*(values[i] - weightedMean)&lt;sup&gt;2&lt;/sup&gt;)/(&amp;Sigma;(weights[i]) - 1)
+<i>340</i>&nbsp;     * &lt;/code&gt;&lt;/div&gt;
+<i>341</i>&nbsp;     * where weightedMean is the weighted mean
+<i>342</i>&nbsp;     * &lt;p&gt;
+<i>343</i>&nbsp;     * This formula will not return the same result as the unweighted variance when all
+<i>344</i>&nbsp;     * weights are equal, unless all weights are equal to 1. The formula assumes that
+<i>345</i>&nbsp;     * weights are to be treated as &quot;expansion values,&quot; as will be the case if for example
+<i>346</i>&nbsp;     * the weights represent frequency counts. To normalize weights so that the denominator
+<i>347</i>&nbsp;     * in the variance computation equals the length of the input vector minus one, use &lt;pre&gt;
+<i>348</i>&nbsp;     *   &lt;code&gt;evaluate(values, MathArrays.normalizeArray(weights, values.length)); &lt;/code&gt;
+<i>349</i>&nbsp;     * &lt;/pre&gt;
+<i>350</i>&nbsp;     * &lt;p&gt;
+<i>351</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>352</i>&nbsp;     * &lt;p&gt;
+<i>353</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if any of the following are true:
+<i>354</i>&nbsp;     * &lt;ul&gt;&lt;li&gt;the values array is null&lt;/li&gt;
+<i>355</i>&nbsp;     *     &lt;li&gt;the weights array is null&lt;/li&gt;
+<i>356</i>&nbsp;     *     &lt;li&gt;the weights array does not have the same length as the values array&lt;/li&gt;
+<i>357</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more infinite values&lt;/li&gt;
+<i>358</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more NaN values&lt;/li&gt;
+<i>359</i>&nbsp;     *     &lt;li&gt;the weights array contains negative values&lt;/li&gt;
+<i>360</i>&nbsp;     * &lt;/ul&gt;
+<i>361</i>&nbsp;     * &lt;p&gt;
+<i>362</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>363</i>&nbsp;     * &lt;p&gt;
+<i>364</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if either array is null.&lt;/p&gt;
+<i>365</i>&nbsp;     *
+<i>366</i>&nbsp;     * @param values the input array
+<i>367</i>&nbsp;     * @param weights the weights array
+<i>368</i>&nbsp;     * @return the weighted variance of the values
+<i>369</i>&nbsp;     * @throws MathIllegalArgumentException if the parameters are not valid
+<i>370</i>&nbsp;     * @since 2.1
+<i>371</i>&nbsp;     */
+<i>372</i>&nbsp;    @Override
+<i>373</i>&nbsp;    public double evaluate(final double[] values, final double[] weights)
+<i>374</i>&nbsp;        throws MathIllegalArgumentException {
+<b class="fc"><i>375</i>&nbsp;        return evaluate(values, weights, 0, values.length);</b>
+<i>376</i>&nbsp;    }
+<i>377</i>&nbsp;
+<i>378</i>&nbsp;    /**
+<i>379</i>&nbsp;     * Returns the variance of the entries in the specified portion of
+<i>380</i>&nbsp;     * the input array, using the precomputed mean value.  Returns
+<i>381</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt; if the designated subarray is empty.
+<i>382</i>&nbsp;     * &lt;p&gt;
+<i>383</i>&nbsp;     * See {@link Variance} for details on the computing algorithm.&lt;/p&gt;
+<i>384</i>&nbsp;     * &lt;p&gt;
+<i>385</i>&nbsp;     * The formula used assumes that the supplied mean value is the arithmetic
+<i>386</i>&nbsp;     * mean of the sample data, not a known population parameter.  This method
+<i>387</i>&nbsp;     * is supplied only to save computation when the mean has already been
+<i>388</i>&nbsp;     * computed.&lt;/p&gt;
+<i>389</i>&nbsp;     * &lt;p&gt;
+<i>390</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>391</i>&nbsp;     * &lt;p&gt;
+<i>392</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if the array is null.&lt;/p&gt;
+<i>393</i>&nbsp;     * &lt;p&gt;
+<i>394</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>395</i>&nbsp;     *
+<i>396</i>&nbsp;     * @param values the input array
+<i>397</i>&nbsp;     * @param mean the precomputed mean value
+<i>398</i>&nbsp;     * @param begin index of the first array element to include
+<i>399</i>&nbsp;     * @param length the number of elements to include
+<i>400</i>&nbsp;     * @return the variance of the values or Double.NaN if length = 0
+<i>401</i>&nbsp;     * @throws MathIllegalArgumentException if the array is null or the array index
+<i>402</i>&nbsp;     *  parameters are not valid
+<i>403</i>&nbsp;     */
+<i>404</i>&nbsp;    public double evaluate(final double[] values, final double mean,
+<i>405</i>&nbsp;                           final int begin, final int length) throws MathIllegalArgumentException {
+<i>406</i>&nbsp;
+<b class="fc"><i>407</i>&nbsp;        double var = Double.NaN;</b>
+<i>408</i>&nbsp;
+<b class="fc"><i>409</i>&nbsp;        if (MathArrays.verifyValues(values, begin, length)) {</b>
+<b class="fc"><i>410</i>&nbsp;            if (length == 1) {</b>
+<b class="nc"><i>411</i>&nbsp;                var = 0.0;</b>
+<b class="fc"><i>412</i>&nbsp;            } else if (length &gt; 1) {</b>
+<b class="fc"><i>413</i>&nbsp;                double accum = 0.0;</b>
+<b class="fc"><i>414</i>&nbsp;                double dev = 0.0;</b>
+<b class="fc"><i>415</i>&nbsp;                double accum2 = 0.0;</b>
+<b class="fc"><i>416</i>&nbsp;                for (int i = begin; i &lt; begin + length; i++) {</b>
+<b class="fc"><i>417</i>&nbsp;                    dev = values[i] - mean;</b>
+<b class="fc"><i>418</i>&nbsp;                    accum += dev * dev;</b>
+<b class="fc"><i>419</i>&nbsp;                    accum2 += dev;</b>
+<i>420</i>&nbsp;                }
+<b class="fc"><i>421</i>&nbsp;                double len = length;</b>
+<b class="fc"><i>422</i>&nbsp;                if (isBiasCorrected) {</b>
+<b class="fc"><i>423</i>&nbsp;                    var = (accum - (accum2 * accum2 / len)) / (len - 1.0);</b>
+<i>424</i>&nbsp;                } else {
+<b class="fc"><i>425</i>&nbsp;                    var = (accum - (accum2 * accum2 / len)) / len;</b>
+<i>426</i>&nbsp;                }
+<i>427</i>&nbsp;            }
+<i>428</i>&nbsp;        }
+<b class="fc"><i>429</i>&nbsp;        return var;</b>
+<i>430</i>&nbsp;    }
+<i>431</i>&nbsp;
+<i>432</i>&nbsp;    /**
+<i>433</i>&nbsp;     * Returns the variance of the entries in the input array, using the
+<i>434</i>&nbsp;     * precomputed mean value.  Returns &lt;code&gt;Double.NaN&lt;/code&gt; if the array
+<i>435</i>&nbsp;     * is empty.
+<i>436</i>&nbsp;     * &lt;p&gt;
+<i>437</i>&nbsp;     * See {@link Variance} for details on the computing algorithm.&lt;/p&gt;
+<i>438</i>&nbsp;     * &lt;p&gt;
+<i>439</i>&nbsp;     * If &lt;code&gt;isBiasCorrected&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt; the formula used
+<i>440</i>&nbsp;     * assumes that the supplied mean value is the arithmetic mean of the
+<i>441</i>&nbsp;     * sample data, not a known population parameter.  If the mean is a known
+<i>442</i>&nbsp;     * population parameter, or if the &quot;population&quot; version of the variance is
+<i>443</i>&nbsp;     * desired, set &lt;code&gt;isBiasCorrected&lt;/code&gt; to &lt;code&gt;false&lt;/code&gt; before
+<i>444</i>&nbsp;     * invoking this method.&lt;/p&gt;
+<i>445</i>&nbsp;     * &lt;p&gt;
+<i>446</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>447</i>&nbsp;     * &lt;p&gt;
+<i>448</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if the array is null.&lt;/p&gt;
+<i>449</i>&nbsp;     * &lt;p&gt;
+<i>450</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>451</i>&nbsp;     *
+<i>452</i>&nbsp;     * @param values the input array
+<i>453</i>&nbsp;     * @param mean the precomputed mean value
+<i>454</i>&nbsp;     * @return the variance of the values or Double.NaN if the array is empty
+<i>455</i>&nbsp;     * @throws MathIllegalArgumentException if the array is null
+<i>456</i>&nbsp;     */
+<i>457</i>&nbsp;    public double evaluate(final double[] values, final double mean) throws MathIllegalArgumentException {
+<b class="fc"><i>458</i>&nbsp;        return evaluate(values, mean, 0, values.length);</b>
+<i>459</i>&nbsp;    }
+<i>460</i>&nbsp;
+<i>461</i>&nbsp;    /**
+<i>462</i>&nbsp;     * Returns the weighted variance of the entries in the specified portion of
+<i>463</i>&nbsp;     * the input array, using the precomputed weighted mean value.  Returns
+<i>464</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt; if the designated subarray is empty.
+<i>465</i>&nbsp;     * &lt;p&gt;
+<i>466</i>&nbsp;     * Uses the formula &lt;div style=&quot;white-space:pre&quot;&gt;&lt;code&gt;
+<i>467</i>&nbsp;     *   &amp;Sigma;(weights[i]*(values[i] - mean)&lt;sup&gt;2&lt;/sup&gt;)/(&amp;Sigma;(weights[i]) - 1)
+<i>468</i>&nbsp;     * &lt;/code&gt;&lt;/div&gt;
+<i>469</i>&nbsp;     * &lt;p&gt;
+<i>470</i>&nbsp;     * The formula used assumes that the supplied mean value is the weighted arithmetic
+<i>471</i>&nbsp;     * mean of the sample data, not a known population parameter. This method
+<i>472</i>&nbsp;     * is supplied only to save computation when the mean has already been
+<i>473</i>&nbsp;     * computed.&lt;/p&gt;
+<i>474</i>&nbsp;     * &lt;p&gt;
+<i>475</i>&nbsp;     * This formula will not return the same result as the unweighted variance when all
+<i>476</i>&nbsp;     * weights are equal, unless all weights are equal to 1. The formula assumes that
+<i>477</i>&nbsp;     * weights are to be treated as &quot;expansion values,&quot; as will be the case if for example
+<i>478</i>&nbsp;     * the weights represent frequency counts. To normalize weights so that the denominator
+<i>479</i>&nbsp;     * in the variance computation equals the length of the input vector minus one, use &lt;pre&gt;
+<i>480</i>&nbsp;     *   &lt;code&gt;evaluate(values, MathArrays.normalizeArray(weights, values.length), mean); &lt;/code&gt;
+<i>481</i>&nbsp;     * &lt;/pre&gt;
+<i>482</i>&nbsp;     * &lt;p&gt;
+<i>483</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>484</i>&nbsp;     * &lt;p&gt;
+<i>485</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if any of the following are true:
+<i>486</i>&nbsp;     * &lt;ul&gt;&lt;li&gt;the values array is null&lt;/li&gt;
+<i>487</i>&nbsp;     *     &lt;li&gt;the weights array is null&lt;/li&gt;
+<i>488</i>&nbsp;     *     &lt;li&gt;the weights array does not have the same length as the values array&lt;/li&gt;
+<i>489</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more infinite values&lt;/li&gt;
+<i>490</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more NaN values&lt;/li&gt;
+<i>491</i>&nbsp;     *     &lt;li&gt;the weights array contains negative values&lt;/li&gt;
+<i>492</i>&nbsp;     *     &lt;li&gt;the start and length arguments do not determine a valid array&lt;/li&gt;
+<i>493</i>&nbsp;     * &lt;/ul&gt;
+<i>494</i>&nbsp;     * &lt;p&gt;
+<i>495</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>496</i>&nbsp;     *
+<i>497</i>&nbsp;     * @param values the input array
+<i>498</i>&nbsp;     * @param weights the weights array
+<i>499</i>&nbsp;     * @param mean the precomputed weighted mean value
+<i>500</i>&nbsp;     * @param begin index of the first array element to include
+<i>501</i>&nbsp;     * @param length the number of elements to include
+<i>502</i>&nbsp;     * @return the variance of the values or Double.NaN if length = 0
+<i>503</i>&nbsp;     * @throws MathIllegalArgumentException if the parameters are not valid
+<i>504</i>&nbsp;     * @since 2.1
+<i>505</i>&nbsp;     */
+<i>506</i>&nbsp;    public double evaluate(final double[] values, final double[] weights,
+<i>507</i>&nbsp;                           final double mean, final int begin, final int length)
+<i>508</i>&nbsp;        throws MathIllegalArgumentException {
+<i>509</i>&nbsp;
+<b class="fc"><i>510</i>&nbsp;        double var = Double.NaN;</b>
+<i>511</i>&nbsp;
+<b class="fc"><i>512</i>&nbsp;        if (MathArrays.verifyValues(values, weights, begin, length)) {</b>
+<b class="fc"><i>513</i>&nbsp;            if (length == 1) {</b>
+<b class="nc"><i>514</i>&nbsp;                var = 0.0;</b>
+<b class="fc"><i>515</i>&nbsp;            } else if (length &gt; 1) {</b>
+<b class="fc"><i>516</i>&nbsp;                double accum = 0.0;</b>
+<b class="fc"><i>517</i>&nbsp;                double dev = 0.0;</b>
+<b class="fc"><i>518</i>&nbsp;                double accum2 = 0.0;</b>
+<b class="fc"><i>519</i>&nbsp;                for (int i = begin; i &lt; begin + length; i++) {</b>
+<b class="fc"><i>520</i>&nbsp;                    dev = values[i] - mean;</b>
+<b class="fc"><i>521</i>&nbsp;                    accum += weights[i] * (dev * dev);</b>
+<b class="fc"><i>522</i>&nbsp;                    accum2 += weights[i] * dev;</b>
+<i>523</i>&nbsp;                }
+<i>524</i>&nbsp;
+<b class="fc"><i>525</i>&nbsp;                double sumWts = 0;</b>
+<b class="fc"><i>526</i>&nbsp;                for (int i = begin; i &lt; begin + length; i++) {</b>
+<b class="fc"><i>527</i>&nbsp;                    sumWts += weights[i];</b>
+<i>528</i>&nbsp;                }
+<i>529</i>&nbsp;
+<b class="fc"><i>530</i>&nbsp;                if (isBiasCorrected) {</b>
+<b class="fc"><i>531</i>&nbsp;                    var = (accum - (accum2 * accum2 / sumWts)) / (sumWts - 1.0);</b>
+<i>532</i>&nbsp;                } else {
+<b class="nc"><i>533</i>&nbsp;                    var = (accum - (accum2 * accum2 / sumWts)) / sumWts;</b>
+<i>534</i>&nbsp;                }
+<i>535</i>&nbsp;            }
+<i>536</i>&nbsp;        }
+<b class="fc"><i>537</i>&nbsp;        return var;</b>
+<i>538</i>&nbsp;    }
+<i>539</i>&nbsp;
+<i>540</i>&nbsp;    /**
+<i>541</i>&nbsp;     * &lt;p&gt;Returns the weighted variance of the values in the input array, using
+<i>542</i>&nbsp;     * the precomputed weighted mean value.&lt;/p&gt;
+<i>543</i>&nbsp;     * &lt;p&gt;
+<i>544</i>&nbsp;     * Uses the formula &lt;div style=&quot;white-space:pre&quot;&gt;&lt;code&gt;
+<i>545</i>&nbsp;     *   &amp;Sigma;(weights[i]*(values[i] - mean)&lt;sup&gt;2&lt;/sup&gt;)/(&amp;Sigma;(weights[i]) - 1)
+<i>546</i>&nbsp;     * &lt;/code&gt;&lt;/div&gt;
+<i>547</i>&nbsp;     * &lt;p&gt;
+<i>548</i>&nbsp;     * The formula used assumes that the supplied mean value is the weighted arithmetic
+<i>549</i>&nbsp;     * mean of the sample data, not a known population parameter. This method
+<i>550</i>&nbsp;     * is supplied only to save computation when the mean has already been
+<i>551</i>&nbsp;     * computed.&lt;/p&gt;
+<i>552</i>&nbsp;     * &lt;p&gt;
+<i>553</i>&nbsp;     * This formula will not return the same result as the unweighted variance when all
+<i>554</i>&nbsp;     * weights are equal, unless all weights are equal to 1. The formula assumes that
+<i>555</i>&nbsp;     * weights are to be treated as &quot;expansion values,&quot; as will be the case if for example
+<i>556</i>&nbsp;     * the weights represent frequency counts. To normalize weights so that the denominator
+<i>557</i>&nbsp;     * in the variance computation equals the length of the input vector minus one, use &lt;pre&gt;
+<i>558</i>&nbsp;     *   &lt;code&gt;evaluate(values, MathArrays.normalizeArray(weights, values.length), mean); &lt;/code&gt;
+<i>559</i>&nbsp;     * &lt;/pre&gt;
+<i>560</i>&nbsp;     * &lt;p&gt;
+<i>561</i>&nbsp;     * Returns 0 for a single-value (i.e. length = 1) sample.&lt;/p&gt;
+<i>562</i>&nbsp;     * &lt;p&gt;
+<i>563</i>&nbsp;     * Throws &lt;code&gt;MathIllegalArgumentException&lt;/code&gt; if any of the following are true:
+<i>564</i>&nbsp;     * &lt;ul&gt;&lt;li&gt;the values array is null&lt;/li&gt;
+<i>565</i>&nbsp;     *     &lt;li&gt;the weights array is null&lt;/li&gt;
+<i>566</i>&nbsp;     *     &lt;li&gt;the weights array does not have the same length as the values array&lt;/li&gt;
+<i>567</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more infinite values&lt;/li&gt;
+<i>568</i>&nbsp;     *     &lt;li&gt;the weights array contains one or more NaN values&lt;/li&gt;
+<i>569</i>&nbsp;     *     &lt;li&gt;the weights array contains negative values&lt;/li&gt;
+<i>570</i>&nbsp;     * &lt;/ul&gt;
+<i>571</i>&nbsp;     * &lt;p&gt;
+<i>572</i>&nbsp;     * Does not change the internal state of the statistic.&lt;/p&gt;
+<i>573</i>&nbsp;     *
+<i>574</i>&nbsp;     * @param values the input array
+<i>575</i>&nbsp;     * @param weights the weights array
+<i>576</i>&nbsp;     * @param mean the precomputed weighted mean value
+<i>577</i>&nbsp;     * @return the variance of the values or Double.NaN if length = 0
+<i>578</i>&nbsp;     * @throws MathIllegalArgumentException if the parameters are not valid
+<i>579</i>&nbsp;     * @since 2.1
+<i>580</i>&nbsp;     */
+<i>581</i>&nbsp;    public double evaluate(final double[] values, final double[] weights, final double mean)
+<i>582</i>&nbsp;        throws MathIllegalArgumentException {
+<b class="nc"><i>583</i>&nbsp;        return evaluate(values, weights, mean, 0, values.length);</b>
+<i>584</i>&nbsp;    }
+<i>585</i>&nbsp;
+<i>586</i>&nbsp;    /**
+<i>587</i>&nbsp;     * @return Returns the isBiasCorrected.
+<i>588</i>&nbsp;     */
+<i>589</i>&nbsp;    public boolean isBiasCorrected() {
+<b class="nc"><i>590</i>&nbsp;        return isBiasCorrected;</b>
+<i>591</i>&nbsp;    }
+<i>592</i>&nbsp;
+<i>593</i>&nbsp;    /**
+<i>594</i>&nbsp;     * @param biasCorrected The isBiasCorrected to set.
+<i>595</i>&nbsp;     */
+<i>596</i>&nbsp;    public void setBiasCorrected(boolean biasCorrected) {
+<b class="fc"><i>597</i>&nbsp;        this.isBiasCorrected = biasCorrected;</b>
+<b class="fc"><i>598</i>&nbsp;    }</b>
+<i>599</i>&nbsp;
+<i>600</i>&nbsp;    /**
+<i>601</i>&nbsp;     * {@inheritDoc}
+<i>602</i>&nbsp;     */
+<i>603</i>&nbsp;    @Override
+<i>604</i>&nbsp;    public Variance copy() {
+<b class="fc"><i>605</i>&nbsp;        Variance result = new Variance();</b>
+<i>606</i>&nbsp;        // No try-catch or advertised exception because parameters are guaranteed non-null
+<b class="fc"><i>607</i>&nbsp;        copy(this, result);</b>
+<b class="fc"><i>608</i>&nbsp;        return result;</b>
+<i>609</i>&nbsp;    }
+<i>610</i>&nbsp;
+<i>611</i>&nbsp;    /**
+<i>612</i>&nbsp;     * Copies source to dest.
+<i>613</i>&nbsp;     * &lt;p&gt;Neither source nor dest can be null.&lt;/p&gt;
+<i>614</i>&nbsp;     *
+<i>615</i>&nbsp;     * @param source Variance to copy
+<i>616</i>&nbsp;     * @param dest Variance to copy to
+<i>617</i>&nbsp;     * @throws NullArgumentException if either source or dest is null
+<i>618</i>&nbsp;     */
+<i>619</i>&nbsp;    public static void copy(Variance source, Variance dest)
+<i>620</i>&nbsp;        throws NullArgumentException {
+<b class="fc"><i>621</i>&nbsp;        MathUtils.checkNotNull(source);</b>
+<b class="fc"><i>622</i>&nbsp;        MathUtils.checkNotNull(dest);</b>
+<b class="fc"><i>623</i>&nbsp;        dest.moment = source.moment.copy();</b>
+<b class="fc"><i>624</i>&nbsp;        dest.isBiasCorrected = source.isBiasCorrected;</b>
+<b class="fc"><i>625</i>&nbsp;        dest.incMoment = source.incMoment;</b>
+<b class="fc"><i>626</i>&nbsp;    }</b>
+<i>627</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

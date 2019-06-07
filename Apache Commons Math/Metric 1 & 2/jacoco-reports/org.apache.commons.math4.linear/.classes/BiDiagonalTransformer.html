@@ -1,0 +1,463 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: BiDiagonalTransformer</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.linear</a> ]
+</div>
+
+<h1>Coverage Summary for Class: BiDiagonalTransformer (org.apache.commons.math4.linear)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">BiDiagonalTransformer</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    70%
+  </span>
+  <span class="absValue">
+    (7/ 10)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    98.1%
+  </span>
+  <span class="absValue">
+    (155/ 158)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;
+<i>18</i>&nbsp;package org.apache.commons.math4.linear;
+<i>19</i>&nbsp;
+<i>20</i>&nbsp;import org.apache.commons.math4.util.FastMath;
+<i>21</i>&nbsp;
+<i>22</i>&nbsp;
+<i>23</i>&nbsp;/**
+<i>24</i>&nbsp; * Class transforming any matrix to bi-diagonal shape.
+<i>25</i>&nbsp; * &lt;p&gt;Any m &amp;times; n matrix A can be written as the product of three matrices:
+<i>26</i>&nbsp; * A = U &amp;times; B &amp;times; V&lt;sup&gt;T&lt;/sup&gt; with U an m &amp;times; m orthogonal matrix,
+<i>27</i>&nbsp; * B an m &amp;times; n bi-diagonal matrix (lower diagonal if m &amp;lt; n, upper diagonal
+<i>28</i>&nbsp; * otherwise), and V an n &amp;times; n orthogonal matrix.&lt;/p&gt;
+<i>29</i>&nbsp; * &lt;p&gt;Transformation to bi-diagonal shape is often not a goal by itself, but it is
+<i>30</i>&nbsp; * an intermediate step in more general decomposition algorithms like {@link
+<i>31</i>&nbsp; * SingularValueDecomposition Singular Value Decomposition}. This class is therefore
+<i>32</i>&nbsp; * intended for internal use by the library and is not public. As a consequence of
+<i>33</i>&nbsp; * this explicitly limited scope, many methods directly returns references to
+<i>34</i>&nbsp; * internal arrays, not copies.&lt;/p&gt;
+<i>35</i>&nbsp; * @since 2.0
+<i>36</i>&nbsp; */
+<i>37</i>&nbsp;class BiDiagonalTransformer {
+<i>38</i>&nbsp;
+<i>39</i>&nbsp;    /** Householder vectors. */
+<i>40</i>&nbsp;    private final double householderVectors[][];
+<i>41</i>&nbsp;
+<i>42</i>&nbsp;    /** Main diagonal. */
+<i>43</i>&nbsp;    private final double[] main;
+<i>44</i>&nbsp;
+<i>45</i>&nbsp;    /** Secondary diagonal. */
+<i>46</i>&nbsp;    private final double[] secondary;
+<i>47</i>&nbsp;
+<i>48</i>&nbsp;    /** Cached value of U. */
+<i>49</i>&nbsp;    private RealMatrix cachedU;
+<i>50</i>&nbsp;
+<i>51</i>&nbsp;    /** Cached value of B. */
+<i>52</i>&nbsp;    private RealMatrix cachedB;
+<i>53</i>&nbsp;
+<i>54</i>&nbsp;    /** Cached value of V. */
+<i>55</i>&nbsp;    private RealMatrix cachedV;
+<i>56</i>&nbsp;
+<i>57</i>&nbsp;    /**
+<i>58</i>&nbsp;     * Build the transformation to bi-diagonal shape of a matrix.
+<i>59</i>&nbsp;     * @param matrix the matrix to transform.
+<i>60</i>&nbsp;     */
+<b class="fc"><i>61</i>&nbsp;    BiDiagonalTransformer(RealMatrix matrix) {</b>
+<i>62</i>&nbsp;
+<b class="fc"><i>63</i>&nbsp;        final int m = matrix.getRowDimension();</b>
+<b class="fc"><i>64</i>&nbsp;        final int n = matrix.getColumnDimension();</b>
+<b class="fc"><i>65</i>&nbsp;        final int p = FastMath.min(m, n);</b>
+<b class="fc"><i>66</i>&nbsp;        householderVectors = matrix.getData();</b>
+<b class="fc"><i>67</i>&nbsp;        main      = new double[p];</b>
+<b class="fc"><i>68</i>&nbsp;        secondary = new double[p - 1];</b>
+<b class="fc"><i>69</i>&nbsp;        cachedU   = null;</b>
+<b class="fc"><i>70</i>&nbsp;        cachedB   = null;</b>
+<b class="fc"><i>71</i>&nbsp;        cachedV   = null;</b>
+<i>72</i>&nbsp;
+<i>73</i>&nbsp;        // transform matrix
+<b class="fc"><i>74</i>&nbsp;        if (m &gt;= n) {</b>
+<b class="fc"><i>75</i>&nbsp;            transformToUpperBiDiagonal();</b>
+<i>76</i>&nbsp;        } else {
+<b class="fc"><i>77</i>&nbsp;            transformToLowerBiDiagonal();</b>
+<i>78</i>&nbsp;        }
+<i>79</i>&nbsp;
+<b class="fc"><i>80</i>&nbsp;    }</b>
+<i>81</i>&nbsp;
+<i>82</i>&nbsp;    /**
+<i>83</i>&nbsp;     * Returns the matrix U of the transform.
+<i>84</i>&nbsp;     * &lt;p&gt;U is an orthogonal matrix, i.e. its transpose is also its inverse.&lt;/p&gt;
+<i>85</i>&nbsp;     * @return the U matrix
+<i>86</i>&nbsp;     */
+<i>87</i>&nbsp;    public RealMatrix getU() {
+<i>88</i>&nbsp;
+<b class="fc"><i>89</i>&nbsp;        if (cachedU == null) {</b>
+<i>90</i>&nbsp;
+<b class="fc"><i>91</i>&nbsp;            final int m = householderVectors.length;</b>
+<b class="fc"><i>92</i>&nbsp;            final int n = householderVectors[0].length;</b>
+<b class="fc"><i>93</i>&nbsp;            final int p = main.length;</b>
+<b class="fc"><i>94</i>&nbsp;            final int diagOffset    = (m &gt;= n) ? 0 : 1;</b>
+<b class="fc"><i>95</i>&nbsp;            final double[] diagonal = (m &gt;= n) ? main : secondary;</b>
+<b class="fc"><i>96</i>&nbsp;            double[][] ua = new double[m][m];</b>
+<i>97</i>&nbsp;
+<i>98</i>&nbsp;            // fill up the part of the matrix not affected by Householder transforms
+<b class="fc"><i>99</i>&nbsp;            for (int k = m - 1; k &gt;= p; --k) {</b>
+<b class="fc"><i>100</i>&nbsp;                ua[k][k] = 1;</b>
+<i>101</i>&nbsp;            }
+<i>102</i>&nbsp;
+<i>103</i>&nbsp;            // build up first part of the matrix by applying Householder transforms
+<b class="fc"><i>104</i>&nbsp;            for (int k = p - 1; k &gt;= diagOffset; --k) {</b>
+<b class="fc"><i>105</i>&nbsp;                final double[] hK = householderVectors[k];</b>
+<b class="fc"><i>106</i>&nbsp;                ua[k][k] = 1;</b>
+<b class="fc"><i>107</i>&nbsp;                if (hK[k - diagOffset] != 0.0) {</b>
+<b class="fc"><i>108</i>&nbsp;                    for (int j = k; j &lt; m; ++j) {</b>
+<b class="fc"><i>109</i>&nbsp;                        double alpha = 0;</b>
+<b class="fc"><i>110</i>&nbsp;                        for (int i = k; i &lt; m; ++i) {</b>
+<b class="fc"><i>111</i>&nbsp;                            alpha -= ua[i][j] * householderVectors[i][k - diagOffset];</b>
+<i>112</i>&nbsp;                        }
+<b class="fc"><i>113</i>&nbsp;                        alpha /= diagonal[k - diagOffset] * hK[k - diagOffset];</b>
+<i>114</i>&nbsp;
+<b class="fc"><i>115</i>&nbsp;                        for (int i = k; i &lt; m; ++i) {</b>
+<b class="fc"><i>116</i>&nbsp;                            ua[i][j] += -alpha * householderVectors[i][k - diagOffset];</b>
+<i>117</i>&nbsp;                        }
+<i>118</i>&nbsp;                    }
+<i>119</i>&nbsp;                }
+<i>120</i>&nbsp;            }
+<b class="fc"><i>121</i>&nbsp;            if (diagOffset &gt; 0) {</b>
+<b class="fc"><i>122</i>&nbsp;                ua[0][0] = 1;</b>
+<i>123</i>&nbsp;            }
+<b class="fc"><i>124</i>&nbsp;            cachedU = MatrixUtils.createRealMatrix(ua);</b>
+<i>125</i>&nbsp;        }
+<i>126</i>&nbsp;
+<i>127</i>&nbsp;        // return the cached matrix
+<b class="fc"><i>128</i>&nbsp;        return cachedU;</b>
+<i>129</i>&nbsp;
+<i>130</i>&nbsp;    }
+<i>131</i>&nbsp;
+<i>132</i>&nbsp;    /**
+<i>133</i>&nbsp;     * Returns the bi-diagonal matrix B of the transform.
+<i>134</i>&nbsp;     * @return the B matrix
+<i>135</i>&nbsp;     */
+<i>136</i>&nbsp;    public RealMatrix getB() {
+<i>137</i>&nbsp;
+<b class="fc"><i>138</i>&nbsp;        if (cachedB == null) {</b>
+<i>139</i>&nbsp;
+<b class="fc"><i>140</i>&nbsp;            final int m = householderVectors.length;</b>
+<b class="fc"><i>141</i>&nbsp;            final int n = householderVectors[0].length;</b>
+<b class="fc"><i>142</i>&nbsp;            double[][] ba = new double[m][n];</b>
+<b class="fc"><i>143</i>&nbsp;            for (int i = 0; i &lt; main.length; ++i) {</b>
+<b class="fc"><i>144</i>&nbsp;                ba[i][i] = main[i];</b>
+<b class="fc"><i>145</i>&nbsp;                if (m &lt; n) {</b>
+<b class="fc"><i>146</i>&nbsp;                    if (i &gt; 0) {</b>
+<b class="fc"><i>147</i>&nbsp;                        ba[i][i-1] = secondary[i - 1];</b>
+<i>148</i>&nbsp;                    }
+<i>149</i>&nbsp;                } else {
+<b class="fc"><i>150</i>&nbsp;                    if (i &lt; main.length - 1) {</b>
+<b class="fc"><i>151</i>&nbsp;                        ba[i][i+1] = secondary[i];</b>
+<i>152</i>&nbsp;                    }
+<i>153</i>&nbsp;                }
+<i>154</i>&nbsp;            }
+<b class="fc"><i>155</i>&nbsp;            cachedB = MatrixUtils.createRealMatrix(ba);</b>
+<i>156</i>&nbsp;        }
+<i>157</i>&nbsp;
+<i>158</i>&nbsp;        // return the cached matrix
+<b class="fc"><i>159</i>&nbsp;        return cachedB;</b>
+<i>160</i>&nbsp;
+<i>161</i>&nbsp;    }
+<i>162</i>&nbsp;
+<i>163</i>&nbsp;    /**
+<i>164</i>&nbsp;     * Returns the matrix V of the transform.
+<i>165</i>&nbsp;     * &lt;p&gt;V is an orthogonal matrix, i.e. its transpose is also its inverse.&lt;/p&gt;
+<i>166</i>&nbsp;     * @return the V matrix
+<i>167</i>&nbsp;     */
+<i>168</i>&nbsp;    public RealMatrix getV() {
+<i>169</i>&nbsp;
+<b class="fc"><i>170</i>&nbsp;        if (cachedV == null) {</b>
+<i>171</i>&nbsp;
+<b class="fc"><i>172</i>&nbsp;            final int m = householderVectors.length;</b>
+<b class="fc"><i>173</i>&nbsp;            final int n = householderVectors[0].length;</b>
+<b class="fc"><i>174</i>&nbsp;            final int p = main.length;</b>
+<b class="fc"><i>175</i>&nbsp;            final int diagOffset    = (m &gt;= n) ? 1 : 0;</b>
+<b class="fc"><i>176</i>&nbsp;            final double[] diagonal = (m &gt;= n) ? secondary : main;</b>
+<b class="fc"><i>177</i>&nbsp;            double[][] va = new double[n][n];</b>
+<i>178</i>&nbsp;
+<i>179</i>&nbsp;            // fill up the part of the matrix not affected by Householder transforms
+<b class="fc"><i>180</i>&nbsp;            for (int k = n - 1; k &gt;= p; --k) {</b>
+<b class="fc"><i>181</i>&nbsp;                va[k][k] = 1;</b>
+<i>182</i>&nbsp;            }
+<i>183</i>&nbsp;
+<i>184</i>&nbsp;            // build up first part of the matrix by applying Householder transforms
+<b class="fc"><i>185</i>&nbsp;            for (int k = p - 1; k &gt;= diagOffset; --k) {</b>
+<b class="fc"><i>186</i>&nbsp;                final double[] hK = householderVectors[k - diagOffset];</b>
+<b class="fc"><i>187</i>&nbsp;                va[k][k] = 1;</b>
+<b class="fc"><i>188</i>&nbsp;                if (hK[k] != 0.0) {</b>
+<b class="fc"><i>189</i>&nbsp;                    for (int j = k; j &lt; n; ++j) {</b>
+<b class="fc"><i>190</i>&nbsp;                        double beta = 0;</b>
+<b class="fc"><i>191</i>&nbsp;                        for (int i = k; i &lt; n; ++i) {</b>
+<b class="fc"><i>192</i>&nbsp;                            beta -= va[i][j] * hK[i];</b>
+<i>193</i>&nbsp;                        }
+<b class="fc"><i>194</i>&nbsp;                        beta /= diagonal[k - diagOffset] * hK[k];</b>
+<i>195</i>&nbsp;
+<b class="fc"><i>196</i>&nbsp;                        for (int i = k; i &lt; n; ++i) {</b>
+<b class="fc"><i>197</i>&nbsp;                            va[i][j] += -beta * hK[i];</b>
+<i>198</i>&nbsp;                        }
+<i>199</i>&nbsp;                    }
+<i>200</i>&nbsp;                }
+<i>201</i>&nbsp;            }
+<b class="fc"><i>202</i>&nbsp;            if (diagOffset &gt; 0) {</b>
+<b class="fc"><i>203</i>&nbsp;                va[0][0] = 1;</b>
+<i>204</i>&nbsp;            }
+<b class="fc"><i>205</i>&nbsp;            cachedV = MatrixUtils.createRealMatrix(va);</b>
+<i>206</i>&nbsp;        }
+<i>207</i>&nbsp;
+<i>208</i>&nbsp;        // return the cached matrix
+<b class="fc"><i>209</i>&nbsp;        return cachedV;</b>
+<i>210</i>&nbsp;
+<i>211</i>&nbsp;    }
+<i>212</i>&nbsp;
+<i>213</i>&nbsp;    /**
+<i>214</i>&nbsp;     * Get the Householder vectors of the transform.
+<i>215</i>&nbsp;     * &lt;p&gt;Note that since this class is only intended for internal use,
+<i>216</i>&nbsp;     * it returns directly a reference to its internal arrays, not a copy.&lt;/p&gt;
+<i>217</i>&nbsp;     * @return the main diagonal elements of the B matrix
+<i>218</i>&nbsp;     */
+<i>219</i>&nbsp;    double[][] getHouseholderVectorsRef() {
+<b class="nc"><i>220</i>&nbsp;        return householderVectors;</b>
+<i>221</i>&nbsp;    }
+<i>222</i>&nbsp;
+<i>223</i>&nbsp;    /**
+<i>224</i>&nbsp;     * Get the main diagonal elements of the matrix B of the transform.
+<i>225</i>&nbsp;     * &lt;p&gt;Note that since this class is only intended for internal use,
+<i>226</i>&nbsp;     * it returns directly a reference to its internal arrays, not a copy.&lt;/p&gt;
+<i>227</i>&nbsp;     * @return the main diagonal elements of the B matrix
+<i>228</i>&nbsp;     */
+<i>229</i>&nbsp;    double[] getMainDiagonalRef() {
+<b class="nc"><i>230</i>&nbsp;        return main;</b>
+<i>231</i>&nbsp;    }
+<i>232</i>&nbsp;
+<i>233</i>&nbsp;    /**
+<i>234</i>&nbsp;     * Get the secondary diagonal elements of the matrix B of the transform.
+<i>235</i>&nbsp;     * &lt;p&gt;Note that since this class is only intended for internal use,
+<i>236</i>&nbsp;     * it returns directly a reference to its internal arrays, not a copy.&lt;/p&gt;
+<i>237</i>&nbsp;     * @return the secondary diagonal elements of the B matrix
+<i>238</i>&nbsp;     */
+<i>239</i>&nbsp;    double[] getSecondaryDiagonalRef() {
+<b class="nc"><i>240</i>&nbsp;        return secondary;</b>
+<i>241</i>&nbsp;    }
+<i>242</i>&nbsp;
+<i>243</i>&nbsp;    /**
+<i>244</i>&nbsp;     * Check if the matrix is transformed to upper bi-diagonal.
+<i>245</i>&nbsp;     * @return true if the matrix is transformed to upper bi-diagonal
+<i>246</i>&nbsp;     */
+<i>247</i>&nbsp;    boolean isUpperBiDiagonal() {
+<b class="fc"><i>248</i>&nbsp;        return householderVectors.length &gt;=  householderVectors[0].length;</b>
+<i>249</i>&nbsp;    }
+<i>250</i>&nbsp;
+<i>251</i>&nbsp;    /**
+<i>252</i>&nbsp;     * Transform original matrix to upper bi-diagonal form.
+<i>253</i>&nbsp;     * &lt;p&gt;Transformation is done using alternate Householder transforms
+<i>254</i>&nbsp;     * on columns and rows.&lt;/p&gt;
+<i>255</i>&nbsp;     */
+<i>256</i>&nbsp;    private void transformToUpperBiDiagonal() {
+<i>257</i>&nbsp;
+<b class="fc"><i>258</i>&nbsp;        final int m = householderVectors.length;</b>
+<b class="fc"><i>259</i>&nbsp;        final int n = householderVectors[0].length;</b>
+<b class="fc"><i>260</i>&nbsp;        for (int k = 0; k &lt; n; k++) {</b>
+<i>261</i>&nbsp;
+<i>262</i>&nbsp;            //zero-out a column
+<b class="fc"><i>263</i>&nbsp;            double xNormSqr = 0;</b>
+<b class="fc"><i>264</i>&nbsp;            for (int i = k; i &lt; m; ++i) {</b>
+<b class="fc"><i>265</i>&nbsp;                final double c = householderVectors[i][k];</b>
+<b class="fc"><i>266</i>&nbsp;                xNormSqr += c * c;</b>
+<i>267</i>&nbsp;            }
+<b class="fc"><i>268</i>&nbsp;            final double[] hK = householderVectors[k];</b>
+<b class="fc"><i>269</i>&nbsp;            final double a = (hK[k] &gt; 0) ? -FastMath.sqrt(xNormSqr) : FastMath.sqrt(xNormSqr);</b>
+<b class="fc"><i>270</i>&nbsp;            main[k] = a;</b>
+<b class="fc"><i>271</i>&nbsp;            if (a != 0.0) {</b>
+<b class="fc"><i>272</i>&nbsp;                hK[k] -= a;</b>
+<b class="fc"><i>273</i>&nbsp;                for (int j = k + 1; j &lt; n; ++j) {</b>
+<b class="fc"><i>274</i>&nbsp;                    double alpha = 0;</b>
+<b class="fc"><i>275</i>&nbsp;                    for (int i = k; i &lt; m; ++i) {</b>
+<b class="fc"><i>276</i>&nbsp;                        final double[] hI = householderVectors[i];</b>
+<b class="fc"><i>277</i>&nbsp;                        alpha -= hI[j] * hI[k];</b>
+<i>278</i>&nbsp;                    }
+<b class="fc"><i>279</i>&nbsp;                    alpha /= a * householderVectors[k][k];</b>
+<b class="fc"><i>280</i>&nbsp;                    for (int i = k; i &lt; m; ++i) {</b>
+<b class="fc"><i>281</i>&nbsp;                        final double[] hI = householderVectors[i];</b>
+<b class="fc"><i>282</i>&nbsp;                        hI[j] -= alpha * hI[k];</b>
+<i>283</i>&nbsp;                    }
+<i>284</i>&nbsp;                }
+<i>285</i>&nbsp;            }
+<i>286</i>&nbsp;
+<b class="fc"><i>287</i>&nbsp;            if (k &lt; n - 1) {</b>
+<i>288</i>&nbsp;                //zero-out a row
+<b class="fc"><i>289</i>&nbsp;                xNormSqr = 0;</b>
+<b class="fc"><i>290</i>&nbsp;                for (int j = k + 1; j &lt; n; ++j) {</b>
+<b class="fc"><i>291</i>&nbsp;                    final double c = hK[j];</b>
+<b class="fc"><i>292</i>&nbsp;                    xNormSqr += c * c;</b>
+<i>293</i>&nbsp;                }
+<b class="fc"><i>294</i>&nbsp;                final double b = (hK[k + 1] &gt; 0) ? -FastMath.sqrt(xNormSqr) : FastMath.sqrt(xNormSqr);</b>
+<b class="fc"><i>295</i>&nbsp;                secondary[k] = b;</b>
+<b class="fc"><i>296</i>&nbsp;                if (b != 0.0) {</b>
+<b class="fc"><i>297</i>&nbsp;                    hK[k + 1] -= b;</b>
+<b class="fc"><i>298</i>&nbsp;                    for (int i = k + 1; i &lt; m; ++i) {</b>
+<b class="fc"><i>299</i>&nbsp;                        final double[] hI = householderVectors[i];</b>
+<b class="fc"><i>300</i>&nbsp;                        double beta = 0;</b>
+<b class="fc"><i>301</i>&nbsp;                        for (int j = k + 1; j &lt; n; ++j) {</b>
+<b class="fc"><i>302</i>&nbsp;                            beta -= hI[j] * hK[j];</b>
+<i>303</i>&nbsp;                        }
+<b class="fc"><i>304</i>&nbsp;                        beta /= b * hK[k + 1];</b>
+<b class="fc"><i>305</i>&nbsp;                        for (int j = k + 1; j &lt; n; ++j) {</b>
+<b class="fc"><i>306</i>&nbsp;                            hI[j] -= beta * hK[j];</b>
+<i>307</i>&nbsp;                        }
+<i>308</i>&nbsp;                    }
+<i>309</i>&nbsp;                }
+<i>310</i>&nbsp;            }
+<i>311</i>&nbsp;
+<i>312</i>&nbsp;        }
+<b class="fc"><i>313</i>&nbsp;    }</b>
+<i>314</i>&nbsp;
+<i>315</i>&nbsp;    /**
+<i>316</i>&nbsp;     * Transform original matrix to lower bi-diagonal form.
+<i>317</i>&nbsp;     * &lt;p&gt;Transformation is done using alternate Householder transforms
+<i>318</i>&nbsp;     * on rows and columns.&lt;/p&gt;
+<i>319</i>&nbsp;     */
+<i>320</i>&nbsp;    private void transformToLowerBiDiagonal() {
+<i>321</i>&nbsp;
+<b class="fc"><i>322</i>&nbsp;        final int m = householderVectors.length;</b>
+<b class="fc"><i>323</i>&nbsp;        final int n = householderVectors[0].length;</b>
+<b class="fc"><i>324</i>&nbsp;        for (int k = 0; k &lt; m; k++) {</b>
+<i>325</i>&nbsp;
+<i>326</i>&nbsp;            //zero-out a row
+<b class="fc"><i>327</i>&nbsp;            final double[] hK = householderVectors[k];</b>
+<b class="fc"><i>328</i>&nbsp;            double xNormSqr = 0;</b>
+<b class="fc"><i>329</i>&nbsp;            for (int j = k; j &lt; n; ++j) {</b>
+<b class="fc"><i>330</i>&nbsp;                final double c = hK[j];</b>
+<b class="fc"><i>331</i>&nbsp;                xNormSqr += c * c;</b>
+<i>332</i>&nbsp;            }
+<b class="fc"><i>333</i>&nbsp;            final double a = (hK[k] &gt; 0) ? -FastMath.sqrt(xNormSqr) : FastMath.sqrt(xNormSqr);</b>
+<b class="fc"><i>334</i>&nbsp;            main[k] = a;</b>
+<b class="fc"><i>335</i>&nbsp;            if (a != 0.0) {</b>
+<b class="fc"><i>336</i>&nbsp;                hK[k] -= a;</b>
+<b class="fc"><i>337</i>&nbsp;                for (int i = k + 1; i &lt; m; ++i) {</b>
+<b class="fc"><i>338</i>&nbsp;                    final double[] hI = householderVectors[i];</b>
+<b class="fc"><i>339</i>&nbsp;                    double alpha = 0;</b>
+<b class="fc"><i>340</i>&nbsp;                    for (int j = k; j &lt; n; ++j) {</b>
+<b class="fc"><i>341</i>&nbsp;                        alpha -= hI[j] * hK[j];</b>
+<i>342</i>&nbsp;                    }
+<b class="fc"><i>343</i>&nbsp;                    alpha /= a * householderVectors[k][k];</b>
+<b class="fc"><i>344</i>&nbsp;                    for (int j = k; j &lt; n; ++j) {</b>
+<b class="fc"><i>345</i>&nbsp;                        hI[j] -= alpha * hK[j];</b>
+<i>346</i>&nbsp;                    }
+<i>347</i>&nbsp;                }
+<i>348</i>&nbsp;            }
+<i>349</i>&nbsp;
+<b class="fc"><i>350</i>&nbsp;            if (k &lt; m - 1) {</b>
+<i>351</i>&nbsp;                //zero-out a column
+<b class="fc"><i>352</i>&nbsp;                final double[] hKp1 = householderVectors[k + 1];</b>
+<b class="fc"><i>353</i>&nbsp;                xNormSqr = 0;</b>
+<b class="fc"><i>354</i>&nbsp;                for (int i = k + 1; i &lt; m; ++i) {</b>
+<b class="fc"><i>355</i>&nbsp;                    final double c = householderVectors[i][k];</b>
+<b class="fc"><i>356</i>&nbsp;                    xNormSqr += c * c;</b>
+<i>357</i>&nbsp;                }
+<b class="fc"><i>358</i>&nbsp;                final double b = (hKp1[k] &gt; 0) ? -FastMath.sqrt(xNormSqr) : FastMath.sqrt(xNormSqr);</b>
+<b class="fc"><i>359</i>&nbsp;                secondary[k] = b;</b>
+<b class="fc"><i>360</i>&nbsp;                if (b != 0.0) {</b>
+<b class="fc"><i>361</i>&nbsp;                    hKp1[k] -= b;</b>
+<b class="fc"><i>362</i>&nbsp;                    for (int j = k + 1; j &lt; n; ++j) {</b>
+<b class="fc"><i>363</i>&nbsp;                        double beta = 0;</b>
+<b class="fc"><i>364</i>&nbsp;                        for (int i = k + 1; i &lt; m; ++i) {</b>
+<b class="fc"><i>365</i>&nbsp;                            final double[] hI = householderVectors[i];</b>
+<b class="fc"><i>366</i>&nbsp;                            beta -= hI[j] * hI[k];</b>
+<i>367</i>&nbsp;                        }
+<b class="fc"><i>368</i>&nbsp;                        beta /= b * hKp1[k];</b>
+<b class="fc"><i>369</i>&nbsp;                        for (int i = k + 1; i &lt; m; ++i) {</b>
+<b class="fc"><i>370</i>&nbsp;                            final double[] hI = householderVectors[i];</b>
+<b class="fc"><i>371</i>&nbsp;                            hI[j] -= beta * hI[k];</b>
+<i>372</i>&nbsp;                        }
+<i>373</i>&nbsp;                    }
+<i>374</i>&nbsp;                }
+<i>375</i>&nbsp;            }
+<i>376</i>&nbsp;
+<i>377</i>&nbsp;        }
+<b class="fc"><i>378</i>&nbsp;    }</b>
+<i>379</i>&nbsp;
+<i>380</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,527 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: AdamsMoultonFieldIntegrator</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.ode.nonstiff</a> ]
+</div>
+
+<h1>Coverage Summary for Class: AdamsMoultonFieldIntegrator (org.apache.commons.math4.ode.nonstiff)</h1>
+
+<table class="coverageStats">
+
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">AdamsMoultonFieldIntegrator</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (3/ 3)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    98.6%
+  </span>
+  <span class="absValue">
+    (70/ 71)
+  </span>
+</td>
+</tr>
+  <tr>
+    <td class="name">AdamsMoultonFieldIntegrator$Corrector</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (4/ 4)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    95.7%
+  </span>
+  <span class="absValue">
+    (22/ 23)
+  </span>
+</td>
+  </tr>
+<tr>
+  <td class="name"><strong>total</strong></td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (7/ 7)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    97.9%
+  </span>
+  <span class="absValue">
+    (92/ 94)
+  </span>
+</td>
+</tr>
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;
+<i>18</i>&nbsp;package org.apache.commons.math4.ode.nonstiff;
+<i>19</i>&nbsp;
+<i>20</i>&nbsp;import java.util.Arrays;
+<i>21</i>&nbsp;
+<i>22</i>&nbsp;import org.apache.commons.math4.Field;
+<i>23</i>&nbsp;import org.apache.commons.math4.RealFieldElement;
+<i>24</i>&nbsp;import org.apache.commons.math4.exception.DimensionMismatchException;
+<i>25</i>&nbsp;import org.apache.commons.math4.exception.MaxCountExceededException;
+<i>26</i>&nbsp;import org.apache.commons.math4.exception.NoBracketingException;
+<i>27</i>&nbsp;import org.apache.commons.math4.exception.NumberIsTooSmallException;
+<i>28</i>&nbsp;import org.apache.commons.math4.linear.Array2DRowFieldMatrix;
+<i>29</i>&nbsp;import org.apache.commons.math4.linear.FieldMatrixPreservingVisitor;
+<i>30</i>&nbsp;import org.apache.commons.math4.ode.FieldExpandableODE;
+<i>31</i>&nbsp;import org.apache.commons.math4.ode.FieldODEState;
+<i>32</i>&nbsp;import org.apache.commons.math4.ode.FieldODEStateAndDerivative;
+<i>33</i>&nbsp;import org.apache.commons.math4.util.MathArrays;
+<i>34</i>&nbsp;import org.apache.commons.math4.util.MathUtils;
+<i>35</i>&nbsp;
+<i>36</i>&nbsp;
+<i>37</i>&nbsp;/**
+<i>38</i>&nbsp; * This class implements implicit Adams-Moulton integrators for Ordinary
+<i>39</i>&nbsp; * Differential Equations.
+<i>40</i>&nbsp; *
+<i>41</i>&nbsp; * &lt;p&gt;Adams-Moulton methods (in fact due to Adams alone) are implicit
+<i>42</i>&nbsp; * multistep ODE solvers. This implementation is a variation of the classical
+<i>43</i>&nbsp; * one: it uses adaptive stepsize to implement error control, whereas
+<i>44</i>&nbsp; * classical implementations are fixed step size. The value of state vector
+<i>45</i>&nbsp; * at step n+1 is a simple combination of the value at step n and of the
+<i>46</i>&nbsp; * derivatives at steps n+1, n, n-1 ... Since y&#39;&lt;sub&gt;n+1&lt;/sub&gt; is needed to
+<i>47</i>&nbsp; * compute y&lt;sub&gt;n+1&lt;/sub&gt;, another method must be used to compute a first
+<i>48</i>&nbsp; * estimate of y&lt;sub&gt;n+1&lt;/sub&gt;, then compute y&#39;&lt;sub&gt;n+1&lt;/sub&gt;, then compute
+<i>49</i>&nbsp; * a final estimate of y&lt;sub&gt;n+1&lt;/sub&gt; using the following formulas. Depending
+<i>50</i>&nbsp; * on the number k of previous steps one wants to use for computing the next
+<i>51</i>&nbsp; * value, different formulas are available for the final estimate:&lt;/p&gt;
+<i>52</i>&nbsp; * &lt;ul&gt;
+<i>53</i>&nbsp; *   &lt;li&gt;k = 1: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + h y&#39;&lt;sub&gt;n+1&lt;/sub&gt;&lt;/li&gt;
+<i>54</i>&nbsp; *   &lt;li&gt;k = 2: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + h (y&#39;&lt;sub&gt;n+1&lt;/sub&gt;+y&#39;&lt;sub&gt;n&lt;/sub&gt;)/2&lt;/li&gt;
+<i>55</i>&nbsp; *   &lt;li&gt;k = 3: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + h (5y&#39;&lt;sub&gt;n+1&lt;/sub&gt;+8y&#39;&lt;sub&gt;n&lt;/sub&gt;-y&#39;&lt;sub&gt;n-1&lt;/sub&gt;)/12&lt;/li&gt;
+<i>56</i>&nbsp; *   &lt;li&gt;k = 4: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + h (9y&#39;&lt;sub&gt;n+1&lt;/sub&gt;+19y&#39;&lt;sub&gt;n&lt;/sub&gt;-5y&#39;&lt;sub&gt;n-1&lt;/sub&gt;+y&#39;&lt;sub&gt;n-2&lt;/sub&gt;)/24&lt;/li&gt;
+<i>57</i>&nbsp; *   &lt;li&gt;...&lt;/li&gt;
+<i>58</i>&nbsp; * &lt;/ul&gt;
+<i>59</i>&nbsp; *
+<i>60</i>&nbsp; * &lt;p&gt;A k-steps Adams-Moulton method is of order k+1.&lt;/p&gt;
+<i>61</i>&nbsp; *
+<i>62</i>&nbsp; * &lt;h3&gt;Implementation details&lt;/h3&gt;
+<i>63</i>&nbsp; *
+<i>64</i>&nbsp; * &lt;p&gt;We define scaled derivatives s&lt;sub&gt;i&lt;/sub&gt;(n) at step n as:
+<i>65</i>&nbsp; * &lt;div style=&quot;white-space: pre&quot;&gt;&lt;code&gt;
+<i>66</i>&nbsp; * s&lt;sub&gt;1&lt;/sub&gt;(n) = h y&#39;&lt;sub&gt;n&lt;/sub&gt; for first derivative
+<i>67</i>&nbsp; * s&lt;sub&gt;2&lt;/sub&gt;(n) = h&lt;sup&gt;2&lt;/sup&gt;/2 y&#39;&#39;&lt;sub&gt;n&lt;/sub&gt; for second derivative
+<i>68</i>&nbsp; * s&lt;sub&gt;3&lt;/sub&gt;(n) = h&lt;sup&gt;3&lt;/sup&gt;/6 y&#39;&#39;&#39;&lt;sub&gt;n&lt;/sub&gt; for third derivative
+<i>69</i>&nbsp; * ...
+<i>70</i>&nbsp; * s&lt;sub&gt;k&lt;/sub&gt;(n) = h&lt;sup&gt;k&lt;/sup&gt;/k! y&lt;sup&gt;(k)&lt;/sup&gt;&lt;sub&gt;n&lt;/sub&gt; for k&lt;sup&gt;th&lt;/sup&gt; derivative
+<i>71</i>&nbsp; * &lt;/code&gt;&lt;/div&gt;
+<i>72</i>&nbsp; *
+<i>73</i>&nbsp; * &lt;p&gt;The definitions above use the classical representation with several previous first
+<i>74</i>&nbsp; * derivatives. Lets define
+<i>75</i>&nbsp; * &lt;div style=&quot;white-space: pre&quot;&gt;&lt;code&gt;
+<i>76</i>&nbsp; *   q&lt;sub&gt;n&lt;/sub&gt; = [ s&lt;sub&gt;1&lt;/sub&gt;(n-1) s&lt;sub&gt;1&lt;/sub&gt;(n-2) ... s&lt;sub&gt;1&lt;/sub&gt;(n-(k-1)) ]&lt;sup&gt;T&lt;/sup&gt;
+<i>77</i>&nbsp; * &lt;/code&gt;&lt;/div&gt;
+<i>78</i>&nbsp; * (we omit the k index in the notation for clarity). With these definitions,
+<i>79</i>&nbsp; * Adams-Moulton methods can be written:
+<i>80</i>&nbsp; * &lt;ul&gt;
+<i>81</i>&nbsp; *   &lt;li&gt;k = 1: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + s&lt;sub&gt;1&lt;/sub&gt;(n+1)&lt;/li&gt;
+<i>82</i>&nbsp; *   &lt;li&gt;k = 2: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + 1/2 s&lt;sub&gt;1&lt;/sub&gt;(n+1) + [ 1/2 ] q&lt;sub&gt;n+1&lt;/sub&gt;&lt;/li&gt;
+<i>83</i>&nbsp; *   &lt;li&gt;k = 3: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + 5/12 s&lt;sub&gt;1&lt;/sub&gt;(n+1) + [ 8/12 -1/12 ] q&lt;sub&gt;n+1&lt;/sub&gt;&lt;/li&gt;
+<i>84</i>&nbsp; *   &lt;li&gt;k = 4: y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + 9/24 s&lt;sub&gt;1&lt;/sub&gt;(n+1) + [ 19/24 -5/24 1/24 ] q&lt;sub&gt;n+1&lt;/sub&gt;&lt;/li&gt;
+<i>85</i>&nbsp; *   &lt;li&gt;...&lt;/li&gt;
+<i>86</i>&nbsp; * &lt;/ul&gt;
+<i>87</i>&nbsp; *
+<i>88</i>&nbsp; * &lt;p&gt;Instead of using the classical representation with first derivatives only (y&lt;sub&gt;n&lt;/sub&gt;,
+<i>89</i>&nbsp; * s&lt;sub&gt;1&lt;/sub&gt;(n+1) and q&lt;sub&gt;n+1&lt;/sub&gt;), our implementation uses the Nordsieck vector with
+<i>90</i>&nbsp; * higher degrees scaled derivatives all taken at the same step (y&lt;sub&gt;n&lt;/sub&gt;, s&lt;sub&gt;1&lt;/sub&gt;(n)
+<i>91</i>&nbsp; * and r&lt;sub&gt;n&lt;/sub&gt;) where r&lt;sub&gt;n&lt;/sub&gt; is defined as:
+<i>92</i>&nbsp; * &lt;div style=&quot;white-space: pre&quot;&gt;&lt;code&gt;
+<i>93</i>&nbsp; * r&lt;sub&gt;n&lt;/sub&gt; = [ s&lt;sub&gt;2&lt;/sub&gt;(n), s&lt;sub&gt;3&lt;/sub&gt;(n) ... s&lt;sub&gt;k&lt;/sub&gt;(n) ]&lt;sup&gt;T&lt;/sup&gt;
+<i>94</i>&nbsp; * &lt;/code&gt;&lt;/div&gt;
+<i>95</i>&nbsp; * (here again we omit the k index in the notation for clarity)
+<i>96</i>&nbsp; *
+<i>97</i>&nbsp; * &lt;p&gt;Taylor series formulas show that for any index offset i, s&lt;sub&gt;1&lt;/sub&gt;(n-i) can be
+<i>98</i>&nbsp; * computed from s&lt;sub&gt;1&lt;/sub&gt;(n), s&lt;sub&gt;2&lt;/sub&gt;(n) ... s&lt;sub&gt;k&lt;/sub&gt;(n), the formula being exact
+<i>99</i>&nbsp; * for degree k polynomials.
+<i>100</i>&nbsp; * &lt;div style=&quot;white-space: pre&quot;&gt;&lt;code&gt;
+<i>101</i>&nbsp; * s&lt;sub&gt;1&lt;/sub&gt;(n-i) = s&lt;sub&gt;1&lt;/sub&gt;(n) + &amp;sum;&lt;sub&gt;j&amp;gt;0&lt;/sub&gt; (j+1) (-i)&lt;sup&gt;j&lt;/sup&gt; s&lt;sub&gt;j+1&lt;/sub&gt;(n)
+<i>102</i>&nbsp; * &lt;/code&gt;&lt;/div&gt;
+<i>103</i>&nbsp; * The previous formula can be used with several values for i to compute the transform between
+<i>104</i>&nbsp; * classical representation and Nordsieck vector. The transform between r&lt;sub&gt;n&lt;/sub&gt;
+<i>105</i>&nbsp; * and q&lt;sub&gt;n&lt;/sub&gt; resulting from the Taylor series formulas above is:
+<i>106</i>&nbsp; * &lt;div style=&quot;white-space: pre&quot;&gt;&lt;code&gt;
+<i>107</i>&nbsp; * q&lt;sub&gt;n&lt;/sub&gt; = s&lt;sub&gt;1&lt;/sub&gt;(n) u + P r&lt;sub&gt;n&lt;/sub&gt;
+<i>108</i>&nbsp; * &lt;/code&gt;&lt;/div&gt;
+<i>109</i>&nbsp; * where u is the [ 1 1 ... 1 ]&lt;sup&gt;T&lt;/sup&gt; vector and P is the (k-1)&amp;times;(k-1) matrix built
+<i>110</i>&nbsp; * with the (j+1) (-i)&lt;sup&gt;j&lt;/sup&gt; terms with i being the row number starting from 1 and j being
+<i>111</i>&nbsp; * the column number starting from 1:
+<i>112</i>&nbsp; * &lt;pre&gt;
+<i>113</i>&nbsp; *        [  -2   3   -4    5  ... ]
+<i>114</i>&nbsp; *        [  -4  12  -32   80  ... ]
+<i>115</i>&nbsp; *   P =  [  -6  27 -108  405  ... ]
+<i>116</i>&nbsp; *        [  -8  48 -256 1280  ... ]
+<i>117</i>&nbsp; *        [          ...           ]
+<i>118</i>&nbsp; * &lt;/pre&gt;
+<i>119</i>&nbsp; *
+<i>120</i>&nbsp; * &lt;p&gt;Using the Nordsieck vector has several advantages:
+<i>121</i>&nbsp; * &lt;ul&gt;
+<i>122</i>&nbsp; *   &lt;li&gt;it greatly simplifies step interpolation as the interpolator mainly applies
+<i>123</i>&nbsp; *   Taylor series formulas,&lt;/li&gt;
+<i>124</i>&nbsp; *   &lt;li&gt;it simplifies step changes that occur when discrete events that truncate
+<i>125</i>&nbsp; *   the step are triggered,&lt;/li&gt;
+<i>126</i>&nbsp; *   &lt;li&gt;it allows to extend the methods in order to support adaptive stepsize.&lt;/li&gt;
+<i>127</i>&nbsp; * &lt;/ul&gt;
+<i>128</i>&nbsp; *
+<i>129</i>&nbsp; * &lt;p&gt;The predicted Nordsieck vector at step n+1 is computed from the Nordsieck vector at step
+<i>130</i>&nbsp; * n as follows:
+<i>131</i>&nbsp; * &lt;ul&gt;
+<i>132</i>&nbsp; *   &lt;li&gt;Y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + s&lt;sub&gt;1&lt;/sub&gt;(n) + u&lt;sup&gt;T&lt;/sup&gt; r&lt;sub&gt;n&lt;/sub&gt;&lt;/li&gt;
+<i>133</i>&nbsp; *   &lt;li&gt;S&lt;sub&gt;1&lt;/sub&gt;(n+1) = h f(t&lt;sub&gt;n+1&lt;/sub&gt;, Y&lt;sub&gt;n+1&lt;/sub&gt;)&lt;/li&gt;
+<i>134</i>&nbsp; *   &lt;li&gt;R&lt;sub&gt;n+1&lt;/sub&gt; = (s&lt;sub&gt;1&lt;/sub&gt;(n) - S&lt;sub&gt;1&lt;/sub&gt;(n+1)) P&lt;sup&gt;-1&lt;/sup&gt; u + P&lt;sup&gt;-1&lt;/sup&gt; A P r&lt;sub&gt;n&lt;/sub&gt;&lt;/li&gt;
+<i>135</i>&nbsp; * &lt;/ul&gt;
+<i>136</i>&nbsp; * where A is a rows shifting matrix (the lower left part is an identity matrix):
+<i>137</i>&nbsp; * &lt;pre&gt;
+<i>138</i>&nbsp; *        [ 0 0   ...  0 0 | 0 ]
+<i>139</i>&nbsp; *        [ ---------------+---]
+<i>140</i>&nbsp; *        [ 1 0   ...  0 0 | 0 ]
+<i>141</i>&nbsp; *    A = [ 0 1   ...  0 0 | 0 ]
+<i>142</i>&nbsp; *        [       ...      | 0 ]
+<i>143</i>&nbsp; *        [ 0 0   ...  1 0 | 0 ]
+<i>144</i>&nbsp; *        [ 0 0   ...  0 1 | 0 ]
+<i>145</i>&nbsp; * &lt;/pre&gt;
+<i>146</i>&nbsp; * From this predicted vector, the corrected vector is computed as follows:
+<i>147</i>&nbsp; * &lt;ul&gt;
+<i>148</i>&nbsp; *   &lt;li&gt;y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + S&lt;sub&gt;1&lt;/sub&gt;(n+1) + [ -1 +1 -1 +1 ... &amp;plusmn;1 ] r&lt;sub&gt;n+1&lt;/sub&gt;&lt;/li&gt;
+<i>149</i>&nbsp; *   &lt;li&gt;s&lt;sub&gt;1&lt;/sub&gt;(n+1) = h f(t&lt;sub&gt;n+1&lt;/sub&gt;, y&lt;sub&gt;n+1&lt;/sub&gt;)&lt;/li&gt;
+<i>150</i>&nbsp; *   &lt;li&gt;r&lt;sub&gt;n+1&lt;/sub&gt; = R&lt;sub&gt;n+1&lt;/sub&gt; + (s&lt;sub&gt;1&lt;/sub&gt;(n+1) - S&lt;sub&gt;1&lt;/sub&gt;(n+1)) P&lt;sup&gt;-1&lt;/sup&gt; u&lt;/li&gt;
+<i>151</i>&nbsp; * &lt;/ul&gt;
+<i>152</i>&nbsp; * where the upper case Y&lt;sub&gt;n+1&lt;/sub&gt;, S&lt;sub&gt;1&lt;/sub&gt;(n+1) and R&lt;sub&gt;n+1&lt;/sub&gt; represent the
+<i>153</i>&nbsp; * predicted states whereas the lower case y&lt;sub&gt;n+1&lt;/sub&gt;, s&lt;sub&gt;n+1&lt;/sub&gt; and r&lt;sub&gt;n+1&lt;/sub&gt;
+<i>154</i>&nbsp; * represent the corrected states.
+<i>155</i>&nbsp; *
+<i>156</i>&nbsp; * &lt;p&gt;The P&lt;sup&gt;-1&lt;/sup&gt;u vector and the P&lt;sup&gt;-1&lt;/sup&gt; A P matrix do not depend on the state,
+<i>157</i>&nbsp; * they only depend on k and therefore are precomputed once for all.&lt;/p&gt;
+<i>158</i>&nbsp; *
+<i>159</i>&nbsp; * @param &lt;T&gt; the type of the field elements
+<i>160</i>&nbsp; * @since 3.6
+<i>161</i>&nbsp; */
+<i>162</i>&nbsp;public class AdamsMoultonFieldIntegrator&lt;T extends RealFieldElement&lt;T&gt;&gt; extends AdamsFieldIntegrator&lt;T&gt; {
+<i>163</i>&nbsp;
+<i>164</i>&nbsp;    /** Integrator method name. */
+<i>165</i>&nbsp;    private static final String METHOD_NAME = &quot;Adams-Moulton&quot;;
+<i>166</i>&nbsp;
+<i>167</i>&nbsp;    /**
+<i>168</i>&nbsp;     * Build an Adams-Moulton integrator with the given order and error control parameters.
+<i>169</i>&nbsp;     * @param field field to which the time and state vector elements belong
+<i>170</i>&nbsp;     * @param nSteps number of steps of the method excluding the one being computed
+<i>171</i>&nbsp;     * @param minStep minimal step (sign is irrelevant, regardless of
+<i>172</i>&nbsp;     * integration direction, forward or backward), the last step can
+<i>173</i>&nbsp;     * be smaller than this
+<i>174</i>&nbsp;     * @param maxStep maximal step (sign is irrelevant, regardless of
+<i>175</i>&nbsp;     * integration direction, forward or backward), the last step can
+<i>176</i>&nbsp;     * be smaller than this
+<i>177</i>&nbsp;     * @param scalAbsoluteTolerance allowed absolute error
+<i>178</i>&nbsp;     * @param scalRelativeTolerance allowed relative error
+<i>179</i>&nbsp;     * @exception NumberIsTooSmallException if order is 1 or less
+<i>180</i>&nbsp;     */
+<i>181</i>&nbsp;    public AdamsMoultonFieldIntegrator(final Field&lt;T&gt; field, final int nSteps,
+<i>182</i>&nbsp;                                       final double minStep, final double maxStep,
+<i>183</i>&nbsp;                                       final double scalAbsoluteTolerance,
+<i>184</i>&nbsp;                                       final double scalRelativeTolerance)
+<i>185</i>&nbsp;        throws NumberIsTooSmallException {
+<b class="fc"><i>186</i>&nbsp;        super(field, METHOD_NAME, nSteps, nSteps + 1, minStep, maxStep,</b>
+<i>187</i>&nbsp;              scalAbsoluteTolerance, scalRelativeTolerance);
+<b class="fc"><i>188</i>&nbsp;    }</b>
+<i>189</i>&nbsp;
+<i>190</i>&nbsp;    /**
+<i>191</i>&nbsp;     * Build an Adams-Moulton integrator with the given order and error control parameters.
+<i>192</i>&nbsp;     * @param field field to which the time and state vector elements belong
+<i>193</i>&nbsp;     * @param nSteps number of steps of the method excluding the one being computed
+<i>194</i>&nbsp;     * @param minStep minimal step (sign is irrelevant, regardless of
+<i>195</i>&nbsp;     * integration direction, forward or backward), the last step can
+<i>196</i>&nbsp;     * be smaller than this
+<i>197</i>&nbsp;     * @param maxStep maximal step (sign is irrelevant, regardless of
+<i>198</i>&nbsp;     * integration direction, forward or backward), the last step can
+<i>199</i>&nbsp;     * be smaller than this
+<i>200</i>&nbsp;     * @param vecAbsoluteTolerance allowed absolute error
+<i>201</i>&nbsp;     * @param vecRelativeTolerance allowed relative error
+<i>202</i>&nbsp;     * @exception IllegalArgumentException if order is 1 or less
+<i>203</i>&nbsp;     */
+<i>204</i>&nbsp;    public AdamsMoultonFieldIntegrator(final Field&lt;T&gt; field, final int nSteps,
+<i>205</i>&nbsp;                                       final double minStep, final double maxStep,
+<i>206</i>&nbsp;                                       final double[] vecAbsoluteTolerance,
+<i>207</i>&nbsp;                                       final double[] vecRelativeTolerance)
+<i>208</i>&nbsp;        throws IllegalArgumentException {
+<b class="fc"><i>209</i>&nbsp;        super(field, METHOD_NAME, nSteps, nSteps + 1, minStep, maxStep,</b>
+<i>210</i>&nbsp;              vecAbsoluteTolerance, vecRelativeTolerance);
+<b class="fc"><i>211</i>&nbsp;    }</b>
+<i>212</i>&nbsp;
+<i>213</i>&nbsp;    /** {@inheritDoc} */
+<i>214</i>&nbsp;    @Override
+<i>215</i>&nbsp;    public FieldODEStateAndDerivative&lt;T&gt; integrate(final FieldExpandableODE&lt;T&gt; equations,
+<i>216</i>&nbsp;                                                   final FieldODEState&lt;T&gt; initialState,
+<i>217</i>&nbsp;                                                   final T finalTime)
+<i>218</i>&nbsp;        throws NumberIsTooSmallException, DimensionMismatchException,
+<i>219</i>&nbsp;               MaxCountExceededException, NoBracketingException {
+<i>220</i>&nbsp;
+<b class="fc"><i>221</i>&nbsp;        sanityChecks(initialState, finalTime);</b>
+<b class="fc"><i>222</i>&nbsp;        final T   t0 = initialState.getTime();</b>
+<b class="fc"><i>223</i>&nbsp;        final T[] y  = equations.getMapper().mapState(initialState);</b>
+<b class="fc"><i>224</i>&nbsp;        setStepStart(initIntegration(equations, t0, y, finalTime));</b>
+<b class="fc"><i>225</i>&nbsp;        final boolean forward = finalTime.subtract(initialState.getTime()).getReal() &gt; 0;</b>
+<i>226</i>&nbsp;
+<i>227</i>&nbsp;        // compute the initial Nordsieck vector using the configured starter integrator
+<b class="fc"><i>228</i>&nbsp;        start(equations, getStepStart(), finalTime);</b>
+<i>229</i>&nbsp;
+<i>230</i>&nbsp;        // reuse the step that was chosen by the starter integrator
+<b class="fc"><i>231</i>&nbsp;        FieldODEStateAndDerivative&lt;T&gt; stepStart = getStepStart();</b>
+<b class="fc"><i>232</i>&nbsp;        FieldODEStateAndDerivative&lt;T&gt; stepEnd   =</b>
+<b class="fc"><i>233</i>&nbsp;                        AdamsFieldStepInterpolator.taylor(stepStart,</b>
+<b class="fc"><i>234</i>&nbsp;                                                          stepStart.getTime().add(getStepSize()),</b>
+<b class="fc"><i>235</i>&nbsp;                                                          getStepSize(), scaled, nordsieck);</b>
+<i>236</i>&nbsp;
+<i>237</i>&nbsp;        // main integration loop
+<b class="fc"><i>238</i>&nbsp;        setIsLastStep(false);</b>
+<i>239</i>&nbsp;        do {
+<i>240</i>&nbsp;
+<b class="fc"><i>241</i>&nbsp;            T[] predictedY = null;</b>
+<b class="fc"><i>242</i>&nbsp;            final T[] predictedScaled = MathArrays.buildArray(getField(), y.length);</b>
+<b class="fc"><i>243</i>&nbsp;            Array2DRowFieldMatrix&lt;T&gt; predictedNordsieck = null;</b>
+<b class="fc"><i>244</i>&nbsp;            T error = getField().getZero().add(10);</b>
+<b class="fc"><i>245</i>&nbsp;            while (error.subtract(1.0).getReal() &gt;= 0.0) {</b>
+<i>246</i>&nbsp;
+<i>247</i>&nbsp;                // predict a first estimate of the state at step end (P in the PECE sequence)
+<b class="fc"><i>248</i>&nbsp;                predictedY = stepEnd.getState();</b>
+<i>249</i>&nbsp;
+<i>250</i>&nbsp;                // evaluate a first estimate of the derivative (first E in the PECE sequence)
+<b class="fc"><i>251</i>&nbsp;                final T[] yDot = computeDerivatives(stepEnd.getTime(), predictedY);</b>
+<i>252</i>&nbsp;
+<i>253</i>&nbsp;                // update Nordsieck vector
+<b class="fc"><i>254</i>&nbsp;                for (int j = 0; j &lt; predictedScaled.length; ++j) {</b>
+<b class="fc"><i>255</i>&nbsp;                    predictedScaled[j] = getStepSize().multiply(yDot[j]);</b>
+<i>256</i>&nbsp;                }
+<b class="fc"><i>257</i>&nbsp;                predictedNordsieck = updateHighOrderDerivativesPhase1(nordsieck);</b>
+<b class="fc"><i>258</i>&nbsp;                updateHighOrderDerivativesPhase2(scaled, predictedScaled, predictedNordsieck);</b>
+<i>259</i>&nbsp;
+<i>260</i>&nbsp;                // apply correction (C in the PECE sequence)
+<b class="fc"><i>261</i>&nbsp;                error = predictedNordsieck.walkInOptimizedOrder(new Corrector(y, predictedScaled, predictedY));</b>
+<i>262</i>&nbsp;
+<b class="fc"><i>263</i>&nbsp;                if (error.subtract(1.0).getReal() &gt;= 0.0) {</b>
+<i>264</i>&nbsp;                    // reject the step and attempt to reduce error by stepsize control
+<b class="fc"><i>265</i>&nbsp;                    final T factor = computeStepGrowShrinkFactor(error);</b>
+<b class="fc"><i>266</i>&nbsp;                    rescale(filterStep(getStepSize().multiply(factor), forward, false));</b>
+<b class="fc"><i>267</i>&nbsp;                    stepEnd = AdamsFieldStepInterpolator.taylor(getStepStart(),</b>
+<b class="fc"><i>268</i>&nbsp;                                                                getStepStart().getTime().add(getStepSize()),</b>
+<b class="fc"><i>269</i>&nbsp;                                                                getStepSize(),</b>
+<i>270</i>&nbsp;                                                                scaled,
+<i>271</i>&nbsp;                                                                nordsieck);
+<i>272</i>&nbsp;                }
+<b class="fc"><i>273</i>&nbsp;            }</b>
+<i>274</i>&nbsp;
+<i>275</i>&nbsp;            // evaluate a final estimate of the derivative (second E in the PECE sequence)
+<b class="fc"><i>276</i>&nbsp;            final T[] correctedYDot = computeDerivatives(stepEnd.getTime(), predictedY);</b>
+<i>277</i>&nbsp;
+<i>278</i>&nbsp;            // update Nordsieck vector
+<b class="fc"><i>279</i>&nbsp;            final T[] correctedScaled = MathArrays.buildArray(getField(), y.length);</b>
+<b class="fc"><i>280</i>&nbsp;            for (int j = 0; j &lt; correctedScaled.length; ++j) {</b>
+<b class="fc"><i>281</i>&nbsp;                correctedScaled[j] = getStepSize().multiply(correctedYDot[j]);</b>
+<i>282</i>&nbsp;            }
+<b class="fc"><i>283</i>&nbsp;            updateHighOrderDerivativesPhase2(predictedScaled, correctedScaled, predictedNordsieck);</b>
+<i>284</i>&nbsp;
+<i>285</i>&nbsp;            // discrete events handling
+<b class="fc"><i>286</i>&nbsp;            stepEnd = new FieldODEStateAndDerivative&lt;&gt;(stepEnd.getTime(), predictedY, correctedYDot);</b>
+<b class="fc"><i>287</i>&nbsp;            setStepStart(acceptStep(new AdamsFieldStepInterpolator&lt;&gt;(getStepSize(), stepEnd,</b>
+<i>288</i>&nbsp;                                                                      correctedScaled, predictedNordsieck, forward,
+<b class="fc"><i>289</i>&nbsp;                                                                      getStepStart(), stepEnd,</b>
+<b class="fc"><i>290</i>&nbsp;                                                                      equations.getMapper()),</b>
+<i>291</i>&nbsp;                                    finalTime));
+<b class="fc"><i>292</i>&nbsp;            scaled    = correctedScaled;</b>
+<b class="fc"><i>293</i>&nbsp;            nordsieck = predictedNordsieck;</b>
+<i>294</i>&nbsp;
+<b class="fc"><i>295</i>&nbsp;            if (!isLastStep()) {</b>
+<i>296</i>&nbsp;
+<b class="fc"><i>297</i>&nbsp;                System.arraycopy(predictedY, 0, y, 0, y.length);</b>
+<i>298</i>&nbsp;
+<b class="fc"><i>299</i>&nbsp;                if (resetOccurred()) {</b>
+<i>300</i>&nbsp;                    // some events handler has triggered changes that
+<i>301</i>&nbsp;                    // invalidate the derivatives, we need to restart from scratch
+<b class="nc"><i>302</i>&nbsp;                    start(equations, getStepStart(), finalTime);</b>
+<i>303</i>&nbsp;                }
+<i>304</i>&nbsp;
+<i>305</i>&nbsp;                // stepsize control for next step
+<b class="fc"><i>306</i>&nbsp;                final T  factor     = computeStepGrowShrinkFactor(error);</b>
+<b class="fc"><i>307</i>&nbsp;                final T  scaledH    = getStepSize().multiply(factor);</b>
+<b class="fc"><i>308</i>&nbsp;                final T  nextT      = getStepStart().getTime().add(scaledH);</b>
+<b class="fc"><i>309</i>&nbsp;                final boolean nextIsLast = forward ?</b>
+<b class="fc"><i>310</i>&nbsp;                                           nextT.subtract(finalTime).getReal() &gt;= 0 :</b>
+<b class="fc"><i>311</i>&nbsp;                                           nextT.subtract(finalTime).getReal() &lt;= 0;</b>
+<b class="fc"><i>312</i>&nbsp;                T hNew = filterStep(scaledH, forward, nextIsLast);</b>
+<i>313</i>&nbsp;
+<b class="fc"><i>314</i>&nbsp;                final T  filteredNextT      = getStepStart().getTime().add(hNew);</b>
+<b class="fc"><i>315</i>&nbsp;                final boolean filteredNextIsLast = forward ?</b>
+<b class="fc"><i>316</i>&nbsp;                                                   filteredNextT.subtract(finalTime).getReal() &gt;= 0 :</b>
+<b class="fc"><i>317</i>&nbsp;                                                   filteredNextT.subtract(finalTime).getReal() &lt;= 0;</b>
+<b class="fc"><i>318</i>&nbsp;                if (filteredNextIsLast) {</b>
+<b class="fc"><i>319</i>&nbsp;                    hNew = finalTime.subtract(getStepStart().getTime());</b>
+<i>320</i>&nbsp;                }
+<i>321</i>&nbsp;
+<b class="fc"><i>322</i>&nbsp;                rescale(hNew);</b>
+<b class="fc"><i>323</i>&nbsp;                stepEnd = AdamsFieldStepInterpolator.taylor(getStepStart(), getStepStart().getTime().add(getStepSize()),</b>
+<b class="fc"><i>324</i>&nbsp;                                                            getStepSize(), scaled, nordsieck);</b>
+<i>325</i>&nbsp;
+<i>326</i>&nbsp;            }
+<i>327</i>&nbsp;
+<b class="fc"><i>328</i>&nbsp;        } while (!isLastStep());</b>
+<i>329</i>&nbsp;
+<b class="fc"><i>330</i>&nbsp;        final FieldODEStateAndDerivative&lt;T&gt; finalState = getStepStart();</b>
+<b class="fc"><i>331</i>&nbsp;        setStepStart(null);</b>
+<b class="fc"><i>332</i>&nbsp;        setStepSize(null);</b>
+<b class="fc"><i>333</i>&nbsp;        return finalState;</b>
+<i>334</i>&nbsp;
+<i>335</i>&nbsp;    }
+<i>336</i>&nbsp;
+<i>337</i>&nbsp;    /** Corrector for current state in Adams-Moulton method.
+<i>338</i>&nbsp;     * &lt;p&gt;
+<i>339</i>&nbsp;     * This visitor implements the Taylor series formula:
+<i>340</i>&nbsp;     * &lt;pre&gt;
+<i>341</i>&nbsp;     * Y&lt;sub&gt;n+1&lt;/sub&gt; = y&lt;sub&gt;n&lt;/sub&gt; + s&lt;sub&gt;1&lt;/sub&gt;(n+1) + [ -1 +1 -1 +1 ... &amp;plusmn;1 ] r&lt;sub&gt;n+1&lt;/sub&gt;
+<i>342</i>&nbsp;     * &lt;/pre&gt;
+<i>343</i>&nbsp;     * &lt;/p&gt;
+<i>344</i>&nbsp;     */
+<i>345</i>&nbsp;    private class Corrector implements FieldMatrixPreservingVisitor&lt;T&gt; {
+<i>346</i>&nbsp;
+<i>347</i>&nbsp;        /** Previous state. */
+<i>348</i>&nbsp;        private final T[] previous;
+<i>349</i>&nbsp;
+<i>350</i>&nbsp;        /** Current scaled first derivative. */
+<i>351</i>&nbsp;        private final T[] scaled;
+<i>352</i>&nbsp;
+<i>353</i>&nbsp;        /** Current state before correction. */
+<i>354</i>&nbsp;        private final T[] before;
+<i>355</i>&nbsp;
+<i>356</i>&nbsp;        /** Current state after correction. */
+<i>357</i>&nbsp;        private final T[] after;
+<i>358</i>&nbsp;
+<i>359</i>&nbsp;        /** Simple constructor.
+<i>360</i>&nbsp;         * @param previous previous state
+<i>361</i>&nbsp;         * @param scaled current scaled first derivative
+<i>362</i>&nbsp;         * @param state state to correct (will be overwritten after visit)
+<i>363</i>&nbsp;         */
+<b class="fc"><i>364</i>&nbsp;        Corrector(final T[] previous, final T[] scaled, final T[] state) {</b>
+<b class="fc"><i>365</i>&nbsp;            this.previous = previous;</b>
+<b class="fc"><i>366</i>&nbsp;            this.scaled   = scaled;</b>
+<b class="fc"><i>367</i>&nbsp;            this.after    = state;</b>
+<b class="fc"><i>368</i>&nbsp;            this.before   = state.clone();</b>
+<b class="fc"><i>369</i>&nbsp;        }</b>
+<i>370</i>&nbsp;
+<i>371</i>&nbsp;        /** {@inheritDoc} */
+<i>372</i>&nbsp;        @Override
+<i>373</i>&nbsp;        public void start(int rows, int columns,
+<i>374</i>&nbsp;                          int startRow, int endRow, int startColumn, int endColumn) {
+<b class="fc"><i>375</i>&nbsp;            Arrays.fill(after, getField().getZero());</b>
+<b class="fc"><i>376</i>&nbsp;        }</b>
+<i>377</i>&nbsp;
+<i>378</i>&nbsp;        /** {@inheritDoc} */
+<i>379</i>&nbsp;        @Override
+<i>380</i>&nbsp;        public void visit(int row, int column, T value) {
+<b class="fc"><i>381</i>&nbsp;            if ((row &amp; 0x1) == 0) {</b>
+<b class="fc"><i>382</i>&nbsp;                after[column] = after[column].subtract(value);</b>
+<i>383</i>&nbsp;            } else {
+<b class="fc"><i>384</i>&nbsp;                after[column] = after[column].add(value);</b>
+<i>385</i>&nbsp;            }
+<b class="fc"><i>386</i>&nbsp;        }</b>
+<i>387</i>&nbsp;
+<i>388</i>&nbsp;        /**
+<i>389</i>&nbsp;         * End visiting the Nordsieck vector.
+<i>390</i>&nbsp;         * &lt;p&gt;The correction is used to control stepsize. So its amplitude is
+<i>391</i>&nbsp;         * considered to be an error, which must be normalized according to
+<i>392</i>&nbsp;         * error control settings. If the normalized value is greater than 1,
+<i>393</i>&nbsp;         * the correction was too large and the step must be rejected.&lt;/p&gt;
+<i>394</i>&nbsp;         * @return the normalized correction, if greater than 1, the step
+<i>395</i>&nbsp;         * must be rejected
+<i>396</i>&nbsp;         */
+<i>397</i>&nbsp;        @Override
+<i>398</i>&nbsp;        public T end() {
+<i>399</i>&nbsp;
+<b class="fc"><i>400</i>&nbsp;            T error = getField().getZero();</b>
+<b class="fc"><i>401</i>&nbsp;            for (int i = 0; i &lt; after.length; ++i) {</b>
+<b class="fc"><i>402</i>&nbsp;                after[i] = after[i].add(previous[i].add(scaled[i]));</b>
+<b class="fc"><i>403</i>&nbsp;                if (i &lt; mainSetDimension) {</b>
+<b class="fc"><i>404</i>&nbsp;                    final T yScale = MathUtils.max(previous[i].abs(), after[i].abs());</b>
+<b class="fc"><i>405</i>&nbsp;                    final T tol = (vecAbsoluteTolerance == null) ?</b>
+<b class="fc"><i>406</i>&nbsp;                                  yScale.multiply(scalRelativeTolerance).add(scalAbsoluteTolerance) :</b>
+<b class="nc"><i>407</i>&nbsp;                                  yScale.multiply(vecRelativeTolerance[i]).add(vecAbsoluteTolerance[i]);</b>
+<b class="fc"><i>408</i>&nbsp;                    final T ratio  = after[i].subtract(before[i]).divide(tol); // (corrected-predicted)/tol</b>
+<b class="fc"><i>409</i>&nbsp;                    error = error.add(ratio.multiply(ratio));</b>
+<i>410</i>&nbsp;                }
+<i>411</i>&nbsp;            }
+<i>412</i>&nbsp;
+<b class="fc"><i>413</i>&nbsp;            return error.divide(mainSetDimension).sqrt();</b>
+<i>414</i>&nbsp;
+<i>415</i>&nbsp;        }
+<i>416</i>&nbsp;    }
+<i>417</i>&nbsp;
+<i>418</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

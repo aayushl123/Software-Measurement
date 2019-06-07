@@ -1,0 +1,509 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: FuzzyKMeansClusterer</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.ml.clustering</a> ]
+</div>
+
+<h1>Coverage Summary for Class: FuzzyKMeansClusterer (org.apache.commons.math4.ml.clustering)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">FuzzyKMeansClusterer</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    77.8%
+  </span>
+  <span class="absValue">
+    (14/ 18)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    80.8%
+  </span>
+  <span class="absValue">
+    (101/ 125)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;package org.apache.commons.math4.ml.clustering;
+<i>18</i>&nbsp;
+<i>19</i>&nbsp;import java.util.ArrayList;
+<i>20</i>&nbsp;import java.util.Collection;
+<i>21</i>&nbsp;import java.util.Collections;
+<i>22</i>&nbsp;import java.util.List;
+<i>23</i>&nbsp;
+<i>24</i>&nbsp;import org.apache.commons.math4.exception.MathIllegalArgumentException;
+<i>25</i>&nbsp;import org.apache.commons.math4.exception.MathIllegalStateException;
+<i>26</i>&nbsp;import org.apache.commons.math4.exception.NumberIsTooSmallException;
+<i>27</i>&nbsp;import org.apache.commons.math4.linear.MatrixUtils;
+<i>28</i>&nbsp;import org.apache.commons.math4.linear.RealMatrix;
+<i>29</i>&nbsp;import org.apache.commons.math4.ml.distance.DistanceMeasure;
+<i>30</i>&nbsp;import org.apache.commons.math4.ml.distance.EuclideanDistance;
+<i>31</i>&nbsp;import org.apache.commons.rng.simple.RandomSource;
+<i>32</i>&nbsp;import org.apache.commons.rng.UniformRandomProvider;
+<i>33</i>&nbsp;import org.apache.commons.math4.util.FastMath;
+<i>34</i>&nbsp;import org.apache.commons.math4.util.MathArrays;
+<i>35</i>&nbsp;import org.apache.commons.math4.util.MathUtils;
+<i>36</i>&nbsp;
+<i>37</i>&nbsp;/**
+<i>38</i>&nbsp; * Fuzzy K-Means clustering algorithm.
+<i>39</i>&nbsp; * &lt;p&gt;
+<i>40</i>&nbsp; * The Fuzzy K-Means algorithm is a variation of the classical K-Means algorithm, with the
+<i>41</i>&nbsp; * major difference that a single data point is not uniquely assigned to a single cluster.
+<i>42</i>&nbsp; * Instead, each point i has a set of weights u&lt;sub&gt;ij&lt;/sub&gt; which indicate the degree of membership
+<i>43</i>&nbsp; * to the cluster j.
+<i>44</i>&nbsp; * &lt;p&gt;
+<i>45</i>&nbsp; * The algorithm then tries to minimize the objective function:
+<i>46</i>&nbsp; * &lt;div style=&quot;white-space: pre&quot;&gt;&lt;code&gt;
+<i>47</i>&nbsp; * J = &amp;#8721;&lt;sub&gt;i=1..C&lt;/sub&gt;&amp;#8721;&lt;sub&gt;k=1..N&lt;/sub&gt; u&lt;sub&gt;ik&lt;/sub&gt;&lt;sup&gt;m&lt;/sup&gt;d&lt;sub&gt;ik&lt;/sub&gt;&lt;sup&gt;2&lt;/sup&gt;
+<i>48</i>&nbsp; * &lt;/code&gt;&lt;/div&gt;
+<i>49</i>&nbsp; * with d&lt;sub&gt;ik&lt;/sub&gt; being the distance between data point i and the cluster center k.
+<i>50</i>&nbsp; * &lt;p&gt;
+<i>51</i>&nbsp; * The algorithm requires two parameters:
+<i>52</i>&nbsp; * &lt;ul&gt;
+<i>53</i>&nbsp; *   &lt;li&gt;k: the number of clusters
+<i>54</i>&nbsp; *   &lt;li&gt;fuzziness: determines the level of cluster fuzziness, larger values lead to fuzzier clusters
+<i>55</i>&nbsp; * &lt;/ul&gt;
+<i>56</i>&nbsp; * Additional, optional parameters:
+<i>57</i>&nbsp; * &lt;ul&gt;
+<i>58</i>&nbsp; *   &lt;li&gt;maxIterations: the maximum number of iterations
+<i>59</i>&nbsp; *   &lt;li&gt;epsilon: the convergence criteria, default is 1e-3
+<i>60</i>&nbsp; * &lt;/ul&gt;
+<i>61</i>&nbsp; * &lt;p&gt;
+<i>62</i>&nbsp; * The fuzzy variant of the K-Means algorithm is more robust with regard to the selection
+<i>63</i>&nbsp; * of the initial cluster centers.
+<i>64</i>&nbsp; *
+<i>65</i>&nbsp; * @param &lt;T&gt; type of the points to cluster
+<i>66</i>&nbsp; * @since 3.3
+<i>67</i>&nbsp; */
+<i>68</i>&nbsp;public class FuzzyKMeansClusterer&lt;T extends Clusterable&gt; extends Clusterer&lt;T&gt; {
+<i>69</i>&nbsp;
+<i>70</i>&nbsp;    /** The default value for the convergence criteria. */
+<i>71</i>&nbsp;    private static final double DEFAULT_EPSILON = 1e-3;
+<i>72</i>&nbsp;
+<i>73</i>&nbsp;    /** The number of clusters. */
+<i>74</i>&nbsp;    private final int k;
+<i>75</i>&nbsp;
+<i>76</i>&nbsp;    /** The maximum number of iterations. */
+<i>77</i>&nbsp;    private final int maxIterations;
+<i>78</i>&nbsp;
+<i>79</i>&nbsp;    /** The fuzziness factor. */
+<i>80</i>&nbsp;    private final double fuzziness;
+<i>81</i>&nbsp;
+<i>82</i>&nbsp;    /** The convergence criteria. */
+<i>83</i>&nbsp;    private final double epsilon;
+<i>84</i>&nbsp;
+<i>85</i>&nbsp;    /** Random generator for choosing initial centers. */
+<i>86</i>&nbsp;    private final UniformRandomProvider random;
+<i>87</i>&nbsp;
+<i>88</i>&nbsp;    /** The membership matrix. */
+<i>89</i>&nbsp;    private double[][] membershipMatrix;
+<i>90</i>&nbsp;
+<i>91</i>&nbsp;    /** The list of points used in the last call to {@link #cluster(Collection)}. */
+<i>92</i>&nbsp;    private List&lt;T&gt; points;
+<i>93</i>&nbsp;
+<i>94</i>&nbsp;    /** The list of clusters resulting from the last call to {@link #cluster(Collection)}. */
+<i>95</i>&nbsp;    private List&lt;CentroidCluster&lt;T&gt;&gt; clusters;
+<i>96</i>&nbsp;
+<i>97</i>&nbsp;    /**
+<i>98</i>&nbsp;     * Creates a new instance of a FuzzyKMeansClusterer.
+<i>99</i>&nbsp;     * &lt;p&gt;
+<i>100</i>&nbsp;     * The euclidean distance will be used as default distance measure.
+<i>101</i>&nbsp;     *
+<i>102</i>&nbsp;     * @param k the number of clusters to split the data into
+<i>103</i>&nbsp;     * @param fuzziness the fuzziness factor, must be &amp;gt; 1.0
+<i>104</i>&nbsp;     * @throws NumberIsTooSmallException if {@code fuzziness &lt;= 1.0}
+<i>105</i>&nbsp;     */
+<i>106</i>&nbsp;    public FuzzyKMeansClusterer(final int k, final double fuzziness) throws NumberIsTooSmallException {
+<b class="fc"><i>107</i>&nbsp;        this(k, fuzziness, -1, new EuclideanDistance());</b>
+<b class="fc"><i>108</i>&nbsp;    }</b>
+<i>109</i>&nbsp;
+<i>110</i>&nbsp;    /**
+<i>111</i>&nbsp;     * Creates a new instance of a FuzzyKMeansClusterer.
+<i>112</i>&nbsp;     *
+<i>113</i>&nbsp;     * @param k the number of clusters to split the data into
+<i>114</i>&nbsp;     * @param fuzziness the fuzziness factor, must be &amp;gt; 1.0
+<i>115</i>&nbsp;     * @param maxIterations the maximum number of iterations to run the algorithm for.
+<i>116</i>&nbsp;     *   If negative, no maximum will be used.
+<i>117</i>&nbsp;     * @param measure the distance measure to use
+<i>118</i>&nbsp;     * @throws NumberIsTooSmallException if {@code fuzziness &lt;= 1.0}
+<i>119</i>&nbsp;     */
+<i>120</i>&nbsp;    public FuzzyKMeansClusterer(final int k, final double fuzziness,
+<i>121</i>&nbsp;                                final int maxIterations, final DistanceMeasure measure)
+<i>122</i>&nbsp;            throws NumberIsTooSmallException {
+<b class="fc"><i>123</i>&nbsp;        this(k, fuzziness, maxIterations, measure, DEFAULT_EPSILON, RandomSource.create(RandomSource.MT_64));</b>
+<b class="fc"><i>124</i>&nbsp;    }</b>
+<i>125</i>&nbsp;
+<i>126</i>&nbsp;    /**
+<i>127</i>&nbsp;     * Creates a new instance of a FuzzyKMeansClusterer.
+<i>128</i>&nbsp;     *
+<i>129</i>&nbsp;     * @param k the number of clusters to split the data into
+<i>130</i>&nbsp;     * @param fuzziness the fuzziness factor, must be &amp;gt; 1.0
+<i>131</i>&nbsp;     * @param maxIterations the maximum number of iterations to run the algorithm for.
+<i>132</i>&nbsp;     *   If negative, no maximum will be used.
+<i>133</i>&nbsp;     * @param measure the distance measure to use
+<i>134</i>&nbsp;     * @param epsilon the convergence criteria (default is 1e-3)
+<i>135</i>&nbsp;     * @param random random generator to use for choosing initial centers
+<i>136</i>&nbsp;     * @throws NumberIsTooSmallException if {@code fuzziness &lt;= 1.0}
+<i>137</i>&nbsp;     */
+<i>138</i>&nbsp;    public FuzzyKMeansClusterer(final int k, final double fuzziness,
+<i>139</i>&nbsp;                                final int maxIterations, final DistanceMeasure measure,
+<i>140</i>&nbsp;                                final double epsilon, final UniformRandomProvider random)
+<i>141</i>&nbsp;            throws NumberIsTooSmallException {
+<i>142</i>&nbsp;
+<b class="fc"><i>143</i>&nbsp;        super(measure);</b>
+<i>144</i>&nbsp;
+<b class="fc"><i>145</i>&nbsp;        if (fuzziness &lt;= 1.0d) {</b>
+<b class="fc"><i>146</i>&nbsp;            throw new NumberIsTooSmallException(fuzziness, 1.0, false);</b>
+<i>147</i>&nbsp;        }
+<b class="fc"><i>148</i>&nbsp;        this.k = k;</b>
+<b class="fc"><i>149</i>&nbsp;        this.fuzziness = fuzziness;</b>
+<b class="fc"><i>150</i>&nbsp;        this.maxIterations = maxIterations;</b>
+<b class="fc"><i>151</i>&nbsp;        this.epsilon = epsilon;</b>
+<b class="fc"><i>152</i>&nbsp;        this.random = random;</b>
+<i>153</i>&nbsp;
+<b class="fc"><i>154</i>&nbsp;        this.membershipMatrix = null;</b>
+<b class="fc"><i>155</i>&nbsp;        this.points = null;</b>
+<b class="fc"><i>156</i>&nbsp;        this.clusters = null;</b>
+<b class="fc"><i>157</i>&nbsp;    }</b>
+<i>158</i>&nbsp;
+<i>159</i>&nbsp;    /**
+<i>160</i>&nbsp;     * Return the number of clusters this instance will use.
+<i>161</i>&nbsp;     * @return the number of clusters
+<i>162</i>&nbsp;     */
+<i>163</i>&nbsp;    public int getK() {
+<b class="fc"><i>164</i>&nbsp;        return k;</b>
+<i>165</i>&nbsp;    }
+<i>166</i>&nbsp;
+<i>167</i>&nbsp;    /**
+<i>168</i>&nbsp;     * Returns the fuzziness factor used by this instance.
+<i>169</i>&nbsp;     * @return the fuzziness factor
+<i>170</i>&nbsp;     */
+<i>171</i>&nbsp;    public double getFuzziness() {
+<b class="fc"><i>172</i>&nbsp;        return fuzziness;</b>
+<i>173</i>&nbsp;    }
+<i>174</i>&nbsp;
+<i>175</i>&nbsp;    /**
+<i>176</i>&nbsp;     * Returns the maximum number of iterations this instance will use.
+<i>177</i>&nbsp;     * @return the maximum number of iterations, or -1 if no maximum is set
+<i>178</i>&nbsp;     */
+<i>179</i>&nbsp;    public int getMaxIterations() {
+<b class="fc"><i>180</i>&nbsp;        return maxIterations;</b>
+<i>181</i>&nbsp;    }
+<i>182</i>&nbsp;
+<i>183</i>&nbsp;    /**
+<i>184</i>&nbsp;     * Returns the convergence criteria used by this instance.
+<i>185</i>&nbsp;     * @return the convergence criteria
+<i>186</i>&nbsp;     */
+<i>187</i>&nbsp;    public double getEpsilon() {
+<b class="fc"><i>188</i>&nbsp;        return epsilon;</b>
+<i>189</i>&nbsp;    }
+<i>190</i>&nbsp;
+<i>191</i>&nbsp;    /**
+<i>192</i>&nbsp;     * Returns the random generator this instance will use.
+<i>193</i>&nbsp;     * @return the random generator
+<i>194</i>&nbsp;     */
+<i>195</i>&nbsp;    public UniformRandomProvider getRandomGenerator() {
+<b class="fc"><i>196</i>&nbsp;        return random;</b>
+<i>197</i>&nbsp;    }
+<i>198</i>&nbsp;
+<i>199</i>&nbsp;    /**
+<i>200</i>&nbsp;     * Returns the {@code nxk} membership matrix, where {@code n} is the number
+<i>201</i>&nbsp;     * of data points and {@code k} the number of clusters.
+<i>202</i>&nbsp;     * &lt;p&gt;
+<i>203</i>&nbsp;     * The element U&lt;sub&gt;i,j&lt;/sub&gt; represents the membership value for data point {@code i}
+<i>204</i>&nbsp;     * to cluster {@code j}.
+<i>205</i>&nbsp;     *
+<i>206</i>&nbsp;     * @return the membership matrix
+<i>207</i>&nbsp;     * @throws MathIllegalStateException if {@link #cluster(Collection)} has not been called before
+<i>208</i>&nbsp;     */
+<i>209</i>&nbsp;    public RealMatrix getMembershipMatrix() {
+<b class="nc"><i>210</i>&nbsp;        if (membershipMatrix == null) {</b>
+<b class="nc"><i>211</i>&nbsp;            throw new MathIllegalStateException();</b>
+<i>212</i>&nbsp;        }
+<b class="nc"><i>213</i>&nbsp;        return MatrixUtils.createRealMatrix(membershipMatrix);</b>
+<i>214</i>&nbsp;    }
+<i>215</i>&nbsp;
+<i>216</i>&nbsp;    /**
+<i>217</i>&nbsp;     * Returns an unmodifiable list of the data points used in the last
+<i>218</i>&nbsp;     * call to {@link #cluster(Collection)}.
+<i>219</i>&nbsp;     * @return the list of data points, or {@code null} if {@link #cluster(Collection)} has
+<i>220</i>&nbsp;     *   not been called before.
+<i>221</i>&nbsp;     */
+<i>222</i>&nbsp;    public List&lt;T&gt; getDataPoints() {
+<b class="nc"><i>223</i>&nbsp;        return points;</b>
+<i>224</i>&nbsp;    }
+<i>225</i>&nbsp;
+<i>226</i>&nbsp;    /**
+<i>227</i>&nbsp;     * Returns the list of clusters resulting from the last call to {@link #cluster(Collection)}.
+<i>228</i>&nbsp;     * @return the list of clusters, or {@code null} if {@link #cluster(Collection)} has
+<i>229</i>&nbsp;     *   not been called before.
+<i>230</i>&nbsp;     */
+<i>231</i>&nbsp;    public List&lt;CentroidCluster&lt;T&gt;&gt; getClusters() {
+<b class="nc"><i>232</i>&nbsp;        return clusters;</b>
+<i>233</i>&nbsp;    }
+<i>234</i>&nbsp;
+<i>235</i>&nbsp;    /**
+<i>236</i>&nbsp;     * Get the value of the objective function.
+<i>237</i>&nbsp;     * @return the objective function evaluation as double value
+<i>238</i>&nbsp;     * @throws MathIllegalStateException if {@link #cluster(Collection)} has not been called before
+<i>239</i>&nbsp;     */
+<i>240</i>&nbsp;    public double getObjectiveFunctionValue() {
+<b class="nc"><i>241</i>&nbsp;        if (points == null || clusters == null) {</b>
+<b class="nc"><i>242</i>&nbsp;            throw new MathIllegalStateException();</b>
+<i>243</i>&nbsp;        }
+<i>244</i>&nbsp;
+<b class="nc"><i>245</i>&nbsp;        int i = 0;</b>
+<b class="nc"><i>246</i>&nbsp;        double objFunction = 0.0;</b>
+<b class="nc"><i>247</i>&nbsp;        for (final T point : points) {</b>
+<b class="nc"><i>248</i>&nbsp;            int j = 0;</b>
+<b class="nc"><i>249</i>&nbsp;            for (final CentroidCluster&lt;T&gt; cluster : clusters) {</b>
+<b class="nc"><i>250</i>&nbsp;                final double dist = distance(point, cluster.getCenter());</b>
+<b class="nc"><i>251</i>&nbsp;                objFunction += (dist * dist) * FastMath.pow(membershipMatrix[i][j], fuzziness);</b>
+<b class="nc"><i>252</i>&nbsp;                j++;</b>
+<b class="nc"><i>253</i>&nbsp;            }</b>
+<b class="nc"><i>254</i>&nbsp;            i++;</b>
+<b class="nc"><i>255</i>&nbsp;        }</b>
+<b class="nc"><i>256</i>&nbsp;        return objFunction;</b>
+<i>257</i>&nbsp;    }
+<i>258</i>&nbsp;
+<i>259</i>&nbsp;    /**
+<i>260</i>&nbsp;     * Performs Fuzzy K-Means cluster analysis.
+<i>261</i>&nbsp;     *
+<i>262</i>&nbsp;     * @param dataPoints the points to cluster
+<i>263</i>&nbsp;     * @return the list of clusters
+<i>264</i>&nbsp;     * @throws MathIllegalArgumentException if the data points are null or the number
+<i>265</i>&nbsp;     *     of clusters is larger than the number of data points
+<i>266</i>&nbsp;     */
+<i>267</i>&nbsp;    @Override
+<i>268</i>&nbsp;    public List&lt;CentroidCluster&lt;T&gt;&gt; cluster(final Collection&lt;T&gt; dataPoints)
+<i>269</i>&nbsp;            throws MathIllegalArgumentException {
+<i>270</i>&nbsp;
+<i>271</i>&nbsp;        // sanity checks
+<b class="fc"><i>272</i>&nbsp;        MathUtils.checkNotNull(dataPoints);</b>
+<i>273</i>&nbsp;
+<b class="fc"><i>274</i>&nbsp;        final int size = dataPoints.size();</b>
+<i>275</i>&nbsp;
+<i>276</i>&nbsp;        // number of clusters has to be smaller or equal the number of data points
+<b class="fc"><i>277</i>&nbsp;        if (size &lt; k) {</b>
+<b class="nc"><i>278</i>&nbsp;            throw new NumberIsTooSmallException(size, k, false);</b>
+<i>279</i>&nbsp;        }
+<i>280</i>&nbsp;
+<i>281</i>&nbsp;        // copy the input collection to an unmodifiable list with indexed access
+<b class="fc"><i>282</i>&nbsp;        points = Collections.unmodifiableList(new ArrayList&lt;&gt;(dataPoints));</b>
+<b class="fc"><i>283</i>&nbsp;        clusters = new ArrayList&lt;&gt;();</b>
+<b class="fc"><i>284</i>&nbsp;        membershipMatrix = new double[size][k];</b>
+<b class="fc"><i>285</i>&nbsp;        final double[][] oldMatrix = new double[size][k];</b>
+<i>286</i>&nbsp;
+<i>287</i>&nbsp;        // if no points are provided, return an empty list of clusters
+<b class="fc"><i>288</i>&nbsp;        if (size == 0) {</b>
+<b class="nc"><i>289</i>&nbsp;            return clusters;</b>
+<i>290</i>&nbsp;        }
+<i>291</i>&nbsp;
+<b class="fc"><i>292</i>&nbsp;        initializeMembershipMatrix();</b>
+<i>293</i>&nbsp;
+<i>294</i>&nbsp;        // there is at least one point
+<b class="fc"><i>295</i>&nbsp;        final int pointDimension = points.get(0).getPoint().length;</b>
+<b class="fc"><i>296</i>&nbsp;        for (int i = 0; i &lt; k; i++) {</b>
+<b class="fc"><i>297</i>&nbsp;            clusters.add(new CentroidCluster&lt;T&gt;(new DoublePoint(new double[pointDimension])));</b>
+<i>298</i>&nbsp;        }
+<i>299</i>&nbsp;
+<b class="fc"><i>300</i>&nbsp;        int iteration = 0;</b>
+<b class="fc"><i>301</i>&nbsp;        final int max = (maxIterations &lt; 0) ? Integer.MAX_VALUE : maxIterations;</b>
+<b class="fc"><i>302</i>&nbsp;        double difference = 0.0;</b>
+<i>303</i>&nbsp;
+<i>304</i>&nbsp;        do {
+<b class="fc"><i>305</i>&nbsp;            saveMembershipMatrix(oldMatrix);</b>
+<b class="fc"><i>306</i>&nbsp;            updateClusterCenters();</b>
+<b class="fc"><i>307</i>&nbsp;            updateMembershipMatrix();</b>
+<b class="fc"><i>308</i>&nbsp;            difference = calculateMaxMembershipChange(oldMatrix);</b>
+<b class="fc"><i>309</i>&nbsp;        } while (difference &gt; epsilon &amp;&amp; ++iteration &lt; max);</b>
+<i>310</i>&nbsp;
+<b class="fc"><i>311</i>&nbsp;        return clusters;</b>
+<i>312</i>&nbsp;    }
+<i>313</i>&nbsp;
+<i>314</i>&nbsp;    /**
+<i>315</i>&nbsp;     * Update the cluster centers.
+<i>316</i>&nbsp;     */
+<i>317</i>&nbsp;    private void updateClusterCenters() {
+<b class="fc"><i>318</i>&nbsp;        int j = 0;</b>
+<b class="fc"><i>319</i>&nbsp;        final List&lt;CentroidCluster&lt;T&gt;&gt; newClusters = new ArrayList&lt;&gt;(k);</b>
+<b class="fc"><i>320</i>&nbsp;        for (final CentroidCluster&lt;T&gt; cluster : clusters) {</b>
+<b class="fc"><i>321</i>&nbsp;            final Clusterable center = cluster.getCenter();</b>
+<b class="fc"><i>322</i>&nbsp;            int i = 0;</b>
+<b class="fc"><i>323</i>&nbsp;            double[] arr = new double[center.getPoint().length];</b>
+<b class="fc"><i>324</i>&nbsp;            double sum = 0.0;</b>
+<b class="fc"><i>325</i>&nbsp;            for (final T point : points) {</b>
+<b class="fc"><i>326</i>&nbsp;                final double u = FastMath.pow(membershipMatrix[i][j], fuzziness);</b>
+<b class="fc"><i>327</i>&nbsp;                final double[] pointArr = point.getPoint();</b>
+<b class="fc"><i>328</i>&nbsp;                for (int idx = 0; idx &lt; arr.length; idx++) {</b>
+<b class="fc"><i>329</i>&nbsp;                    arr[idx] += u * pointArr[idx];</b>
+<i>330</i>&nbsp;                }
+<b class="fc"><i>331</i>&nbsp;                sum += u;</b>
+<b class="fc"><i>332</i>&nbsp;                i++;</b>
+<b class="fc"><i>333</i>&nbsp;            }</b>
+<b class="fc"><i>334</i>&nbsp;            MathArrays.scaleInPlace(1.0 / sum, arr);</b>
+<b class="fc"><i>335</i>&nbsp;            newClusters.add(new CentroidCluster&lt;T&gt;(new DoublePoint(arr)));</b>
+<b class="fc"><i>336</i>&nbsp;            j++;</b>
+<b class="fc"><i>337</i>&nbsp;        }</b>
+<b class="fc"><i>338</i>&nbsp;        clusters.clear();</b>
+<b class="fc"><i>339</i>&nbsp;        clusters = newClusters;</b>
+<b class="fc"><i>340</i>&nbsp;    }</b>
+<i>341</i>&nbsp;
+<i>342</i>&nbsp;    /**
+<i>343</i>&nbsp;     * Updates the membership matrix and assigns the points to the cluster with
+<i>344</i>&nbsp;     * the highest membership.
+<i>345</i>&nbsp;     */
+<i>346</i>&nbsp;    private void updateMembershipMatrix() {
+<b class="fc"><i>347</i>&nbsp;        for (int i = 0; i &lt; points.size(); i++) {</b>
+<b class="fc"><i>348</i>&nbsp;            final T point = points.get(i);</b>
+<b class="fc"><i>349</i>&nbsp;            double maxMembership = Double.MIN_VALUE;</b>
+<b class="fc"><i>350</i>&nbsp;            int newCluster = -1;</b>
+<b class="fc"><i>351</i>&nbsp;            for (int j = 0; j &lt; clusters.size(); j++) {</b>
+<b class="fc"><i>352</i>&nbsp;                double sum = 0.0;</b>
+<b class="fc"><i>353</i>&nbsp;                final double distA = FastMath.abs(distance(point, clusters.get(j).getCenter()));</b>
+<i>354</i>&nbsp;
+<b class="fc"><i>355</i>&nbsp;                if (distA != 0.0) {</b>
+<b class="fc"><i>356</i>&nbsp;                    for (final CentroidCluster&lt;T&gt; c : clusters) {</b>
+<b class="fc"><i>357</i>&nbsp;                        final double distB = FastMath.abs(distance(point, c.getCenter()));</b>
+<b class="fc"><i>358</i>&nbsp;                        if (distB == 0.0) {</b>
+<b class="nc"><i>359</i>&nbsp;                            sum = Double.POSITIVE_INFINITY;</b>
+<b class="nc"><i>360</i>&nbsp;                            break;</b>
+<i>361</i>&nbsp;                        }
+<b class="fc"><i>362</i>&nbsp;                        sum += FastMath.pow(distA / distB, 2.0 / (fuzziness - 1.0));</b>
+<b class="fc"><i>363</i>&nbsp;                    }</b>
+<i>364</i>&nbsp;                }
+<i>365</i>&nbsp;
+<i>366</i>&nbsp;                double membership;
+<b class="fc"><i>367</i>&nbsp;                if (sum == 0.0) {</b>
+<b class="fc"><i>368</i>&nbsp;                    membership = 1.0;</b>
+<b class="fc"><i>369</i>&nbsp;                } else if (sum == Double.POSITIVE_INFINITY) {</b>
+<b class="nc"><i>370</i>&nbsp;                    membership = 0.0;</b>
+<i>371</i>&nbsp;                } else {
+<b class="fc"><i>372</i>&nbsp;                    membership = 1.0 / sum;</b>
+<i>373</i>&nbsp;                }
+<b class="fc"><i>374</i>&nbsp;                membershipMatrix[i][j] = membership;</b>
+<i>375</i>&nbsp;
+<b class="fc"><i>376</i>&nbsp;                if (membershipMatrix[i][j] &gt; maxMembership) {</b>
+<b class="fc"><i>377</i>&nbsp;                    maxMembership = membershipMatrix[i][j];</b>
+<b class="fc"><i>378</i>&nbsp;                    newCluster = j;</b>
+<i>379</i>&nbsp;                }
+<i>380</i>&nbsp;            }
+<b class="fc"><i>381</i>&nbsp;            clusters.get(newCluster).addPoint(point);</b>
+<i>382</i>&nbsp;        }
+<b class="fc"><i>383</i>&nbsp;    }</b>
+<i>384</i>&nbsp;
+<i>385</i>&nbsp;    /**
+<i>386</i>&nbsp;     * Initialize the membership matrix with random values.
+<i>387</i>&nbsp;     */
+<i>388</i>&nbsp;    private void initializeMembershipMatrix() {
+<b class="fc"><i>389</i>&nbsp;        for (int i = 0; i &lt; points.size(); i++) {</b>
+<b class="fc"><i>390</i>&nbsp;            for (int j = 0; j &lt; k; j++) {</b>
+<b class="fc"><i>391</i>&nbsp;                membershipMatrix[i][j] = random.nextDouble();</b>
+<i>392</i>&nbsp;            }
+<b class="fc"><i>393</i>&nbsp;            membershipMatrix[i] = MathArrays.normalizeArray(membershipMatrix[i], 1.0);</b>
+<i>394</i>&nbsp;        }
+<b class="fc"><i>395</i>&nbsp;    }</b>
+<i>396</i>&nbsp;
+<i>397</i>&nbsp;    /**
+<i>398</i>&nbsp;     * Calculate the maximum element-by-element change of the membership matrix
+<i>399</i>&nbsp;     * for the current iteration.
+<i>400</i>&nbsp;     *
+<i>401</i>&nbsp;     * @param matrix the membership matrix of the previous iteration
+<i>402</i>&nbsp;     * @return the maximum membership matrix change
+<i>403</i>&nbsp;     */
+<i>404</i>&nbsp;    private double calculateMaxMembershipChange(final double[][] matrix) {
+<b class="fc"><i>405</i>&nbsp;        double maxMembership = 0.0;</b>
+<b class="fc"><i>406</i>&nbsp;        for (int i = 0; i &lt; points.size(); i++) {</b>
+<b class="fc"><i>407</i>&nbsp;            for (int j = 0; j &lt; clusters.size(); j++) {</b>
+<b class="fc"><i>408</i>&nbsp;                double v = FastMath.abs(membershipMatrix[i][j] - matrix[i][j]);</b>
+<b class="fc"><i>409</i>&nbsp;                maxMembership = FastMath.max(v, maxMembership);</b>
+<i>410</i>&nbsp;            }
+<i>411</i>&nbsp;        }
+<b class="fc"><i>412</i>&nbsp;        return maxMembership;</b>
+<i>413</i>&nbsp;    }
+<i>414</i>&nbsp;
+<i>415</i>&nbsp;    /**
+<i>416</i>&nbsp;     * Copy the membership matrix into the provided matrix.
+<i>417</i>&nbsp;     *
+<i>418</i>&nbsp;     * @param matrix the place to store the membership matrix
+<i>419</i>&nbsp;     */
+<i>420</i>&nbsp;    private void saveMembershipMatrix(final double[][] matrix) {
+<b class="fc"><i>421</i>&nbsp;        for (int i = 0; i &lt; points.size(); i++) {</b>
+<b class="fc"><i>422</i>&nbsp;            System.arraycopy(membershipMatrix[i], 0, matrix[i], 0, clusters.size());</b>
+<i>423</i>&nbsp;        }
+<b class="fc"><i>424</i>&nbsp;    }</b>
+<i>425</i>&nbsp;
+<i>426</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

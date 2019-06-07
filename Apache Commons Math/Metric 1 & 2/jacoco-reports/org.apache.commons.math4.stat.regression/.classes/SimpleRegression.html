@@ -1,0 +1,971 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: SimpleRegression</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.stat.regression</a> ]
+</div>
+
+<h1>Coverage Summary for Class: SimpleRegression (org.apache.commons.math4.stat.regression)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">SimpleRegression</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    93.8%
+  </span>
+  <span class="absValue">
+    (30/ 32)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    78.5%
+  </span>
+  <span class="absValue">
+    (179/ 228)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;
+<i>18</i>&nbsp;package org.apache.commons.math4.stat.regression;
+<i>19</i>&nbsp;import java.io.Serializable;
+<i>20</i>&nbsp;
+<i>21</i>&nbsp;import org.apache.commons.statistics.distribution.TDistribution;
+<i>22</i>&nbsp;import org.apache.commons.math4.exception.MathIllegalArgumentException;
+<i>23</i>&nbsp;import org.apache.commons.math4.exception.NoDataException;
+<i>24</i>&nbsp;import org.apache.commons.math4.exception.OutOfRangeException;
+<i>25</i>&nbsp;import org.apache.commons.math4.exception.util.LocalizedFormats;
+<i>26</i>&nbsp;import org.apache.commons.math4.util.FastMath;
+<i>27</i>&nbsp;import org.apache.commons.numbers.core.Precision;
+<i>28</i>&nbsp;
+<i>29</i>&nbsp;/**
+<i>30</i>&nbsp; * Estimates an ordinary least squares regression model
+<i>31</i>&nbsp; * with one independent variable.
+<i>32</i>&nbsp; * &lt;p&gt;
+<i>33</i>&nbsp; * &lt;code&gt; y = intercept + slope * x  &lt;/code&gt;&lt;/p&gt;
+<i>34</i>&nbsp; * &lt;p&gt;
+<i>35</i>&nbsp; * Standard errors for &lt;code&gt;intercept&lt;/code&gt; and &lt;code&gt;slope&lt;/code&gt; are
+<i>36</i>&nbsp; * available as well as ANOVA, r-square and Pearson&#39;s r statistics.&lt;/p&gt;
+<i>37</i>&nbsp; * &lt;p&gt;
+<i>38</i>&nbsp; * Observations (x,y pairs) can be added to the model one at a time or they
+<i>39</i>&nbsp; * can be provided in a 2-dimensional array.  The observations are not stored
+<i>40</i>&nbsp; * in memory, so there is no limit to the number of observations that can be
+<i>41</i>&nbsp; * added to the model.&lt;/p&gt;
+<i>42</i>&nbsp; * &lt;p&gt;
+<i>43</i>&nbsp; * &lt;strong&gt;Usage Notes&lt;/strong&gt;: &lt;ul&gt;
+<i>44</i>&nbsp; * &lt;li&gt; When there are fewer than two observations in the model, or when
+<i>45</i>&nbsp; * there is no variation in the x values (i.e. all x values are the same)
+<i>46</i>&nbsp; * all statistics return &lt;code&gt;NaN&lt;/code&gt;. At least two observations with
+<i>47</i>&nbsp; * different x coordinates are required to estimate a bivariate regression
+<i>48</i>&nbsp; * model.
+<i>49</i>&nbsp; * &lt;/li&gt;
+<i>50</i>&nbsp; * &lt;li&gt; Getters for the statistics always compute values based on the current
+<i>51</i>&nbsp; * set of observations -- i.e., you can get statistics, then add more data
+<i>52</i>&nbsp; * and get updated statistics without using a new instance.  There is no
+<i>53</i>&nbsp; * &quot;compute&quot; method that updates all statistics.  Each of the getters performs
+<i>54</i>&nbsp; * the necessary computations to return the requested statistic.
+<i>55</i>&nbsp; * &lt;/li&gt;
+<i>56</i>&nbsp; * &lt;li&gt; The intercept term may be suppressed by passing {@code false} to
+<i>57</i>&nbsp; * the {@link #SimpleRegression(boolean)} constructor.  When the
+<i>58</i>&nbsp; * {@code hasIntercept} property is false, the model is estimated without a
+<i>59</i>&nbsp; * constant term and {@link #getIntercept()} returns {@code 0}.&lt;/li&gt;
+<i>60</i>&nbsp; * &lt;/ul&gt;
+<i>61</i>&nbsp; *
+<i>62</i>&nbsp; */
+<i>63</i>&nbsp;public class SimpleRegression implements Serializable, UpdatingMultipleLinearRegression {
+<i>64</i>&nbsp;
+<i>65</i>&nbsp;    /** Serializable version identifier */
+<i>66</i>&nbsp;    private static final long serialVersionUID = -3004689053607543335L;
+<i>67</i>&nbsp;
+<i>68</i>&nbsp;    /** sum of x values */
+<b class="fc"><i>69</i>&nbsp;    private double sumX = 0d;</b>
+<i>70</i>&nbsp;
+<i>71</i>&nbsp;    /** total variation in x (sum of squared deviations from xbar) */
+<b class="fc"><i>72</i>&nbsp;    private double sumXX = 0d;</b>
+<i>73</i>&nbsp;
+<i>74</i>&nbsp;    /** sum of y values */
+<b class="fc"><i>75</i>&nbsp;    private double sumY = 0d;</b>
+<i>76</i>&nbsp;
+<i>77</i>&nbsp;    /** total variation in y (sum of squared deviations from ybar) */
+<b class="fc"><i>78</i>&nbsp;    private double sumYY = 0d;</b>
+<i>79</i>&nbsp;
+<i>80</i>&nbsp;    /** sum of products */
+<b class="fc"><i>81</i>&nbsp;    private double sumXY = 0d;</b>
+<i>82</i>&nbsp;
+<i>83</i>&nbsp;    /** number of observations */
+<b class="fc"><i>84</i>&nbsp;    private long n = 0;</b>
+<i>85</i>&nbsp;
+<i>86</i>&nbsp;    /** mean of accumulated x values, used in updating formulas */
+<b class="fc"><i>87</i>&nbsp;    private double xbar = 0;</b>
+<i>88</i>&nbsp;
+<i>89</i>&nbsp;    /** mean of accumulated y values, used in updating formulas */
+<b class="fc"><i>90</i>&nbsp;    private double ybar = 0;</b>
+<i>91</i>&nbsp;
+<i>92</i>&nbsp;    /** include an intercept or not */
+<i>93</i>&nbsp;    private final boolean hasIntercept;
+<i>94</i>&nbsp;    // ---------------------Public methods--------------------------------------
+<i>95</i>&nbsp;
+<i>96</i>&nbsp;    /**
+<i>97</i>&nbsp;     * Create an empty SimpleRegression instance
+<i>98</i>&nbsp;     */
+<i>99</i>&nbsp;    public SimpleRegression() {
+<b class="fc"><i>100</i>&nbsp;        this(true);</b>
+<b class="fc"><i>101</i>&nbsp;    }</b>
+<i>102</i>&nbsp;    /**
+<i>103</i>&nbsp;    * Create a SimpleRegression instance, specifying whether or not to estimate
+<i>104</i>&nbsp;    * an intercept.
+<i>105</i>&nbsp;    *
+<i>106</i>&nbsp;    * &lt;p&gt;Use {@code false} to estimate a model with no intercept.  When the
+<i>107</i>&nbsp;    * {@code hasIntercept} property is false, the model is estimated without a
+<i>108</i>&nbsp;    * constant term and {@link #getIntercept()} returns {@code 0}.&lt;/p&gt;
+<i>109</i>&nbsp;    *
+<i>110</i>&nbsp;    * @param includeIntercept whether or not to include an intercept term in
+<i>111</i>&nbsp;    * the regression model
+<i>112</i>&nbsp;    */
+<i>113</i>&nbsp;    public SimpleRegression(boolean includeIntercept) {
+<b class="fc"><i>114</i>&nbsp;        super();</b>
+<b class="fc"><i>115</i>&nbsp;        hasIntercept = includeIntercept;</b>
+<b class="fc"><i>116</i>&nbsp;    }</b>
+<i>117</i>&nbsp;
+<i>118</i>&nbsp;    /**
+<i>119</i>&nbsp;     * Adds the observation (x,y) to the regression data set.
+<i>120</i>&nbsp;     * &lt;p&gt;
+<i>121</i>&nbsp;     * Uses updating formulas for means and sums of squares defined in
+<i>122</i>&nbsp;     * &quot;Algorithms for Computing the Sample Variance: Analysis and
+<i>123</i>&nbsp;     * Recommendations&quot;, Chan, T.F., Golub, G.H., and LeVeque, R.J.
+<i>124</i>&nbsp;     * 1983, American Statistician, vol. 37, pp. 242-247, referenced in
+<i>125</i>&nbsp;     * Weisberg, S. &quot;Applied Linear Regression&quot;. 2nd Ed. 1985.&lt;/p&gt;
+<i>126</i>&nbsp;     *
+<i>127</i>&nbsp;     *
+<i>128</i>&nbsp;     * @param x independent variable value
+<i>129</i>&nbsp;     * @param y dependent variable value
+<i>130</i>&nbsp;     */
+<i>131</i>&nbsp;    public void addData(final double x,final double y) {
+<b class="fc"><i>132</i>&nbsp;        if (n == 0) {</b>
+<b class="fc"><i>133</i>&nbsp;            xbar = x;</b>
+<b class="fc"><i>134</i>&nbsp;            ybar = y;</b>
+<i>135</i>&nbsp;        } else {
+<b class="fc"><i>136</i>&nbsp;            if( hasIntercept ){</b>
+<b class="fc"><i>137</i>&nbsp;                final double fact1 = 1.0 + n;</b>
+<b class="fc"><i>138</i>&nbsp;                final double fact2 = n / (1.0 + n);</b>
+<b class="fc"><i>139</i>&nbsp;                final double dx = x - xbar;</b>
+<b class="fc"><i>140</i>&nbsp;                final double dy = y - ybar;</b>
+<b class="fc"><i>141</i>&nbsp;                sumXX += dx * dx * fact2;</b>
+<b class="fc"><i>142</i>&nbsp;                sumYY += dy * dy * fact2;</b>
+<b class="fc"><i>143</i>&nbsp;                sumXY += dx * dy * fact2;</b>
+<b class="fc"><i>144</i>&nbsp;                xbar += dx / fact1;</b>
+<b class="fc"><i>145</i>&nbsp;                ybar += dy / fact1;</b>
+<i>146</i>&nbsp;            }
+<i>147</i>&nbsp;         }
+<b class="fc"><i>148</i>&nbsp;        if( !hasIntercept ){</b>
+<b class="fc"><i>149</i>&nbsp;            sumXX += x * x ;</b>
+<b class="fc"><i>150</i>&nbsp;            sumYY += y * y ;</b>
+<b class="fc"><i>151</i>&nbsp;            sumXY += x * y ;</b>
+<i>152</i>&nbsp;        }
+<b class="fc"><i>153</i>&nbsp;        sumX += x;</b>
+<b class="fc"><i>154</i>&nbsp;        sumY += y;</b>
+<b class="fc"><i>155</i>&nbsp;        n++;</b>
+<b class="fc"><i>156</i>&nbsp;    }</b>
+<i>157</i>&nbsp;
+<i>158</i>&nbsp;    /**
+<i>159</i>&nbsp;     * Appends data from another regression calculation to this one.
+<i>160</i>&nbsp;     *
+<i>161</i>&nbsp;     * &lt;p&gt;The mean update formulae are based on a paper written by Philippe
+<i>162</i>&nbsp;     * P&amp;eacute;bay:
+<i>163</i>&nbsp;     * &lt;a
+<i>164</i>&nbsp;     * href=&quot;http://prod.sandia.gov/techlib/access-control.cgi/2008/086212.pdf&quot;&gt;
+<i>165</i>&nbsp;     * Formulas for Robust, One-Pass Parallel Computation of Covariances and
+<i>166</i>&nbsp;     * Arbitrary-Order Statistical Moments&lt;/a&gt;, 2008, Technical Report
+<i>167</i>&nbsp;     * SAND2008-6212, Sandia National Laboratories.&lt;/p&gt;
+<i>168</i>&nbsp;     *
+<i>169</i>&nbsp;     * @param reg model to append data from
+<i>170</i>&nbsp;     * @since 3.3
+<i>171</i>&nbsp;     */
+<i>172</i>&nbsp;    public void append(SimpleRegression reg) {
+<b class="fc"><i>173</i>&nbsp;        if (n == 0) {</b>
+<b class="fc"><i>174</i>&nbsp;            xbar = reg.xbar;</b>
+<b class="fc"><i>175</i>&nbsp;            ybar = reg.ybar;</b>
+<b class="fc"><i>176</i>&nbsp;            sumXX = reg.sumXX;</b>
+<b class="fc"><i>177</i>&nbsp;            sumYY = reg.sumYY;</b>
+<b class="fc"><i>178</i>&nbsp;            sumXY = reg.sumXY;</b>
+<i>179</i>&nbsp;        } else {
+<b class="fc"><i>180</i>&nbsp;            if (hasIntercept) {</b>
+<b class="fc"><i>181</i>&nbsp;                final double fact1 = reg.n / (double) (reg.n + n);</b>
+<b class="fc"><i>182</i>&nbsp;                final double fact2 = n * reg.n / (double) (reg.n + n);</b>
+<b class="fc"><i>183</i>&nbsp;                final double dx = reg.xbar - xbar;</b>
+<b class="fc"><i>184</i>&nbsp;                final double dy = reg.ybar - ybar;</b>
+<b class="fc"><i>185</i>&nbsp;                sumXX += reg.sumXX + dx * dx * fact2;</b>
+<b class="fc"><i>186</i>&nbsp;                sumYY += reg.sumYY + dy * dy * fact2;</b>
+<b class="fc"><i>187</i>&nbsp;                sumXY += reg.sumXY + dx * dy * fact2;</b>
+<b class="fc"><i>188</i>&nbsp;                xbar += dx * fact1;</b>
+<b class="fc"><i>189</i>&nbsp;                ybar += dy * fact1;</b>
+<b class="fc"><i>190</i>&nbsp;            }else{</b>
+<b class="fc"><i>191</i>&nbsp;                sumXX += reg.sumXX;</b>
+<b class="fc"><i>192</i>&nbsp;                sumYY += reg.sumYY;</b>
+<b class="fc"><i>193</i>&nbsp;                sumXY += reg.sumXY;</b>
+<i>194</i>&nbsp;            }
+<i>195</i>&nbsp;        }
+<b class="fc"><i>196</i>&nbsp;        sumX += reg.sumX;</b>
+<b class="fc"><i>197</i>&nbsp;        sumY += reg.sumY;</b>
+<b class="fc"><i>198</i>&nbsp;        n += reg.n;</b>
+<b class="fc"><i>199</i>&nbsp;    }</b>
+<i>200</i>&nbsp;
+<i>201</i>&nbsp;    /**
+<i>202</i>&nbsp;     * Removes the observation (x,y) from the regression data set.
+<i>203</i>&nbsp;     * &lt;p&gt;
+<i>204</i>&nbsp;     * Mirrors the addData method.  This method permits the use of
+<i>205</i>&nbsp;     * SimpleRegression instances in streaming mode where the regression
+<i>206</i>&nbsp;     * is applied to a sliding &quot;window&quot; of observations, however the caller is
+<i>207</i>&nbsp;     * responsible for maintaining the set of observations in the window.&lt;/p&gt;
+<i>208</i>&nbsp;     *
+<i>209</i>&nbsp;     * The method has no effect if there are no points of data (i.e. n=0)
+<i>210</i>&nbsp;     *
+<i>211</i>&nbsp;     * @param x independent variable value
+<i>212</i>&nbsp;     * @param y dependent variable value
+<i>213</i>&nbsp;     */
+<i>214</i>&nbsp;    public void removeData(final double x,final double y) {
+<b class="fc"><i>215</i>&nbsp;        if (n &gt; 0) {</b>
+<b class="fc"><i>216</i>&nbsp;            if (hasIntercept) {</b>
+<b class="fc"><i>217</i>&nbsp;                final double fact1 = n - 1.0;</b>
+<b class="fc"><i>218</i>&nbsp;                final double fact2 = n / (n - 1.0);</b>
+<b class="fc"><i>219</i>&nbsp;                final double dx = x - xbar;</b>
+<b class="fc"><i>220</i>&nbsp;                final double dy = y - ybar;</b>
+<b class="fc"><i>221</i>&nbsp;                sumXX -= dx * dx * fact2;</b>
+<b class="fc"><i>222</i>&nbsp;                sumYY -= dy * dy * fact2;</b>
+<b class="fc"><i>223</i>&nbsp;                sumXY -= dx * dy * fact2;</b>
+<b class="fc"><i>224</i>&nbsp;                xbar -= dx / fact1;</b>
+<b class="fc"><i>225</i>&nbsp;                ybar -= dy / fact1;</b>
+<b class="fc"><i>226</i>&nbsp;            } else {</b>
+<b class="nc"><i>227</i>&nbsp;                final double fact1 = n - 1.0;</b>
+<b class="nc"><i>228</i>&nbsp;                sumXX -= x * x;</b>
+<b class="nc"><i>229</i>&nbsp;                sumYY -= y * y;</b>
+<b class="nc"><i>230</i>&nbsp;                sumXY -= x * y;</b>
+<b class="nc"><i>231</i>&nbsp;                xbar -= x / fact1;</b>
+<b class="nc"><i>232</i>&nbsp;                ybar -= y / fact1;</b>
+<i>233</i>&nbsp;            }
+<b class="fc"><i>234</i>&nbsp;             sumX -= x;</b>
+<b class="fc"><i>235</i>&nbsp;             sumY -= y;</b>
+<b class="fc"><i>236</i>&nbsp;             n--;</b>
+<i>237</i>&nbsp;        }
+<b class="fc"><i>238</i>&nbsp;    }</b>
+<i>239</i>&nbsp;
+<i>240</i>&nbsp;    /**
+<i>241</i>&nbsp;     * Adds the observations represented by the elements in
+<i>242</i>&nbsp;     * &lt;code&gt;data&lt;/code&gt;.
+<i>243</i>&nbsp;     * &lt;p&gt;
+<i>244</i>&nbsp;     * &lt;code&gt;(data[0][0],data[0][1])&lt;/code&gt; will be the first observation, then
+<i>245</i>&nbsp;     * &lt;code&gt;(data[1][0],data[1][1])&lt;/code&gt;, etc.&lt;/p&gt;
+<i>246</i>&nbsp;     * &lt;p&gt;
+<i>247</i>&nbsp;     * This method does not replace data that has already been added.  The
+<i>248</i>&nbsp;     * observations represented by &lt;code&gt;data&lt;/code&gt; are added to the existing
+<i>249</i>&nbsp;     * dataset.&lt;/p&gt;
+<i>250</i>&nbsp;     * &lt;p&gt;
+<i>251</i>&nbsp;     * To replace all data, use &lt;code&gt;clear()&lt;/code&gt; before adding the new
+<i>252</i>&nbsp;     * data.&lt;/p&gt;
+<i>253</i>&nbsp;     *
+<i>254</i>&nbsp;     * @param data array of observations to be added
+<i>255</i>&nbsp;     * @throws ModelSpecificationException if the length of {@code data[i]} is not
+<i>256</i>&nbsp;     * greater than or equal to 2
+<i>257</i>&nbsp;     */
+<i>258</i>&nbsp;    public void addData(final double[][] data) throws ModelSpecificationException {
+<b class="fc"><i>259</i>&nbsp;        for (int i = 0; i &lt; data.length; i++) {</b>
+<b class="fc"><i>260</i>&nbsp;            if( data[i].length &lt; 2 ){</b>
+<b class="nc"><i>261</i>&nbsp;               throw new ModelSpecificationException(LocalizedFormats.INVALID_REGRESSION_OBSERVATION,</b>
+<b class="nc"><i>262</i>&nbsp;                    data[i].length, 2);</b>
+<i>263</i>&nbsp;            }
+<b class="fc"><i>264</i>&nbsp;            addData(data[i][0], data[i][1]);</b>
+<i>265</i>&nbsp;        }
+<b class="fc"><i>266</i>&nbsp;    }</b>
+<i>267</i>&nbsp;
+<i>268</i>&nbsp;    /**
+<i>269</i>&nbsp;     * Adds one observation to the regression model.
+<i>270</i>&nbsp;     *
+<i>271</i>&nbsp;     * @param x the independent variables which form the design matrix
+<i>272</i>&nbsp;     * @param y the dependent or response variable
+<i>273</i>&nbsp;     * @throws ModelSpecificationException if the length of {@code x} does not equal
+<i>274</i>&nbsp;     * the number of independent variables in the model
+<i>275</i>&nbsp;     */
+<i>276</i>&nbsp;    @Override
+<i>277</i>&nbsp;    public void addObservation(final double[] x,final double y)
+<i>278</i>&nbsp;            throws ModelSpecificationException {
+<b class="fc"><i>279</i>&nbsp;        if( x == null || x.length == 0 ){</b>
+<b class="nc"><i>280</i>&nbsp;            throw new ModelSpecificationException(LocalizedFormats.INVALID_REGRESSION_OBSERVATION,x!=null?x.length:0, 1);</b>
+<i>281</i>&nbsp;        }
+<b class="fc"><i>282</i>&nbsp;        addData( x[0], y );</b>
+<b class="fc"><i>283</i>&nbsp;    }</b>
+<i>284</i>&nbsp;
+<i>285</i>&nbsp;    /**
+<i>286</i>&nbsp;     * Adds a series of observations to the regression model. The lengths of
+<i>287</i>&nbsp;     * x and y must be the same and x must be rectangular.
+<i>288</i>&nbsp;     *
+<i>289</i>&nbsp;     * @param x a series of observations on the independent variables
+<i>290</i>&nbsp;     * @param y a series of observations on the dependent variable
+<i>291</i>&nbsp;     * The length of x and y must be the same
+<i>292</i>&nbsp;     * @throws ModelSpecificationException if {@code x} is not rectangular, does not match
+<i>293</i>&nbsp;     * the length of {@code y} or does not contain sufficient data to estimate the model
+<i>294</i>&nbsp;     */
+<i>295</i>&nbsp;    @Override
+<i>296</i>&nbsp;    public void addObservations(final double[][] x,final double[] y) throws ModelSpecificationException {
+<b class="nc"><i>297</i>&nbsp;        if ((x == null) || (y == null) || (x.length != y.length)) {</b>
+<b class="nc"><i>298</i>&nbsp;            throw new ModelSpecificationException(</b>
+<i>299</i>&nbsp;                  LocalizedFormats.DIMENSIONS_MISMATCH_SIMPLE,
+<b class="nc"><i>300</i>&nbsp;                  (x == null) ? 0 : x.length,</b>
+<b class="nc"><i>301</i>&nbsp;                  (y == null) ? 0 : y.length);</b>
+<i>302</i>&nbsp;        }
+<b class="nc"><i>303</i>&nbsp;        boolean obsOk=true;</b>
+<b class="nc"><i>304</i>&nbsp;        for( int i = 0 ; i &lt; x.length; i++){</b>
+<b class="nc"><i>305</i>&nbsp;            if( x[i] == null || x[i].length == 0 ){</b>
+<b class="nc"><i>306</i>&nbsp;                obsOk = false;</b>
+<i>307</i>&nbsp;            }
+<i>308</i>&nbsp;        }
+<b class="nc"><i>309</i>&nbsp;        if( !obsOk ){</b>
+<b class="nc"><i>310</i>&nbsp;            throw new ModelSpecificationException(</b>
+<i>311</i>&nbsp;                  LocalizedFormats.NOT_ENOUGH_DATA_FOR_NUMBER_OF_PREDICTORS,
+<b class="nc"><i>312</i>&nbsp;                  0, 1);</b>
+<i>313</i>&nbsp;        }
+<b class="nc"><i>314</i>&nbsp;        for( int i = 0 ; i &lt; x.length ; i++){</b>
+<b class="nc"><i>315</i>&nbsp;            addData( x[i][0], y[i] );</b>
+<i>316</i>&nbsp;        }
+<b class="nc"><i>317</i>&nbsp;    }</b>
+<i>318</i>&nbsp;
+<i>319</i>&nbsp;    /**
+<i>320</i>&nbsp;     * Removes observations represented by the elements in &lt;code&gt;data&lt;/code&gt;.
+<i>321</i>&nbsp;      * &lt;p&gt;
+<i>322</i>&nbsp;     * If the array is larger than the current n, only the first n elements are
+<i>323</i>&nbsp;     * processed.  This method permits the use of SimpleRegression instances in
+<i>324</i>&nbsp;     * streaming mode where the regression is applied to a sliding &quot;window&quot; of
+<i>325</i>&nbsp;     * observations, however the caller is responsible for maintaining the set
+<i>326</i>&nbsp;     * of observations in the window.&lt;/p&gt;
+<i>327</i>&nbsp;     * &lt;p&gt;
+<i>328</i>&nbsp;     * To remove all data, use &lt;code&gt;clear()&lt;/code&gt;.&lt;/p&gt;
+<i>329</i>&nbsp;     *
+<i>330</i>&nbsp;     * @param data array of observations to be removed
+<i>331</i>&nbsp;     */
+<i>332</i>&nbsp;    public void removeData(double[][] data) {
+<b class="fc"><i>333</i>&nbsp;        for (int i = 0; i &lt; data.length &amp;&amp; n &gt; 0; i++) {</b>
+<b class="fc"><i>334</i>&nbsp;            removeData(data[i][0], data[i][1]);</b>
+<i>335</i>&nbsp;        }
+<b class="fc"><i>336</i>&nbsp;    }</b>
+<i>337</i>&nbsp;
+<i>338</i>&nbsp;    /**
+<i>339</i>&nbsp;     * Clears all data from the model.
+<i>340</i>&nbsp;     */
+<i>341</i>&nbsp;    @Override
+<i>342</i>&nbsp;    public void clear() {
+<b class="fc"><i>343</i>&nbsp;        sumX = 0d;</b>
+<b class="fc"><i>344</i>&nbsp;        sumXX = 0d;</b>
+<b class="fc"><i>345</i>&nbsp;        sumY = 0d;</b>
+<b class="fc"><i>346</i>&nbsp;        sumYY = 0d;</b>
+<b class="fc"><i>347</i>&nbsp;        sumXY = 0d;</b>
+<b class="fc"><i>348</i>&nbsp;        n = 0;</b>
+<b class="fc"><i>349</i>&nbsp;    }</b>
+<i>350</i>&nbsp;
+<i>351</i>&nbsp;    /**
+<i>352</i>&nbsp;     * Returns the number of observations that have been added to the model.
+<i>353</i>&nbsp;     *
+<i>354</i>&nbsp;     * @return n number of observations that have been added.
+<i>355</i>&nbsp;     */
+<i>356</i>&nbsp;    @Override
+<i>357</i>&nbsp;    public long getN() {
+<b class="fc"><i>358</i>&nbsp;        return n;</b>
+<i>359</i>&nbsp;    }
+<i>360</i>&nbsp;
+<i>361</i>&nbsp;    /**
+<i>362</i>&nbsp;     * Returns the &quot;predicted&quot; &lt;code&gt;y&lt;/code&gt; value associated with the
+<i>363</i>&nbsp;     * supplied &lt;code&gt;x&lt;/code&gt; value,  based on the data that has been
+<i>364</i>&nbsp;     * added to the model when this method is activated.
+<i>365</i>&nbsp;     * &lt;p&gt;
+<i>366</i>&nbsp;     * &lt;code&gt; predict(x) = intercept + slope * x &lt;/code&gt;&lt;/p&gt;
+<i>367</i>&nbsp;     * &lt;p&gt;
+<i>368</i>&nbsp;     * &lt;strong&gt;Preconditions&lt;/strong&gt;: &lt;ul&gt;
+<i>369</i>&nbsp;     * &lt;li&gt;At least two observations (with at least two different x values)
+<i>370</i>&nbsp;     * must have been added before invoking this method. If this method is
+<i>371</i>&nbsp;     * invoked before a model can be estimated, &lt;code&gt;Double,NaN&lt;/code&gt; is
+<i>372</i>&nbsp;     * returned.
+<i>373</i>&nbsp;     * &lt;/li&gt;&lt;/ul&gt;
+<i>374</i>&nbsp;     *
+<i>375</i>&nbsp;     * @param x input &lt;code&gt;x&lt;/code&gt; value
+<i>376</i>&nbsp;     * @return predicted &lt;code&gt;y&lt;/code&gt; value
+<i>377</i>&nbsp;     */
+<i>378</i>&nbsp;    public double predict(final double x) {
+<b class="fc"><i>379</i>&nbsp;        final double b1 = getSlope();</b>
+<b class="fc"><i>380</i>&nbsp;        if (hasIntercept) {</b>
+<b class="fc"><i>381</i>&nbsp;            return getIntercept(b1) + b1 * x;</b>
+<i>382</i>&nbsp;        }
+<b class="nc"><i>383</i>&nbsp;        return b1 * x;</b>
+<i>384</i>&nbsp;    }
+<i>385</i>&nbsp;
+<i>386</i>&nbsp;    /**
+<i>387</i>&nbsp;     * Returns the intercept of the estimated regression line, if
+<i>388</i>&nbsp;     * {@link #hasIntercept()} is true; otherwise 0.
+<i>389</i>&nbsp;     * &lt;p&gt;
+<i>390</i>&nbsp;     * The least squares estimate of the intercept is computed using the
+<i>391</i>&nbsp;     * &lt;a href=&quot;http://www.xycoon.com/estimation4.htm&quot;&gt;normal equations&lt;/a&gt;.
+<i>392</i>&nbsp;     * The intercept is sometimes denoted b0.&lt;/p&gt;
+<i>393</i>&nbsp;     * &lt;p&gt;
+<i>394</i>&nbsp;     * &lt;strong&gt;Preconditions&lt;/strong&gt;: &lt;ul&gt;
+<i>395</i>&nbsp;     * &lt;li&gt;At least two observations (with at least two different x values)
+<i>396</i>&nbsp;     * must have been added before invoking this method. If this method is
+<i>397</i>&nbsp;     * invoked before a model can be estimated, &lt;code&gt;Double,NaN&lt;/code&gt; is
+<i>398</i>&nbsp;     * returned.
+<i>399</i>&nbsp;     * &lt;/li&gt;&lt;/ul&gt;
+<i>400</i>&nbsp;     *
+<i>401</i>&nbsp;     * @return the intercept of the regression line if the model includes an
+<i>402</i>&nbsp;     * intercept; 0 otherwise
+<i>403</i>&nbsp;     * @see #SimpleRegression(boolean)
+<i>404</i>&nbsp;     */
+<i>405</i>&nbsp;    public double getIntercept() {
+<b class="fc"><i>406</i>&nbsp;        return hasIntercept ? getIntercept(getSlope()) : 0.0;</b>
+<i>407</i>&nbsp;    }
+<i>408</i>&nbsp;
+<i>409</i>&nbsp;    /**
+<i>410</i>&nbsp;     * Returns true if the model includes an intercept term.
+<i>411</i>&nbsp;     *
+<i>412</i>&nbsp;     * @return true if the regression includes an intercept; false otherwise
+<i>413</i>&nbsp;     * @see #SimpleRegression(boolean)
+<i>414</i>&nbsp;     */
+<i>415</i>&nbsp;    @Override
+<i>416</i>&nbsp;    public boolean hasIntercept() {
+<b class="nc"><i>417</i>&nbsp;        return hasIntercept;</b>
+<i>418</i>&nbsp;    }
+<i>419</i>&nbsp;
+<i>420</i>&nbsp;    /**
+<i>421</i>&nbsp;    * Returns the slope of the estimated regression line.
+<i>422</i>&nbsp;    * &lt;p&gt;
+<i>423</i>&nbsp;    * The least squares estimate of the slope is computed using the
+<i>424</i>&nbsp;    * &lt;a href=&quot;http://www.xycoon.com/estimation4.htm&quot;&gt;normal equations&lt;/a&gt;.
+<i>425</i>&nbsp;    * The slope is sometimes denoted b1.&lt;/p&gt;
+<i>426</i>&nbsp;    * &lt;p&gt;
+<i>427</i>&nbsp;    * &lt;strong&gt;Preconditions&lt;/strong&gt;: &lt;ul&gt;
+<i>428</i>&nbsp;    * &lt;li&gt;At least two observations (with at least two different x values)
+<i>429</i>&nbsp;    * must have been added before invoking this method. If this method is
+<i>430</i>&nbsp;    * invoked before a model can be estimated, &lt;code&gt;Double.NaN&lt;/code&gt; is
+<i>431</i>&nbsp;    * returned.
+<i>432</i>&nbsp;    * &lt;/li&gt;&lt;/ul&gt;
+<i>433</i>&nbsp;    *
+<i>434</i>&nbsp;    * @return the slope of the regression line
+<i>435</i>&nbsp;    */
+<i>436</i>&nbsp;    public double getSlope() {
+<b class="fc"><i>437</i>&nbsp;        if (n &lt; 2) {</b>
+<b class="fc"><i>438</i>&nbsp;            return Double.NaN; //not enough data</b>
+<i>439</i>&nbsp;        }
+<b class="fc"><i>440</i>&nbsp;        if (FastMath.abs(sumXX) &lt; 10 * Double.MIN_VALUE) {</b>
+<b class="fc"><i>441</i>&nbsp;            return Double.NaN; //not enough variation in x</b>
+<i>442</i>&nbsp;        }
+<b class="fc"><i>443</i>&nbsp;        return sumXY / sumXX;</b>
+<i>444</i>&nbsp;    }
+<i>445</i>&nbsp;
+<i>446</i>&nbsp;    /**
+<i>447</i>&nbsp;     * Returns the &lt;a href=&quot;http://www.xycoon.com/SumOfSquares.htm&quot;&gt;
+<i>448</i>&nbsp;     * sum of squared errors&lt;/a&gt; (SSE) associated with the regression
+<i>449</i>&nbsp;     * model.
+<i>450</i>&nbsp;     * &lt;p&gt;
+<i>451</i>&nbsp;     * The sum is computed using the computational formula&lt;/p&gt;
+<i>452</i>&nbsp;     * &lt;p&gt;
+<i>453</i>&nbsp;     * &lt;code&gt;SSE = SYY - (SXY * SXY / SXX)&lt;/code&gt;&lt;/p&gt;
+<i>454</i>&nbsp;     * &lt;p&gt;
+<i>455</i>&nbsp;     * where &lt;code&gt;SYY&lt;/code&gt; is the sum of the squared deviations of the y
+<i>456</i>&nbsp;     * values about their mean, &lt;code&gt;SXX&lt;/code&gt; is similarly defined and
+<i>457</i>&nbsp;     * &lt;code&gt;SXY&lt;/code&gt; is the sum of the products of x and y mean deviations.
+<i>458</i>&nbsp;     * &lt;/p&gt;&lt;p&gt;
+<i>459</i>&nbsp;     * The sums are accumulated using the updating algorithm referenced in
+<i>460</i>&nbsp;     * {@link #addData}.&lt;/p&gt;
+<i>461</i>&nbsp;     * &lt;p&gt;
+<i>462</i>&nbsp;     * The return value is constrained to be non-negative - i.e., if due to
+<i>463</i>&nbsp;     * rounding errors the computational formula returns a negative result,
+<i>464</i>&nbsp;     * 0 is returned.&lt;/p&gt;
+<i>465</i>&nbsp;     * &lt;p&gt;
+<i>466</i>&nbsp;     * &lt;strong&gt;Preconditions&lt;/strong&gt;: &lt;ul&gt;
+<i>467</i>&nbsp;     * &lt;li&gt;At least two observations (with at least two different x values)
+<i>468</i>&nbsp;     * must have been added before invoking this method. If this method is
+<i>469</i>&nbsp;     * invoked before a model can be estimated, &lt;code&gt;Double,NaN&lt;/code&gt; is
+<i>470</i>&nbsp;     * returned.
+<i>471</i>&nbsp;     * &lt;/li&gt;&lt;/ul&gt;
+<i>472</i>&nbsp;     *
+<i>473</i>&nbsp;     * @return sum of squared errors associated with the regression model
+<i>474</i>&nbsp;     */
+<i>475</i>&nbsp;    public double getSumSquaredErrors() {
+<b class="fc"><i>476</i>&nbsp;        return FastMath.max(0d, sumYY - sumXY * sumXY / sumXX);</b>
+<i>477</i>&nbsp;    }
+<i>478</i>&nbsp;
+<i>479</i>&nbsp;    /**
+<i>480</i>&nbsp;     * Returns the sum of squared deviations of the y values about their mean.
+<i>481</i>&nbsp;     * &lt;p&gt;
+<i>482</i>&nbsp;     * This is defined as SSTO
+<i>483</i>&nbsp;     * &lt;a href=&quot;http://www.xycoon.com/SumOfSquares.htm&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+<i>484</i>&nbsp;     * &lt;p&gt;
+<i>485</i>&nbsp;     * If {@code n &lt; 2}, this returns &lt;code&gt;Double.NaN&lt;/code&gt;.&lt;/p&gt;
+<i>486</i>&nbsp;     *
+<i>487</i>&nbsp;     * @return sum of squared deviations of y values
+<i>488</i>&nbsp;     */
+<i>489</i>&nbsp;    public double getTotalSumSquares() {
+<b class="fc"><i>490</i>&nbsp;        if (n &lt; 2) {</b>
+<b class="fc"><i>491</i>&nbsp;            return Double.NaN;</b>
+<i>492</i>&nbsp;        }
+<b class="fc"><i>493</i>&nbsp;        return sumYY;</b>
+<i>494</i>&nbsp;    }
+<i>495</i>&nbsp;
+<i>496</i>&nbsp;    /**
+<i>497</i>&nbsp;     * Returns the sum of squared deviations of the x values about their mean.
+<i>498</i>&nbsp;     *
+<i>499</i>&nbsp;     * If &lt;code&gt;n &amp;lt; 2&lt;/code&gt;, this returns &lt;code&gt;Double.NaN&lt;/code&gt;.
+<i>500</i>&nbsp;     *
+<i>501</i>&nbsp;     * @return sum of squared deviations of x values
+<i>502</i>&nbsp;     */
+<i>503</i>&nbsp;    public double getXSumSquares() {
+<b class="fc"><i>504</i>&nbsp;        if (n &lt; 2) {</b>
+<b class="nc"><i>505</i>&nbsp;            return Double.NaN;</b>
+<i>506</i>&nbsp;        }
+<b class="fc"><i>507</i>&nbsp;        return sumXX;</b>
+<i>508</i>&nbsp;    }
+<i>509</i>&nbsp;
+<i>510</i>&nbsp;    /**
+<i>511</i>&nbsp;     * Returns the sum of crossproducts, x&lt;sub&gt;i&lt;/sub&gt;*y&lt;sub&gt;i&lt;/sub&gt;.
+<i>512</i>&nbsp;     *
+<i>513</i>&nbsp;     * @return sum of cross products
+<i>514</i>&nbsp;     */
+<i>515</i>&nbsp;    public double getSumOfCrossProducts() {
+<b class="fc"><i>516</i>&nbsp;        return sumXY;</b>
+<i>517</i>&nbsp;    }
+<i>518</i>&nbsp;
+<i>519</i>&nbsp;    /**
+<i>520</i>&nbsp;     * Returns the sum of squared deviations of the predicted y values about
+<i>521</i>&nbsp;     * their mean (which equals the mean of y).
+<i>522</i>&nbsp;     * &lt;p&gt;
+<i>523</i>&nbsp;     * This is usually abbreviated SSR or SSM.  It is defined as SSM
+<i>524</i>&nbsp;     * &lt;a href=&quot;http://www.xycoon.com/SumOfSquares.htm&quot;&gt;here&lt;/a&gt;&lt;/p&gt;
+<i>525</i>&nbsp;     * &lt;p&gt;
+<i>526</i>&nbsp;     * &lt;strong&gt;Preconditions&lt;/strong&gt;: &lt;ul&gt;
+<i>527</i>&nbsp;     * &lt;li&gt;At least two observations (with at least two different x values)
+<i>528</i>&nbsp;     * must have been added before invoking this method. If this method is
+<i>529</i>&nbsp;     * invoked before a model can be estimated, &lt;code&gt;Double.NaN&lt;/code&gt; is
+<i>530</i>&nbsp;     * returned.
+<i>531</i>&nbsp;     * &lt;/li&gt;&lt;/ul&gt;
+<i>532</i>&nbsp;     *
+<i>533</i>&nbsp;     * @return sum of squared deviations of predicted y values
+<i>534</i>&nbsp;     */
+<i>535</i>&nbsp;    public double getRegressionSumSquares() {
+<b class="fc"><i>536</i>&nbsp;        return getRegressionSumSquares(getSlope());</b>
+<i>537</i>&nbsp;    }
+<i>538</i>&nbsp;
+<i>539</i>&nbsp;    /**
+<i>540</i>&nbsp;     * Returns the sum of squared errors divided by the degrees of freedom,
+<i>541</i>&nbsp;     * usually abbreviated MSE.
+<i>542</i>&nbsp;     * &lt;p&gt;
+<i>543</i>&nbsp;     * If there are fewer than &lt;strong&gt;three&lt;/strong&gt; data pairs in the model,
+<i>544</i>&nbsp;     * or if there is no variation in &lt;code&gt;x&lt;/code&gt;, this returns
+<i>545</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt;.&lt;/p&gt;
+<i>546</i>&nbsp;     *
+<i>547</i>&nbsp;     * @return sum of squared deviations of y values
+<i>548</i>&nbsp;     */
+<i>549</i>&nbsp;    public double getMeanSquareError() {
+<b class="fc"><i>550</i>&nbsp;        if (n &lt; 3) {</b>
+<b class="fc"><i>551</i>&nbsp;            return Double.NaN;</b>
+<i>552</i>&nbsp;        }
+<b class="fc"><i>553</i>&nbsp;        return hasIntercept ? (getSumSquaredErrors() / (n - 2)) : (getSumSquaredErrors() / (n - 1));</b>
+<i>554</i>&nbsp;    }
+<i>555</i>&nbsp;
+<i>556</i>&nbsp;    /**
+<i>557</i>&nbsp;     * Returns &lt;a href=&quot;http://mathworld.wolfram.com/CorrelationCoefficient.html&quot;&gt;
+<i>558</i>&nbsp;     * Pearson&#39;s product moment correlation coefficient&lt;/a&gt;,
+<i>559</i>&nbsp;     * usually denoted r.
+<i>560</i>&nbsp;     * &lt;p&gt;
+<i>561</i>&nbsp;     * &lt;strong&gt;Preconditions&lt;/strong&gt;: &lt;ul&gt;
+<i>562</i>&nbsp;     * &lt;li&gt;At least two observations (with at least two different x values)
+<i>563</i>&nbsp;     * must have been added before invoking this method. If this method is
+<i>564</i>&nbsp;     * invoked before a model can be estimated, &lt;code&gt;Double,NaN&lt;/code&gt; is
+<i>565</i>&nbsp;     * returned.
+<i>566</i>&nbsp;     * &lt;/li&gt;&lt;/ul&gt;
+<i>567</i>&nbsp;     *
+<i>568</i>&nbsp;     * @return Pearson&#39;s r
+<i>569</i>&nbsp;     */
+<i>570</i>&nbsp;    public double getR() {
+<b class="fc"><i>571</i>&nbsp;        double b1 = getSlope();</b>
+<b class="fc"><i>572</i>&nbsp;        double result = FastMath.sqrt(getRSquare());</b>
+<b class="fc"><i>573</i>&nbsp;        if (b1 &lt; 0) {</b>
+<b class="fc"><i>574</i>&nbsp;            result = -result;</b>
+<i>575</i>&nbsp;        }
+<b class="fc"><i>576</i>&nbsp;        return result;</b>
+<i>577</i>&nbsp;    }
+<i>578</i>&nbsp;
+<i>579</i>&nbsp;    /**
+<i>580</i>&nbsp;     * Returns the &lt;a href=&quot;http://www.xycoon.com/coefficient1.htm&quot;&gt;
+<i>581</i>&nbsp;     * coefficient of determination&lt;/a&gt;,
+<i>582</i>&nbsp;     * usually denoted r-square.
+<i>583</i>&nbsp;     * &lt;p&gt;
+<i>584</i>&nbsp;     * &lt;strong&gt;Preconditions&lt;/strong&gt;: &lt;ul&gt;
+<i>585</i>&nbsp;     * &lt;li&gt;At least two observations (with at least two different x values)
+<i>586</i>&nbsp;     * must have been added before invoking this method. If this method is
+<i>587</i>&nbsp;     * invoked before a model can be estimated, &lt;code&gt;Double,NaN&lt;/code&gt; is
+<i>588</i>&nbsp;     * returned.
+<i>589</i>&nbsp;     * &lt;/li&gt;&lt;/ul&gt;
+<i>590</i>&nbsp;     *
+<i>591</i>&nbsp;     * @return r-square
+<i>592</i>&nbsp;     */
+<i>593</i>&nbsp;    public double getRSquare() {
+<b class="fc"><i>594</i>&nbsp;        double ssto = getTotalSumSquares();</b>
+<b class="fc"><i>595</i>&nbsp;        return (ssto - getSumSquaredErrors()) / ssto;</b>
+<i>596</i>&nbsp;    }
+<i>597</i>&nbsp;
+<i>598</i>&nbsp;    /**
+<i>599</i>&nbsp;     * Returns the &lt;a href=&quot;http://www.xycoon.com/standarderrorb0.htm&quot;&gt;
+<i>600</i>&nbsp;     * standard error of the intercept estimate&lt;/a&gt;,
+<i>601</i>&nbsp;     * usually denoted s(b0).
+<i>602</i>&nbsp;     * &lt;p&gt;
+<i>603</i>&nbsp;     * If there are fewer that &lt;strong&gt;three&lt;/strong&gt; observations in the
+<i>604</i>&nbsp;     * model, or if there is no variation in x, this returns
+<i>605</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt;.&lt;/p&gt; Additionally, a &lt;code&gt;Double.NaN&lt;/code&gt; is
+<i>606</i>&nbsp;     * returned when the intercept is constrained to be zero
+<i>607</i>&nbsp;     *
+<i>608</i>&nbsp;     * @return standard error associated with intercept estimate
+<i>609</i>&nbsp;     */
+<i>610</i>&nbsp;    public double getInterceptStdErr() {
+<b class="fc"><i>611</i>&nbsp;        if( !hasIntercept ){</b>
+<b class="fc"><i>612</i>&nbsp;            return Double.NaN;</b>
+<i>613</i>&nbsp;        }
+<b class="fc"><i>614</i>&nbsp;        return FastMath.sqrt(</b>
+<b class="fc"><i>615</i>&nbsp;            getMeanSquareError() * ((1d / n) + (xbar * xbar) / sumXX));</b>
+<i>616</i>&nbsp;    }
+<i>617</i>&nbsp;
+<i>618</i>&nbsp;    /**
+<i>619</i>&nbsp;     * Returns the &lt;a href=&quot;http://www.xycoon.com/standerrorb(1).htm&quot;&gt;standard
+<i>620</i>&nbsp;     * error of the slope estimate&lt;/a&gt;,
+<i>621</i>&nbsp;     * usually denoted s(b1).
+<i>622</i>&nbsp;     * &lt;p&gt;
+<i>623</i>&nbsp;     * If there are fewer that &lt;strong&gt;three&lt;/strong&gt; data pairs in the model,
+<i>624</i>&nbsp;     * or if there is no variation in x, this returns &lt;code&gt;Double.NaN&lt;/code&gt;.
+<i>625</i>&nbsp;     * &lt;/p&gt;
+<i>626</i>&nbsp;     *
+<i>627</i>&nbsp;     * @return standard error associated with slope estimate
+<i>628</i>&nbsp;     */
+<i>629</i>&nbsp;    public double getSlopeStdErr() {
+<b class="fc"><i>630</i>&nbsp;        return FastMath.sqrt(getMeanSquareError() / sumXX);</b>
+<i>631</i>&nbsp;    }
+<i>632</i>&nbsp;
+<i>633</i>&nbsp;    /**
+<i>634</i>&nbsp;     * Returns the half-width of a 95% confidence interval for the slope
+<i>635</i>&nbsp;     * estimate.
+<i>636</i>&nbsp;     * &lt;p&gt;
+<i>637</i>&nbsp;     * The 95% confidence interval is&lt;/p&gt;
+<i>638</i>&nbsp;     * &lt;p&gt;
+<i>639</i>&nbsp;     * &lt;code&gt;(getSlope() - getSlopeConfidenceInterval(),
+<i>640</i>&nbsp;     * getSlope() + getSlopeConfidenceInterval())&lt;/code&gt;&lt;/p&gt;
+<i>641</i>&nbsp;     * &lt;p&gt;
+<i>642</i>&nbsp;     * If there are fewer that &lt;strong&gt;three&lt;/strong&gt; observations in the
+<i>643</i>&nbsp;     * model, or if there is no variation in x, this returns
+<i>644</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt;.&lt;/p&gt;
+<i>645</i>&nbsp;     * &lt;p&gt;
+<i>646</i>&nbsp;     * &lt;strong&gt;Usage Note&lt;/strong&gt;:&lt;br&gt;
+<i>647</i>&nbsp;     * The validity of this statistic depends on the assumption that the
+<i>648</i>&nbsp;     * observations included in the model are drawn from a
+<i>649</i>&nbsp;     * &lt;a href=&quot;http://mathworld.wolfram.com/BivariateNormalDistribution.html&quot;&gt;
+<i>650</i>&nbsp;     * Bivariate Normal Distribution&lt;/a&gt;.&lt;/p&gt;
+<i>651</i>&nbsp;     *
+<i>652</i>&nbsp;     * @return half-width of 95% confidence interval for the slope estimate
+<i>653</i>&nbsp;     * @throws OutOfRangeException if the confidence interval can not be computed.
+<i>654</i>&nbsp;     */
+<i>655</i>&nbsp;    public double getSlopeConfidenceInterval() throws OutOfRangeException {
+<b class="fc"><i>656</i>&nbsp;        return getSlopeConfidenceInterval(0.05d);</b>
+<i>657</i>&nbsp;    }
+<i>658</i>&nbsp;
+<i>659</i>&nbsp;    /**
+<i>660</i>&nbsp;     * Returns the half-width of a (100-100*alpha)% confidence interval for
+<i>661</i>&nbsp;     * the slope estimate.
+<i>662</i>&nbsp;     * &lt;p&gt;
+<i>663</i>&nbsp;     * The (100-100*alpha)% confidence interval is &lt;/p&gt;
+<i>664</i>&nbsp;     * &lt;p&gt;
+<i>665</i>&nbsp;     * &lt;code&gt;(getSlope() - getSlopeConfidenceInterval(),
+<i>666</i>&nbsp;     * getSlope() + getSlopeConfidenceInterval())&lt;/code&gt;&lt;/p&gt;
+<i>667</i>&nbsp;     * &lt;p&gt;
+<i>668</i>&nbsp;     * To request, for example, a 99% confidence interval, use
+<i>669</i>&nbsp;     * &lt;code&gt;alpha = .01&lt;/code&gt;&lt;/p&gt;
+<i>670</i>&nbsp;     * &lt;p&gt;
+<i>671</i>&nbsp;     * &lt;strong&gt;Usage Note&lt;/strong&gt;:&lt;br&gt;
+<i>672</i>&nbsp;     * The validity of this statistic depends on the assumption that the
+<i>673</i>&nbsp;     * observations included in the model are drawn from a
+<i>674</i>&nbsp;     * &lt;a href=&quot;http://mathworld.wolfram.com/BivariateNormalDistribution.html&quot;&gt;
+<i>675</i>&nbsp;     * Bivariate Normal Distribution&lt;/a&gt;.&lt;/p&gt;
+<i>676</i>&nbsp;     * &lt;p&gt;
+<i>677</i>&nbsp;     * &lt;strong&gt; Preconditions:&lt;/strong&gt;&lt;ul&gt;
+<i>678</i>&nbsp;     * &lt;li&gt;If there are fewer that &lt;strong&gt;three&lt;/strong&gt; observations in the
+<i>679</i>&nbsp;     * model, or if there is no variation in x, this returns
+<i>680</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt;.
+<i>681</i>&nbsp;     * &lt;/li&gt;
+<i>682</i>&nbsp;     * &lt;li&gt;{@code (0 &lt; alpha &lt; 1)}; otherwise an
+<i>683</i>&nbsp;     * &lt;code&gt;OutOfRangeException&lt;/code&gt; is thrown.
+<i>684</i>&nbsp;     * &lt;/li&gt;&lt;/ul&gt;
+<i>685</i>&nbsp;     *
+<i>686</i>&nbsp;     * @param alpha the desired significance level
+<i>687</i>&nbsp;     * @return half-width of 95% confidence interval for the slope estimate
+<i>688</i>&nbsp;     * @throws OutOfRangeException if the confidence interval can not be computed.
+<i>689</i>&nbsp;     */
+<i>690</i>&nbsp;    public double getSlopeConfidenceInterval(final double alpha)
+<i>691</i>&nbsp;    throws OutOfRangeException {
+<b class="fc"><i>692</i>&nbsp;        if (n &lt; 3) {</b>
+<b class="nc"><i>693</i>&nbsp;            return Double.NaN;</b>
+<i>694</i>&nbsp;        }
+<b class="fc"><i>695</i>&nbsp;        if (alpha &gt;= 1 || alpha &lt;= 0) {</b>
+<b class="fc"><i>696</i>&nbsp;            throw new OutOfRangeException(LocalizedFormats.SIGNIFICANCE_LEVEL,</b>
+<b class="fc"><i>697</i>&nbsp;                                          alpha, 0, 1);</b>
+<i>698</i>&nbsp;        }
+<i>699</i>&nbsp;        // No advertised NotStrictlyPositiveException here - will return NaN above
+<b class="fc"><i>700</i>&nbsp;        TDistribution distribution = new TDistribution(n - 2);</b>
+<b class="fc"><i>701</i>&nbsp;        return getSlopeStdErr() *</b>
+<b class="fc"><i>702</i>&nbsp;            distribution.inverseCumulativeProbability(1d - alpha / 2d);</b>
+<i>703</i>&nbsp;    }
+<i>704</i>&nbsp;
+<i>705</i>&nbsp;    /**
+<i>706</i>&nbsp;     * Returns the significance level of the slope (equiv) correlation.
+<i>707</i>&nbsp;     * &lt;p&gt;
+<i>708</i>&nbsp;     * Specifically, the returned value is the smallest &lt;code&gt;alpha&lt;/code&gt;
+<i>709</i>&nbsp;     * such that the slope confidence interval with significance level
+<i>710</i>&nbsp;     * equal to &lt;code&gt;alpha&lt;/code&gt; does not include &lt;code&gt;0&lt;/code&gt;.
+<i>711</i>&nbsp;     * On regression output, this is often denoted {@code Prob(|t| &gt; 0)}
+<i>712</i>&nbsp;     * &lt;/p&gt;&lt;p&gt;
+<i>713</i>&nbsp;     * &lt;strong&gt;Usage Note&lt;/strong&gt;:&lt;br&gt;
+<i>714</i>&nbsp;     * The validity of this statistic depends on the assumption that the
+<i>715</i>&nbsp;     * observations included in the model are drawn from a
+<i>716</i>&nbsp;     * &lt;a href=&quot;http://mathworld.wolfram.com/BivariateNormalDistribution.html&quot;&gt;
+<i>717</i>&nbsp;     * Bivariate Normal Distribution&lt;/a&gt;.&lt;/p&gt;
+<i>718</i>&nbsp;     * &lt;p&gt;
+<i>719</i>&nbsp;     * If there are fewer that &lt;strong&gt;three&lt;/strong&gt; observations in the
+<i>720</i>&nbsp;     * model, or if there is no variation in x, this returns
+<i>721</i>&nbsp;     * &lt;code&gt;Double.NaN&lt;/code&gt;.&lt;/p&gt;
+<i>722</i>&nbsp;     *
+<i>723</i>&nbsp;     * @return significance level for slope/correlation
+<i>724</i>&nbsp;     * @throws org.apache.commons.math4.exception.MaxCountExceededException
+<i>725</i>&nbsp;     * if the significance level can not be computed.
+<i>726</i>&nbsp;     */
+<i>727</i>&nbsp;    public double getSignificance() {
+<b class="fc"><i>728</i>&nbsp;        if (n &lt; 3) {</b>
+<b class="nc"><i>729</i>&nbsp;            return Double.NaN;</b>
+<i>730</i>&nbsp;        }
+<i>731</i>&nbsp;        // No advertised NotStrictlyPositiveException here - will return NaN above
+<b class="fc"><i>732</i>&nbsp;        TDistribution distribution = new TDistribution(n - 2);</b>
+<b class="fc"><i>733</i>&nbsp;        return 2d * (1.0 - distribution.cumulativeProbability(</b>
+<b class="fc"><i>734</i>&nbsp;                    FastMath.abs(getSlope()) / getSlopeStdErr()));</b>
+<i>735</i>&nbsp;    }
+<i>736</i>&nbsp;
+<i>737</i>&nbsp;    // ---------------------Private methods-----------------------------------
+<i>738</i>&nbsp;
+<i>739</i>&nbsp;    /**
+<i>740</i>&nbsp;    * Returns the intercept of the estimated regression line, given the slope.
+<i>741</i>&nbsp;    * &lt;p&gt;
+<i>742</i>&nbsp;    * Will return &lt;code&gt;NaN&lt;/code&gt; if slope is &lt;code&gt;NaN&lt;/code&gt;.&lt;/p&gt;
+<i>743</i>&nbsp;    *
+<i>744</i>&nbsp;    * @param slope current slope
+<i>745</i>&nbsp;    * @return the intercept of the regression line
+<i>746</i>&nbsp;    */
+<i>747</i>&nbsp;    private double getIntercept(final double slope) {
+<b class="fc"><i>748</i>&nbsp;      if( hasIntercept){</b>
+<b class="fc"><i>749</i>&nbsp;        return (sumY - slope * sumX) / n;</b>
+<i>750</i>&nbsp;      }
+<b class="nc"><i>751</i>&nbsp;      return 0.0;</b>
+<i>752</i>&nbsp;    }
+<i>753</i>&nbsp;
+<i>754</i>&nbsp;    /**
+<i>755</i>&nbsp;     * Computes SSR from b1.
+<i>756</i>&nbsp;     *
+<i>757</i>&nbsp;     * @param slope regression slope estimate
+<i>758</i>&nbsp;     * @return sum of squared deviations of predicted y values
+<i>759</i>&nbsp;     */
+<i>760</i>&nbsp;    private double getRegressionSumSquares(final double slope) {
+<b class="fc"><i>761</i>&nbsp;        return slope * slope * sumXX;</b>
+<i>762</i>&nbsp;    }
+<i>763</i>&nbsp;
+<i>764</i>&nbsp;    /**
+<i>765</i>&nbsp;     * Performs a regression on data present in buffers and outputs a RegressionResults object.
+<i>766</i>&nbsp;     *
+<i>767</i>&nbsp;     * &lt;p&gt;If there are fewer than 3 observations in the model and {@code hasIntercept} is true
+<i>768</i>&nbsp;     * a {@code NoDataException} is thrown.  If there is no intercept term, the model must
+<i>769</i>&nbsp;     * contain at least 2 observations.&lt;/p&gt;
+<i>770</i>&nbsp;     *
+<i>771</i>&nbsp;     * @return RegressionResults acts as a container of regression output
+<i>772</i>&nbsp;     * @throws ModelSpecificationException if the model is not correctly specified
+<i>773</i>&nbsp;     * @throws NoDataException if there is not sufficient data in the model to
+<i>774</i>&nbsp;     * estimate the regression parameters
+<i>775</i>&nbsp;     */
+<i>776</i>&nbsp;    @Override
+<i>777</i>&nbsp;    public RegressionResults regress() throws ModelSpecificationException, NoDataException {
+<b class="fc"><i>778</i>&nbsp;        if (hasIntercept) {</b>
+<b class="fc"><i>779</i>&nbsp;            if (n &lt; 3) {</b>
+<b class="nc"><i>780</i>&nbsp;                throw new NoDataException(LocalizedFormats.NOT_ENOUGH_DATA_REGRESSION);</b>
+<i>781</i>&nbsp;            }
+<b class="fc"><i>782</i>&nbsp;            if (FastMath.abs(sumXX) &gt; Precision.SAFE_MIN) {</b>
+<b class="fc"><i>783</i>&nbsp;                final double[] params = new double[] { getIntercept(), getSlope() };</b>
+<b class="fc"><i>784</i>&nbsp;                final double mse = getMeanSquareError();</b>
+<b class="fc"><i>785</i>&nbsp;                final double _syy = sumYY + sumY * sumY / n;</b>
+<b class="fc"><i>786</i>&nbsp;                final double[] vcv = new double[] { mse * (xbar * xbar / sumXX + 1.0 / n), -xbar * mse / sumXX, mse / sumXX };</b>
+<b class="fc"><i>787</i>&nbsp;                return new RegressionResults(params, new double[][] { vcv }, true, n, 2, sumY, _syy, getSumSquaredErrors(), true,</b>
+<i>788</i>&nbsp;                        false);
+<i>789</i>&nbsp;            } else {
+<b class="nc"><i>790</i>&nbsp;                final double[] params = new double[] { sumY / n, Double.NaN };</b>
+<i>791</i>&nbsp;                // final double mse = getMeanSquareError();
+<b class="nc"><i>792</i>&nbsp;                final double[] vcv = new double[] { ybar / (n - 1.0), Double.NaN, Double.NaN };</b>
+<b class="nc"><i>793</i>&nbsp;                return new RegressionResults(params, new double[][] { vcv }, true, n, 1, sumY, sumYY, getSumSquaredErrors(), true,</b>
+<i>794</i>&nbsp;                        false);
+<i>795</i>&nbsp;            }
+<i>796</i>&nbsp;        } else {
+<b class="nc"><i>797</i>&nbsp;            if (n &lt; 2) {</b>
+<b class="nc"><i>798</i>&nbsp;                throw new NoDataException(LocalizedFormats.NOT_ENOUGH_DATA_REGRESSION);</b>
+<i>799</i>&nbsp;            }
+<b class="nc"><i>800</i>&nbsp;            if (!Double.isNaN(sumXX)) {</b>
+<b class="nc"><i>801</i>&nbsp;                final double[] vcv = new double[] { getMeanSquareError() / sumXX };</b>
+<b class="nc"><i>802</i>&nbsp;                final double[] params = new double[] { sumXY / sumXX };</b>
+<b class="nc"><i>803</i>&nbsp;                return new RegressionResults(params, new double[][] { vcv }, true, n, 1, sumY, sumYY, getSumSquaredErrors(), false,</b>
+<i>804</i>&nbsp;                        false);
+<i>805</i>&nbsp;            } else {
+<b class="nc"><i>806</i>&nbsp;                final double[] vcv = new double[] { Double.NaN };</b>
+<b class="nc"><i>807</i>&nbsp;                final double[] params = new double[] { Double.NaN };</b>
+<b class="nc"><i>808</i>&nbsp;                return new RegressionResults(params, new double[][] { vcv }, true, n, 1, Double.NaN, Double.NaN, Double.NaN, false,</b>
+<i>809</i>&nbsp;                        false);
+<i>810</i>&nbsp;            }
+<i>811</i>&nbsp;        }
+<i>812</i>&nbsp;    }
+<i>813</i>&nbsp;
+<i>814</i>&nbsp;    /**
+<i>815</i>&nbsp;     * Performs a regression on data present in buffers including only regressors
+<i>816</i>&nbsp;     * indexed in variablesToInclude and outputs a RegressionResults object
+<i>817</i>&nbsp;     * @param variablesToInclude an array of indices of regressors to include
+<i>818</i>&nbsp;     * @return RegressionResults acts as a container of regression output
+<i>819</i>&nbsp;     * @throws MathIllegalArgumentException if the variablesToInclude array is null or zero length
+<i>820</i>&nbsp;     * @throws OutOfRangeException if a requested variable is not present in model
+<i>821</i>&nbsp;     */
+<i>822</i>&nbsp;    @Override
+<i>823</i>&nbsp;    public RegressionResults regress(int[] variablesToInclude) throws MathIllegalArgumentException{
+<b class="fc"><i>824</i>&nbsp;        if( variablesToInclude == null || variablesToInclude.length == 0){</b>
+<b class="fc"><i>825</i>&nbsp;          throw new MathIllegalArgumentException(LocalizedFormats.ARRAY_ZERO_LENGTH_OR_NULL_NOT_ALLOWED);</b>
+<i>826</i>&nbsp;        }
+<b class="fc"><i>827</i>&nbsp;        if( variablesToInclude.length &gt; 2 || (variablesToInclude.length &gt; 1 &amp;&amp; !hasIntercept) ){</b>
+<b class="fc"><i>828</i>&nbsp;            throw new ModelSpecificationException(</b>
+<i>829</i>&nbsp;                    LocalizedFormats.ARRAY_SIZE_EXCEEDS_MAX_VARIABLES,
+<b class="fc"><i>830</i>&nbsp;                    (variablesToInclude.length &gt; 1 &amp;&amp; !hasIntercept) ? 1 : 2);</b>
+<i>831</i>&nbsp;        }
+<i>832</i>&nbsp;
+<b class="fc"><i>833</i>&nbsp;        if( hasIntercept ){</b>
+<b class="fc"><i>834</i>&nbsp;            if( variablesToInclude.length == 2 ){</b>
+<b class="fc"><i>835</i>&nbsp;                if( variablesToInclude[0] == 1 ){</b>
+<b class="fc"><i>836</i>&nbsp;                    throw new ModelSpecificationException(LocalizedFormats.NOT_INCREASING_SEQUENCE);</b>
+<b class="fc"><i>837</i>&nbsp;                }else if( variablesToInclude[0] != 0 ){</b>
+<b class="fc"><i>838</i>&nbsp;                    throw new OutOfRangeException( variablesToInclude[0], 0,1 );</b>
+<i>839</i>&nbsp;                }
+<b class="fc"><i>840</i>&nbsp;                if( variablesToInclude[1] != 1){</b>
+<b class="fc"><i>841</i>&nbsp;                     throw new OutOfRangeException( variablesToInclude[0], 0,1 );</b>
+<i>842</i>&nbsp;                }
+<b class="nc"><i>843</i>&nbsp;                return regress();</b>
+<i>844</i>&nbsp;            }else{
+<b class="fc"><i>845</i>&nbsp;                if( variablesToInclude[0] != 1 &amp;&amp; variablesToInclude[0] != 0 ){</b>
+<b class="fc"><i>846</i>&nbsp;                     throw new OutOfRangeException( variablesToInclude[0],0,1 );</b>
+<i>847</i>&nbsp;                }
+<b class="fc"><i>848</i>&nbsp;                final double _mean = sumY * sumY / n;</b>
+<b class="fc"><i>849</i>&nbsp;                final double _syy = sumYY + _mean;</b>
+<b class="fc"><i>850</i>&nbsp;                if( variablesToInclude[0] == 0 ){</b>
+<i>851</i>&nbsp;                    //just the mean
+<b class="fc"><i>852</i>&nbsp;                    final double[] vcv = new double[]{ sumYY/(((n-1)*n)) };</b>
+<b class="fc"><i>853</i>&nbsp;                    final double[] params = new double[]{ ybar };</b>
+<b class="fc"><i>854</i>&nbsp;                    return new RegressionResults(</b>
+<i>855</i>&nbsp;                      params, new double[][]{vcv}, true, n, 1,
+<i>856</i>&nbsp;                      sumY, _syy+_mean, sumYY,true,false);
+<i>857</i>&nbsp;
+<b class="fc"><i>858</i>&nbsp;                }else if( variablesToInclude[0] == 1){</b>
+<i>859</i>&nbsp;                    //final double _syy = sumYY + sumY * sumY / ((double) n);
+<b class="fc"><i>860</i>&nbsp;                    final double _sxx = sumXX + sumX * sumX / n;</b>
+<b class="fc"><i>861</i>&nbsp;                    final double _sxy = sumXY + sumX * sumY / n;</b>
+<b class="fc"><i>862</i>&nbsp;                    final double _sse = FastMath.max(0d, _syy - _sxy * _sxy / _sxx);</b>
+<b class="fc"><i>863</i>&nbsp;                    final double _mse = _sse/((n-1));</b>
+<b class="fc"><i>864</i>&nbsp;                    if( !Double.isNaN(_sxx) ){</b>
+<b class="fc"><i>865</i>&nbsp;                        final double[] vcv = new double[]{ _mse / _sxx };</b>
+<b class="fc"><i>866</i>&nbsp;                        final double[] params = new double[]{ _sxy/_sxx };</b>
+<b class="fc"><i>867</i>&nbsp;                        return new RegressionResults(</b>
+<i>868</i>&nbsp;                                    params, new double[][]{vcv}, true, n, 1,
+<i>869</i>&nbsp;                                    sumY, _syy, _sse,false,false);
+<i>870</i>&nbsp;                    }else{
+<b class="nc"><i>871</i>&nbsp;                        final double[] vcv = new double[]{Double.NaN };</b>
+<b class="nc"><i>872</i>&nbsp;                        final double[] params = new double[]{ Double.NaN };</b>
+<b class="nc"><i>873</i>&nbsp;                        return new RegressionResults(</b>
+<i>874</i>&nbsp;                                    params, new double[][]{vcv}, true, n, 1,
+<i>875</i>&nbsp;                                    Double.NaN, Double.NaN, Double.NaN,false,false);
+<i>876</i>&nbsp;                    }
+<i>877</i>&nbsp;                }
+<b class="nc"><i>878</i>&nbsp;            }</b>
+<i>879</i>&nbsp;        }else{
+<b class="fc"><i>880</i>&nbsp;            if( variablesToInclude[0] != 0 ){</b>
+<b class="fc"><i>881</i>&nbsp;                throw new OutOfRangeException(variablesToInclude[0],0,0);</b>
+<i>882</i>&nbsp;            }
+<b class="nc"><i>883</i>&nbsp;            return regress();</b>
+<i>884</i>&nbsp;        }
+<i>885</i>&nbsp;
+<b class="nc"><i>886</i>&nbsp;        return null;</b>
+<i>887</i>&nbsp;    }
+<i>888</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

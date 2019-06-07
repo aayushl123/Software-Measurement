@@ -1,0 +1,312 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: StorelessCovariance</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.stat.correlation</a> ]
+</div>
+
+<h1>Coverage Summary for Class: StorelessCovariance (org.apache.commons.math4.stat.correlation)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">StorelessCovariance</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    75%
+  </span>
+  <span class="absValue">
+    (9/ 12)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    75%
+  </span>
+  <span class="absValue">
+    (27/ 36)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;package org.apache.commons.math4.stat.correlation;
+<i>18</i>&nbsp;
+<i>19</i>&nbsp;import org.apache.commons.math4.exception.DimensionMismatchException;
+<i>20</i>&nbsp;import org.apache.commons.math4.exception.MathUnsupportedOperationException;
+<i>21</i>&nbsp;import org.apache.commons.math4.exception.NumberIsTooSmallException;
+<i>22</i>&nbsp;import org.apache.commons.math4.linear.MatrixUtils;
+<i>23</i>&nbsp;import org.apache.commons.math4.linear.RealMatrix;
+<i>24</i>&nbsp;
+<i>25</i>&nbsp;/**
+<i>26</i>&nbsp; * Covariance implementation that does not require input data to be
+<i>27</i>&nbsp; * stored in memory. The size of the covariance matrix is specified in the
+<i>28</i>&nbsp; * constructor. Specific elements of the matrix are incrementally updated with
+<i>29</i>&nbsp; * calls to incrementRow() or increment Covariance().
+<i>30</i>&nbsp; *
+<i>31</i>&nbsp; * &lt;p&gt;This class is based on a paper written by Philippe P&amp;eacute;bay:
+<i>32</i>&nbsp; * &lt;a href=&quot;http://prod.sandia.gov/techlib/access-control.cgi/2008/086212.pdf&quot;&gt;
+<i>33</i>&nbsp; * Formulas for Robust, One-Pass Parallel Computation of Covariances and
+<i>34</i>&nbsp; * Arbitrary-Order Statistical Moments&lt;/a&gt;, 2008, Technical Report SAND2008-6212,
+<i>35</i>&nbsp; * Sandia National Laboratories.&lt;/p&gt;
+<i>36</i>&nbsp; *
+<i>37</i>&nbsp; * &lt;p&gt;Note: the underlying covariance matrix is symmetric, thus only the
+<i>38</i>&nbsp; * upper triangular part of the matrix is stored and updated each increment.&lt;/p&gt;
+<i>39</i>&nbsp; *
+<i>40</i>&nbsp; * @since 3.0
+<i>41</i>&nbsp; */
+<i>42</i>&nbsp;public class StorelessCovariance extends Covariance {
+<i>43</i>&nbsp;
+<i>44</i>&nbsp;    /** the square covariance matrix (upper triangular part) */
+<i>45</i>&nbsp;    private StorelessBivariateCovariance[] covMatrix;
+<i>46</i>&nbsp;
+<i>47</i>&nbsp;    /** dimension of the square covariance matrix */
+<i>48</i>&nbsp;    private int dimension;
+<i>49</i>&nbsp;
+<i>50</i>&nbsp;    /**
+<i>51</i>&nbsp;     * Create a bias corrected covariance matrix with a given dimension.
+<i>52</i>&nbsp;     *
+<i>53</i>&nbsp;     * @param dim the dimension of the square covariance matrix
+<i>54</i>&nbsp;     */
+<i>55</i>&nbsp;    public StorelessCovariance(final int dim) {
+<b class="fc"><i>56</i>&nbsp;        this(dim, true);</b>
+<b class="fc"><i>57</i>&nbsp;    }</b>
+<i>58</i>&nbsp;
+<i>59</i>&nbsp;    /**
+<i>60</i>&nbsp;     * Create a covariance matrix with a given number of rows and columns and the
+<i>61</i>&nbsp;     * indicated bias correction.
+<i>62</i>&nbsp;     *
+<i>63</i>&nbsp;     * @param dim the dimension of the covariance matrix
+<i>64</i>&nbsp;     * @param biasCorrected if &lt;code&gt;true&lt;/code&gt; the covariance estimate is corrected
+<i>65</i>&nbsp;     * for bias, i.e. n-1 in the denominator, otherwise there is no bias correction,
+<i>66</i>&nbsp;     * i.e. n in the denominator.
+<i>67</i>&nbsp;     */
+<b class="fc"><i>68</i>&nbsp;    public StorelessCovariance(final int dim, final boolean biasCorrected) {</b>
+<b class="fc"><i>69</i>&nbsp;        dimension = dim;</b>
+<b class="fc"><i>70</i>&nbsp;        covMatrix = new StorelessBivariateCovariance[dimension * (dimension + 1) / 2];</b>
+<b class="fc"><i>71</i>&nbsp;        initializeMatrix(biasCorrected);</b>
+<b class="fc"><i>72</i>&nbsp;    }</b>
+<i>73</i>&nbsp;
+<i>74</i>&nbsp;    /**
+<i>75</i>&nbsp;     * Initialize the internal two-dimensional array of
+<i>76</i>&nbsp;     * {@link StorelessBivariateCovariance} instances.
+<i>77</i>&nbsp;     *
+<i>78</i>&nbsp;     * @param biasCorrected if the covariance estimate shall be corrected for bias
+<i>79</i>&nbsp;     */
+<i>80</i>&nbsp;    private void initializeMatrix(final boolean biasCorrected) {
+<b class="fc"><i>81</i>&nbsp;        for(int i = 0; i &lt; dimension; i++){</b>
+<b class="fc"><i>82</i>&nbsp;            for(int j = 0; j &lt; dimension; j++){</b>
+<b class="fc"><i>83</i>&nbsp;                setElement(i, j, new StorelessBivariateCovariance(biasCorrected));</b>
+<i>84</i>&nbsp;            }
+<i>85</i>&nbsp;        }
+<b class="fc"><i>86</i>&nbsp;    }</b>
+<i>87</i>&nbsp;
+<i>88</i>&nbsp;    /**
+<i>89</i>&nbsp;     * Returns the index (i, j) translated into the one-dimensional
+<i>90</i>&nbsp;     * array used to store the upper triangular part of the symmetric
+<i>91</i>&nbsp;     * covariance matrix.
+<i>92</i>&nbsp;     *
+<i>93</i>&nbsp;     * @param i the row index
+<i>94</i>&nbsp;     * @param j the column index
+<i>95</i>&nbsp;     * @return the corresponding index in the matrix array
+<i>96</i>&nbsp;     */
+<i>97</i>&nbsp;    private int indexOf(final int i, final int j) {
+<b class="fc"><i>98</i>&nbsp;        return j &lt; i ? i * (i + 1) / 2 + j : j * (j + 1) / 2 + i;</b>
+<i>99</i>&nbsp;    }
+<i>100</i>&nbsp;
+<i>101</i>&nbsp;    /**
+<i>102</i>&nbsp;     * Gets the element at index (i, j) from the covariance matrix
+<i>103</i>&nbsp;     * @param i the row index
+<i>104</i>&nbsp;     * @param j the column index
+<i>105</i>&nbsp;     * @return the {@link StorelessBivariateCovariance} element at the given index
+<i>106</i>&nbsp;     */
+<i>107</i>&nbsp;    private StorelessBivariateCovariance getElement(final int i, final int j) {
+<b class="fc"><i>108</i>&nbsp;        return covMatrix[indexOf(i, j)];</b>
+<i>109</i>&nbsp;    }
+<i>110</i>&nbsp;
+<i>111</i>&nbsp;    /**
+<i>112</i>&nbsp;     * Sets the covariance element at index (i, j) in the covariance matrix
+<i>113</i>&nbsp;     * @param i the row index
+<i>114</i>&nbsp;     * @param j the column index
+<i>115</i>&nbsp;     * @param cov the {@link StorelessBivariateCovariance} element to be set
+<i>116</i>&nbsp;     */
+<i>117</i>&nbsp;    private void setElement(final int i, final int j,
+<i>118</i>&nbsp;                            final StorelessBivariateCovariance cov) {
+<b class="fc"><i>119</i>&nbsp;        covMatrix[indexOf(i, j)] = cov;</b>
+<b class="fc"><i>120</i>&nbsp;    }</b>
+<i>121</i>&nbsp;
+<i>122</i>&nbsp;    /**
+<i>123</i>&nbsp;     * Get the covariance for an individual element of the covariance matrix.
+<i>124</i>&nbsp;     *
+<i>125</i>&nbsp;     * @param xIndex row index in the covariance matrix
+<i>126</i>&nbsp;     * @param yIndex column index in the covariance matrix
+<i>127</i>&nbsp;     * @return the covariance of the given element
+<i>128</i>&nbsp;     * @throws NumberIsTooSmallException if the number of observations
+<i>129</i>&nbsp;     * in the cell is &amp;lt; 2
+<i>130</i>&nbsp;     */
+<i>131</i>&nbsp;    public double getCovariance(final int xIndex,
+<i>132</i>&nbsp;                                final int yIndex)
+<i>133</i>&nbsp;        throws NumberIsTooSmallException {
+<i>134</i>&nbsp;
+<b class="nc"><i>135</i>&nbsp;        return getElement(xIndex, yIndex).getResult();</b>
+<i>136</i>&nbsp;
+<i>137</i>&nbsp;    }
+<i>138</i>&nbsp;
+<i>139</i>&nbsp;    /**
+<i>140</i>&nbsp;     * Increment the covariance matrix with one row of data.
+<i>141</i>&nbsp;     *
+<i>142</i>&nbsp;     * @param data array representing one row of data.
+<i>143</i>&nbsp;     * @throws DimensionMismatchException if the length of &lt;code&gt;rowData&lt;/code&gt;
+<i>144</i>&nbsp;     * does not match with the covariance matrix
+<i>145</i>&nbsp;     */
+<i>146</i>&nbsp;    public void increment(final double[] data)
+<i>147</i>&nbsp;        throws DimensionMismatchException {
+<i>148</i>&nbsp;
+<b class="fc"><i>149</i>&nbsp;        int length = data.length;</b>
+<b class="fc"><i>150</i>&nbsp;        if (length != dimension) {</b>
+<b class="nc"><i>151</i>&nbsp;            throw new DimensionMismatchException(length, dimension);</b>
+<i>152</i>&nbsp;        }
+<i>153</i>&nbsp;
+<i>154</i>&nbsp;        // only update the upper triangular part of the covariance matrix
+<i>155</i>&nbsp;        // as only these parts are actually stored
+<b class="fc"><i>156</i>&nbsp;        for (int i = 0; i &lt; length; i++){</b>
+<b class="fc"><i>157</i>&nbsp;            for (int j = i; j &lt; length; j++){</b>
+<b class="fc"><i>158</i>&nbsp;                getElement(i, j).increment(data[i], data[j]);</b>
+<i>159</i>&nbsp;            }
+<i>160</i>&nbsp;        }
+<i>161</i>&nbsp;
+<b class="fc"><i>162</i>&nbsp;    }</b>
+<i>163</i>&nbsp;
+<i>164</i>&nbsp;    /**
+<i>165</i>&nbsp;     * Appends {@code sc} to this, effectively aggregating the computations in {@code sc}
+<i>166</i>&nbsp;     * with this.  After invoking this method, covariances returned should be close
+<i>167</i>&nbsp;     * to what would have been obtained by performing all of the {@link #increment(double[])}
+<i>168</i>&nbsp;     * operations in {@code sc} directly on this.
+<i>169</i>&nbsp;     *
+<i>170</i>&nbsp;     * @param sc externally computed StorelessCovariance to add to this
+<i>171</i>&nbsp;     * @throws DimensionMismatchException if the dimension of sc does not match this
+<i>172</i>&nbsp;     * @since 3.3
+<i>173</i>&nbsp;     */
+<i>174</i>&nbsp;    public void append(StorelessCovariance sc) throws DimensionMismatchException {
+<b class="nc"><i>175</i>&nbsp;        if (sc.dimension != dimension) {</b>
+<b class="nc"><i>176</i>&nbsp;            throw new DimensionMismatchException(sc.dimension, dimension);</b>
+<i>177</i>&nbsp;        }
+<i>178</i>&nbsp;
+<i>179</i>&nbsp;        // only update the upper triangular part of the covariance matrix
+<i>180</i>&nbsp;        // as only these parts are actually stored
+<b class="nc"><i>181</i>&nbsp;        for (int i = 0; i &lt; dimension; i++) {</b>
+<b class="nc"><i>182</i>&nbsp;            for (int j = i; j &lt; dimension; j++) {</b>
+<b class="nc"><i>183</i>&nbsp;                getElement(i, j).append(sc.getElement(i, j));</b>
+<i>184</i>&nbsp;            }
+<i>185</i>&nbsp;        }
+<b class="nc"><i>186</i>&nbsp;    }</b>
+<i>187</i>&nbsp;
+<i>188</i>&nbsp;    /**
+<i>189</i>&nbsp;     * {@inheritDoc}
+<i>190</i>&nbsp;     * @throws NumberIsTooSmallException if the number of observations
+<i>191</i>&nbsp;     * in a cell is &amp;lt; 2
+<i>192</i>&nbsp;     */
+<i>193</i>&nbsp;    @Override
+<i>194</i>&nbsp;    public RealMatrix getCovarianceMatrix() throws NumberIsTooSmallException {
+<b class="fc"><i>195</i>&nbsp;        return MatrixUtils.createRealMatrix(getData());</b>
+<i>196</i>&nbsp;    }
+<i>197</i>&nbsp;
+<i>198</i>&nbsp;    /**
+<i>199</i>&nbsp;     * Return the covariance matrix as two-dimensional array.
+<i>200</i>&nbsp;     *
+<i>201</i>&nbsp;     * @return a two-dimensional double array of covariance values
+<i>202</i>&nbsp;     * @throws NumberIsTooSmallException if the number of observations
+<i>203</i>&nbsp;     * for a cell is &amp;lt; 2
+<i>204</i>&nbsp;     */
+<i>205</i>&nbsp;    public double[][] getData() throws NumberIsTooSmallException {
+<b class="fc"><i>206</i>&nbsp;        final double[][] data = new double[dimension][dimension];</b>
+<b class="fc"><i>207</i>&nbsp;        for (int i = 0; i &lt; dimension; i++) {</b>
+<b class="fc"><i>208</i>&nbsp;            for (int j = 0; j &lt; dimension; j++) {</b>
+<b class="fc"><i>209</i>&nbsp;                data[i][j] = getElement(i, j).getResult();</b>
+<i>210</i>&nbsp;            }
+<i>211</i>&nbsp;        }
+<b class="fc"><i>212</i>&nbsp;        return data;</b>
+<i>213</i>&nbsp;    }
+<i>214</i>&nbsp;
+<i>215</i>&nbsp;    /**
+<i>216</i>&nbsp;     * This {@link Covariance} method is not supported by a {@link StorelessCovariance},
+<i>217</i>&nbsp;     * since the number of bivariate observations does not have to be the same for different
+<i>218</i>&nbsp;     * pairs of covariates - i.e., N as defined in {@link Covariance#getN()} is undefined.
+<i>219</i>&nbsp;     *
+<i>220</i>&nbsp;     * @return nothing as this implementation always throws a
+<i>221</i>&nbsp;     * {@link MathUnsupportedOperationException}
+<i>222</i>&nbsp;     * @throws MathUnsupportedOperationException in all cases
+<i>223</i>&nbsp;     */
+<i>224</i>&nbsp;    @Override
+<i>225</i>&nbsp;    public int getN()
+<i>226</i>&nbsp;        throws MathUnsupportedOperationException {
+<b class="nc"><i>227</i>&nbsp;        throw new MathUnsupportedOperationException();</b>
+<i>228</i>&nbsp;    }
+<i>229</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

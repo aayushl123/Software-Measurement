@@ -1,0 +1,557 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: LoessInterpolator</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.analysis.interpolation</a> ]
+</div>
+
+<h1>Coverage Summary for Class: LoessInterpolator (org.apache.commons.math4.analysis.interpolation)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">LoessInterpolator</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    80%
+  </span>
+  <span class="absValue">
+    (8/ 10)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    94.8%
+  </span>
+  <span class="absValue">
+    (110/ 116)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;package org.apache.commons.math4.analysis.interpolation;
+<i>18</i>&nbsp;
+<i>19</i>&nbsp;import java.io.Serializable;
+<i>20</i>&nbsp;import java.util.Arrays;
+<i>21</i>&nbsp;
+<i>22</i>&nbsp;import org.apache.commons.math4.analysis.polynomials.PolynomialSplineFunction;
+<i>23</i>&nbsp;import org.apache.commons.math4.exception.DimensionMismatchException;
+<i>24</i>&nbsp;import org.apache.commons.math4.exception.NoDataException;
+<i>25</i>&nbsp;import org.apache.commons.math4.exception.NonMonotonicSequenceException;
+<i>26</i>&nbsp;import org.apache.commons.math4.exception.NotFiniteNumberException;
+<i>27</i>&nbsp;import org.apache.commons.math4.exception.NotPositiveException;
+<i>28</i>&nbsp;import org.apache.commons.math4.exception.NumberIsTooSmallException;
+<i>29</i>&nbsp;import org.apache.commons.math4.exception.OutOfRangeException;
+<i>30</i>&nbsp;import org.apache.commons.math4.exception.util.LocalizedFormats;
+<i>31</i>&nbsp;import org.apache.commons.math4.util.FastMath;
+<i>32</i>&nbsp;import org.apache.commons.math4.util.MathArrays;
+<i>33</i>&nbsp;import org.apache.commons.math4.util.MathUtils;
+<i>34</i>&nbsp;
+<i>35</i>&nbsp;/**
+<i>36</i>&nbsp; * Implements the &lt;a href=&quot;http://en.wikipedia.org/wiki/Local_regression&quot;&gt;
+<i>37</i>&nbsp; * Local Regression Algorithm&lt;/a&gt; (also Loess, Lowess) for interpolation of
+<i>38</i>&nbsp; * real univariate functions.
+<i>39</i>&nbsp; * &lt;p&gt;
+<i>40</i>&nbsp; * For reference, see
+<i>41</i>&nbsp; * &lt;a href=&quot;http://amstat.tandfonline.com/doi/abs/10.1080/01621459.1979.10481038&quot;&gt;
+<i>42</i>&nbsp; * William S. Cleveland - Robust Locally Weighted Regression and Smoothing
+<i>43</i>&nbsp; * Scatterplots&lt;/a&gt;&lt;/p&gt;
+<i>44</i>&nbsp; * &lt;p&gt;
+<i>45</i>&nbsp; * This class implements both the loess method and serves as an interpolation
+<i>46</i>&nbsp; * adapter to it, allowing one to build a spline on the obtained loess fit.&lt;/p&gt;
+<i>47</i>&nbsp; *
+<i>48</i>&nbsp; * @since 2.0
+<i>49</i>&nbsp; */
+<i>50</i>&nbsp;public class LoessInterpolator
+<i>51</i>&nbsp;    implements UnivariateInterpolator, Serializable {
+<i>52</i>&nbsp;    /** Default value of the bandwidth parameter. */
+<i>53</i>&nbsp;    public static final double DEFAULT_BANDWIDTH = 0.3;
+<i>54</i>&nbsp;    /** Default value of the number of robustness iterations. */
+<i>55</i>&nbsp;    public static final int DEFAULT_ROBUSTNESS_ITERS = 2;
+<i>56</i>&nbsp;    /**
+<i>57</i>&nbsp;     * Default value for accuracy.
+<i>58</i>&nbsp;     * @since 2.1
+<i>59</i>&nbsp;     */
+<i>60</i>&nbsp;    public static final double DEFAULT_ACCURACY = 1e-12;
+<i>61</i>&nbsp;    /** serializable version identifier. */
+<i>62</i>&nbsp;    private static final long serialVersionUID = 5204927143605193821L;
+<i>63</i>&nbsp;    /**
+<i>64</i>&nbsp;     * The bandwidth parameter: when computing the loess fit at
+<i>65</i>&nbsp;     * a particular point, this fraction of source points closest
+<i>66</i>&nbsp;     * to the current point is taken into account for computing
+<i>67</i>&nbsp;     * a least-squares regression.
+<i>68</i>&nbsp;     * &lt;p&gt;
+<i>69</i>&nbsp;     * A sensible value is usually 0.25 to 0.5.&lt;/p&gt;
+<i>70</i>&nbsp;     */
+<i>71</i>&nbsp;    private final double bandwidth;
+<i>72</i>&nbsp;    /**
+<i>73</i>&nbsp;     * The number of robustness iterations parameter: this many
+<i>74</i>&nbsp;     * robustness iterations are done.
+<i>75</i>&nbsp;     * &lt;p&gt;
+<i>76</i>&nbsp;     * A sensible value is usually 0 (just the initial fit without any
+<i>77</i>&nbsp;     * robustness iterations) to 4.&lt;/p&gt;
+<i>78</i>&nbsp;     */
+<i>79</i>&nbsp;    private final int robustnessIters;
+<i>80</i>&nbsp;    /**
+<i>81</i>&nbsp;     * If the median residual at a certain robustness iteration
+<i>82</i>&nbsp;     * is less than this amount, no more iterations are done.
+<i>83</i>&nbsp;     */
+<i>84</i>&nbsp;    private final double accuracy;
+<i>85</i>&nbsp;
+<i>86</i>&nbsp;    /**
+<i>87</i>&nbsp;     * Constructs a new {@link LoessInterpolator}
+<i>88</i>&nbsp;     * with a bandwidth of {@link #DEFAULT_BANDWIDTH},
+<i>89</i>&nbsp;     * {@link #DEFAULT_ROBUSTNESS_ITERS} robustness iterations
+<i>90</i>&nbsp;     * and an accuracy of {#link #DEFAULT_ACCURACY}.
+<i>91</i>&nbsp;     * See {@link #LoessInterpolator(double, int, double)} for an explanation of
+<i>92</i>&nbsp;     * the parameters.
+<i>93</i>&nbsp;     */
+<b class="fc"><i>94</i>&nbsp;    public LoessInterpolator() {</b>
+<b class="fc"><i>95</i>&nbsp;        this.bandwidth = DEFAULT_BANDWIDTH;</b>
+<b class="fc"><i>96</i>&nbsp;        this.robustnessIters = DEFAULT_ROBUSTNESS_ITERS;</b>
+<b class="fc"><i>97</i>&nbsp;        this.accuracy = DEFAULT_ACCURACY;</b>
+<b class="fc"><i>98</i>&nbsp;    }</b>
+<i>99</i>&nbsp;
+<i>100</i>&nbsp;    /**
+<i>101</i>&nbsp;     * Construct a new {@link LoessInterpolator}
+<i>102</i>&nbsp;     * with given bandwidth and number of robustness iterations.
+<i>103</i>&nbsp;     * &lt;p&gt;
+<i>104</i>&nbsp;     * Calling this constructor is equivalent to calling {link {@link
+<i>105</i>&nbsp;     * #LoessInterpolator(double, int, double) LoessInterpolator(bandwidth,
+<i>106</i>&nbsp;     * robustnessIters, LoessInterpolator.DEFAULT_ACCURACY)}
+<i>107</i>&nbsp;     * &lt;/p&gt;
+<i>108</i>&nbsp;     *
+<i>109</i>&nbsp;     * @param bandwidth  when computing the loess fit at
+<i>110</i>&nbsp;     * a particular point, this fraction of source points closest
+<i>111</i>&nbsp;     * to the current point is taken into account for computing
+<i>112</i>&nbsp;     * a least-squares regression.
+<i>113</i>&nbsp;     * A sensible value is usually 0.25 to 0.5, the default value is
+<i>114</i>&nbsp;     * {@link #DEFAULT_BANDWIDTH}.
+<i>115</i>&nbsp;     * @param robustnessIters This many robustness iterations are done.
+<i>116</i>&nbsp;     * A sensible value is usually 0 (just the initial fit without any
+<i>117</i>&nbsp;     * robustness iterations) to 4, the default value is
+<i>118</i>&nbsp;     * {@link #DEFAULT_ROBUSTNESS_ITERS}.
+<i>119</i>&nbsp;
+<i>120</i>&nbsp;     * @see #LoessInterpolator(double, int, double)
+<i>121</i>&nbsp;     */
+<i>122</i>&nbsp;    public LoessInterpolator(double bandwidth, int robustnessIters) {
+<b class="nc"><i>123</i>&nbsp;        this(bandwidth, robustnessIters, DEFAULT_ACCURACY);</b>
+<b class="nc"><i>124</i>&nbsp;    }</b>
+<i>125</i>&nbsp;
+<i>126</i>&nbsp;    /**
+<i>127</i>&nbsp;     * Construct a new {@link LoessInterpolator}
+<i>128</i>&nbsp;     * with given bandwidth, number of robustness iterations and accuracy.
+<i>129</i>&nbsp;     *
+<i>130</i>&nbsp;     * @param bandwidth  when computing the loess fit at
+<i>131</i>&nbsp;     * a particular point, this fraction of source points closest
+<i>132</i>&nbsp;     * to the current point is taken into account for computing
+<i>133</i>&nbsp;     * a least-squares regression.
+<i>134</i>&nbsp;     * A sensible value is usually 0.25 to 0.5, the default value is
+<i>135</i>&nbsp;     * {@link #DEFAULT_BANDWIDTH}.
+<i>136</i>&nbsp;     * @param robustnessIters This many robustness iterations are done.
+<i>137</i>&nbsp;     * A sensible value is usually 0 (just the initial fit without any
+<i>138</i>&nbsp;     * robustness iterations) to 4, the default value is
+<i>139</i>&nbsp;     * {@link #DEFAULT_ROBUSTNESS_ITERS}.
+<i>140</i>&nbsp;     * @param accuracy If the median residual at a certain robustness iteration
+<i>141</i>&nbsp;     * is less than this amount, no more iterations are done.
+<i>142</i>&nbsp;     * @throws OutOfRangeException if bandwidth does not lie in the interval [0,1].
+<i>143</i>&nbsp;     * @throws NotPositiveException if {@code robustnessIters} is negative.
+<i>144</i>&nbsp;     * @see #LoessInterpolator(double, int)
+<i>145</i>&nbsp;     * @since 2.1
+<i>146</i>&nbsp;     */
+<i>147</i>&nbsp;    public LoessInterpolator(double bandwidth, int robustnessIters, double accuracy)
+<i>148</i>&nbsp;        throws OutOfRangeException,
+<b class="fc"><i>149</i>&nbsp;               NotPositiveException {</b>
+<b class="fc"><i>150</i>&nbsp;        if (bandwidth &lt; 0 ||</b>
+<i>151</i>&nbsp;            bandwidth &gt; 1) {
+<b class="fc"><i>152</i>&nbsp;            throw new OutOfRangeException(LocalizedFormats.BANDWIDTH, bandwidth, 0, 1);</b>
+<i>153</i>&nbsp;        }
+<b class="fc"><i>154</i>&nbsp;        this.bandwidth = bandwidth;</b>
+<b class="fc"><i>155</i>&nbsp;        if (robustnessIters &lt; 0) {</b>
+<b class="nc"><i>156</i>&nbsp;            throw new NotPositiveException(LocalizedFormats.ROBUSTNESS_ITERATIONS, robustnessIters);</b>
+<i>157</i>&nbsp;        }
+<b class="fc"><i>158</i>&nbsp;        this.robustnessIters = robustnessIters;</b>
+<b class="fc"><i>159</i>&nbsp;        this.accuracy = accuracy;</b>
+<b class="fc"><i>160</i>&nbsp;    }</b>
+<i>161</i>&nbsp;
+<i>162</i>&nbsp;    /**
+<i>163</i>&nbsp;     * Compute an interpolating function by performing a loess fit
+<i>164</i>&nbsp;     * on the data at the original abscissae and then building a cubic spline
+<i>165</i>&nbsp;     * with a
+<i>166</i>&nbsp;     * {@link org.apache.commons.math4.analysis.interpolation.SplineInterpolator}
+<i>167</i>&nbsp;     * on the resulting fit.
+<i>168</i>&nbsp;     *
+<i>169</i>&nbsp;     * @param xval the arguments for the interpolation points
+<i>170</i>&nbsp;     * @param yval the values for the interpolation points
+<i>171</i>&nbsp;     * @return A cubic spline built upon a loess fit to the data at the original abscissae
+<i>172</i>&nbsp;     * @throws NonMonotonicSequenceException if {@code xval} not sorted in
+<i>173</i>&nbsp;     * strictly increasing order.
+<i>174</i>&nbsp;     * @throws DimensionMismatchException if {@code xval} and {@code yval} have
+<i>175</i>&nbsp;     * different sizes.
+<i>176</i>&nbsp;     * @throws NoDataException if {@code xval} or {@code yval} has zero size.
+<i>177</i>&nbsp;     * @throws NotFiniteNumberException if any of the arguments and values are
+<i>178</i>&nbsp;     * not finite real numbers.
+<i>179</i>&nbsp;     * @throws NumberIsTooSmallException if the bandwidth is too small to
+<i>180</i>&nbsp;     * accomodate the size of the input data (i.e. the bandwidth must be
+<i>181</i>&nbsp;     * larger than 2/n).
+<i>182</i>&nbsp;     */
+<i>183</i>&nbsp;    @Override
+<i>184</i>&nbsp;    public final PolynomialSplineFunction interpolate(final double[] xval,
+<i>185</i>&nbsp;                                                      final double[] yval)
+<i>186</i>&nbsp;        throws NonMonotonicSequenceException,
+<i>187</i>&nbsp;               DimensionMismatchException,
+<i>188</i>&nbsp;               NoDataException,
+<i>189</i>&nbsp;               NotFiniteNumberException,
+<i>190</i>&nbsp;               NumberIsTooSmallException {
+<b class="nc"><i>191</i>&nbsp;        return new SplineInterpolator().interpolate(xval, smooth(xval, yval));</b>
+<i>192</i>&nbsp;    }
+<i>193</i>&nbsp;
+<i>194</i>&nbsp;    /**
+<i>195</i>&nbsp;     * Compute a weighted loess fit on the data at the original abscissae.
+<i>196</i>&nbsp;     *
+<i>197</i>&nbsp;     * @param xval Arguments for the interpolation points.
+<i>198</i>&nbsp;     * @param yval Values for the interpolation points.
+<i>199</i>&nbsp;     * @param weights point weights: coefficients by which the robustness weight
+<i>200</i>&nbsp;     * of a point is multiplied.
+<i>201</i>&nbsp;     * @return the values of the loess fit at corresponding original abscissae.
+<i>202</i>&nbsp;     * @throws NonMonotonicSequenceException if {@code xval} not sorted in
+<i>203</i>&nbsp;     * strictly increasing order.
+<i>204</i>&nbsp;     * @throws DimensionMismatchException if {@code xval} and {@code yval} have
+<i>205</i>&nbsp;     * different sizes.
+<i>206</i>&nbsp;     * @throws NoDataException if {@code xval} or {@code yval} has zero size.
+<i>207</i>&nbsp;     * @throws NotFiniteNumberException if any of the arguments and values are
+<i>208</i>&nbsp;     not finite real numbers.
+<i>209</i>&nbsp;     * @throws NumberIsTooSmallException if the bandwidth is too small to
+<i>210</i>&nbsp;     * accomodate the size of the input data (i.e. the bandwidth must be
+<i>211</i>&nbsp;     * larger than 2/n).
+<i>212</i>&nbsp;     * @since 2.1
+<i>213</i>&nbsp;     */
+<i>214</i>&nbsp;    public final double[] smooth(final double[] xval, final double[] yval,
+<i>215</i>&nbsp;                                 final double[] weights)
+<i>216</i>&nbsp;        throws NonMonotonicSequenceException,
+<i>217</i>&nbsp;               DimensionMismatchException,
+<i>218</i>&nbsp;               NoDataException,
+<i>219</i>&nbsp;               NotFiniteNumberException,
+<i>220</i>&nbsp;               NumberIsTooSmallException {
+<b class="fc"><i>221</i>&nbsp;        if (xval.length != yval.length) {</b>
+<b class="nc"><i>222</i>&nbsp;            throw new DimensionMismatchException(xval.length, yval.length);</b>
+<i>223</i>&nbsp;        }
+<i>224</i>&nbsp;
+<b class="fc"><i>225</i>&nbsp;        final int n = xval.length;</b>
+<i>226</i>&nbsp;
+<b class="fc"><i>227</i>&nbsp;        if (n == 0) {</b>
+<b class="fc"><i>228</i>&nbsp;            throw new NoDataException();</b>
+<i>229</i>&nbsp;        }
+<i>230</i>&nbsp;
+<b class="fc"><i>231</i>&nbsp;        checkAllFiniteReal(xval);</b>
+<b class="fc"><i>232</i>&nbsp;        checkAllFiniteReal(yval);</b>
+<b class="fc"><i>233</i>&nbsp;        checkAllFiniteReal(weights);</b>
+<i>234</i>&nbsp;
+<b class="fc"><i>235</i>&nbsp;        MathArrays.checkOrder(xval);</b>
+<i>236</i>&nbsp;
+<b class="fc"><i>237</i>&nbsp;        if (n == 1) {</b>
+<b class="fc"><i>238</i>&nbsp;            return new double[]{yval[0]};</b>
+<i>239</i>&nbsp;        }
+<i>240</i>&nbsp;
+<b class="fc"><i>241</i>&nbsp;        if (n == 2) {</b>
+<b class="fc"><i>242</i>&nbsp;            return new double[]{yval[0], yval[1]};</b>
+<i>243</i>&nbsp;        }
+<i>244</i>&nbsp;
+<b class="fc"><i>245</i>&nbsp;        int bandwidthInPoints = (int) (bandwidth * n);</b>
+<i>246</i>&nbsp;
+<b class="fc"><i>247</i>&nbsp;        if (bandwidthInPoints &lt; 2) {</b>
+<b class="fc"><i>248</i>&nbsp;            throw new NumberIsTooSmallException(LocalizedFormats.BANDWIDTH,</b>
+<b class="fc"><i>249</i>&nbsp;                                                bandwidthInPoints, 2, true);</b>
+<i>250</i>&nbsp;        }
+<i>251</i>&nbsp;
+<b class="fc"><i>252</i>&nbsp;        final double[] res = new double[n];</b>
+<i>253</i>&nbsp;
+<b class="fc"><i>254</i>&nbsp;        final double[] residuals = new double[n];</b>
+<b class="fc"><i>255</i>&nbsp;        final double[] sortedResiduals = new double[n];</b>
+<i>256</i>&nbsp;
+<b class="fc"><i>257</i>&nbsp;        final double[] robustnessWeights = new double[n];</b>
+<i>258</i>&nbsp;
+<i>259</i>&nbsp;        // Do an initial fit and &#39;robustnessIters&#39; robustness iterations.
+<i>260</i>&nbsp;        // This is equivalent to doing &#39;robustnessIters+1&#39; robustness iterations
+<i>261</i>&nbsp;        // starting with all robustness weights set to 1.
+<b class="fc"><i>262</i>&nbsp;        Arrays.fill(robustnessWeights, 1);</b>
+<i>263</i>&nbsp;
+<b class="fc"><i>264</i>&nbsp;        for (int iter = 0; iter &lt;= robustnessIters; ++iter) {</b>
+<b class="fc"><i>265</i>&nbsp;            final int[] bandwidthInterval = {0, bandwidthInPoints - 1};</b>
+<i>266</i>&nbsp;            // At each x, compute a local weighted linear regression
+<b class="fc"><i>267</i>&nbsp;            for (int i = 0; i &lt; n; ++i) {</b>
+<b class="fc"><i>268</i>&nbsp;                final double x = xval[i];</b>
+<i>269</i>&nbsp;
+<i>270</i>&nbsp;                // Find out the interval of source points on which
+<i>271</i>&nbsp;                // a regression is to be made.
+<b class="fc"><i>272</i>&nbsp;                if (i &gt; 0) {</b>
+<b class="fc"><i>273</i>&nbsp;                    updateBandwidthInterval(xval, weights, i, bandwidthInterval);</b>
+<i>274</i>&nbsp;                }
+<i>275</i>&nbsp;
+<b class="fc"><i>276</i>&nbsp;                final int ileft = bandwidthInterval[0];</b>
+<b class="fc"><i>277</i>&nbsp;                final int iright = bandwidthInterval[1];</b>
+<i>278</i>&nbsp;
+<i>279</i>&nbsp;                // Compute the point of the bandwidth interval that is
+<i>280</i>&nbsp;                // farthest from x
+<i>281</i>&nbsp;                final int edge;
+<b class="fc"><i>282</i>&nbsp;                if (xval[i] - xval[ileft] &gt; xval[iright] - xval[i]) {</b>
+<b class="fc"><i>283</i>&nbsp;                    edge = ileft;</b>
+<i>284</i>&nbsp;                } else {
+<b class="fc"><i>285</i>&nbsp;                    edge = iright;</b>
+<i>286</i>&nbsp;                }
+<i>287</i>&nbsp;
+<i>288</i>&nbsp;                // Compute a least-squares linear fit weighted by
+<i>289</i>&nbsp;                // the product of robustness weights and the tricube
+<i>290</i>&nbsp;                // weight function.
+<i>291</i>&nbsp;                // See http://en.wikipedia.org/wiki/Linear_regression
+<i>292</i>&nbsp;                // (section &quot;Univariate linear case&quot;)
+<i>293</i>&nbsp;                // and http://en.wikipedia.org/wiki/Weighted_least_squares
+<i>294</i>&nbsp;                // (section &quot;Weighted least squares&quot;)
+<b class="fc"><i>295</i>&nbsp;                double sumWeights = 0;</b>
+<b class="fc"><i>296</i>&nbsp;                double sumX = 0;</b>
+<b class="fc"><i>297</i>&nbsp;                double sumXSquared = 0;</b>
+<b class="fc"><i>298</i>&nbsp;                double sumY = 0;</b>
+<b class="fc"><i>299</i>&nbsp;                double sumXY = 0;</b>
+<b class="fc"><i>300</i>&nbsp;                double denom = FastMath.abs(1.0 / (xval[edge] - x));</b>
+<b class="fc"><i>301</i>&nbsp;                for (int k = ileft; k &lt;= iright; ++k) {</b>
+<b class="fc"><i>302</i>&nbsp;                    final double xk   = xval[k];</b>
+<b class="fc"><i>303</i>&nbsp;                    final double yk   = yval[k];</b>
+<b class="fc"><i>304</i>&nbsp;                    final double dist = (k &lt; i) ? x - xk : xk - x;</b>
+<b class="fc"><i>305</i>&nbsp;                    final double w    = tricube(dist * denom) * robustnessWeights[k] * weights[k];</b>
+<b class="fc"><i>306</i>&nbsp;                    final double xkw  = xk * w;</b>
+<b class="fc"><i>307</i>&nbsp;                    sumWeights += w;</b>
+<b class="fc"><i>308</i>&nbsp;                    sumX += xkw;</b>
+<b class="fc"><i>309</i>&nbsp;                    sumXSquared += xk * xkw;</b>
+<b class="fc"><i>310</i>&nbsp;                    sumY += yk * w;</b>
+<b class="fc"><i>311</i>&nbsp;                    sumXY += yk * xkw;</b>
+<i>312</i>&nbsp;                }
+<i>313</i>&nbsp;
+<b class="fc"><i>314</i>&nbsp;                final double meanX = sumX / sumWeights;</b>
+<b class="fc"><i>315</i>&nbsp;                final double meanY = sumY / sumWeights;</b>
+<b class="fc"><i>316</i>&nbsp;                final double meanXY = sumXY / sumWeights;</b>
+<b class="fc"><i>317</i>&nbsp;                final double meanXSquared = sumXSquared / sumWeights;</b>
+<i>318</i>&nbsp;
+<i>319</i>&nbsp;                final double beta;
+<b class="fc"><i>320</i>&nbsp;                if (FastMath.sqrt(FastMath.abs(meanXSquared - meanX * meanX)) &lt; accuracy) {</b>
+<b class="fc"><i>321</i>&nbsp;                    beta = 0;</b>
+<i>322</i>&nbsp;                } else {
+<b class="fc"><i>323</i>&nbsp;                    beta = (meanXY - meanX * meanY) / (meanXSquared - meanX * meanX);</b>
+<i>324</i>&nbsp;                }
+<i>325</i>&nbsp;
+<b class="fc"><i>326</i>&nbsp;                final double alpha = meanY - beta * meanX;</b>
+<i>327</i>&nbsp;
+<b class="fc"><i>328</i>&nbsp;                res[i] = beta * x + alpha;</b>
+<b class="fc"><i>329</i>&nbsp;                residuals[i] = FastMath.abs(yval[i] - res[i]);</b>
+<i>330</i>&nbsp;            }
+<i>331</i>&nbsp;
+<i>332</i>&nbsp;            // No need to recompute the robustness weights at the last
+<i>333</i>&nbsp;            // iteration, they won&#39;t be needed anymore
+<b class="fc"><i>334</i>&nbsp;            if (iter == robustnessIters) {</b>
+<b class="fc"><i>335</i>&nbsp;                break;</b>
+<i>336</i>&nbsp;            }
+<i>337</i>&nbsp;
+<i>338</i>&nbsp;            // Recompute the robustness weights.
+<i>339</i>&nbsp;
+<i>340</i>&nbsp;            // Find the median residual.
+<i>341</i>&nbsp;            // An arraycopy and a sort are completely tractable here,
+<i>342</i>&nbsp;            // because the preceding loop is a lot more expensive
+<b class="fc"><i>343</i>&nbsp;            System.arraycopy(residuals, 0, sortedResiduals, 0, n);</b>
+<b class="fc"><i>344</i>&nbsp;            Arrays.sort(sortedResiduals);</b>
+<b class="fc"><i>345</i>&nbsp;            final double medianResidual = sortedResiduals[n / 2];</b>
+<i>346</i>&nbsp;
+<b class="fc"><i>347</i>&nbsp;            if (FastMath.abs(medianResidual) &lt; accuracy) {</b>
+<b class="fc"><i>348</i>&nbsp;                break;</b>
+<i>349</i>&nbsp;            }
+<i>350</i>&nbsp;
+<b class="fc"><i>351</i>&nbsp;            for (int i = 0; i &lt; n; ++i) {</b>
+<b class="fc"><i>352</i>&nbsp;                final double arg = residuals[i] / (6 * medianResidual);</b>
+<b class="fc"><i>353</i>&nbsp;                if (arg &gt;= 1) {</b>
+<b class="fc"><i>354</i>&nbsp;                    robustnessWeights[i] = 0;</b>
+<i>355</i>&nbsp;                } else {
+<b class="fc"><i>356</i>&nbsp;                    final double w = 1 - arg * arg;</b>
+<b class="fc"><i>357</i>&nbsp;                    robustnessWeights[i] = w * w;</b>
+<i>358</i>&nbsp;                }
+<i>359</i>&nbsp;            }
+<i>360</i>&nbsp;        }
+<i>361</i>&nbsp;
+<b class="fc"><i>362</i>&nbsp;        return res;</b>
+<i>363</i>&nbsp;    }
+<i>364</i>&nbsp;
+<i>365</i>&nbsp;    /**
+<i>366</i>&nbsp;     * Compute a loess fit on the data at the original abscissae.
+<i>367</i>&nbsp;     *
+<i>368</i>&nbsp;     * @param xval the arguments for the interpolation points
+<i>369</i>&nbsp;     * @param yval the values for the interpolation points
+<i>370</i>&nbsp;     * @return values of the loess fit at corresponding original abscissae
+<i>371</i>&nbsp;     * @throws NonMonotonicSequenceException if {@code xval} not sorted in
+<i>372</i>&nbsp;     * strictly increasing order.
+<i>373</i>&nbsp;     * @throws DimensionMismatchException if {@code xval} and {@code yval} have
+<i>374</i>&nbsp;     * different sizes.
+<i>375</i>&nbsp;     * @throws NoDataException if {@code xval} or {@code yval} has zero size.
+<i>376</i>&nbsp;     * @throws NotFiniteNumberException if any of the arguments and values are
+<i>377</i>&nbsp;     * not finite real numbers.
+<i>378</i>&nbsp;     * @throws NumberIsTooSmallException if the bandwidth is too small to
+<i>379</i>&nbsp;     * accomodate the size of the input data (i.e. the bandwidth must be
+<i>380</i>&nbsp;     * larger than 2/n).
+<i>381</i>&nbsp;     */
+<i>382</i>&nbsp;    public final double[] smooth(final double[] xval, final double[] yval)
+<i>383</i>&nbsp;        throws NonMonotonicSequenceException,
+<i>384</i>&nbsp;               DimensionMismatchException,
+<i>385</i>&nbsp;               NoDataException,
+<i>386</i>&nbsp;               NotFiniteNumberException,
+<i>387</i>&nbsp;               NumberIsTooSmallException {
+<b class="fc"><i>388</i>&nbsp;        if (xval.length != yval.length) {</b>
+<b class="fc"><i>389</i>&nbsp;            throw new DimensionMismatchException(xval.length, yval.length);</b>
+<i>390</i>&nbsp;        }
+<i>391</i>&nbsp;
+<b class="fc"><i>392</i>&nbsp;        final double[] unitWeights = new double[xval.length];</b>
+<b class="fc"><i>393</i>&nbsp;        Arrays.fill(unitWeights, 1.0);</b>
+<i>394</i>&nbsp;
+<b class="fc"><i>395</i>&nbsp;        return smooth(xval, yval, unitWeights);</b>
+<i>396</i>&nbsp;    }
+<i>397</i>&nbsp;
+<i>398</i>&nbsp;    /**
+<i>399</i>&nbsp;     * Given an index interval into xval that embraces a certain number of
+<i>400</i>&nbsp;     * points closest to {@code xval[i-1]}, update the interval so that it
+<i>401</i>&nbsp;     * embraces the same number of points closest to {@code xval[i]},
+<i>402</i>&nbsp;     * ignoring zero weights.
+<i>403</i>&nbsp;     *
+<i>404</i>&nbsp;     * @param xval Arguments array.
+<i>405</i>&nbsp;     * @param weights Weights array.
+<i>406</i>&nbsp;     * @param i Index around which the new interval should be computed.
+<i>407</i>&nbsp;     * @param bandwidthInterval a two-element array {left, right} such that:
+<i>408</i>&nbsp;     * {@code (left==0 or xval[i] - xval[left-1] &gt; xval[right] - xval[i])}
+<i>409</i>&nbsp;     * and
+<i>410</i>&nbsp;     * {@code (right==xval.length-1 or xval[right+1] - xval[i] &gt; xval[i] - xval[left])}.
+<i>411</i>&nbsp;     * The array will be updated.
+<i>412</i>&nbsp;     */
+<i>413</i>&nbsp;    private static void updateBandwidthInterval(final double[] xval, final double[] weights,
+<i>414</i>&nbsp;                                                final int i,
+<i>415</i>&nbsp;                                                final int[] bandwidthInterval) {
+<b class="fc"><i>416</i>&nbsp;        final int left = bandwidthInterval[0];</b>
+<b class="fc"><i>417</i>&nbsp;        final int right = bandwidthInterval[1];</b>
+<i>418</i>&nbsp;
+<i>419</i>&nbsp;        // The right edge should be adjusted if the next point to the right
+<i>420</i>&nbsp;        // is closer to xval[i] than the leftmost point of the current interval
+<b class="fc"><i>421</i>&nbsp;        int nextRight = nextNonzero(weights, right);</b>
+<b class="fc"><i>422</i>&nbsp;        if (nextRight &lt; xval.length &amp;&amp; xval[nextRight] - xval[i] &lt; xval[i] - xval[left]) {</b>
+<b class="fc"><i>423</i>&nbsp;            int nextLeft = nextNonzero(weights, bandwidthInterval[0]);</b>
+<b class="fc"><i>424</i>&nbsp;            bandwidthInterval[0] = nextLeft;</b>
+<b class="fc"><i>425</i>&nbsp;            bandwidthInterval[1] = nextRight;</b>
+<i>426</i>&nbsp;        }
+<b class="fc"><i>427</i>&nbsp;    }</b>
+<i>428</i>&nbsp;
+<i>429</i>&nbsp;    /**
+<i>430</i>&nbsp;     * Return the smallest index {@code j} such that
+<i>431</i>&nbsp;     * {@code j &gt; i &amp;&amp; (j == weights.length || weights[j] != 0)}.
+<i>432</i>&nbsp;     *
+<i>433</i>&nbsp;     * @param weights Weights array.
+<i>434</i>&nbsp;     * @param i Index from which to start search.
+<i>435</i>&nbsp;     * @return the smallest compliant index.
+<i>436</i>&nbsp;     */
+<i>437</i>&nbsp;    private static int nextNonzero(final double[] weights, final int i) {
+<b class="fc"><i>438</i>&nbsp;        int j = i + 1;</b>
+<b class="fc"><i>439</i>&nbsp;        while(j &lt; weights.length &amp;&amp; weights[j] == 0) {</b>
+<b class="nc"><i>440</i>&nbsp;            ++j;</b>
+<i>441</i>&nbsp;        }
+<b class="fc"><i>442</i>&nbsp;        return j;</b>
+<i>443</i>&nbsp;    }
+<i>444</i>&nbsp;
+<i>445</i>&nbsp;    /**
+<i>446</i>&nbsp;     * Compute the
+<i>447</i>&nbsp;     * &lt;a href=&quot;http://en.wikipedia.org/wiki/Local_regression#Weight_function&quot;&gt;tricube&lt;/a&gt;
+<i>448</i>&nbsp;     * weight function
+<i>449</i>&nbsp;     *
+<i>450</i>&nbsp;     * @param x Argument.
+<i>451</i>&nbsp;     * @return &lt;code&gt;(1 - |x|&lt;sup&gt;3&lt;/sup&gt;)&lt;sup&gt;3&lt;/sup&gt;&lt;/code&gt; for |x| &amp;lt; 1, 0 otherwise.
+<i>452</i>&nbsp;     */
+<i>453</i>&nbsp;    private static double tricube(final double x) {
+<b class="fc"><i>454</i>&nbsp;        final double absX = FastMath.abs(x);</b>
+<b class="fc"><i>455</i>&nbsp;        if (absX &gt;= 1.0) {</b>
+<b class="fc"><i>456</i>&nbsp;            return 0.0;</b>
+<i>457</i>&nbsp;        }
+<b class="fc"><i>458</i>&nbsp;        final double tmp = 1 - absX * absX * absX;</b>
+<b class="fc"><i>459</i>&nbsp;        return tmp * tmp * tmp;</b>
+<i>460</i>&nbsp;    }
+<i>461</i>&nbsp;
+<i>462</i>&nbsp;    /**
+<i>463</i>&nbsp;     * Check that all elements of an array are finite real numbers.
+<i>464</i>&nbsp;     *
+<i>465</i>&nbsp;     * @param values Values array.
+<i>466</i>&nbsp;     * @throws org.apache.commons.math4.exception.NotFiniteNumberException
+<i>467</i>&nbsp;     * if one of the values is not a finite real number.
+<i>468</i>&nbsp;     */
+<i>469</i>&nbsp;    private static void checkAllFiniteReal(final double[] values) {
+<b class="fc"><i>470</i>&nbsp;        for (int i = 0; i &lt; values.length; i++) {</b>
+<b class="fc"><i>471</i>&nbsp;            MathUtils.checkFinite(values[i]);</b>
+<i>472</i>&nbsp;        }
+<b class="fc"><i>473</i>&nbsp;    }</b>
+<i>474</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

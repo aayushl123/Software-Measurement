@@ -1,0 +1,272 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: AdamsFieldStepInterpolator</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.ode.nonstiff</a> ]
+</div>
+
+<h1>Coverage Summary for Class: AdamsFieldStepInterpolator (org.apache.commons.math4.ode.nonstiff)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">AdamsFieldStepInterpolator</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    80%
+  </span>
+  <span class="absValue">
+    (4/ 5)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    96.9%
+  </span>
+  <span class="absValue">
+    (31/ 32)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;
+<i>18</i>&nbsp;package org.apache.commons.math4.ode.nonstiff;
+<i>19</i>&nbsp;
+<i>20</i>&nbsp;import java.util.Arrays;
+<i>21</i>&nbsp;
+<i>22</i>&nbsp;import org.apache.commons.math4.RealFieldElement;
+<i>23</i>&nbsp;import org.apache.commons.math4.linear.Array2DRowFieldMatrix;
+<i>24</i>&nbsp;import org.apache.commons.math4.ode.FieldEquationsMapper;
+<i>25</i>&nbsp;import org.apache.commons.math4.ode.FieldODEStateAndDerivative;
+<i>26</i>&nbsp;import org.apache.commons.math4.ode.sampling.AbstractFieldStepInterpolator;
+<i>27</i>&nbsp;import org.apache.commons.math4.util.MathArrays;
+<i>28</i>&nbsp;
+<i>29</i>&nbsp;/**
+<i>30</i>&nbsp; * This class implements an interpolator for Adams integrators using Nordsieck representation.
+<i>31</i>&nbsp; *
+<i>32</i>&nbsp; * &lt;p&gt;This interpolator computes dense output around the current point.
+<i>33</i>&nbsp; * The interpolation equation is based on Taylor series formulas.
+<i>34</i>&nbsp; *
+<i>35</i>&nbsp; * @see AdamsBashforthFieldIntegrator
+<i>36</i>&nbsp; * @see AdamsMoultonFieldIntegrator
+<i>37</i>&nbsp; * @param &lt;T&gt; the type of the field elements
+<i>38</i>&nbsp; * @since 3.6
+<i>39</i>&nbsp; */
+<i>40</i>&nbsp;
+<i>41</i>&nbsp;class AdamsFieldStepInterpolator&lt;T extends RealFieldElement&lt;T&gt;&gt; extends AbstractFieldStepInterpolator&lt;T&gt; {
+<i>42</i>&nbsp;
+<i>43</i>&nbsp;    /** Step size used in the first scaled derivative and Nordsieck vector. */
+<i>44</i>&nbsp;    private T scalingH;
+<i>45</i>&nbsp;
+<i>46</i>&nbsp;    /** Reference state.
+<i>47</i>&nbsp;     * &lt;p&gt;Sometimes, the reference state is the same as globalPreviousState,
+<i>48</i>&nbsp;     * sometimes it is the same as globalCurrentState, so we use a separate
+<i>49</i>&nbsp;     * field to avoid any confusion.
+<i>50</i>&nbsp;     * &lt;/p&gt;
+<i>51</i>&nbsp;     */
+<i>52</i>&nbsp;    private final FieldODEStateAndDerivative&lt;T&gt; reference;
+<i>53</i>&nbsp;
+<i>54</i>&nbsp;    /** First scaled derivative. */
+<i>55</i>&nbsp;    private final T[] scaled;
+<i>56</i>&nbsp;
+<i>57</i>&nbsp;    /** Nordsieck vector. */
+<i>58</i>&nbsp;    private final Array2DRowFieldMatrix&lt;T&gt; nordsieck;
+<i>59</i>&nbsp;
+<i>60</i>&nbsp;    /** Simple constructor.
+<i>61</i>&nbsp;     * @param stepSize step size used in the scaled and Nordsieck arrays
+<i>62</i>&nbsp;     * @param reference reference state from which Taylor expansion are estimated
+<i>63</i>&nbsp;     * @param scaled first scaled derivative
+<i>64</i>&nbsp;     * @param nordsieck Nordsieck vector
+<i>65</i>&nbsp;     * @param isForward integration direction indicator
+<i>66</i>&nbsp;     * @param globalPreviousState start of the global step
+<i>67</i>&nbsp;     * @param globalCurrentState end of the global step
+<i>68</i>&nbsp;     * @param equationsMapper mapper for ODE equations primary and secondary components
+<i>69</i>&nbsp;     */
+<i>70</i>&nbsp;    AdamsFieldStepInterpolator(final T stepSize, final FieldODEStateAndDerivative&lt;T&gt; reference,
+<i>71</i>&nbsp;                               final T[] scaled, final Array2DRowFieldMatrix&lt;T&gt; nordsieck,
+<i>72</i>&nbsp;                               final boolean isForward,
+<i>73</i>&nbsp;                               final FieldODEStateAndDerivative&lt;T&gt; globalPreviousState,
+<i>74</i>&nbsp;                               final FieldODEStateAndDerivative&lt;T&gt; globalCurrentState,
+<i>75</i>&nbsp;                               final FieldEquationsMapper&lt;T&gt; equationsMapper) {
+<b class="fc"><i>76</i>&nbsp;        this(stepSize, reference, scaled, nordsieck,</b>
+<i>77</i>&nbsp;             isForward, globalPreviousState, globalCurrentState,
+<i>78</i>&nbsp;             globalPreviousState, globalCurrentState, equationsMapper);
+<b class="fc"><i>79</i>&nbsp;    }</b>
+<i>80</i>&nbsp;
+<i>81</i>&nbsp;    /** Simple constructor.
+<i>82</i>&nbsp;     * @param stepSize step size used in the scaled and Nordsieck arrays
+<i>83</i>&nbsp;     * @param reference reference state from which Taylor expansion are estimated
+<i>84</i>&nbsp;     * @param scaled first scaled derivative
+<i>85</i>&nbsp;     * @param nordsieck Nordsieck vector
+<i>86</i>&nbsp;     * @param isForward integration direction indicator
+<i>87</i>&nbsp;     * @param globalPreviousState start of the global step
+<i>88</i>&nbsp;     * @param globalCurrentState end of the global step
+<i>89</i>&nbsp;     * @param softPreviousState start of the restricted step
+<i>90</i>&nbsp;     * @param softCurrentState end of the restricted step
+<i>91</i>&nbsp;     * @param equationsMapper mapper for ODE equations primary and secondary components
+<i>92</i>&nbsp;     */
+<i>93</i>&nbsp;    private AdamsFieldStepInterpolator(final T stepSize, final FieldODEStateAndDerivative&lt;T&gt; reference,
+<i>94</i>&nbsp;                                       final T[] scaled, final Array2DRowFieldMatrix&lt;T&gt; nordsieck,
+<i>95</i>&nbsp;                                       final boolean isForward,
+<i>96</i>&nbsp;                                       final FieldODEStateAndDerivative&lt;T&gt; globalPreviousState,
+<i>97</i>&nbsp;                                       final FieldODEStateAndDerivative&lt;T&gt; globalCurrentState,
+<i>98</i>&nbsp;                                       final FieldODEStateAndDerivative&lt;T&gt; softPreviousState,
+<i>99</i>&nbsp;                                       final FieldODEStateAndDerivative&lt;T&gt; softCurrentState,
+<i>100</i>&nbsp;                                       final FieldEquationsMapper&lt;T&gt; equationsMapper) {
+<b class="fc"><i>101</i>&nbsp;        super(isForward, globalPreviousState, globalCurrentState,</b>
+<i>102</i>&nbsp;              softPreviousState, softCurrentState, equationsMapper);
+<b class="fc"><i>103</i>&nbsp;        this.scalingH  = stepSize;</b>
+<b class="fc"><i>104</i>&nbsp;        this.reference = reference;</b>
+<b class="fc"><i>105</i>&nbsp;        this.scaled    = scaled.clone();</b>
+<b class="fc"><i>106</i>&nbsp;        this.nordsieck = new Array2DRowFieldMatrix&lt;&gt;(nordsieck.getData(), false);</b>
+<b class="fc"><i>107</i>&nbsp;    }</b>
+<i>108</i>&nbsp;
+<i>109</i>&nbsp;    /** Create a new instance.
+<i>110</i>&nbsp;     * @param newForward integration direction indicator
+<i>111</i>&nbsp;     * @param newGlobalPreviousState start of the global step
+<i>112</i>&nbsp;     * @param newGlobalCurrentState end of the global step
+<i>113</i>&nbsp;     * @param newSoftPreviousState start of the restricted step
+<i>114</i>&nbsp;     * @param newSoftCurrentState end of the restricted step
+<i>115</i>&nbsp;     * @param newMapper equations mapper for the all equations
+<i>116</i>&nbsp;     * @return a new instance
+<i>117</i>&nbsp;     */
+<i>118</i>&nbsp;    @Override
+<i>119</i>&nbsp;    protected AdamsFieldStepInterpolator&lt;T&gt; create(boolean newForward,
+<i>120</i>&nbsp;                                                   FieldODEStateAndDerivative&lt;T&gt; newGlobalPreviousState,
+<i>121</i>&nbsp;                                                   FieldODEStateAndDerivative&lt;T&gt; newGlobalCurrentState,
+<i>122</i>&nbsp;                                                   FieldODEStateAndDerivative&lt;T&gt; newSoftPreviousState,
+<i>123</i>&nbsp;                                                   FieldODEStateAndDerivative&lt;T&gt; newSoftCurrentState,
+<i>124</i>&nbsp;                                                   FieldEquationsMapper&lt;T&gt; newMapper) {
+<b class="nc"><i>125</i>&nbsp;        return new AdamsFieldStepInterpolator&lt;&gt;(scalingH, reference, scaled, nordsieck,</b>
+<i>126</i>&nbsp;                                                 newForward,
+<i>127</i>&nbsp;                                                 newGlobalPreviousState, newGlobalCurrentState,
+<i>128</i>&nbsp;                                                 newSoftPreviousState, newSoftCurrentState,
+<i>129</i>&nbsp;                                                 newMapper);
+<i>130</i>&nbsp;
+<i>131</i>&nbsp;    }
+<i>132</i>&nbsp;
+<i>133</i>&nbsp;    /** {@inheritDoc} */
+<i>134</i>&nbsp;    @Override
+<i>135</i>&nbsp;    protected FieldODEStateAndDerivative&lt;T&gt; computeInterpolatedStateAndDerivatives(final FieldEquationsMapper&lt;T&gt; equationsMapper,
+<i>136</i>&nbsp;                                                                                   final T time, final T theta,
+<i>137</i>&nbsp;                                                                                   final T thetaH, final T oneMinusThetaH) {
+<b class="fc"><i>138</i>&nbsp;        return taylor(reference, time, scalingH, scaled, nordsieck);</b>
+<i>139</i>&nbsp;    }
+<i>140</i>&nbsp;
+<i>141</i>&nbsp;    /** Estimate state by applying Taylor formula.
+<i>142</i>&nbsp;     * @param reference reference state
+<i>143</i>&nbsp;     * @param time time at which state must be estimated
+<i>144</i>&nbsp;     * @param stepSize step size used in the scaled and Nordsieck arrays
+<i>145</i>&nbsp;     * @param scaled first scaled derivative
+<i>146</i>&nbsp;     * @param nordsieck Nordsieck vector
+<i>147</i>&nbsp;     * @return estimated state
+<i>148</i>&nbsp;     * @param &lt;S&gt; the type of the field elements
+<i>149</i>&nbsp;     */
+<i>150</i>&nbsp;    public static &lt;S extends RealFieldElement&lt;S&gt;&gt; FieldODEStateAndDerivative&lt;S&gt; taylor(final FieldODEStateAndDerivative&lt;S&gt; reference,
+<i>151</i>&nbsp;                                                                                       final S time, final S stepSize,
+<i>152</i>&nbsp;                                                                                       final S[] scaled,
+<i>153</i>&nbsp;                                                                                       final Array2DRowFieldMatrix&lt;S&gt; nordsieck) {
+<i>154</i>&nbsp;
+<b class="fc"><i>155</i>&nbsp;        final S x = time.subtract(reference.getTime());</b>
+<b class="fc"><i>156</i>&nbsp;        final S normalizedAbscissa = x.divide(stepSize);</b>
+<i>157</i>&nbsp;
+<b class="fc"><i>158</i>&nbsp;        S[] stateVariation = MathArrays.buildArray(time.getField(), scaled.length);</b>
+<b class="fc"><i>159</i>&nbsp;        Arrays.fill(stateVariation, time.getField().getZero());</b>
+<b class="fc"><i>160</i>&nbsp;        S[] estimatedDerivatives = MathArrays.buildArray(time.getField(), scaled.length);</b>
+<b class="fc"><i>161</i>&nbsp;        Arrays.fill(estimatedDerivatives, time.getField().getZero());</b>
+<i>162</i>&nbsp;
+<i>163</i>&nbsp;        // apply Taylor formula from high order to low order,
+<i>164</i>&nbsp;        // for the sake of numerical accuracy
+<b class="fc"><i>165</i>&nbsp;        final S[][] nData = nordsieck.getDataRef();</b>
+<b class="fc"><i>166</i>&nbsp;        for (int i = nData.length - 1; i &gt;= 0; --i) {</b>
+<b class="fc"><i>167</i>&nbsp;            final int order = i + 2;</b>
+<b class="fc"><i>168</i>&nbsp;            final S[] nDataI = nData[i];</b>
+<b class="fc"><i>169</i>&nbsp;            final S power = normalizedAbscissa.pow(order);</b>
+<b class="fc"><i>170</i>&nbsp;            for (int j = 0; j &lt; nDataI.length; ++j) {</b>
+<b class="fc"><i>171</i>&nbsp;                final S d = nDataI[j].multiply(power);</b>
+<b class="fc"><i>172</i>&nbsp;                stateVariation[j]          = stateVariation[j].add(d);</b>
+<b class="fc"><i>173</i>&nbsp;                estimatedDerivatives[j] = estimatedDerivatives[j].add(d.multiply(order));</b>
+<i>174</i>&nbsp;            }
+<i>175</i>&nbsp;        }
+<i>176</i>&nbsp;
+<b class="fc"><i>177</i>&nbsp;        S[] estimatedState = reference.getState();</b>
+<b class="fc"><i>178</i>&nbsp;        for (int j = 0; j &lt; stateVariation.length; ++j) {</b>
+<b class="fc"><i>179</i>&nbsp;            stateVariation[j]    = stateVariation[j].add(scaled[j].multiply(normalizedAbscissa));</b>
+<b class="fc"><i>180</i>&nbsp;            estimatedState[j] = estimatedState[j].add(stateVariation[j]);</b>
+<b class="fc"><i>181</i>&nbsp;            estimatedDerivatives[j] =</b>
+<b class="fc"><i>182</i>&nbsp;                estimatedDerivatives[j].add(scaled[j].multiply(normalizedAbscissa)).divide(x);</b>
+<i>183</i>&nbsp;        }
+<i>184</i>&nbsp;
+<b class="fc"><i>185</i>&nbsp;        return new FieldODEStateAndDerivative&lt;&gt;(time, estimatedState, estimatedDerivatives);</b>
+<i>186</i>&nbsp;
+<i>187</i>&nbsp;    }
+<i>188</i>&nbsp;
+<i>189</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,262 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: NPointCrossover</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">org.apache.commons.math4.genetics</a> ]
+</div>
+
+<h1>Coverage Summary for Class: NPointCrossover (org.apache.commons.math4.genetics)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">NPointCrossover</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    75%
+  </span>
+  <span class="absValue">
+    (3/ 4)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    94.6%
+  </span>
+  <span class="absValue">
+    (35/ 37)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;/*
+<i>2</i>&nbsp; * Licensed to the Apache Software Foundation (ASF) under one or more
+<i>3</i>&nbsp; * contributor license agreements.  See the NOTICE file distributed with
+<i>4</i>&nbsp; * this work for additional information regarding copyright ownership.
+<i>5</i>&nbsp; * The ASF licenses this file to You under the Apache License, Version 2.0
+<i>6</i>&nbsp; * (the &quot;License&quot;); you may not use this file except in compliance with
+<i>7</i>&nbsp; * the License.  You may obtain a copy of the License at
+<i>8</i>&nbsp; *
+<i>9</i>&nbsp; *      http://www.apache.org/licenses/LICENSE-2.0
+<i>10</i>&nbsp; *
+<i>11</i>&nbsp; * Unless required by applicable law or agreed to in writing, software
+<i>12</i>&nbsp; * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+<i>13</i>&nbsp; * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<i>14</i>&nbsp; * See the License for the specific language governing permissions and
+<i>15</i>&nbsp; * limitations under the License.
+<i>16</i>&nbsp; */
+<i>17</i>&nbsp;package org.apache.commons.math4.genetics;
+<i>18</i>&nbsp;
+<i>19</i>&nbsp;import java.util.ArrayList;
+<i>20</i>&nbsp;import java.util.List;
+<i>21</i>&nbsp;
+<i>22</i>&nbsp;import org.apache.commons.math4.exception.DimensionMismatchException;
+<i>23</i>&nbsp;import org.apache.commons.math4.exception.MathIllegalArgumentException;
+<i>24</i>&nbsp;import org.apache.commons.math4.exception.NotStrictlyPositiveException;
+<i>25</i>&nbsp;import org.apache.commons.math4.exception.NumberIsTooLargeException;
+<i>26</i>&nbsp;import org.apache.commons.math4.exception.util.LocalizedFormats;
+<i>27</i>&nbsp;import org.apache.commons.rng.UniformRandomProvider;
+<i>28</i>&nbsp;
+<i>29</i>&nbsp;/**
+<i>30</i>&nbsp; * N-point crossover policy. For each iteration a random crossover point is
+<i>31</i>&nbsp; * selected and the first part from each parent is copied to the corresponding
+<i>32</i>&nbsp; * child, and the second parts are copied crosswise.
+<i>33</i>&nbsp; *
+<i>34</i>&nbsp; * Example (2-point crossover):
+<i>35</i>&nbsp; * &lt;pre&gt;
+<i>36</i>&nbsp; * -C- denotes a crossover point
+<i>37</i>&nbsp; *           -C-       -C-                         -C-        -C-
+<i>38</i>&nbsp; * p1 = (1 0  | 1 0 0 1 | 0 1 1)    X    p2 = (0 1  | 1 0 1 0  | 1 1 1)
+<i>39</i>&nbsp; *      \----/ \-------/ \-----/              \----/ \--------/ \-----/
+<i>40</i>&nbsp; *        ||      (*)       ||                  ||      (**)       ||
+<i>41</i>&nbsp; *        VV      (**)      VV                  VV      (*)        VV
+<i>42</i>&nbsp; *      /----\ /--------\ /-----\             /----\ /--------\ /-----\
+<i>43</i>&nbsp; * c1 = (1 0  | 1 0 1 0  | 0 1 1)    X   c2 = (0 1  | 1 0 0 1  | 0 1 1)
+<i>44</i>&nbsp; * &lt;/pre&gt;
+<i>45</i>&nbsp; *
+<i>46</i>&nbsp; * This policy works only on {@link AbstractListChromosome}, and therefore it
+<i>47</i>&nbsp; * is parameterized by T. Moreover, the chromosomes must have same lengths.
+<i>48</i>&nbsp; *
+<i>49</i>&nbsp; * @param &lt;T&gt; generic type of the {@link AbstractListChromosome}s for crossover
+<i>50</i>&nbsp; * @since 3.1
+<i>51</i>&nbsp; */
+<i>52</i>&nbsp;public class NPointCrossover&lt;T&gt; implements CrossoverPolicy {
+<i>53</i>&nbsp;
+<i>54</i>&nbsp;    /** The number of crossover points. */
+<i>55</i>&nbsp;    private final int crossoverPoints;
+<i>56</i>&nbsp;
+<i>57</i>&nbsp;    /**
+<i>58</i>&nbsp;     * Creates a new {@link NPointCrossover} policy using the given number of points.
+<i>59</i>&nbsp;     * &lt;p&gt;
+<i>60</i>&nbsp;     * &lt;b&gt;Note&lt;/b&gt;: the number of crossover points must be &amp;lt; &lt;code&gt;chromosome length - 1&lt;/code&gt;.
+<i>61</i>&nbsp;     * This condition can only be checked at runtime, as the chromosome length is not known in advance.
+<i>62</i>&nbsp;     *
+<i>63</i>&nbsp;     * @param crossoverPoints the number of crossover points
+<i>64</i>&nbsp;     * @throws NotStrictlyPositiveException if the number of {@code crossoverPoints} is not strictly positive
+<i>65</i>&nbsp;     */
+<b class="fc"><i>66</i>&nbsp;    public NPointCrossover(final int crossoverPoints) throws NotStrictlyPositiveException {</b>
+<b class="fc"><i>67</i>&nbsp;        if (crossoverPoints &lt;= 0) {</b>
+<b class="nc"><i>68</i>&nbsp;            throw new NotStrictlyPositiveException(crossoverPoints);</b>
+<i>69</i>&nbsp;        }
+<b class="fc"><i>70</i>&nbsp;        this.crossoverPoints = crossoverPoints;</b>
+<b class="fc"><i>71</i>&nbsp;    }</b>
+<i>72</i>&nbsp;
+<i>73</i>&nbsp;    /**
+<i>74</i>&nbsp;     * Returns the number of crossover points used by this {@link CrossoverPolicy}.
+<i>75</i>&nbsp;     *
+<i>76</i>&nbsp;     * @return the number of crossover points
+<i>77</i>&nbsp;     */
+<i>78</i>&nbsp;    public int getCrossoverPoints() {
+<b class="nc"><i>79</i>&nbsp;        return crossoverPoints;</b>
+<i>80</i>&nbsp;    }
+<i>81</i>&nbsp;
+<i>82</i>&nbsp;    /**
+<i>83</i>&nbsp;     * Performs a N-point crossover. N random crossover points are selected and are used
+<i>84</i>&nbsp;     * to divide the parent chromosomes into segments. The segments are copied in alternate
+<i>85</i>&nbsp;     * order from the two parents to the corresponding child chromosomes.
+<i>86</i>&nbsp;     *
+<i>87</i>&nbsp;     * Example (2-point crossover):
+<i>88</i>&nbsp;     * &lt;pre&gt;
+<i>89</i>&nbsp;     * -C- denotes a crossover point
+<i>90</i>&nbsp;     *           -C-       -C-                         -C-        -C-
+<i>91</i>&nbsp;     * p1 = (1 0  | 1 0 0 1 | 0 1 1)    X    p2 = (0 1  | 1 0 1 0  | 1 1 1)
+<i>92</i>&nbsp;     *      \----/ \-------/ \-----/              \----/ \--------/ \-----/
+<i>93</i>&nbsp;     *        ||      (*)       ||                  ||      (**)       ||
+<i>94</i>&nbsp;     *        VV      (**)      VV                  VV      (*)        VV
+<i>95</i>&nbsp;     *      /----\ /--------\ /-----\             /----\ /--------\ /-----\
+<i>96</i>&nbsp;     * c1 = (1 0  | 1 0 1 0  | 0 1 1)    X   c2 = (0 1  | 1 0 0 1  | 0 1 1)
+<i>97</i>&nbsp;     * &lt;/pre&gt;
+<i>98</i>&nbsp;     *
+<i>99</i>&nbsp;     * @param first first parent (p1)
+<i>100</i>&nbsp;     * @param second second parent (p2)
+<i>101</i>&nbsp;     * @return pair of two children (c1,c2)
+<i>102</i>&nbsp;     * @throws MathIllegalArgumentException iff one of the chromosomes is
+<i>103</i>&nbsp;     *   not an instance of {@link AbstractListChromosome}
+<i>104</i>&nbsp;     * @throws DimensionMismatchException if the length of the two chromosomes is different
+<i>105</i>&nbsp;     */
+<i>106</i>&nbsp;    @Override
+<i>107</i>&nbsp;    @SuppressWarnings(&quot;unchecked&quot;) // OK because of instanceof checks
+<i>108</i>&nbsp;    public ChromosomePair crossover(final Chromosome first, final Chromosome second)
+<i>109</i>&nbsp;        throws DimensionMismatchException, MathIllegalArgumentException {
+<i>110</i>&nbsp;
+<b class="fc"><i>111</i>&nbsp;        if (!(first instanceof AbstractListChromosome&lt;?&gt; &amp;&amp; second instanceof AbstractListChromosome&lt;?&gt;)) {</b>
+<b class="fc"><i>112</i>&nbsp;            throw new MathIllegalArgumentException(LocalizedFormats.INVALID_FIXED_LENGTH_CHROMOSOME);</b>
+<i>113</i>&nbsp;        }
+<b class="fc"><i>114</i>&nbsp;        return mate((AbstractListChromosome&lt;T&gt;) first, (AbstractListChromosome&lt;T&gt;) second);</b>
+<i>115</i>&nbsp;    }
+<i>116</i>&nbsp;
+<i>117</i>&nbsp;    /**
+<i>118</i>&nbsp;     * Helper for {@link #crossover(Chromosome, Chromosome)}. Performs the actual crossover.
+<i>119</i>&nbsp;     *
+<i>120</i>&nbsp;     * @param first the first chromosome
+<i>121</i>&nbsp;     * @param second the second chromosome
+<i>122</i>&nbsp;     * @return the pair of new chromosomes that resulted from the crossover
+<i>123</i>&nbsp;     * @throws DimensionMismatchException if the length of the two chromosomes is different
+<i>124</i>&nbsp;     * @throws NumberIsTooLargeException if the number of crossoverPoints is too large for the actual chromosomes
+<i>125</i>&nbsp;     */
+<i>126</i>&nbsp;    private ChromosomePair mate(final AbstractListChromosome&lt;T&gt; first,
+<i>127</i>&nbsp;                                final AbstractListChromosome&lt;T&gt; second)
+<i>128</i>&nbsp;        throws DimensionMismatchException, NumberIsTooLargeException {
+<i>129</i>&nbsp;
+<b class="fc"><i>130</i>&nbsp;        final int length = first.getLength();</b>
+<b class="fc"><i>131</i>&nbsp;        if (length != second.getLength()) {</b>
+<b class="fc"><i>132</i>&nbsp;            throw new DimensionMismatchException(second.getLength(), length);</b>
+<i>133</i>&nbsp;        }
+<b class="fc"><i>134</i>&nbsp;        if (crossoverPoints &gt;= length) {</b>
+<b class="fc"><i>135</i>&nbsp;            throw new NumberIsTooLargeException(crossoverPoints, length, false);</b>
+<i>136</i>&nbsp;        }
+<i>137</i>&nbsp;
+<i>138</i>&nbsp;        // array representations of the parents
+<b class="fc"><i>139</i>&nbsp;        final List&lt;T&gt; parent1Rep = first.getRepresentation();</b>
+<b class="fc"><i>140</i>&nbsp;        final List&lt;T&gt; parent2Rep = second.getRepresentation();</b>
+<i>141</i>&nbsp;        // and of the children
+<b class="fc"><i>142</i>&nbsp;        final List&lt;T&gt; child1Rep = new ArrayList&lt;&gt;(length);</b>
+<b class="fc"><i>143</i>&nbsp;        final List&lt;T&gt; child2Rep = new ArrayList&lt;&gt;(length);</b>
+<i>144</i>&nbsp;
+<b class="fc"><i>145</i>&nbsp;        final UniformRandomProvider random = GeneticAlgorithm.getRandomGenerator();</b>
+<i>146</i>&nbsp;
+<b class="fc"><i>147</i>&nbsp;        List&lt;T&gt; c1 = child1Rep;</b>
+<b class="fc"><i>148</i>&nbsp;        List&lt;T&gt; c2 = child2Rep;</b>
+<i>149</i>&nbsp;
+<b class="fc"><i>150</i>&nbsp;        int remainingPoints = crossoverPoints;</b>
+<b class="fc"><i>151</i>&nbsp;        int lastIndex = 0;</b>
+<b class="fc"><i>152</i>&nbsp;        for (int i = 0; i &lt; crossoverPoints; i++, remainingPoints--) {</b>
+<i>153</i>&nbsp;            // select the next crossover point at random
+<b class="fc"><i>154</i>&nbsp;            final int crossoverIndex = 1 + lastIndex + random.nextInt(length - lastIndex - remainingPoints);</b>
+<i>155</i>&nbsp;
+<i>156</i>&nbsp;            // copy the current segment
+<b class="fc"><i>157</i>&nbsp;            for (int j = lastIndex; j &lt; crossoverIndex; j++) {</b>
+<b class="fc"><i>158</i>&nbsp;                c1.add(parent1Rep.get(j));</b>
+<b class="fc"><i>159</i>&nbsp;                c2.add(parent2Rep.get(j));</b>
+<i>160</i>&nbsp;            }
+<i>161</i>&nbsp;
+<i>162</i>&nbsp;            // swap the children for the next segment
+<b class="fc"><i>163</i>&nbsp;            List&lt;T&gt; tmp = c1;</b>
+<b class="fc"><i>164</i>&nbsp;            c1 = c2;</b>
+<b class="fc"><i>165</i>&nbsp;            c2 = tmp;</b>
+<i>166</i>&nbsp;
+<b class="fc"><i>167</i>&nbsp;            lastIndex = crossoverIndex;</b>
+<i>168</i>&nbsp;        }
+<i>169</i>&nbsp;
+<i>170</i>&nbsp;        // copy the last segment
+<b class="fc"><i>171</i>&nbsp;        for (int j = lastIndex; j &lt; length; j++) {</b>
+<b class="fc"><i>172</i>&nbsp;            c1.add(parent1Rep.get(j));</b>
+<b class="fc"><i>173</i>&nbsp;            c2.add(parent2Rep.get(j));</b>
+<i>174</i>&nbsp;        }
+<i>175</i>&nbsp;
+<b class="fc"><i>176</i>&nbsp;        return new ChromosomePair(first.newFixedLengthChromosome(child1Rep),</b>
+<b class="fc"><i>177</i>&nbsp;                                  second.newFixedLengthChromosome(child2Rep));</b>
+<i>178</i>&nbsp;    }
+<i>179</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2019-06-04 09:26</div>
+</div>
+</body>
+</html>
