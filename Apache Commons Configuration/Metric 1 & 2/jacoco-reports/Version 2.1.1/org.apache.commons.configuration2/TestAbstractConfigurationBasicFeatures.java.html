@@ -1,0 +1,1238 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestAbstractConfigurationBasicFeatures.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons_configuration2$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">TestAbstractConfigurationBasicFeatures.java</span></div><h1>TestAbstractConfigurationBasicFeatures.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+import org.apache.commons.configuration2.convert.ConversionHandler;
+import org.apache.commons.configuration2.convert.DefaultConversionHandler;
+import org.apache.commons.configuration2.convert.DefaultListDelimiterHandler;
+import org.apache.commons.configuration2.convert.DisabledListDelimiterHandler;
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.event.EventType;
+import org.apache.commons.configuration2.interpol.ConfigurationInterpolator;
+import org.apache.commons.configuration2.interpol.Lookup;
+import org.easymock.EasyMock;
+import org.junit.Test;
+
+/**
+ * A test class for some of the basic functionality implemented by
+ * AbstractConfiguration.
+ *
+ * @version $Id$
+ */
+<span class="fc" id="L53">public class TestAbstractConfigurationBasicFeatures</span>
+{
+    /** Constant for text to be used in tests for variable substitution. */
+    private static final String SUBST_TXT = &quot;The ${animal} jumps over the ${target}.&quot;;
+
+    /** Constant for the prefix of test keys.*/
+    private static final String KEY_PREFIX = &quot;key&quot;;
+
+    /** Constant for the number of properties in tests for copy operations.*/
+    private static final int PROP_COUNT = 12;
+
+    /**
+     * Tests the clear() implementation of AbstractConfiguration if the iterator
+     * returned by getKeys() does not support the remove() operation.
+     */
+    @Test
+    public void testClearIteratorNoRemove()
+    {
+<span class="fc" id="L71">        AbstractConfiguration config = new TestConfigurationImpl(</span>
+                new BaseConfiguration())
+<span class="fc" id="L73">        {</span>
+            // return an iterator that does not support remove operations
+            @Override
+            protected Iterator&lt;String&gt; getKeysInternal()
+            {
+<span class="fc" id="L78">                Collection&lt;String&gt; keyCol = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L79">                ConfigurationAssert.appendKeys(getUnderlyingConfiguration(), keyCol);</span>
+<span class="fc" id="L80">                String[] keys = keyCol.toArray(new String[keyCol.size()]);</span>
+<span class="fc" id="L81">                return Arrays.asList(keys).iterator();</span>
+            }
+        };
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (int i = 0; i &lt; 20; i++)</span>
+        {
+<span class="fc" id="L86">            config.addProperty(&quot;key&quot; + i, &quot;value&quot; + i);</span>
+        }
+<span class="fc" id="L88">        config.clear();</span>
+<span class="fc" id="L89">        assertTrue(&quot;Configuration not empty&quot;, config.isEmpty());</span>
+<span class="fc" id="L90">    }</span>
+
+    /**
+     * Tests escaping the variable marker, so that no interpolation will be
+     * performed.
+     */
+    @Test
+    public void testInterpolateEscape()
+    {
+<span class="fc" id="L99">        AbstractConfiguration config = new TestConfigurationImpl(</span>
+                new PropertiesConfiguration());
+<span class="fc" id="L101">        config.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L102">        config</span>
+<span class="fc" id="L103">                .addProperty(</span>
+                        &quot;mypath&quot;,
+                        &quot;$${DB2UNIVERSAL_JDBC_DRIVER_PATH}/db2jcc.jar\\,$${DB2UNIVERSAL_JDBC_DRIVER_PATH}/db2jcc_license_cu.jar&quot;);
+<span class="fc" id="L106">        assertEquals(</span>
+                &quot;Wrong interpolated value&quot;,
+                &quot;${DB2UNIVERSAL_JDBC_DRIVER_PATH}/db2jcc.jar,${DB2UNIVERSAL_JDBC_DRIVER_PATH}/db2jcc_license_cu.jar&quot;,
+<span class="fc" id="L109">                config.getString(&quot;mypath&quot;));</span>
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Tests adding list properties. The single elements of the list should be
+     * added.
+     */
+    @Test
+    public void testAddPropertyList()
+    {
+<span class="fc" id="L119">        checkAddListProperty(new TestConfigurationImpl(</span>
+                new PropertiesConfiguration()));
+<span class="fc" id="L121">    }</span>
+
+    /**
+     * Tests adding list properties if delimiter parsing is disabled.
+     */
+    @Test
+    public void testAddPropertyListNoDelimiterParsing()
+    {
+<span class="fc" id="L129">        AbstractConfiguration config = new TestConfigurationImpl(</span>
+                new PropertiesConfiguration());
+<span class="fc" id="L131">        checkAddListProperty(config);</span>
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Helper method for adding properties with multiple values.
+     *
+     * @param config the configuration to be used for testing
+     */
+    private void checkAddListProperty(AbstractConfiguration config)
+    {
+<span class="fc" id="L141">        config.addProperty(&quot;test&quot;, &quot;value1&quot;);</span>
+<span class="fc" id="L142">        Object[] lstValues1 = new Object[]</span>
+        { &quot;value2&quot;, &quot;value3&quot; };
+<span class="fc" id="L144">        Object[] lstValues2 = new Object[]</span>
+        { &quot;value4&quot;, &quot;value5&quot;, &quot;value6&quot; };
+<span class="fc" id="L146">        config.addProperty(&quot;test&quot;, lstValues1);</span>
+<span class="fc" id="L147">        config.addProperty(&quot;test&quot;, Arrays.asList(lstValues2));</span>
+<span class="fc" id="L148">        List&lt;Object&gt; lst = config.getList(&quot;test&quot;);</span>
+<span class="fc" id="L149">        assertEquals(&quot;Wrong number of list elements&quot;, 6, lst.size());</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        for (int i = 0; i &lt; lst.size(); i++)</span>
+        {
+<span class="fc" id="L152">            assertEquals(&quot;Wrong list element at &quot; + i, &quot;value&quot; + (i + 1), lst</span>
+<span class="fc" id="L153">                    .get(i));</span>
+        }
+<span class="fc" id="L155">    }</span>
+
+    /**
+     * Tests the copy() method.
+     */
+    @Test
+    public void testCopy()
+    {
+<span class="fc" id="L163">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L164">        Configuration srcConfig = setUpSourceConfig();</span>
+<span class="fc" id="L165">        config.copy(srcConfig);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        for (int i = 0; i &lt; PROP_COUNT; i++)</span>
+        {
+<span class="fc" id="L168">            String key = KEY_PREFIX + i;</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            if (srcConfig.containsKey(key))</span>
+            {
+<span class="fc" id="L171">                assertEquals(&quot;Value not replaced: &quot; + key, srcConfig</span>
+<span class="fc" id="L172">                        .getProperty(key), config.getProperty(key));</span>
+            }
+            else
+            {
+<span class="fc" id="L176">                assertEquals(&quot;Value modified: &quot; + key, &quot;value&quot; + i, config</span>
+<span class="fc" id="L177">                        .getProperty(key));</span>
+            }
+        }
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * Tests the copy() method if properties with multiple values and escaped
+     * list delimiters are involved.
+     */
+    @Test
+    public void testCopyWithLists()
+    {
+<span class="fc" id="L189">        Configuration srcConfig = setUpSourceConfig();</span>
+<span class="fc" id="L190">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L191">        config.copy(srcConfig);</span>
+<span class="fc" id="L192">        checkListProperties(config);</span>
+<span class="fc" id="L193">    }</span>
+
+    /**
+     * Tests the events generated by a copy() operation.
+     */
+    @Test
+    public void testCopyEvents()
+    {
+<span class="fc" id="L201">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L202">        Configuration srcConfig = setUpSourceConfig();</span>
+<span class="fc" id="L203">        CollectingConfigurationListener l = new CollectingConfigurationListener();</span>
+<span class="fc" id="L204">        config.addEventListener(ConfigurationEvent.ANY, l);</span>
+<span class="fc" id="L205">        config.copy(srcConfig);</span>
+<span class="fc" id="L206">        checkCopyEvents(l, srcConfig, ConfigurationEvent.SET_PROPERTY);</span>
+<span class="fc" id="L207">    }</span>
+
+    /**
+     * Tests copying a null configuration. This should be a noop.
+     */
+    @Test
+    public void testCopyNull()
+    {
+<span class="fc" id="L215">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L216">        config.copy(null);</span>
+<span class="fc" id="L217">        ConfigurationAssert.assertConfigurationEquals(setUpDestConfig(), config);</span>
+<span class="fc" id="L218">    }</span>
+
+    /**
+     * Tests whether list delimiters are correctly handled when copying a
+     * configuration.
+     */
+    @Test
+    public void testCopyDelimiterHandling()
+    {
+<span class="fc" id="L227">        BaseConfiguration srcConfig = new BaseConfiguration();</span>
+<span class="fc" id="L228">        BaseConfiguration dstConfig = new BaseConfiguration();</span>
+<span class="fc" id="L229">        dstConfig.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L230">        srcConfig.setProperty(KEY_PREFIX, &quot;C:\\Temp\\,D:\\Data&quot;);</span>
+<span class="fc" id="L231">        dstConfig.copy(srcConfig);</span>
+<span class="fc" id="L232">        assertEquals(&quot;Wrong property value&quot;, srcConfig.getString(KEY_PREFIX),</span>
+<span class="fc" id="L233">                dstConfig.getString(KEY_PREFIX));</span>
+<span class="fc" id="L234">    }</span>
+
+    /**
+     * Tests the append() method.
+     */
+    @Test
+    public void testAppend()
+    {
+<span class="fc" id="L242">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L243">        Configuration srcConfig = setUpSourceConfig();</span>
+<span class="fc" id="L244">        config.append(srcConfig);</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        for (int i = 0; i &lt; PROP_COUNT; i++)</span>
+        {
+<span class="fc" id="L247">            String key = KEY_PREFIX + i;</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (srcConfig.containsKey(key))</span>
+            {
+<span class="fc" id="L250">                List&lt;Object&gt; values = config.getList(key);</span>
+<span class="fc" id="L251">                assertEquals(&quot;Value not added: &quot; + key, 2, values.size());</span>
+<span class="fc" id="L252">                assertEquals(&quot;Wrong value 1 for &quot; + key, &quot;value&quot; + i, values</span>
+<span class="fc" id="L253">                        .get(0));</span>
+<span class="fc" id="L254">                assertEquals(&quot;Wrong value 2 for &quot; + key, &quot;src&quot; + i, values</span>
+<span class="fc" id="L255">                        .get(1));</span>
+<span class="fc" id="L256">            }</span>
+            else
+            {
+<span class="fc" id="L259">                assertEquals(&quot;Value modified: &quot; + key, &quot;value&quot; + i, config</span>
+<span class="fc" id="L260">                        .getProperty(key));</span>
+            }
+        }
+<span class="fc" id="L263">    }</span>
+
+    /**
+     * Tests the append() method when properties with multiple values and
+     * escaped list delimiters are involved.
+     */
+    @Test
+    public void testAppendWithLists()
+    {
+<span class="fc" id="L272">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L273">        config.append(setUpSourceConfig());</span>
+<span class="fc" id="L274">        checkListProperties(config);</span>
+<span class="fc" id="L275">    }</span>
+
+    /**
+     * Tests the events generated by an append() operation.
+     */
+    @Test
+    public void testAppendEvents()
+    {
+<span class="fc" id="L283">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L284">        Configuration srcConfig = setUpSourceConfig();</span>
+<span class="fc" id="L285">        CollectingConfigurationListener l = new CollectingConfigurationListener();</span>
+<span class="fc" id="L286">        config.addEventListener(ConfigurationEvent.ANY, l);</span>
+<span class="fc" id="L287">        config.append(srcConfig);</span>
+<span class="fc" id="L288">        checkCopyEvents(l, srcConfig, ConfigurationEvent.ADD_PROPERTY);</span>
+<span class="fc" id="L289">    }</span>
+
+    /**
+     * Tests appending a null configuration. This should be a noop.
+     */
+    @Test
+    public void testAppendNull()
+    {
+<span class="fc" id="L297">        AbstractConfiguration config = setUpDestConfig();</span>
+<span class="fc" id="L298">        config.append(null);</span>
+<span class="fc" id="L299">        ConfigurationAssert.assertConfigurationEquals(setUpDestConfig(), config);</span>
+<span class="fc" id="L300">    }</span>
+
+    /**
+     * Tests whether the list delimiter is correctly handled if a configuration
+     * is appended.
+     */
+    @Test
+    public void testAppendDelimiterHandling()
+    {
+<span class="fc" id="L309">        BaseConfiguration srcConfig = new BaseConfiguration();</span>
+<span class="fc" id="L310">        BaseConfiguration dstConfig = new BaseConfiguration();</span>
+<span class="fc" id="L311">        dstConfig.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L312">        srcConfig.setProperty(KEY_PREFIX, &quot;C:\\Temp\\,D:\\Data&quot;);</span>
+<span class="fc" id="L313">        dstConfig.append(srcConfig);</span>
+<span class="fc" id="L314">        assertEquals(&quot;Wrong property value&quot;, srcConfig.getString(KEY_PREFIX),</span>
+<span class="fc" id="L315">                dstConfig.getString(KEY_PREFIX));</span>
+<span class="fc" id="L316">    }</span>
+
+    /**
+     * Tests whether environment variables can be interpolated.
+     */
+    @Test
+    public void testInterpolateEnvironmentVariables()
+    {
+<span class="fc" id="L324">        AbstractConfiguration config = new TestConfigurationImpl(</span>
+                new PropertiesConfiguration());
+<span class="fc" id="L326">        InterpolationTestHelper.testInterpolationEnvironment(config);</span>
+<span class="fc" id="L327">    }</span>
+
+    /**
+     * Tests whether prefix lookups can be added to an existing
+     * {@code ConfigurationInterpolator}.
+     */
+    @Test
+    public void testSetPrefixLookupsExistingInterpolator()
+    {
+<span class="fc" id="L336">        Lookup look = EasyMock.createMock(Lookup.class);</span>
+<span class="fc" id="L337">        EasyMock.replay(look);</span>
+<span class="fc" id="L338">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc" id="L340">        int count = config.getInterpolator().getLookups().size();</span>
+<span class="fc" id="L341">        Map&lt;String, Lookup&gt; lookups = new HashMap&lt;String, Lookup&gt;();</span>
+<span class="fc" id="L342">        lookups.put(&quot;test&quot;, look);</span>
+<span class="fc" id="L343">        config.setPrefixLookups(lookups);</span>
+<span class="fc" id="L344">        Map&lt;String, Lookup&gt; lookups2 = config.getInterpolator().getLookups();</span>
+<span class="fc" id="L345">        assertEquals(&quot;Not added&quot;, count + 1, lookups2.size());</span>
+<span class="fc" id="L346">        assertSame(&quot;Not found&quot;, look, lookups2.get(&quot;test&quot;));</span>
+<span class="fc" id="L347">    }</span>
+
+    /**
+     * Tests whether prefix lookups can be added if no
+     * {@code ConfigurationInterpolator} exists yet.
+     */
+    @Test
+    public void testSetPrefixLookupsNoInterpolator()
+    {
+<span class="fc" id="L356">        Lookup look = EasyMock.createMock(Lookup.class);</span>
+<span class="fc" id="L357">        EasyMock.replay(look);</span>
+<span class="fc" id="L358">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc" id="L360">        config.setInterpolator(null);</span>
+<span class="fc" id="L361">        config.setPrefixLookups(Collections.singletonMap(&quot;test&quot;, look));</span>
+<span class="fc" id="L362">        Map&lt;String, Lookup&gt; lookups = config.getInterpolator().getLookups();</span>
+<span class="fc" id="L363">        assertEquals(&quot;Wrong number of lookups&quot;, 1, lookups.size());</span>
+<span class="fc" id="L364">        assertSame(&quot;Not found&quot;, look, lookups.get(&quot;test&quot;));</span>
+<span class="fc" id="L365">    }</span>
+
+    /**
+     * Tests whether default lookups can be added to an already existing
+     * {@code ConfigurationInterpolator}.
+     */
+    @Test
+    public void testSetDefaultLookupsExistingInterpolator()
+    {
+<span class="fc" id="L374">        Lookup look = EasyMock.createMock(Lookup.class);</span>
+<span class="fc" id="L375">        EasyMock.replay(look);</span>
+<span class="fc" id="L376">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc" id="L378">        config.getInterpolator().addDefaultLookup(</span>
+                new ConfigurationLookup(new PropertiesConfiguration()));
+<span class="fc" id="L380">        config.setDefaultLookups(Collections.singleton(look));</span>
+<span class="fc" id="L381">        List&lt;Lookup&gt; lookups = config.getInterpolator().getDefaultLookups();</span>
+<span class="fc" id="L382">        assertEquals(&quot;Wrong number of default lookups&quot;, 3, lookups.size());</span>
+<span class="fc" id="L383">        assertSame(&quot;Wrong lookup at 1&quot;, look, lookups.get(1));</span>
+<span class="fc" id="L384">        assertTrue(&quot;Wrong lookup at 2: &quot; + lookups,</span>
+<span class="fc" id="L385">                lookups.get(2) instanceof ConfigurationLookup);</span>
+<span class="fc" id="L386">    }</span>
+
+    /**
+     * Tests whether default lookups can be added if not
+     * {@code ConfigurationInterpolator} exists yet.
+     */
+    @Test
+    public void testSetDefaultLookupsNoInterpolator()
+    {
+<span class="fc" id="L395">        Lookup look = EasyMock.createMock(Lookup.class);</span>
+<span class="fc" id="L396">        EasyMock.replay(look);</span>
+<span class="fc" id="L397">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc" id="L399">        config.setInterpolator(null);</span>
+<span class="fc" id="L400">        config.setDefaultLookups(Collections.singleton(look));</span>
+<span class="fc" id="L401">        List&lt;Lookup&gt; lookups = config.getInterpolator().getDefaultLookups();</span>
+<span class="fc" id="L402">        assertEquals(&quot;Wrong number of default lookups&quot;, 2, lookups.size());</span>
+<span class="fc" id="L403">        assertSame(&quot;Wrong lookup at 0&quot;, look, lookups.get(0));</span>
+<span class="fc" id="L404">        assertTrue(&quot;Wrong lookup at 1&quot;,</span>
+<span class="fc" id="L405">                lookups.get(1) instanceof ConfigurationLookup);</span>
+<span class="fc" id="L406">    }</span>
+
+    /**
+     * Tests whether a new {@code ConfigurationInterpolator} can be installed
+     * without providing custom lookups.
+     */
+    @Test
+    public void testInstallInterpolatorNull()
+    {
+<span class="fc" id="L415">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc" id="L417">        config.installInterpolator(null, null);</span>
+<span class="fc" id="L418">        assertTrue(&quot;Got prefix lookups&quot;, config.getInterpolator().getLookups()</span>
+<span class="fc" id="L419">                .isEmpty());</span>
+<span class="fc" id="L420">        List&lt;Lookup&gt; defLookups = config.getInterpolator().getDefaultLookups();</span>
+<span class="fc" id="L421">        assertEquals(&quot;Wrong number of default lookups&quot;, 1, defLookups.size());</span>
+<span class="fc" id="L422">        assertTrue(&quot;Wrong default lookup&quot;,</span>
+<span class="fc" id="L423">                defLookups.get(0) instanceof ConfigurationLookup);</span>
+<span class="fc" id="L424">    }</span>
+
+    /**
+     * Tests whether a parent {@code ConfigurationInterpolator} can be set if
+     * already a {@code ConfigurationInterpolator} is available.
+     */
+    @Test
+    public void testSetParentInterpolatorExistingInterpolator()
+    {
+<span class="fc" id="L433">        ConfigurationInterpolator parent =</span>
+<span class="fc" id="L434">                EasyMock.createMock(ConfigurationInterpolator.class);</span>
+<span class="fc" id="L435">        EasyMock.replay(parent);</span>
+<span class="fc" id="L436">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc" id="L438">        ConfigurationInterpolator ci = config.getInterpolator();</span>
+<span class="fc" id="L439">        config.setParentInterpolator(parent);</span>
+<span class="fc" id="L440">        assertSame(&quot;Parent was not set&quot;, parent, config.getInterpolator()</span>
+<span class="fc" id="L441">                .getParentInterpolator());</span>
+<span class="fc" id="L442">        assertSame(&quot;Interpolator was changed&quot;, ci, config.getInterpolator());</span>
+<span class="fc" id="L443">    }</span>
+
+    /**
+     * Tests whether a parent {@code ConfigurationInterpolator} can be set if
+     * currently no {@code ConfigurationInterpolator} is available.
+     */
+    @Test
+    public void testSetParentInterpolatorNoInterpolator()
+    {
+<span class="fc" id="L452">        ConfigurationInterpolator parent =</span>
+<span class="fc" id="L453">                EasyMock.createMock(ConfigurationInterpolator.class);</span>
+<span class="fc" id="L454">        EasyMock.replay(parent);</span>
+<span class="fc" id="L455">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc" id="L457">        config.setInterpolator(null);</span>
+<span class="fc" id="L458">        config.setParentInterpolator(parent);</span>
+<span class="fc" id="L459">        assertSame(&quot;Parent was not set&quot;, parent, config.getInterpolator()</span>
+<span class="fc" id="L460">                .getParentInterpolator());</span>
+<span class="fc" id="L461">    }</span>
+
+    /**
+     * Tests whether a property can reference an array using interpolation.
+     * This is related to CONFIGURATION-633.
+     */
+    @Test
+    public void testInterpolateArray()
+    {
+<span class="fc" id="L470">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L471">        String[] values = {&quot;some&quot;, &quot;test&quot;, &quot;values&quot;};</span>
+<span class="fc" id="L472">        final String keyArray = &quot;testArray&quot;;</span>
+<span class="fc" id="L473">        config.addProperty(keyArray, values);</span>
+<span class="fc" id="L474">        config.addProperty(KEY_PREFIX, &quot;${&quot; + keyArray + &quot;}&quot;);</span>
+
+<span class="fc" id="L476">        assertArrayEquals(&quot;Wrong property&quot;, values, config.getStringArray(KEY_PREFIX));</span>
+<span class="fc" id="L477">    }</span>
+
+    /**
+     * Tests whether a property can reference a list using interpolation.
+     * This is related to CONFIGURATION-633.
+     */
+    @Test
+    public void testInterpolateList()
+    {
+<span class="fc" id="L486">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L487">        List&lt;String&gt; values = Arrays.asList(&quot;some&quot;, &quot;test&quot;, &quot;values&quot;);</span>
+<span class="fc" id="L488">        final String keyList = &quot;testList&quot;;</span>
+<span class="fc" id="L489">        config.addProperty(keyList, values);</span>
+<span class="fc" id="L490">        config.addProperty(KEY_PREFIX, &quot;${&quot; + keyList + &quot;}&quot;);</span>
+
+<span class="fc" id="L492">        assertEquals(&quot;Wrong property&quot;, values, config.getList(String.class, KEY_PREFIX));</span>
+<span class="fc" id="L493">    }</span>
+
+    /**
+     * Tests getList() for single non-string values.
+     */
+    @Test
+    public void testGetListNonString()
+    {
+<span class="fc" id="L501">        checkGetListScalar(Integer.valueOf(42));</span>
+<span class="fc" id="L502">        checkGetListScalar(Long.valueOf(42));</span>
+<span class="fc" id="L503">        checkGetListScalar(Short.valueOf((short) 42));</span>
+<span class="fc" id="L504">        checkGetListScalar(Byte.valueOf((byte) 42));</span>
+<span class="fc" id="L505">        checkGetListScalar(Float.valueOf(42));</span>
+<span class="fc" id="L506">        checkGetListScalar(Double.valueOf(42));</span>
+<span class="fc" id="L507">        checkGetListScalar(Boolean.TRUE);</span>
+<span class="fc" id="L508">}</span>
+
+    /**
+     * Tests getStringArray() for single son-string values.
+     */
+    @Test
+    public void testGetStringArrayNonString()
+    {
+<span class="fc" id="L516">        checkGetStringArrayScalar(Integer.valueOf(42));</span>
+<span class="fc" id="L517">        checkGetStringArrayScalar(Long.valueOf(42));</span>
+<span class="fc" id="L518">        checkGetStringArrayScalar(Short.valueOf((short) 42));</span>
+<span class="fc" id="L519">        checkGetStringArrayScalar(Byte.valueOf((byte) 42));</span>
+<span class="fc" id="L520">        checkGetStringArrayScalar(Float.valueOf(42));</span>
+<span class="fc" id="L521">        checkGetStringArrayScalar(Double.valueOf(42));</span>
+<span class="fc" id="L522">        checkGetStringArrayScalar(Boolean.TRUE);</span>
+<span class="fc" id="L523">    }</span>
+
+    /**
+     * Tests getStringArray() if the key cannot be found.
+     */
+    @Test
+    public void testGetStringArrayUnknown()
+    {
+<span class="fc" id="L531">        BaseConfiguration config = new BaseConfiguration();</span>
+<span class="fc" id="L532">        String[] array = config.getStringArray(KEY_PREFIX);</span>
+<span class="fc" id="L533">        assertEquals(&quot;Got elements&quot;, 0, array.length);</span>
+<span class="fc" id="L534">    }</span>
+
+    /**
+     * Helper method for checking getList() if the property value is a scalar.
+     * @param value the value of the property
+     */
+    private void checkGetListScalar(Object value)
+    {
+<span class="fc" id="L542">        BaseConfiguration config = new BaseConfiguration();</span>
+<span class="fc" id="L543">        config.addProperty(KEY_PREFIX, value);</span>
+<span class="fc" id="L544">        List&lt;Object&gt; lst = config.getList(KEY_PREFIX);</span>
+<span class="fc" id="L545">        assertEquals(&quot;Wrong number of values&quot;, 1, lst.size());</span>
+<span class="fc" id="L546">        assertEquals(&quot;Wrong value&quot;, value.toString(), lst.get(0));</span>
+<span class="fc" id="L547">    }</span>
+
+    /**
+     * Helper method for checking getStringArray() if the property value is a
+     * scalar.
+     *
+     * @param value the value of the property
+     */
+    private void checkGetStringArrayScalar(Object value)
+    {
+<span class="fc" id="L557">        BaseConfiguration config = new BaseConfiguration();</span>
+<span class="fc" id="L558">        config.addProperty(KEY_PREFIX, value);</span>
+<span class="fc" id="L559">        String[] array = config.getStringArray(KEY_PREFIX);</span>
+<span class="fc" id="L560">        assertEquals(&quot;Weong number of elements&quot;, 1, array.length);</span>
+<span class="fc" id="L561">        assertEquals(&quot;Wrong value&quot;, value.toString(), array[0]);</span>
+<span class="fc" id="L562">    }</span>
+
+    /**
+     * Tests whether interpolation works in variable names.
+     */
+    @Test
+    public void testNestedVariableInterpolation()
+    {
+<span class="fc" id="L570">        BaseConfiguration config = new BaseConfiguration();</span>
+<span class="fc" id="L571">        config.getInterpolator().setEnableSubstitutionInVariables(true);</span>
+<span class="fc" id="L572">        config.addProperty(&quot;java.version&quot;, &quot;1.4&quot;);</span>
+<span class="fc" id="L573">        config.addProperty(&quot;jre-1.4&quot;, &quot;C:\\java\\1.4&quot;);</span>
+<span class="fc" id="L574">        config.addProperty(&quot;jre.path&quot;, &quot;${jre-${java.version}}&quot;);</span>
+<span class="fc" id="L575">        assertEquals(&quot;Wrong path&quot;, &quot;C:\\java\\1.4&quot;,</span>
+<span class="fc" id="L576">                config.getString(&quot;jre.path&quot;));</span>
+<span class="fc" id="L577">    }</span>
+
+    /**
+     * Tries to set a null list delimiter handler.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testSetListDelimiterHandlerNull()
+    {
+<span class="fc" id="L585">        BaseConfiguration config = new BaseConfiguration();</span>
+<span class="nc" id="L586">        config.setListDelimiterHandler(null);</span>
+<span class="nc" id="L587">    }</span>
+
+    /**
+     * Tests the default list delimiter hander.
+     */
+    @Test
+    public void testDefaultListDelimiterHandler()
+    {
+<span class="fc" id="L595">        BaseConfiguration config = new BaseConfiguration();</span>
+<span class="fc" id="L596">        assertTrue(</span>
+                &quot;Wrong list delimiter handler&quot;,
+<span class="fc" id="L598">                config.getListDelimiterHandler() instanceof DisabledListDelimiterHandler);</span>
+<span class="fc" id="L599">    }</span>
+
+    /**
+     * Tests the interpolation features.
+     */
+    @Test
+    public void testInterpolateString()
+    {
+<span class="fc" id="L607">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L608">        config.addProperty(&quot;animal&quot;, &quot;quick brown fox&quot;);</span>
+<span class="fc" id="L609">        config.addProperty(&quot;target&quot;, &quot;lazy dog&quot;);</span>
+<span class="fc" id="L610">        config.addProperty(KEY_PREFIX, SUBST_TXT);</span>
+<span class="fc" id="L611">        assertEquals(&quot;Wrong interpolation&quot;,</span>
+                &quot;The quick brown fox jumps over the lazy dog.&quot;,
+<span class="fc" id="L613">                config.getString(KEY_PREFIX));</span>
+<span class="fc" id="L614">    }</span>
+
+    /**
+     * Tests complex interpolation where the variables' values contain in turn
+     * other variables.
+     */
+    @Test
+    public void testInterpolateRecursive()
+    {
+<span class="fc" id="L623">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L624">        config.addProperty(&quot;animal&quot;, &quot;${animal_attr} fox&quot;);</span>
+<span class="fc" id="L625">        config.addProperty(&quot;target&quot;, &quot;${target_attr} dog&quot;);</span>
+<span class="fc" id="L626">        config.addProperty(&quot;animal_attr&quot;, &quot;quick brown&quot;);</span>
+<span class="fc" id="L627">        config.addProperty(&quot;target_attr&quot;, &quot;lazy&quot;);</span>
+<span class="fc" id="L628">        config.addProperty(KEY_PREFIX, SUBST_TXT);</span>
+<span class="fc" id="L629">        assertEquals(&quot;Wrong complex interpolation&quot;,</span>
+                &quot;The quick brown fox jumps over the lazy dog.&quot;,
+<span class="fc" id="L631">                config.getString(KEY_PREFIX));</span>
+<span class="fc" id="L632">    }</span>
+
+    /**
+     * Tests an interpolation that leads to a cycle. This should throw an
+     * exception.
+     */
+    @Test(expected = IllegalStateException.class)
+    public void testCyclicInterpolation()
+    {
+<span class="fc" id="L641">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L642">        config.addProperty(&quot;animal&quot;, &quot;${animal_attr} ${species}&quot;);</span>
+<span class="fc" id="L643">        config.addProperty(&quot;animal_attr&quot;, &quot;quick brown&quot;);</span>
+<span class="fc" id="L644">        config.addProperty(&quot;species&quot;, &quot;${animal}&quot;);</span>
+<span class="fc" id="L645">        config.addProperty(KEY_PREFIX, &quot;This is a ${animal}&quot;);</span>
+<span class="nc" id="L646">        config.getString(KEY_PREFIX);</span>
+<span class="nc" id="L647">    }</span>
+
+    /**
+     * Tests interpolation if a variable is unknown. Then the variable won't be
+     * substituted.
+     */
+    @Test
+    public void testInterpolationUnknownVariable()
+    {
+<span class="fc" id="L656">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L657">        config.addProperty(&quot;animal&quot;, &quot;quick brown fox&quot;);</span>
+<span class="fc" id="L658">        config.addProperty(KEY_PREFIX, SUBST_TXT);</span>
+<span class="fc" id="L659">        assertEquals(&quot;Wrong interpolation&quot;,</span>
+                &quot;The quick brown fox jumps over the ${target}.&quot;,
+<span class="fc" id="L661">                config.getString(KEY_PREFIX));</span>
+<span class="fc" id="L662">    }</span>
+
+    /**
+     * Tests interpolate() if the configuration does not have a
+     * {@code ConfigurationInterpolator}.
+     */
+    @Test
+    public void testInterpolationNoInterpolator()
+    {
+<span class="fc" id="L671">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L672">        config.addProperty(&quot;animal&quot;, &quot;quick brown fox&quot;);</span>
+<span class="fc" id="L673">        config.addProperty(&quot;target&quot;, &quot;lazy dog&quot;);</span>
+<span class="fc" id="L674">        config.addProperty(KEY_PREFIX, SUBST_TXT);</span>
+<span class="fc" id="L675">        config.setInterpolator(null);</span>
+<span class="fc" id="L676">        assertEquals(&quot;Interpolation was performed&quot;, SUBST_TXT,</span>
+<span class="fc" id="L677">                config.getString(KEY_PREFIX));</span>
+<span class="fc" id="L678">    }</span>
+
+    /**
+     * Tests whether a configuration instance has a default conversion hander.
+     */
+    @Test
+    public void testDefaultConversionHandler()
+    {
+<span class="fc" id="L686">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L687">        assertEquals(&quot;Wrong default conversion handler&quot;,</span>
+<span class="fc" id="L688">                DefaultConversionHandler.class, config.getConversionHandler()</span>
+<span class="fc" id="L689">                        .getClass());</span>
+<span class="fc" id="L690">    }</span>
+
+    /**
+     * Tests that the default conversion handler is shared between all
+     * configuration instances.
+     */
+    @Test
+    public void testDefaultConversionHandlerSharedInstance()
+    {
+<span class="fc" id="L699">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L700">        PropertiesConfiguration config2 = new PropertiesConfiguration();</span>
+<span class="fc" id="L701">        assertSame(&quot;Multiple conversion handlers&quot;,</span>
+<span class="fc" id="L702">                config.getConversionHandler(), config2.getConversionHandler());</span>
+<span class="fc" id="L703">    }</span>
+
+    /**
+     * Tests whether the conversion handler can be changed.
+     */
+    @Test
+    public void testSetDefaultConversionHandler()
+    {
+<span class="fc" id="L711">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L712">        ConversionHandler handler = new DefaultConversionHandler();</span>
+<span class="fc" id="L713">        config.setConversionHandler(handler);</span>
+<span class="fc" id="L714">        assertSame(&quot;Handler not set&quot;, handler, config.getConversionHandler());</span>
+<span class="fc" id="L715">    }</span>
+
+    /**
+     * Tries to set a null value for the conversion handler.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testSetDefaultConversionHandlerNull()
+    {
+<span class="nc" id="L723">        new PropertiesConfiguration().setConversionHandler(null);</span>
+<span class="nc" id="L724">    }</span>
+
+    /**
+     * Tests the generic get() method.
+     */
+    @Test
+    public void testGet()
+    {
+<span class="fc" id="L732">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L733">        Integer value = 20130816;</span>
+<span class="fc" id="L734">        config.addProperty(KEY_PREFIX, value.toString());</span>
+<span class="fc" id="L735">        assertEquals(&quot;Wrong result&quot;, value, config.get(Integer.class, KEY_PREFIX));</span>
+<span class="fc" id="L736">    }</span>
+
+    /**
+     * Tests get() for an unknown property if no default value is provided.
+     */
+    @Test
+    public void testGetUnknownNoDefaultValue()
+    {
+<span class="fc" id="L744">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L745">        assertNull(&quot;Wrong result&quot;, config.get(Integer.class, KEY_PREFIX));</span>
+<span class="fc" id="L746">    }</span>
+
+    /**
+     * Tests get() for an unknown property if a default value is provided.
+     */
+    @Test
+    public void testGetUnknownWithDefaultValue()
+    {
+<span class="fc" id="L754">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L755">        Integer defaultValue = 2121;</span>
+<span class="fc" id="L756">        assertEquals(&quot;Wrong result&quot;, defaultValue,</span>
+<span class="fc" id="L757">                config.get(Integer.class, KEY_PREFIX, defaultValue));</span>
+<span class="fc" id="L758">    }</span>
+
+    /**
+     * Tests get() for an unknown property if the throwExceptionOnMissing
+     * flag is set.
+     */
+    @Test(expected = NoSuchElementException.class)
+    public void testGetUnknownWithThrowExceptionOnMissing()
+    {
+<span class="fc" id="L767">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L768">        config.setThrowExceptionOnMissing(true);</span>
+<span class="nc" id="L769">        config.get(Integer.class, KEY_PREFIX);</span>
+<span class="nc" id="L770">    }</span>
+
+    /**
+     * Tests get() for an unknown property with a default value and the
+     * throwExceptionOnMissing flag. Because of the default value no exception
+     * should be thrown.
+     */
+    @Test
+    public void testGetUnownWithDefaultValueThrowExceptionOnMissing()
+    {
+<span class="fc" id="L780">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L781">        config.setThrowExceptionOnMissing(true);</span>
+<span class="fc" id="L782">        Integer defaultValue = 2121;</span>
+<span class="fc" id="L783">        assertEquals(&quot;Wrong result&quot;, defaultValue,</span>
+<span class="fc" id="L784">                config.get(Integer.class, KEY_PREFIX, defaultValue));</span>
+<span class="fc" id="L785">    }</span>
+
+    /**
+     * Tests whether conversion to an array is possible.
+     */
+    @Test
+    public void testGetArray()
+    {
+<span class="fc" id="L793">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L794">        Integer[] expected = new Integer[PROP_COUNT];</span>
+<span class="fc bfc" id="L795" title="All 2 branches covered.">        for (int i = 0; i &lt; PROP_COUNT; i++)</span>
+        {
+<span class="fc" id="L797">            config.addProperty(KEY_PREFIX, String.valueOf(i));</span>
+<span class="fc" id="L798">            expected[i] = Integer.valueOf(i);</span>
+        }
+<span class="fc" id="L800">        Integer[] result = config.get(Integer[].class, KEY_PREFIX);</span>
+<span class="fc" id="L801">        assertArrayEquals(&quot;Wrong result&quot;, expected, result);</span>
+<span class="fc" id="L802">    }</span>
+
+    /**
+     * Tests a conversion to an array of primitive types.
+     */
+    @Test
+    public void testGetArrayPrimitive()
+    {
+<span class="fc" id="L810">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L811">        short[] expected = new short[PROP_COUNT];</span>
+<span class="fc bfc" id="L812" title="All 2 branches covered.">        for (int i = 0; i &lt; PROP_COUNT; i++)</span>
+        {
+<span class="fc" id="L814">            config.addProperty(KEY_PREFIX, String.valueOf(i));</span>
+<span class="fc" id="L815">            expected[i] = (short) i;</span>
+        }
+<span class="fc" id="L817">        short[] result =</span>
+<span class="fc" id="L818">                config.get(short[].class, KEY_PREFIX, new short[0]);</span>
+<span class="fc" id="L819">        assertArrayEquals(&quot;Wrong result&quot;, expected, result);</span>
+<span class="fc" id="L820">    }</span>
+
+    /**
+     * Tests get() for an unknown array property if no default value is provided.
+     */
+    @Test
+    public void testGetArrayUnknownNoDefault()
+    {
+<span class="fc" id="L828">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L829">        assertNull(&quot;Wrong result&quot;, config.get(Integer[].class, KEY_PREFIX));</span>
+<span class="fc" id="L830">    }</span>
+
+    /**
+     * Tests get() for an unknown array property if a default value is provided.
+     */
+    @Test
+    public void testGetArrayUnknownWithDefault()
+    {
+<span class="fc" id="L838">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L839">        int[] defValue = {</span>
+                1, 2, 3
+        };
+<span class="fc" id="L842">        assertArrayEquals(&quot;Wrong result&quot;, defValue,</span>
+<span class="fc" id="L843">                config.get(int[].class, KEY_PREFIX, defValue));</span>
+<span class="fc" id="L844">    }</span>
+
+    /**
+     * Tests getArray() if the default value is not an array.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testGetArrayDefaultValueNotAnArray()
+    {
+<span class="fc" id="L852">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="nc" id="L853">        config.getArray(Integer.class, KEY_PREFIX, this);</span>
+<span class="nc" id="L854">    }</span>
+
+    /**
+     * Tests getArray() if the default value is an array with a different
+     * component type.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testGetArrayDefaultValueWrongComponentClass()
+    {
+<span class="fc" id="L863">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="nc" id="L864">        config.getArray(Integer.class, KEY_PREFIX, new short[1]);</span>
+<span class="nc" id="L865">    }</span>
+
+    /**
+     * Prepares a test configuration for a test for a list conversion. The
+     * configuration is populated with a list property. The returned list
+     * contains the expected list values converted to integers.
+     *
+     * @param config the test configuration
+     * @return the list with expected values
+     */
+    private static List&lt;Integer&gt; prepareListTest(PropertiesConfiguration config)
+    {
+<span class="fc" id="L877">        List&lt;Integer&gt; expected = new ArrayList&lt;Integer&gt;(PROP_COUNT);</span>
+<span class="fc bfc" id="L878" title="All 2 branches covered.">        for (int i = 0; i &lt; PROP_COUNT; i++)</span>
+        {
+<span class="fc" id="L880">            config.addProperty(KEY_PREFIX, String.valueOf(i));</span>
+<span class="fc" id="L881">            expected.add(i);</span>
+        }
+<span class="fc" id="L883">        return expected;</span>
+    }
+
+    /**
+     * Tests a conversion to a list.
+     */
+    @Test
+    public void testGetList()
+    {
+<span class="fc" id="L892">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L893">        List&lt;Integer&gt; expected = prepareListTest(config);</span>
+<span class="fc" id="L894">        List&lt;Integer&gt; result = config.getList(Integer.class, KEY_PREFIX);</span>
+<span class="fc" id="L895">        assertEquals(&quot;Wrong result&quot;, expected, result);</span>
+<span class="fc" id="L896">    }</span>
+
+    /**
+     * Tests a conversion to a list if the property is unknown and no default
+     * value is provided.
+     */
+    @Test
+    public void testGetListUnknownNoDefault()
+    {
+<span class="fc" id="L905">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L906">        assertNull(&quot;Wrong result&quot;, config.getList(Integer.class, KEY_PREFIX));</span>
+<span class="fc" id="L907">    }</span>
+
+    /**
+     * Tests a conversion to a list if the property is unknown and a default
+     * list is provided.
+     */
+    @Test
+    public void testGetListUnknownWithDefault()
+    {
+<span class="fc" id="L916">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L917">        List&lt;Integer&gt; defValue = Arrays.asList(1, 2, 3);</span>
+<span class="fc" id="L918">        assertEquals(&quot;Wrong result&quot;, defValue, config.getList(Integer.class, KEY_PREFIX, defValue));</span>
+<span class="fc" id="L919">    }</span>
+
+    /**
+     * Tests a conversion to a collection.
+     */
+    @Test
+    public void testGetCollection()
+    {
+<span class="fc" id="L927">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L928">        List&lt;Integer&gt; expected = prepareListTest(config);</span>
+<span class="fc" id="L929">        List&lt;Integer&gt; result = new ArrayList&lt;Integer&gt;(PROP_COUNT);</span>
+<span class="fc" id="L930">        assertSame(&quot;Wrong result&quot;, result, config.getCollection(Integer.class, KEY_PREFIX, result));</span>
+<span class="fc" id="L931">        assertEquals(&quot;Wrong converted content&quot;, expected, result);</span>
+<span class="fc" id="L932">    }</span>
+
+    /**
+     * Tests getCollection() if no target collection is provided.
+     */
+    @Test
+    public void testGetCollectionNullTarget()
+    {
+<span class="fc" id="L940">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L941">        List&lt;Integer&gt; expected = prepareListTest(config);</span>
+<span class="fc" id="L942">        Collection&lt;Integer&gt; result = config.getCollection(Integer.class, KEY_PREFIX, null, new ArrayList&lt;Integer&gt;());</span>
+<span class="fc" id="L943">        assertEquals(&quot;Wrong result&quot;, expected, result);</span>
+<span class="fc" id="L944">    }</span>
+
+    /**
+     * Tests whether a single value property can be converted to a collection.
+     */
+    @Test
+    public void testGetCollectionSingleValue()
+    {
+<span class="fc" id="L952">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L953">        config.addProperty(KEY_PREFIX, &quot;1&quot;);</span>
+<span class="fc" id="L954">        List&lt;Integer&gt; result = new ArrayList&lt;Integer&gt;(1);</span>
+<span class="fc" id="L955">        config.getCollection(Integer.class, KEY_PREFIX, result);</span>
+<span class="fc" id="L956">        assertEquals(&quot;Wrong number of elements&quot;, 1, result.size());</span>
+<span class="fc" id="L957">        assertEquals(&quot;Wrong element&quot;, Integer.valueOf(1), result.get(0));</span>
+<span class="fc" id="L958">    }</span>
+
+    /**
+     * Tests getCollection() for an unknown property if no default value is
+     * provided.
+     */
+    @Test
+    public void testGetCollectionUnknownNoDefault()
+    {
+<span class="fc" id="L967">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L968">        List&lt;Integer&gt; result = new ArrayList&lt;Integer&gt;();</span>
+<span class="fc" id="L969">        assertNull(&quot;Wrong result&quot;, config.getCollection(Integer.class, KEY_PREFIX, result));</span>
+<span class="fc" id="L970">        assertTrue(&quot;Got elements&quot;, result.isEmpty());</span>
+<span class="fc" id="L971">    }</span>
+
+    /**
+     * Tests getCollection() for an unknown property if a default collection is
+     * provided.
+     */
+    @Test
+    public void testGetCollectionUnknownWithDefault()
+    {
+<span class="fc" id="L980">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L981">        List&lt;Integer&gt; defValue = Arrays.asList(1, 2, 4, 8, 16, 32);</span>
+<span class="fc" id="L982">        Collection&lt;Integer&gt; result = config.getCollection(Integer.class, KEY_PREFIX, null, defValue);</span>
+<span class="fc" id="L983">        assertEquals(&quot;Wrong result&quot;, defValue, result);</span>
+<span class="fc" id="L984">    }</span>
+
+    /**
+     * Tries to query an encoded string without a decoder.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testGetEncodedStringNoDecoder()
+    {
+<span class="fc" id="L992">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="nc" id="L993">        config.getEncodedString(KEY_PREFIX, null);</span>
+<span class="nc" id="L994">    }</span>
+
+    /**
+     * Tests whether undefined keys are handled when querying encoded strings.
+     */
+    @Test
+    public void testGetEncodedStringNoValue()
+    {
+<span class="fc" id="L1002">        ConfigurationDecoder decoder =</span>
+<span class="fc" id="L1003">                EasyMock.createMock(ConfigurationDecoder.class);</span>
+<span class="fc" id="L1004">        EasyMock.replay(decoder);</span>
+<span class="fc" id="L1005">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L1006">        assertNull(&quot;Got a value&quot;, config.getEncodedString(KEY_PREFIX, decoder));</span>
+<span class="fc" id="L1007">    }</span>
+
+    /**
+     * Tests whether an encoded value can be retrieved.
+     */
+    @Test
+    public void testGetEncodedStringValue()
+    {
+<span class="fc" id="L1015">        ConfigurationDecoder decoder =</span>
+<span class="fc" id="L1016">                EasyMock.createMock(ConfigurationDecoder.class);</span>
+<span class="fc" id="L1017">        final String value = &quot;original value&quot;;</span>
+<span class="fc" id="L1018">        final String decodedValue = &quot;decoded value&quot;;</span>
+<span class="fc" id="L1019">        EasyMock.expect(decoder.decode(value)).andReturn(decodedValue);</span>
+<span class="fc" id="L1020">        EasyMock.replay(decoder);</span>
+
+<span class="fc" id="L1022">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L1023">        config.addProperty(KEY_PREFIX, value);</span>
+<span class="fc" id="L1024">        assertEquals(&quot;Wrong decoded value&quot;, decodedValue,</span>
+<span class="fc" id="L1025">                config.getEncodedString(KEY_PREFIX, decoder));</span>
+<span class="fc" id="L1026">    }</span>
+
+    /**
+     * Tries to query an encoded string with the default decoder if this property is not
+     * defined.
+     */
+    @Test(expected = IllegalStateException.class)
+    public void testGetEncodedStringNoDefaultDecoderDefined()
+    {
+<span class="fc" id="L1035">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="nc" id="L1036">        config.getEncodedString(KEY_PREFIX);</span>
+<span class="nc" id="L1037">    }</span>
+
+    /**
+     * Tests whether a default decoder can be set which is queried for encoded strings.
+     */
+    @Test
+    public void testGetEncodedStringWithDefaultDecoder()
+    {
+<span class="fc" id="L1045">        ConfigurationDecoder decoder =</span>
+<span class="fc" id="L1046">                EasyMock.createMock(ConfigurationDecoder.class);</span>
+<span class="fc" id="L1047">        final String value = &quot;original value&quot;;</span>
+<span class="fc" id="L1048">        final String decodedValue = &quot;decoded value&quot;;</span>
+<span class="fc" id="L1049">        EasyMock.expect(decoder.decode(value)).andReturn(decodedValue);</span>
+<span class="fc" id="L1050">        EasyMock.replay(decoder);</span>
+
+<span class="fc" id="L1052">        PropertiesConfiguration config = new PropertiesConfiguration();</span>
+<span class="fc" id="L1053">        config.setConfigurationDecoder(decoder);</span>
+<span class="fc" id="L1054">        config.addProperty(KEY_PREFIX, value);</span>
+<span class="fc" id="L1055">        assertEquals(&quot;Wrong decoded value&quot;, decodedValue,</span>
+<span class="fc" id="L1056">                config.getEncodedString(KEY_PREFIX));</span>
+<span class="fc" id="L1057">    }</span>
+
+    /**
+     * Tests the default implementation of sizeInternal().
+     */
+    @Test
+    public void testSizeInternal()
+    {
+<span class="fc" id="L1065">        AbstractConfiguration config =</span>
+                new TestConfigurationImpl(new PropertiesConfiguration());
+<span class="fc bfc" id="L1067" title="All 2 branches covered.">        for (int i = 0; i &lt; PROP_COUNT; i++)</span>
+        {
+<span class="fc" id="L1069">            config.addProperty(KEY_PREFIX + i, &quot;value&quot; + i);</span>
+        }
+<span class="fc" id="L1071">        assertEquals(&quot;Wrong size&quot;, PROP_COUNT, config.size());</span>
+<span class="fc" id="L1072">    }</span>
+
+    /**
+     * Creates the source configuration for testing the copy() and append()
+     * methods. This configuration contains keys with an odd index and values
+     * starting with the prefix &quot;src&quot;. There are also some list properties.
+     *
+     * @return the source configuration for copy operations
+     */
+    private Configuration setUpSourceConfig()
+    {
+<span class="fc" id="L1083">        BaseConfiguration config = new BaseConfiguration();</span>
+<span class="fc" id="L1084">        config.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc bfc" id="L1085" title="All 2 branches covered.">        for (int i = 1; i &lt; PROP_COUNT; i += 2)</span>
+        {
+<span class="fc" id="L1087">            config.addProperty(KEY_PREFIX + i, &quot;src&quot; + i);</span>
+        }
+<span class="fc" id="L1089">        config.addProperty(&quot;list1&quot;, &quot;1,2,3&quot;);</span>
+<span class="fc" id="L1090">        config.addProperty(&quot;list2&quot;, &quot;3\\,1415,9\\,81&quot;);</span>
+<span class="fc" id="L1091">        return config;</span>
+    }
+
+    /**
+     * Creates the destination configuration for testing the copy() and append()
+     * methods. This configuration contains keys with a running index and
+     * corresponding values starting with the prefix &quot;value&quot;.
+     *
+     * @return the destination configuration for copy operations
+     */
+    private AbstractConfiguration setUpDestConfig()
+    {
+<span class="fc" id="L1103">        AbstractConfiguration config = new TestConfigurationImpl(</span>
+                new PropertiesConfiguration());
+<span class="fc" id="L1105">        config.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc bfc" id="L1106" title="All 2 branches covered.">        for (int i = 0; i &lt; PROP_COUNT; i++)</span>
+        {
+<span class="fc" id="L1108">            config.addProperty(KEY_PREFIX + i, &quot;value&quot; + i);</span>
+        }
+<span class="fc" id="L1110">        return config;</span>
+    }
+
+    /**
+     * Tests the values of list properties after a copy operation.
+     *
+     * @param config the configuration to test
+     */
+    private void checkListProperties(Configuration config)
+    {
+<span class="fc" id="L1120">        List&lt;Object&gt; values = config.getList(&quot;list1&quot;);</span>
+<span class="fc" id="L1121">        assertEquals(&quot;Wrong number of elements in list 1&quot;, 3, values.size());</span>
+<span class="fc" id="L1122">        values = config.getList(&quot;list2&quot;);</span>
+<span class="fc" id="L1123">        assertEquals(&quot;Wrong number of elements in list 2&quot;, 2, values.size());</span>
+<span class="fc" id="L1124">        assertEquals(&quot;Wrong value 1&quot;, &quot;3,1415&quot;, values.get(0));</span>
+<span class="fc" id="L1125">        assertEquals(&quot;Wrong value 2&quot;, &quot;9,81&quot;, values.get(1));</span>
+<span class="fc" id="L1126">    }</span>
+
+    /**
+     * Tests whether the correct events are received for a copy operation.
+     *
+     * @param l the event listener
+     * @param src the configuration that was copied
+     * @param eventType the expected event type
+     */
+    private void checkCopyEvents(CollectingConfigurationListener l,
+            Configuration src, EventType&lt;?&gt; eventType)
+    {
+<span class="fc" id="L1138">        Map&lt;String, ConfigurationEvent&gt; events = new HashMap&lt;String, ConfigurationEvent&gt;();</span>
+<span class="fc bfc" id="L1139" title="All 2 branches covered.">        for (ConfigurationEvent e : l.events)</span>
+        {
+<span class="fc" id="L1141">            assertEquals(&quot;Wrong event type&quot;, eventType, e.getEventType());</span>
+<span class="fc" id="L1142">            assertTrue(&quot;Unknown property: &quot; + e.getPropertyName(), src</span>
+<span class="fc" id="L1143">                    .containsKey(e.getPropertyName()));</span>
+<span class="fc bfc" id="L1144" title="All 2 branches covered.">            if (!e.isBeforeUpdate())</span>
+            {
+<span class="fc" id="L1146">                assertTrue(&quot;After event without before event&quot;, events</span>
+<span class="fc" id="L1147">                        .containsKey(e.getPropertyName()));</span>
+            }
+            else
+            {
+<span class="fc" id="L1151">                events.put(e.getPropertyName(), e);</span>
+            }
+<span class="fc" id="L1153">        }</span>
+
+<span class="fc bfc" id="L1155" title="All 2 branches covered.">        for (Iterator&lt;String&gt; it = src.getKeys(); it.hasNext();)</span>
+        {
+<span class="fc" id="L1157">            String key = it.next();</span>
+<span class="fc" id="L1158">            assertTrue(&quot;No event received for key &quot; + key, events</span>
+<span class="fc" id="L1159">                    .containsKey(key));</span>
+<span class="fc" id="L1160">        }</span>
+<span class="fc" id="L1161">    }</span>
+
+    /**
+     * A test configuration implementation. This implementation inherits
+     * directly from AbstractConfiguration. For implementing the required
+     * functionality another implementation of AbstractConfiguration is used;
+     * all methods that need to be implemented delegate to this wrapped
+     * configuration.
+     */
+    static class TestConfigurationImpl extends AbstractConfiguration
+    {
+        /** Stores the underlying configuration. */
+        private final AbstractConfiguration config;
+
+        public AbstractConfiguration getUnderlyingConfiguration()
+        {
+<span class="fc" id="L1177">            return config;</span>
+        }
+
+        public TestConfigurationImpl(AbstractConfiguration wrappedConfig)
+<span class="fc" id="L1181">        {</span>
+<span class="fc" id="L1182">            config = wrappedConfig;</span>
+<span class="fc" id="L1183">        }</span>
+
+        @Override
+        protected void addPropertyDirect(String key, Object value)
+        {
+<span class="fc" id="L1188">            config.addPropertyDirect(key, value);</span>
+<span class="fc" id="L1189">        }</span>
+
+        @Override
+        protected boolean containsKeyInternal(String key)
+        {
+<span class="fc" id="L1194">            return config.containsKey(key);</span>
+        }
+
+        @Override
+        protected Iterator&lt;String&gt; getKeysInternal()
+        {
+<span class="fc" id="L1200">            return config.getKeys();</span>
+        }
+
+        @Override
+        protected Object getPropertyInternal(String key)
+        {
+<span class="fc" id="L1206">            return config.getProperty(key);</span>
+        }
+
+        @Override
+        protected boolean isEmptyInternal()
+        {
+<span class="fc" id="L1212">            return config.isEmpty();</span>
+        }
+
+        @Override
+        protected void clearPropertyDirect(String key)
+        {
+<span class="fc" id="L1218">            config.clearPropertyDirect(key);</span>
+<span class="fc" id="L1219">        }</span>
+    }
+
+    /**
+     * An event listener implementation that simply collects all received
+     * configuration events.
+     */
+<span class="fc" id="L1226">    private static class CollectingConfigurationListener implements</span>
+            EventListener&lt;ConfigurationEvent&gt;
+    {
+<span class="fc" id="L1229">        final List&lt;ConfigurationEvent&gt; events = new ArrayList&lt;ConfigurationEvent&gt;();</span>
+
+        @Override
+        public void onEvent(ConfigurationEvent event)
+        {
+<span class="fc" id="L1234">            events.add(event);</span>
+<span class="fc" id="L1235">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

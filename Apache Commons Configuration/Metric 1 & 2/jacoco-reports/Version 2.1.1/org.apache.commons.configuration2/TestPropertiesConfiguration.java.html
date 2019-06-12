@@ -1,0 +1,1415 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestPropertiesConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons_configuration2$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">TestPropertiesConfiguration.java</span></div><h1>TestPropertiesConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.commons.configuration2.SynchronizerTestImpl.Methods;
+import org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
+import org.apache.commons.configuration2.builder.combined.CombinedConfigurationBuilder;
+import org.apache.commons.configuration2.builder.fluent.Parameters;
+import org.apache.commons.configuration2.convert.DefaultListDelimiterHandler;
+import org.apache.commons.configuration2.convert.DisabledListDelimiterHandler;
+import org.apache.commons.configuration2.convert.LegacyListDelimiterHandler;
+import org.apache.commons.configuration2.convert.ListDelimiterHandler;
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.io.DefaultFileSystem;
+import org.apache.commons.configuration2.io.FileHandler;
+import org.apache.commons.configuration2.io.FileSystem;
+import org.apache.commons.lang3.mutable.MutableObject;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.Rule;
+import org.junit.rules.TemporaryFolder;
+
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.*;
+
+/**
+ * Test for loading and saving properties files.
+ *
+ * @version $Id$
+ */
+<span class="fc" id="L60">public class TestPropertiesConfiguration</span>
+{
+    /** Constant for a test property name.*/
+    private static final String PROP_NAME = &quot;testProperty&quot;;
+
+    /** Constant for a test property value.*/
+    private static final String PROP_VALUE = &quot;value&quot;;
+
+    /** Constant for the line break character. */
+<span class="fc" id="L69">    private static final String CR = System.getProperty(&quot;line.separator&quot;);</span>
+
+    /** The configuration to be tested.*/
+    private PropertiesConfiguration conf;
+
+    /** The File that we test with */
+<span class="fc" id="L75">    private static String testProperties = ConfigurationAssert.getTestFile(&quot;test.properties&quot;).getAbsolutePath();</span>
+
+<span class="fc" id="L77">    private static String testBasePath = ConfigurationAssert.TEST_DIR.getAbsolutePath();</span>
+<span class="fc" id="L78">    private static String testBasePath2 = ConfigurationAssert.TEST_DIR.getParentFile().getAbsolutePath();</span>
+<span class="fc" id="L79">    private static File testSavePropertiesFile = ConfigurationAssert.getOutFile(&quot;testsave.properties&quot;);</span>
+
+    /** Helper object for creating temporary files. */
+<span class="fc" id="L82">    @Rule</span>
+    public TemporaryFolder folder = new TemporaryFolder();
+
+    @Before
+    public void setUp() throws Exception
+    {
+<span class="fc" id="L88">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L89">        conf.setListDelimiterHandler(new LegacyListDelimiterHandler(','));</span>
+<span class="fc" id="L90">        load(conf, testProperties);</span>
+
+        // remove the test save file if it exists
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (testSavePropertiesFile.exists())</span>
+        {
+<span class="fc" id="L95">            assertTrue(&quot;Test output file could not be deleted&quot;,</span>
+<span class="fc" id="L96">                    testSavePropertiesFile.delete());</span>
+        }
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Helper method for loading a configuration from a given file.
+     *
+     * @param pc the configuration to be loaded
+     * @param fileName the file name
+     * @return the file handler associated with the configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    private static FileHandler load(PropertiesConfiguration pc, String fileName)
+            throws ConfigurationException
+    {
+<span class="fc" id="L111">        FileHandler handler = new FileHandler(pc);</span>
+<span class="fc" id="L112">        handler.setFileName(fileName);</span>
+<span class="fc" id="L113">        handler.load();</span>
+<span class="fc" id="L114">        return handler;</span>
+    }
+
+    @Test
+    public void testLoad() throws Exception
+    {
+<span class="fc" id="L120">        String loaded = conf.getString(&quot;configuration.loaded&quot;);</span>
+<span class="fc" id="L121">        assertEquals(&quot;true&quot;, loaded);</span>
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Tests if properties can be appended by simply calling load() another
+     * time.
+     */
+    @Test
+    public void testAppend() throws Exception
+    {
+<span class="fc" id="L131">        File file2 = ConfigurationAssert.getTestFile(&quot;threesome.properties&quot;);</span>
+<span class="fc" id="L132">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L133">        handler.load(file2);</span>
+<span class="fc" id="L134">        assertEquals(&quot;aaa&quot;, conf.getString(&quot;test.threesome.one&quot;));</span>
+<span class="fc" id="L135">        assertEquals(&quot;true&quot;, conf.getString(&quot;configuration.loaded&quot;));</span>
+<span class="fc" id="L136">    }</span>
+
+    /**
+     * Checks for a property without a value.
+     *
+     * @param key the key to be checked
+     */
+    private void checkEmpty(String key)
+    {
+<span class="fc" id="L145">        String empty = conf.getString(key);</span>
+<span class="fc" id="L146">        assertNotNull(&quot;Property not found: &quot; + key, empty);</span>
+<span class="fc" id="L147">        assertEquals(&quot;Wrong value for property &quot; + key, &quot;&quot;, empty);</span>
+<span class="fc" id="L148">    }</span>
+
+    /**
+     * Tests that empty properties are treated as the empty string (rather than
+     * as null).
+     */
+    @Test
+    public void testEmpty()
+    {
+<span class="fc" id="L157">        checkEmpty(&quot;test.empty&quot;);</span>
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Tests that properties are detected that do not have a separator and a
+     * value.
+     */
+    @Test
+    public void testEmptyNoSeparator()
+    {
+<span class="fc" id="L167">        checkEmpty(&quot;test.empty2&quot;);</span>
+<span class="fc" id="L168">    }</span>
+
+    /**
+     * Tests that references to other properties work
+     */
+    @Test
+    public void testReference() throws Exception
+    {
+<span class="fc" id="L176">        assertEquals(&quot;baseextra&quot;, conf.getString(&quot;base.reference&quot;));</span>
+<span class="fc" id="L177">    }</span>
+
+    /**
+     * test if includes properties get loaded too
+     */
+    @Test
+    public void testLoadInclude() throws Exception
+    {
+<span class="fc" id="L185">        String loaded = conf.getString(&quot;include.loaded&quot;);</span>
+<span class="fc" id="L186">        assertEquals(&quot;true&quot;, loaded);</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * test if includes properties from interpolated file
+     * name get loaded
+     */
+    @Test
+    public void testLoadIncludeInterpol() throws Exception
+    {
+<span class="fc" id="L196">        String loaded = conf.getString(&quot;include.interpol.loaded&quot;);</span>
+<span class="fc" id="L197">        assertEquals(&quot;true&quot;, loaded);</span>
+<span class="fc" id="L198">    }</span>
+
+    /**
+     * Tests whether include files can be resolved if a configuration file is
+     * read from a reader.
+     */
+    @Test
+    public void testLoadIncludeFromReader() throws ConfigurationException,
+            IOException
+    {
+<span class="fc" id="L208">        StringReader in =</span>
+<span class="fc" id="L209">                new StringReader(PropertiesConfiguration.getInclude() + &quot; = &quot;</span>
+<span class="fc" id="L210">                        + ConfigurationAssert.getTestURL(&quot;include.properties&quot;));</span>
+<span class="fc" id="L211">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L212">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L213">        handler.load(in);</span>
+<span class="fc" id="L214">        assertEquals(&quot;Include file not loaded&quot;, &quot;true&quot;,</span>
+<span class="fc" id="L215">                conf.getString(&quot;include.loaded&quot;));</span>
+<span class="fc" id="L216">    }</span>
+
+    /**
+     * Tests whether include files can be disabled.
+     */
+    @Test
+    public void testDisableIncludes() throws ConfigurationException,
+            IOException
+    {
+<span class="fc" id="L225">        String content =</span>
+<span class="fc" id="L226">                PropertiesConfiguration.getInclude()</span>
+                        + &quot; = nonExistingIncludeFile&quot; + CR + PROP_NAME + &quot; = &quot;
+                        + PROP_VALUE + CR;
+<span class="fc" id="L229">        StringReader in = new StringReader(content);</span>
+<span class="fc" id="L230">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L231">        conf.setIncludesAllowed(false);</span>
+<span class="fc" id="L232">        conf.read(in);</span>
+<span class="fc" id="L233">        assertEquals(&quot;Data not loaded&quot;, PROP_VALUE, conf.getString(PROP_NAME));</span>
+<span class="fc" id="L234">    }</span>
+
+    @Test
+    public void testSetInclude() throws Exception
+    {
+<span class="fc" id="L239">        conf.clear();</span>
+        // change the include key
+<span class="fc" id="L241">        PropertiesConfiguration.setInclude(&quot;import&quot;);</span>
+
+        // load the configuration
+<span class="fc" id="L244">        load(conf, testProperties);</span>
+
+        // restore the previous value for the other tests
+<span class="fc" id="L247">        PropertiesConfiguration.setInclude(&quot;include&quot;);</span>
+
+<span class="fc" id="L249">        assertNull(conf.getString(&quot;include.loaded&quot;));</span>
+<span class="fc" id="L250">    }</span>
+
+    /**
+     * Tests {@code List} parsing.
+     */
+    @Test
+    public void testList() throws Exception
+    {
+<span class="fc" id="L258">        List&lt;Object&gt; packages = conf.getList(&quot;packages&quot;);</span>
+        // we should get 3 packages here
+<span class="fc" id="L260">        assertEquals(3, packages.size());</span>
+<span class="fc" id="L261">    }</span>
+
+    @Test
+    public void testSave() throws Exception
+    {
+        // add an array of strings to the configuration
+<span class="fc" id="L267">        conf.addProperty(&quot;string&quot;, &quot;value1&quot;);</span>
+<span class="fc" id="L268">        List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        for (int i = 1; i &lt; 5; i++)</span>
+        {
+<span class="fc" id="L271">            list.add(&quot;value&quot; + i);</span>
+        }
+<span class="fc" id="L273">        conf.addProperty(&quot;array&quot;, list);</span>
+
+        // save the configuration
+<span class="fc" id="L276">        saveTestConfig();</span>
+<span class="fc" id="L277">        assertTrue(&quot;The saved file doesn't exist&quot;, testSavePropertiesFile.exists());</span>
+
+        // read the configuration and compare the properties
+<span class="fc" id="L280">        checkSavedConfig();</span>
+<span class="fc" id="L281">    }</span>
+
+    @Test
+    public void testSaveToCustomURL() throws Exception
+    {
+        // save the configuration to a custom URL
+<span class="fc" id="L287">        URL url = new URL(&quot;foo&quot;, &quot;&quot;, 0, folder.newFile(&quot;testsave-custom-url.properties&quot;).getAbsolutePath(), new FileURLStreamHandler());</span>
+<span class="fc" id="L288">        FileHandler handlerSave = new FileHandler(conf);</span>
+<span class="fc" id="L289">        handlerSave.save(url);</span>
+
+        // reload the configuration
+<span class="fc" id="L292">        PropertiesConfiguration config2 = new PropertiesConfiguration();</span>
+<span class="fc" id="L293">        FileHandler handlerLoad = new FileHandler(config2);</span>
+<span class="fc" id="L294">        handlerLoad.load(url);</span>
+<span class="fc" id="L295">        assertEquals(&quot;true&quot;, config2.getString(&quot;configuration.loaded&quot;));</span>
+<span class="fc" id="L296">    }</span>
+
+    @Test
+    public void testInMemoryCreatedSave() throws Exception
+    {
+<span class="fc" id="L301">        conf = new PropertiesConfiguration();</span>
+        // add an array of strings to the configuration
+<span class="fc" id="L303">        conf.addProperty(&quot;string&quot;, &quot;value1&quot;);</span>
+<span class="fc" id="L304">        List&lt;Object&gt; list = new ArrayList&lt;Object&gt;();</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        for (int i = 1; i &lt; 5; i++)</span>
+        {
+<span class="fc" id="L307">            list.add(&quot;value&quot; + i);</span>
+        }
+<span class="fc" id="L309">        conf.addProperty(&quot;array&quot;, list);</span>
+
+        // save the configuration
+<span class="fc" id="L312">        saveTestConfig();</span>
+<span class="fc" id="L313">        assertTrue(&quot;The saved file doesn't exist&quot;, testSavePropertiesFile.exists());</span>
+
+        // read the configuration and compare the properties
+<span class="fc" id="L316">        checkSavedConfig();</span>
+<span class="fc" id="L317">    }</span>
+
+    /**
+     * Tests saving a configuration if delimiter parsing is disabled.
+     */
+    @Test
+    public void testSaveWithDelimiterParsingDisabled() throws ConfigurationException
+    {
+<span class="fc" id="L325">        conf.clear();</span>
+<span class="fc" id="L326">        conf.setListDelimiterHandler(new DisabledListDelimiterHandler());</span>
+<span class="fc" id="L327">        conf.addProperty(&quot;test.list&quot;, &quot;a,b,c&quot;);</span>
+<span class="fc" id="L328">        conf.addProperty(&quot;test.dirs&quot;, &quot;C:\\Temp\\,D:\\Data\\&quot;);</span>
+<span class="fc" id="L329">        saveTestConfig();</span>
+
+<span class="fc" id="L331">        PropertiesConfiguration checkConfig = new PropertiesConfiguration();</span>
+<span class="fc" id="L332">        checkConfig.setListDelimiterHandler(new DisabledListDelimiterHandler());</span>
+<span class="fc" id="L333">        new FileHandler(checkConfig).load(testSavePropertiesFile);</span>
+<span class="fc" id="L334">        ConfigurationAssert.assertConfigurationEquals(conf, checkConfig);</span>
+<span class="fc" id="L335">    }</span>
+
+    /**
+     * Tests whether saving works correctly with the default list delimiter
+     * handler implementation.
+     */
+    @Test
+    public void testSaveWithDefaultListDelimiterHandler() throws ConfigurationException
+    {
+<span class="fc" id="L344">        conf.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L345">        saveTestConfig();</span>
+
+<span class="fc" id="L347">        PropertiesConfiguration checkConfig = new PropertiesConfiguration();</span>
+<span class="fc" id="L348">        checkConfig.setListDelimiterHandler(conf.getListDelimiterHandler());</span>
+<span class="fc" id="L349">        new FileHandler(checkConfig).load(testSavePropertiesFile);</span>
+<span class="fc" id="L350">        ConfigurationAssert.assertConfigurationEquals(conf, checkConfig);</span>
+<span class="fc" id="L351">    }</span>
+
+    @Test(expected = ConfigurationException.class)
+    public void testSaveMissingFilename() throws ConfigurationException
+    {
+<span class="fc" id="L356">        FileHandler handler = new FileHandler(conf);</span>
+<span class="nc" id="L357">        handler.save();</span>
+<span class="nc" id="L358">    }</span>
+
+    /**
+     * Tests if the base path is taken into account by the save() method.
+     */
+    @Test
+    public void testSaveWithBasePath() throws Exception
+    {
+<span class="fc" id="L366">        conf.setProperty(&quot;test&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L367">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L368">        handler.setBasePath(testSavePropertiesFile.getParentFile().toURI().toURL()</span>
+<span class="fc" id="L369">                .toString());</span>
+<span class="fc" id="L370">        handler.setFileName(testSavePropertiesFile.getName());</span>
+<span class="fc" id="L371">        handler.save();</span>
+<span class="fc" id="L372">        assertTrue(testSavePropertiesFile.exists());</span>
+<span class="fc" id="L373">    }</span>
+
+    /**
+     * Tests whether the escape character for list delimiters can be itself
+     * escaped and survives a save operation.
+     */
+    @Test
+    public void testSaveEscapedEscapingCharacter()
+            throws ConfigurationException
+    {
+<span class="fc" id="L383">        conf.addProperty(&quot;test.dirs&quot;, &quot;C:\\Temp\\\\,D:\\Data\\\\,E:\\Test\\&quot;);</span>
+<span class="fc" id="L384">        List&lt;Object&gt; dirs = conf.getList(&quot;test.dirs&quot;);</span>
+<span class="fc" id="L385">        assertEquals(&quot;Wrong number of list elements&quot;, 3, dirs.size());</span>
+<span class="fc" id="L386">        saveTestConfig();</span>
+<span class="fc" id="L387">        checkSavedConfig();</span>
+<span class="fc" id="L388">    }</span>
+
+    @Test
+    public void testLoadViaPropertyWithBasePath() throws Exception
+    {
+<span class="fc" id="L393">        PropertiesConfiguration pc = new PropertiesConfiguration();</span>
+<span class="fc" id="L394">        FileHandler handler = new FileHandler(pc);</span>
+<span class="fc" id="L395">        handler.setBasePath(testBasePath);</span>
+<span class="fc" id="L396">        handler.setFileName(&quot;test.properties&quot;);</span>
+<span class="fc" id="L397">        handler.load();</span>
+
+<span class="fc" id="L399">        assertTrue(&quot;Make sure we have multiple keys&quot;, pc.getBoolean(&quot;test.boolean&quot;));</span>
+<span class="fc" id="L400">    }</span>
+
+    @Test
+    public void testLoadViaPropertyWithBasePath2() throws Exception
+    {
+<span class="fc" id="L405">        PropertiesConfiguration pc = new PropertiesConfiguration();</span>
+<span class="fc" id="L406">        FileHandler handler = new FileHandler(pc);</span>
+<span class="fc" id="L407">        handler.setBasePath(testBasePath2);</span>
+<span class="fc" id="L408">        handler.setFileName(&quot;test.properties&quot;);</span>
+<span class="fc" id="L409">        handler.load();</span>
+
+<span class="fc" id="L411">        assertTrue(&quot;Make sure we have multiple keys&quot;, pc.getBoolean(&quot;test.boolean&quot;));</span>
+<span class="fc" id="L412">    }</span>
+
+    @Test
+    public void testLoadFromFile() throws Exception
+    {
+<span class="fc" id="L417">        File file = ConfigurationAssert.getTestFile(&quot;test.properties&quot;);</span>
+<span class="fc" id="L418">        conf.clear();</span>
+<span class="fc" id="L419">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L420">        handler.setFile(file);</span>
+<span class="fc" id="L421">        handler.load();</span>
+
+<span class="fc" id="L423">        assertEquals(&quot;true&quot;, conf.getString(&quot;configuration.loaded&quot;));</span>
+<span class="fc" id="L424">    }</span>
+
+    @Test(expected = ConfigurationException.class)
+    public void testLoadUnexistingFile() throws ConfigurationException
+    {
+<span class="nc" id="L429">        load(conf, &quot;unexisting file&quot;);</span>
+<span class="nc" id="L430">    }</span>
+
+    /**
+     * Helper method for testing a saved configuration. Reads in the file using
+     * a new instance and compares this instance with the original one.
+     *
+     * @return the newly created configuration instance
+     * @throws ConfigurationException if an error occurs
+     */
+    private PropertiesConfiguration checkSavedConfig()
+            throws ConfigurationException
+    {
+<span class="fc" id="L442">        PropertiesConfiguration checkConfig = new PropertiesConfiguration();</span>
+<span class="fc" id="L443">        checkConfig.setListDelimiterHandler(new LegacyListDelimiterHandler(','));</span>
+<span class="fc" id="L444">        load(checkConfig, testSavePropertiesFile.getAbsolutePath());</span>
+<span class="fc" id="L445">        ConfigurationAssert.assertConfigurationEquals(conf, checkConfig);</span>
+<span class="fc" id="L446">        return checkConfig;</span>
+    }
+
+    @Test
+    public void testGetStringWithEscapedChars()
+    {
+<span class="fc" id="L452">        String property = conf.getString(&quot;test.unescape&quot;);</span>
+<span class="fc" id="L453">        assertEquals(&quot;String with escaped characters&quot;, &quot;This \n string \t contains \&quot; escaped \\ characters&quot;, property);</span>
+<span class="fc" id="L454">    }</span>
+
+    @Test
+    public void testGetStringWithEscapedComma()
+    {
+<span class="fc" id="L459">        String property = conf.getString(&quot;test.unescape.list-separator&quot;);</span>
+<span class="fc" id="L460">        assertEquals(&quot;String with an escaped list separator&quot;, &quot;This string contains , an escaped list separator&quot;, property);</span>
+<span class="fc" id="L461">    }</span>
+
+    @Test
+    public void testUnescapeJava()
+    {
+<span class="fc" id="L466">        assertEquals(&quot;test\\,test&quot;, PropertiesConfiguration.unescapeJava(&quot;test\\,test&quot;));</span>
+<span class="fc" id="L467">    }</span>
+
+    @Test
+    public void testEscapedKey() throws Exception
+    {
+<span class="fc" id="L472">        conf.clear();</span>
+<span class="fc" id="L473">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L474">        handler.load(new StringReader(&quot;\\u0066\\u006f\\u006f=bar&quot;));</span>
+
+<span class="fc" id="L476">        assertEquals(&quot;value of the 'foo' property&quot;, &quot;bar&quot;, conf.getString(&quot;foo&quot;));</span>
+<span class="fc" id="L477">    }</span>
+
+    @Test
+    public void testMixedArray()
+    {
+<span class="fc" id="L482">        String[] array = conf.getStringArray(&quot;test.mixed.array&quot;);</span>
+
+<span class="fc" id="L484">        assertEquals(&quot;array length&quot;, 4, array.length);</span>
+<span class="fc" id="L485">        assertEquals(&quot;1st element&quot;, &quot;a&quot;, array[0]);</span>
+<span class="fc" id="L486">        assertEquals(&quot;2nd element&quot;, &quot;b&quot;, array[1]);</span>
+<span class="fc" id="L487">        assertEquals(&quot;3rd element&quot;, &quot;c&quot;, array[2]);</span>
+<span class="fc" id="L488">        assertEquals(&quot;4th element&quot;, &quot;d&quot;, array[3]);</span>
+<span class="fc" id="L489">    }</span>
+
+    @Test
+    public void testMultilines()
+    {
+<span class="fc" id="L494">        String property = &quot;This is a value spread out across several adjacent &quot;</span>
+                + &quot;natural lines by escaping the line terminator with &quot;
+                + &quot;a backslash character.&quot;;
+
+<span class="fc" id="L498">        assertEquals(&quot;'test.multilines' property&quot;, property, conf.getString(&quot;test.multilines&quot;));</span>
+<span class="fc" id="L499">    }</span>
+
+    /**
+     * Tests whether another list delimiter character can be set (by using an
+     * alternative list delimiter handler).
+     */
+    @Test
+    public void testChangingListDelimiter() throws Exception
+    {
+<span class="fc" id="L508">        assertEquals(&quot;Wrong initial string&quot;, &quot;a^b^c&quot;,</span>
+<span class="fc" id="L509">                conf.getString(&quot;test.other.delimiter&quot;));</span>
+<span class="fc" id="L510">        PropertiesConfiguration pc2 = new PropertiesConfiguration();</span>
+<span class="fc" id="L511">        pc2.setListDelimiterHandler(new DefaultListDelimiterHandler('^'));</span>
+<span class="fc" id="L512">        load(pc2, testProperties);</span>
+<span class="fc" id="L513">        assertEquals(&quot;Should obtain the first value&quot;, &quot;a&quot;,</span>
+<span class="fc" id="L514">                pc2.getString(&quot;test.other.delimiter&quot;));</span>
+<span class="fc" id="L515">        assertEquals(&quot;Wrong list size&quot;, 3, pc2.getList(&quot;test.other.delimiter&quot;)</span>
+<span class="fc" id="L516">                .size());</span>
+<span class="fc" id="L517">    }</span>
+
+    @Test
+    public void testDisableListDelimiter() throws Exception
+    {
+<span class="fc" id="L522">        assertEquals(4, conf.getList(&quot;test.mixed.array&quot;).size());</span>
+
+<span class="fc" id="L524">        PropertiesConfiguration pc2 = new PropertiesConfiguration();</span>
+<span class="fc" id="L525">        load(pc2, testProperties);</span>
+<span class="fc" id="L526">        assertEquals(2, pc2.getList(&quot;test.mixed.array&quot;).size());</span>
+<span class="fc" id="L527">    }</span>
+
+    /**
+     * Tests escaping of an end of line with a backslash.
+     */
+    @Test
+    public void testNewLineEscaping()
+    {
+<span class="fc" id="L535">        List&lt;Object&gt; list = conf.getList(&quot;test.path&quot;);</span>
+<span class="fc" id="L536">        assertEquals(3, list.size());</span>
+<span class="fc" id="L537">        assertEquals(&quot;C:\\path1\\&quot;, list.get(0));</span>
+<span class="fc" id="L538">        assertEquals(&quot;C:\\path2\\&quot;, list.get(1));</span>
+<span class="fc" id="L539">        assertEquals(&quot;C:\\path3\\complex\\test\\&quot;, list.get(2));</span>
+<span class="fc" id="L540">    }</span>
+
+    /**
+     * Tests if included files are loaded when the source lies in the class path.
+     */
+    @Test
+    public void testLoadIncludeFromClassPath() throws ConfigurationException
+    {
+<span class="fc" id="L548">        assertEquals(&quot;true&quot;, conf.getString(&quot;include.loaded&quot;));</span>
+<span class="fc" id="L549">    }</span>
+
+    /**
+     * Test if the lines starting with # or ! are properly ignored.
+     */
+    @Test
+    public void testComment() {
+<span class="fc" id="L556">        assertFalse(&quot;comment line starting with '#' parsed as a property&quot;, conf.containsKey(&quot;#comment&quot;));</span>
+<span class="fc" id="L557">        assertFalse(&quot;comment line starting with '!' parsed as a property&quot;, conf.containsKey(&quot;!comment&quot;));</span>
+<span class="fc" id="L558">    }</span>
+
+    /**
+     * Check that key/value separators can be part of a key.
+     */
+    @Test
+    public void testEscapedKeyValueSeparator()
+    {
+<span class="fc" id="L566">        assertEquals(&quot;Escaped separator '=' not supported in keys&quot;, &quot;foo&quot;, conf.getProperty(&quot;test.separator=in.key&quot;));</span>
+<span class="fc" id="L567">        assertEquals(&quot;Escaped separator ':' not supported in keys&quot;, &quot;bar&quot;, conf.getProperty(&quot;test.separator:in.key&quot;));</span>
+<span class="fc" id="L568">        assertEquals(&quot;Escaped separator '\\t' not supported in keys&quot;, &quot;foo&quot;, conf.getProperty(&quot;test.separator\tin.key&quot;));</span>
+<span class="fc" id="L569">        assertEquals(&quot;Escaped separator '\\f' not supported in keys&quot;, &quot;bar&quot;, conf.getProperty(&quot;test.separator\fin.key&quot;));</span>
+<span class="fc" id="L570">        assertEquals(&quot;Escaped separator ' ' not supported in keys&quot;  , &quot;foo&quot;, conf.getProperty(&quot;test.separator in.key&quot;));</span>
+<span class="fc" id="L571">    }</span>
+
+    /**
+     * Test all acceptable key/value separators ('=', ':' or white spaces).
+     */
+    @Test
+    public void testKeyValueSeparators() {
+<span class="fc" id="L578">        assertEquals(&quot;equal separator not properly parsed&quot;,      &quot;foo&quot;, conf.getProperty(&quot;test.separator.equal&quot;));</span>
+<span class="fc" id="L579">        assertEquals(&quot;colon separator not properly parsed&quot;,      &quot;foo&quot;, conf.getProperty(&quot;test.separator.colon&quot;));</span>
+<span class="fc" id="L580">        assertEquals(&quot;tab separator not properly parsed&quot;,        &quot;foo&quot;, conf.getProperty(&quot;test.separator.tab&quot;));</span>
+<span class="fc" id="L581">        assertEquals(&quot;formfeed separator not properly parsed&quot;,   &quot;foo&quot;, conf.getProperty(&quot;test.separator.formfeed&quot;));</span>
+<span class="fc" id="L582">        assertEquals(&quot;whitespace separator not properly parsed&quot;, &quot;foo&quot;, conf.getProperty(&quot;test.separator.whitespace&quot;));</span>
+<span class="fc" id="L583">    }</span>
+
+    /**
+     * Tests including properties when they are loaded from a nested directory
+     * structure.
+     */
+    @Test
+    public void testIncludeInSubDir() throws ConfigurationException
+    {
+<span class="fc" id="L592">        CombinedConfigurationBuilder builder = new CombinedConfigurationBuilder();</span>
+<span class="fc" id="L593">        builder.configure(new FileBasedBuilderParametersImpl().setFileName(&quot;testFactoryPropertiesInclude.xml&quot;));</span>
+<span class="fc" id="L594">        Configuration config = builder.getConfiguration();</span>
+<span class="fc" id="L595">        assertTrue(config.getBoolean(&quot;deeptest&quot;));</span>
+<span class="fc" id="L596">        assertTrue(config.getBoolean(&quot;deepinclude&quot;));</span>
+<span class="fc" id="L597">        assertFalse(config.containsKey(&quot;deeptestinvalid&quot;));</span>
+<span class="fc" id="L598">    }</span>
+
+    /**
+     * Tests whether the correct line separator is used.
+     */
+    @Test
+    public void testLineSeparator() throws ConfigurationException
+    {
+<span class="fc" id="L606">        final String EOL = System.getProperty(&quot;line.separator&quot;);</span>
+<span class="fc" id="L607">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L608">        conf.setHeader(&quot;My header&quot;);</span>
+<span class="fc" id="L609">        conf.setProperty(&quot;prop&quot;, &quot;value&quot;);</span>
+
+<span class="fc" id="L611">        StringWriter out = new StringWriter();</span>
+<span class="fc" id="L612">        new FileHandler(conf).save(out);</span>
+<span class="fc" id="L613">        String content = out.toString();</span>
+<span class="pc bpc" id="L614" title="1 of 2 branches missed.">        assertTrue(&quot;Header could not be found&quot;, content.indexOf(&quot;# My header&quot;</span>
+                + EOL + EOL) == 0);
+<span class="pc bpc" id="L616" title="1 of 2 branches missed.">        assertTrue(&quot;Property could not be found&quot;, content.indexOf(&quot;prop = value&quot; + EOL) &gt; 0);</span>
+<span class="fc" id="L617">    }</span>
+
+    /**
+     * Tests accessing the layout object.
+     */
+    @Test
+    public void testGetLayout()
+    {
+<span class="fc" id="L625">        PropertiesConfigurationLayout layout = conf.getLayout();</span>
+<span class="fc" id="L626">        assertNotNull(&quot;Layout is null&quot;, layout);</span>
+<span class="fc" id="L627">        assertSame(&quot;Different object returned&quot;, layout, conf.getLayout());</span>
+<span class="fc" id="L628">        conf.setLayout(null);</span>
+<span class="fc" id="L629">        PropertiesConfigurationLayout layout2 = conf.getLayout();</span>
+<span class="fc" id="L630">        assertNotNull(&quot;Layout 2 is null&quot;, layout2);</span>
+<span class="fc" id="L631">        assertNotSame(&quot;Same object returned&quot;, layout, layout2);</span>
+<span class="fc" id="L632">    }</span>
+
+    /**
+     * Tests the propertyLoaded() method for a simple property.
+     */
+    @Test
+    public void testPropertyLoaded() throws ConfigurationException
+    {
+<span class="fc" id="L640">        DummyLayout layout = new DummyLayout();</span>
+<span class="fc" id="L641">        conf.setLayout(layout);</span>
+<span class="fc" id="L642">        conf.propertyLoaded(&quot;layoutLoadedProperty&quot;, &quot;yes&quot;);</span>
+<span class="fc" id="L643">        assertEquals(&quot;Layout's load() was called&quot;, 0, layout.loadCalls);</span>
+<span class="fc" id="L644">        assertEquals(&quot;Property not added&quot;, &quot;yes&quot;, conf.getString(&quot;layoutLoadedProperty&quot;));</span>
+<span class="fc" id="L645">    }</span>
+
+    /**
+     * Tests the propertyLoaded() method for an include property.
+     */
+    @Test
+    public void testPropertyLoadedInclude() throws ConfigurationException
+    {
+<span class="fc" id="L653">        DummyLayout layout = new DummyLayout();</span>
+<span class="fc" id="L654">        conf.setLayout(layout);</span>
+<span class="fc" id="L655">        conf.propertyLoaded(PropertiesConfiguration.getInclude(), &quot;testClasspath.properties,testEqual.properties&quot;);</span>
+<span class="fc" id="L656">        assertEquals(&quot;Layout's load() was not correctly called&quot;, 2, layout.loadCalls);</span>
+<span class="fc" id="L657">        assertFalse(&quot;Property was added&quot;, conf.containsKey(PropertiesConfiguration.getInclude()));</span>
+<span class="fc" id="L658">    }</span>
+
+    /**
+     * Tests propertyLoaded() for an include property, when includes are
+     * disabled.
+     */
+    @Test
+    public void testPropertyLoadedIncludeNotAllowed() throws ConfigurationException
+    {
+<span class="fc" id="L667">        DummyLayout layout = new DummyLayout();</span>
+<span class="fc" id="L668">        conf.setLayout(layout);</span>
+<span class="fc" id="L669">        conf.setIncludesAllowed(false);</span>
+<span class="fc" id="L670">        conf.propertyLoaded(PropertiesConfiguration.getInclude(), &quot;testClassPath.properties,testEqual.properties&quot;);</span>
+<span class="fc" id="L671">        assertEquals(&quot;Layout's load() was called&quot;, 0, layout.loadCalls);</span>
+<span class="fc" id="L672">        assertFalse(&quot;Property was added&quot;, conf.containsKey(PropertiesConfiguration.getInclude()));</span>
+<span class="fc" id="L673">    }</span>
+
+    /**
+     * Tests whether comment lines are correctly detected.
+     */
+    @Test
+    public void testIsCommentLine()
+    {
+<span class="fc" id="L681">        assertTrue(&quot;Comment not detected&quot;, PropertiesConfiguration.isCommentLine(&quot;# a comment&quot;));</span>
+<span class="fc" id="L682">        assertTrue(&quot;Alternative comment not detected&quot;, PropertiesConfiguration.isCommentLine(&quot;! a comment&quot;));</span>
+<span class="fc" id="L683">        assertTrue(&quot;Comment with no space not detected&quot;, PropertiesConfiguration.isCommentLine(&quot;#a comment&quot;));</span>
+<span class="fc" id="L684">        assertTrue(&quot;Comment with leading space not detected&quot;, PropertiesConfiguration.isCommentLine(&quot;    ! a comment&quot;));</span>
+<span class="fc" id="L685">        assertFalse(&quot;Wrong comment&quot;, PropertiesConfiguration.isCommentLine(&quot;   a#comment&quot;));</span>
+<span class="fc" id="L686">    }</span>
+
+    /**
+     * Tests whether a properties configuration can be successfully cloned. It
+     * is especially checked whether the layout object is taken into account.
+     */
+    @Test
+    public void testClone() throws ConfigurationException
+    {
+<span class="fc" id="L695">        PropertiesConfiguration copy = (PropertiesConfiguration) conf.clone();</span>
+<span class="fc" id="L696">        assertNotSame(&quot;Copy has same layout object&quot;, conf.getLayout(),</span>
+<span class="fc" id="L697">                copy.getLayout());</span>
+<span class="fc" id="L698">        assertEquals(&quot;Wrong number of event listeners for original&quot;, 1, conf</span>
+<span class="fc" id="L699">                .getEventListeners(ConfigurationEvent.ANY).size());</span>
+<span class="fc" id="L700">        assertEquals(&quot;Wrong number of event listeners for clone&quot;, 1, copy</span>
+<span class="fc" id="L701">                .getEventListeners(ConfigurationEvent.ANY).size());</span>
+<span class="fc" id="L702">        assertSame(&quot;Wrong event listener for original&quot;, conf.getLayout(), conf</span>
+<span class="fc" id="L703">                .getEventListeners(ConfigurationEvent.ANY).iterator().next());</span>
+<span class="fc" id="L704">        assertSame(&quot;Wrong event listener for clone&quot;, copy.getLayout(), copy</span>
+<span class="fc" id="L705">                .getEventListeners(ConfigurationEvent.ANY).iterator().next());</span>
+<span class="fc" id="L706">        StringWriter outConf = new StringWriter();</span>
+<span class="fc" id="L707">        new FileHandler(conf).save(outConf);</span>
+<span class="fc" id="L708">        StringWriter outCopy = new StringWriter();</span>
+<span class="fc" id="L709">        new FileHandler(copy).save(outCopy);</span>
+<span class="fc" id="L710">        assertEquals(&quot;Output from copy is different&quot;, outConf.toString(), outCopy.toString());</span>
+<span class="fc" id="L711">    }</span>
+
+    /**
+     * Tests the clone() method when no layout object exists yet.
+     */
+    @Test
+    public void testCloneNullLayout()
+    {
+<span class="fc" id="L719">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L720">        PropertiesConfiguration copy = (PropertiesConfiguration) conf.clone();</span>
+<span class="fc" id="L721">        assertNotSame(&quot;Layout objects are the same&quot;, conf.getLayout(), copy.getLayout());</span>
+<span class="fc" id="L722">    }</span>
+
+    /**
+     * Tests saving a file-based configuration to a HTTP server.
+     */
+    @Test
+    public void testSaveToHTTPServerSuccess() throws Exception
+    {
+<span class="fc" id="L730">        MockHttpURLStreamHandler handler = new MockHttpURLStreamHandler(</span>
+                HttpURLConnection.HTTP_OK, testSavePropertiesFile);
+<span class="fc" id="L732">        URL url = new URL(null, &quot;http://jakarta.apache.org&quot;, handler);</span>
+<span class="fc" id="L733">        new FileHandler(conf).save(url);</span>
+<span class="fc" id="L734">        MockHttpURLConnection con = handler.getMockConnection();</span>
+<span class="fc" id="L735">        assertTrue(&quot;Wrong output flag&quot;, con.getDoOutput());</span>
+<span class="fc" id="L736">        assertEquals(&quot;Wrong method&quot;, &quot;PUT&quot;, con.getRequestMethod());</span>
+<span class="fc" id="L737">        checkSavedConfig();</span>
+<span class="fc" id="L738">    }</span>
+
+    /**
+     * Tests saving a file-based configuration to a HTTP server when the server
+     * reports a failure. This should cause an exception.
+     */
+    @Test
+    public void testSaveToHTTPServerFail() throws Exception
+    {
+<span class="fc" id="L747">        MockHttpURLStreamHandler handler = new MockHttpURLStreamHandler(</span>
+                HttpURLConnection.HTTP_BAD_REQUEST, testSavePropertiesFile);
+<span class="fc" id="L749">        URL url = new URL(null, &quot;http://jakarta.apache.org&quot;, handler);</span>
+        try
+        {
+<span class="nc" id="L752">            new FileHandler(conf).save(url);</span>
+<span class="nc" id="L753">            fail(&quot;Response code was not checked!&quot;);</span>
+        }
+<span class="fc" id="L755">        catch (ConfigurationException cex)</span>
+        {
+<span class="fc" id="L757">            assertTrue(&quot;Wrong root cause: &quot; + cex,</span>
+<span class="fc" id="L758">                    cex.getCause() instanceof IOException);</span>
+<span class="nc" id="L759">        }</span>
+<span class="fc" id="L760">    }</span>
+
+    /**
+     * Test the creation of a file containing a '#' in its name.
+     */
+    @Test
+    public void testFileWithSharpSymbol() throws Exception
+    {
+<span class="fc" id="L768">        File file = folder.newFile(&quot;sharp#1.properties&quot;);</span>
+
+<span class="fc" id="L770">        PropertiesConfiguration conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L771">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L772">        handler.setFile(file);</span>
+<span class="fc" id="L773">        handler.load();</span>
+<span class="fc" id="L774">        handler.save();</span>
+
+<span class="fc" id="L776">        assertTrue(&quot;Missing file &quot; + file, file.exists());</span>
+<span class="fc" id="L777">    }</span>
+
+    /**
+     * Tests initializing a properties configuration from a non existing file.
+     * There was a bug, which caused properties getting lost when later save()
+     * is called.
+     */
+    @Test
+    public void testInitFromNonExistingFile() throws ConfigurationException
+    {
+<span class="fc" id="L787">        final String testProperty = &quot;test.successfull&quot;;</span>
+<span class="fc" id="L788">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L789">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L790">        handler.setFile(testSavePropertiesFile);</span>
+<span class="fc" id="L791">        conf.addProperty(testProperty, &quot;true&quot;);</span>
+<span class="fc" id="L792">        handler.save();</span>
+<span class="fc" id="L793">        checkSavedConfig();</span>
+<span class="fc" id="L794">    }</span>
+
+    /**
+     * Tests copying another configuration into the test configuration. This
+     * test ensures that the layout object is informed about the newly added
+     * properties.
+     */
+    @Test
+    public void testCopyAndSave() throws ConfigurationException
+    {
+<span class="fc" id="L804">        Configuration copyConf = setUpCopyConfig();</span>
+<span class="fc" id="L805">        conf.copy(copyConf);</span>
+<span class="fc" id="L806">        checkCopiedConfig(copyConf);</span>
+<span class="fc" id="L807">    }</span>
+
+    /**
+     * Tests appending a configuration to the test configuration. Again it has
+     * to be ensured that the layout object is correctly updated.
+     */
+    @Test
+    public void testAppendAndSave() throws ConfigurationException
+    {
+<span class="fc" id="L816">        Configuration copyConf = setUpCopyConfig();</span>
+<span class="fc" id="L817">        conf.append(copyConf);</span>
+<span class="fc" id="L818">        checkCopiedConfig(copyConf);</span>
+<span class="fc" id="L819">    }</span>
+
+    /**
+     * Tests adding properties through a DataConfiguration. This is related to
+     * CONFIGURATION-332.
+     */
+    @Test
+    public void testSaveWithDataConfig() throws ConfigurationException
+    {
+<span class="fc" id="L828">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L829">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L830">        handler.setFile(testSavePropertiesFile);</span>
+<span class="fc" id="L831">        DataConfiguration dataConfig = new DataConfiguration(conf);</span>
+<span class="fc" id="L832">        dataConfig.setProperty(&quot;foo&quot;, &quot;bar&quot;);</span>
+<span class="fc" id="L833">        assertEquals(&quot;Property not set&quot;, &quot;bar&quot;, conf.getString(&quot;foo&quot;));</span>
+
+<span class="fc" id="L835">        handler.save();</span>
+<span class="fc" id="L836">        PropertiesConfiguration config2 = new PropertiesConfiguration();</span>
+<span class="fc" id="L837">        load(config2, testSavePropertiesFile.getAbsolutePath());</span>
+<span class="fc" id="L838">        assertEquals(&quot;Property not saved&quot;, &quot;bar&quot;, config2.getString(&quot;foo&quot;));</span>
+<span class="fc" id="L839">    }</span>
+
+    /**
+     * Tests whether a default IOFactory is set.
+     */
+    @Test
+    public void testGetIOFactoryDefault()
+    {
+<span class="fc" id="L847">        assertNotNull(&quot;No default IO factory&quot;, conf.getIOFactory());</span>
+<span class="fc" id="L848">    }</span>
+
+    /**
+     * Tests setting the IOFactory to null. This should cause an exception.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testSetIOFactoryNull()
+    {
+<span class="nc" id="L856">        conf.setIOFactory(null);</span>
+<span class="nc" id="L857">    }</span>
+
+    /**
+     * Tests setting an IOFactory that uses a specialized reader.
+     */
+    @Test
+    public void testSetIOFactoryReader() throws ConfigurationException
+    {
+<span class="fc" id="L865">        final int propertyCount = 10;</span>
+<span class="fc" id="L866">        conf.clear();</span>
+<span class="fc" id="L867">        conf.setIOFactory(new PropertiesConfiguration.IOFactory()</span>
+<span class="fc" id="L868">        {</span>
+            @Override
+            public PropertiesConfiguration.PropertiesReader createPropertiesReader(
+                    Reader in)
+            {
+<span class="fc" id="L873">                return new PropertiesReaderTestImpl(in, propertyCount);</span>
+            }
+
+            @Override
+            public PropertiesConfiguration.PropertiesWriter createPropertiesWriter(
+                    Writer out, ListDelimiterHandler handler)
+            {
+<span class="nc" id="L880">                throw new UnsupportedOperationException(&quot;Unexpected call!&quot;);</span>
+            }
+        });
+<span class="fc" id="L883">        load(conf, testProperties);</span>
+<span class="fc bfc" id="L884" title="All 2 branches covered.">        for (int i = 1; i &lt;= propertyCount; i++)</span>
+        {
+<span class="fc" id="L886">            assertEquals(&quot;Wrong property value at &quot; + i, PROP_VALUE + i, conf</span>
+<span class="fc" id="L887">                    .getString(PROP_NAME + i));</span>
+        }
+<span class="fc" id="L889">    }</span>
+
+    /**
+     * Tests setting an IOFactory that uses a specialized writer.
+     */
+    @Test
+    public void testSetIOFactoryWriter() throws ConfigurationException, IOException
+    {
+<span class="fc" id="L897">        final MutableObject&lt;Writer&gt; propertiesWriter = new MutableObject&lt;Writer&gt;();</span>
+<span class="fc" id="L898">        conf.setIOFactory(new PropertiesConfiguration.IOFactory()</span>
+<span class="fc" id="L899">        {</span>
+            @Override
+            public PropertiesConfiguration.PropertiesReader createPropertiesReader(
+                    Reader in)
+            {
+<span class="nc" id="L904">                throw new UnsupportedOperationException(&quot;Unexpected call!&quot;);</span>
+            }
+
+            @Override
+            public PropertiesConfiguration.PropertiesWriter createPropertiesWriter(
+                    Writer out, ListDelimiterHandler handler)
+            {
+                try
+                {
+<span class="fc" id="L913">                    PropertiesWriterTestImpl propWriter = new PropertiesWriterTestImpl(handler);</span>
+<span class="fc" id="L914">                    propertiesWriter.setValue(propWriter);</span>
+<span class="fc" id="L915">                    return propWriter;</span>
+                }
+<span class="nc" id="L917">                catch (IOException e)</span>
+                {
+<span class="nc" id="L919">                    return null;</span>
+                }
+            }
+        });
+<span class="fc" id="L923">        new FileHandler(conf).save(new StringWriter());</span>
+<span class="fc" id="L924">        propertiesWriter.getValue().close();</span>
+<span class="fc" id="L925">        checkSavedConfig();</span>
+<span class="fc" id="L926">    }</span>
+
+    /**
+     * Tests that the property separators are retained when saving the
+     * configuration.
+     */
+    @Test
+    public void testKeepSeparators() throws ConfigurationException, IOException
+    {
+<span class="fc" id="L935">        saveTestConfig();</span>
+<span class="fc" id="L936">        final String[] separatorTests = {</span>
+                &quot;test.separator.equal = foo&quot;, &quot;test.separator.colon : foo&quot;,
+                &quot;test.separator.tab\tfoo&quot;, &quot;test.separator.whitespace foo&quot;,
+                &quot;test.separator.no.space=foo&quot;
+        };
+<span class="fc" id="L941">        Set&lt;String&gt; foundLines = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L942">        BufferedReader in = new BufferedReader(new FileReader(</span>
+                testSavePropertiesFile));
+        try
+        {
+            String s;
+<span class="fc bfc" id="L947" title="All 2 branches covered.">            while ((s = in.readLine()) != null)</span>
+            {
+<span class="fc bfc" id="L949" title="All 2 branches covered.">                for (String separatorTest : separatorTests) {</span>
+<span class="fc bfc" id="L950" title="All 2 branches covered.">                    if (separatorTest.equals(s))</span>
+                    {
+<span class="fc" id="L952">                        foundLines.add(s);</span>
+                    }
+                }
+            }
+        }
+        finally
+        {
+<span class="fc" id="L959">            in.close();</span>
+        }
+<span class="fc" id="L961">        assertEquals(&quot;No all separators were found: &quot; + foundLines,</span>
+<span class="fc" id="L962">                separatorTests.length, foundLines.size());</span>
+<span class="fc" id="L963">    }</span>
+
+    /**
+     * Tests whether properties with slashes in their values can be saved. This
+     * test is related to CONFIGURATION-408.
+     */
+    @Test
+    public void testSlashEscaping() throws ConfigurationException
+    {
+<span class="fc" id="L972">        conf.setProperty(PROP_NAME, &quot;http://www.apache.org&quot;);</span>
+<span class="fc" id="L973">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L974">        new FileHandler(conf).save(writer);</span>
+<span class="fc" id="L975">        String s = writer.toString();</span>
+<span class="fc" id="L976">        assertTrue(&quot;Value not found: &quot; + s, s.contains(PROP_NAME</span>
+                + &quot; = http://www.apache.org&quot;));
+<span class="fc" id="L978">    }</span>
+
+    /**
+     * Tests whether backslashes are correctly handled if lists are parsed. This
+     * test is related to CONFIGURATION-418.
+     */
+    @Test
+    public void testBackslashEscapingInLists() throws Exception
+    {
+<span class="fc" id="L987">        checkBackslashList(&quot;share2&quot;);</span>
+<span class="fc" id="L988">        checkBackslashList(&quot;share1&quot;);</span>
+<span class="fc" id="L989">    }</span>
+
+    /**
+     * Tests whether a list property is handled correctly if delimiter parsing
+     * is disabled. This test is related to CONFIGURATION-495.
+     */
+    @Test
+    public void testSetPropertyListWithDelimiterParsingDisabled()
+            throws ConfigurationException
+    {
+<span class="fc" id="L999">        String prop = &quot;delimiterListProp&quot;;</span>
+<span class="fc" id="L1000">        conf.setListDelimiterHandler(DisabledListDelimiterHandler.INSTANCE);</span>
+<span class="fc" id="L1001">        List&lt;String&gt; list = Arrays.asList(&quot;val&quot;, &quot;val2&quot;, &quot;val3&quot;);</span>
+<span class="fc" id="L1002">        conf.setProperty(prop, list);</span>
+<span class="fc" id="L1003">        saveTestConfig();</span>
+<span class="fc" id="L1004">        conf.clear();</span>
+<span class="fc" id="L1005">        load(conf, testSavePropertiesFile.getAbsolutePath());</span>
+<span class="fc" id="L1006">        assertEquals(&quot;Wrong list property&quot;, list, conf.getProperty(prop));</span>
+<span class="fc" id="L1007">    }</span>
+
+    /**
+     * Tests whether a footer comment is correctly read.
+     */
+    @Test
+    public void testReadFooterComment()
+    {
+<span class="fc" id="L1015">        assertEquals(&quot;Wrong footer comment&quot;, &quot;\n# This is a foot comment\n&quot;,</span>
+<span class="fc" id="L1016">                conf.getFooter());</span>
+<span class="fc" id="L1017">        assertEquals(&quot;Wrong footer comment from layout&quot;,</span>
+<span class="fc" id="L1018">                &quot;\nThis is a foot comment\n&quot;, conf.getLayout()</span>
+<span class="fc" id="L1019">                        .getCanonicalFooterCooment(false));</span>
+<span class="fc" id="L1020">    }</span>
+
+    /**
+     * Tests whether a footer comment is correctly written out.
+     */
+    @Test
+    public void testWriteFooterComment() throws ConfigurationException,
+            IOException
+    {
+<span class="fc" id="L1029">        final String footer = &quot;my footer&quot;;</span>
+<span class="fc" id="L1030">        conf.clear();</span>
+<span class="fc" id="L1031">        conf.setProperty(PROP_NAME, PROP_VALUE);</span>
+<span class="fc" id="L1032">        conf.setFooter(footer);</span>
+<span class="fc" id="L1033">        StringWriter out = new StringWriter();</span>
+<span class="fc" id="L1034">        conf.write(out);</span>
+<span class="fc" id="L1035">        assertEquals(&quot;Wrong result&quot;, PROP_NAME + &quot; = &quot; + PROP_VALUE + CR + &quot;# &quot;</span>
+<span class="fc" id="L1036">                + footer + CR, out.toString());</span>
+<span class="fc" id="L1037">    }</span>
+
+    /**
+     * Tests whether a clear() operation clears the footer comment.
+     */
+    @Test
+    public void testClearFooterComment()
+    {
+<span class="fc" id="L1045">        conf.clear();</span>
+<span class="fc" id="L1046">        assertNull(&quot;Still got a footer comment&quot;, conf.getFooter());</span>
+<span class="fc" id="L1047">        assertNull(&quot;Still got a header comment&quot;, conf.getHeader());</span>
+<span class="fc" id="L1048">    }</span>
+
+    /**
+     * Tests whether read access to the footer comment is synchronized.
+     */
+    @Test
+    public void testGetFooterSynchronized()
+    {
+<span class="fc" id="L1056">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1057">        conf.setSynchronizer(sync);</span>
+<span class="fc" id="L1058">        assertNotNull(&quot;No footer comment&quot;, conf.getFooter());</span>
+<span class="fc" id="L1059">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L1060">    }</span>
+
+    /**
+     * Tests whether write access to the footer comment is synchronized.
+     */
+    @Test
+    public void testSetFooterSynchronized()
+    {
+<span class="fc" id="L1068">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1069">        conf.setSynchronizer(sync);</span>
+<span class="fc" id="L1070">        conf.setFooter(&quot;new comment&quot;);</span>
+<span class="fc" id="L1071">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE);</span>
+<span class="fc" id="L1072">    }</span>
+
+    /**
+     * Tests whether read access to the header comment is synchronized.
+     */
+    @Test
+    public void testGetHeaderSynchronized()
+    {
+<span class="fc" id="L1080">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1081">        conf.setSynchronizer(sync);</span>
+<span class="fc" id="L1082">        assertNull(&quot;Got a header comment&quot;, conf.getHeader());</span>
+<span class="fc" id="L1083">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L1084">    }</span>
+
+    /**
+     * Tests whether write access to the header comment is synchronized.
+     */
+    @Test
+    public void testSetHeaderSynchronized()
+    {
+<span class="fc" id="L1092">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1093">        conf.setSynchronizer(sync);</span>
+<span class="fc" id="L1094">        conf.setHeader(&quot;new comment&quot;);</span>
+<span class="fc" id="L1095">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE);</span>
+<span class="fc" id="L1096">    }</span>
+
+    /**
+     * Tests the escaping of quotation marks in a properties value. This test is
+     * related to CONFIGURATION-516.
+     */
+    @Test
+    public void testEscapeQuote() throws ConfigurationException
+    {
+<span class="fc" id="L1105">        conf.clear();</span>
+<span class="fc" id="L1106">        String text = &quot;\&quot;Hello World!\&quot;&quot;;</span>
+<span class="fc" id="L1107">        conf.setProperty(PROP_NAME, text);</span>
+<span class="fc" id="L1108">        StringWriter out = new StringWriter();</span>
+<span class="fc" id="L1109">        new FileHandler(conf).save(out);</span>
+<span class="fc" id="L1110">        assertTrue(&quot;Value was escaped: &quot; + out,</span>
+<span class="fc" id="L1111">                out.toString().contains(text));</span>
+<span class="fc" id="L1112">        saveTestConfig();</span>
+<span class="fc" id="L1113">        PropertiesConfiguration c2 = new PropertiesConfiguration();</span>
+<span class="fc" id="L1114">        load(c2, testSavePropertiesFile.getAbsolutePath());</span>
+<span class="fc" id="L1115">        assertEquals(&quot;Wrong value&quot;, text, c2.getString(PROP_NAME));</span>
+<span class="fc" id="L1116">    }</span>
+
+    /**
+     * Tests whether the correct file system is used when loading an include
+     * file. This test is related to CONFIGURATION-609.
+     */
+    @Test
+    public void testLoadIncludeFileViaFileSystem() throws ConfigurationException
+    {
+<span class="fc" id="L1125">        conf.clear();</span>
+<span class="fc" id="L1126">        conf.addProperty(&quot;include&quot;, &quot;include.properties&quot;);</span>
+<span class="fc" id="L1127">        saveTestConfig();</span>
+
+<span class="fc" id="L1129">        FileSystem fs = new DefaultFileSystem()</span>
+<span class="fc" id="L1130">        {</span>
+            @Override
+            public InputStream getInputStream(URL url)
+                    throws ConfigurationException
+            {
+<span class="fc bfc" id="L1135" title="All 2 branches covered.">                if (url.toString().endsWith(&quot;include.properties&quot;))</span>
+                {
+                    try
+                    {
+<span class="fc" id="L1139">                        return new ByteArrayInputStream(</span>
+<span class="fc" id="L1140">                                &quot;test.outcome = success&quot;.getBytes(&quot;UTF-8&quot;));</span>
+                    }
+<span class="nc" id="L1142">                    catch (UnsupportedEncodingException e)</span>
+                    {
+<span class="nc" id="L1144">                        throw new ConfigurationException(&quot;Unsupported encoding&quot;,</span>
+                                e);
+                    }
+                }
+<span class="fc" id="L1148">                return super.getInputStream(url);</span>
+            }
+        };
+<span class="fc" id="L1151">        Parameters params = new Parameters();</span>
+<span class="fc" id="L1152">        FileBasedConfigurationBuilder&lt;PropertiesConfiguration&gt; builder =</span>
+                new FileBasedConfigurationBuilder&lt;PropertiesConfiguration&gt;(
+                        PropertiesConfiguration.class);
+<span class="fc" id="L1155">        builder.configure(params.fileBased().setFile(testSavePropertiesFile)</span>
+<span class="fc" id="L1156">                .setBasePath(ConfigurationAssert.OUT_DIR.toURI().toString())</span>
+<span class="fc" id="L1157">                .setFileSystem(fs));</span>
+<span class="fc" id="L1158">        PropertiesConfiguration configuration = builder.getConfiguration();</span>
+<span class="fc" id="L1159">        assertEquals(&quot;success&quot;, configuration.getString(&quot;test.outcome&quot;));</span>
+<span class="fc" id="L1160">    }</span>
+
+    /**
+     * Tests whether special characters in a property value are un-escaped. This
+     * test is related to CONFIGURATION-640.
+     */
+    @Test
+    public void testUnEscapeCharacters()
+    {
+<span class="fc" id="L1169">        assertEquals(&quot;Wrong value&quot;, &quot;#1 =: me!&quot;,</span>
+<span class="fc" id="L1170">                conf.getString(&quot;test.unescape.characters&quot;));</span>
+<span class="fc" id="L1171">    }</span>
+
+    /**
+     * Tests a direct invocation of the read() method. This is not allowed
+     * because certain initializations have not been done. This test is
+     * related to CONFIGURATION-641.
+     */
+    @Test
+    public void testReadCalledDirectly() throws IOException
+    {
+<span class="fc" id="L1181">        conf = new PropertiesConfiguration();</span>
+<span class="fc" id="L1182">        Reader in = new FileReader(ConfigurationAssert.getTestFile(&quot;test.properties&quot;));</span>
+        try
+        {
+<span class="nc" id="L1185">            conf.read(in);</span>
+<span class="nc" id="L1186">            fail(&quot;No exception thrown!&quot;);</span>
+        }
+<span class="fc" id="L1188">        catch (ConfigurationException e)</span>
+        {
+<span class="fc" id="L1190">            assertThat(e.getMessage(), containsString(&quot;FileHandler&quot;));</span>
+        }
+        finally
+        {
+<span class="fc" id="L1194">            in.close();</span>
+        }
+<span class="fc" id="L1196">    }</span>
+
+    /**
+     * Helper method for testing the content of a list with elements that
+     * contain backslashes.
+     *
+     * @param key the key
+     */
+    private void checkBackslashList(String key)
+    {
+<span class="fc" id="L1206">        Object prop = conf.getProperty(&quot;test.&quot; + key);</span>
+<span class="fc" id="L1207">        assertTrue(&quot;Not a list&quot;, prop instanceof List);</span>
+<span class="fc" id="L1208">        List&lt;?&gt; list = (List&lt;?&gt;) prop;</span>
+<span class="fc" id="L1209">        assertEquals(&quot;Wrong number of list elements&quot;, 2, list.size());</span>
+<span class="fc" id="L1210">        final String prefix = &quot;\\\\&quot; + key;</span>
+<span class="fc" id="L1211">        assertEquals(&quot;Wrong element 1&quot;, prefix + &quot;a&quot;, list.get(0));</span>
+<span class="fc" id="L1212">        assertEquals(&quot;Wrong element 2&quot;, prefix + &quot;b&quot;, list.get(1));</span>
+<span class="fc" id="L1213">    }</span>
+
+    /**
+     * Creates a configuration that can be used for testing copy operations.
+     *
+     * @return the configuration to be copied
+     */
+    private Configuration setUpCopyConfig()
+    {
+<span class="fc" id="L1222">        final int count = 25;</span>
+<span class="fc" id="L1223">        Configuration result = new BaseConfiguration();</span>
+<span class="fc bfc" id="L1224" title="All 2 branches covered.">        for (int i = 1; i &lt;= count; i++)</span>
+        {
+<span class="fc" id="L1226">            result.addProperty(&quot;copyKey&quot; + i, &quot;copyValue&quot; + i);</span>
+        }
+<span class="fc" id="L1228">        return result;</span>
+    }
+
+    /**
+     * Tests whether the data of a configuration that was copied into the test
+     * configuration is correctly saved.
+     *
+     * @param copyConf the copied configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    private void checkCopiedConfig(Configuration copyConf)
+            throws ConfigurationException
+    {
+<span class="fc" id="L1241">        saveTestConfig();</span>
+<span class="fc" id="L1242">        PropertiesConfiguration checkConf = new PropertiesConfiguration();</span>
+<span class="fc" id="L1243">        load(checkConf, testSavePropertiesFile.getAbsolutePath());</span>
+<span class="fc bfc" id="L1244" title="All 2 branches covered.">        for (Iterator&lt;String&gt; it = copyConf.getKeys(); it.hasNext();)</span>
+        {
+<span class="fc" id="L1246">            String key = it.next();</span>
+<span class="fc" id="L1247">            assertEquals(&quot;Wrong value for property &quot; + key, checkConf</span>
+<span class="fc" id="L1248">                    .getProperty(key), copyConf.getProperty(key));</span>
+<span class="fc" id="L1249">        }</span>
+<span class="fc" id="L1250">    }</span>
+
+    /**
+     * Saves the test configuration to a default output file.
+     *
+     * @throws ConfigurationException if an error occurs
+     */
+    private void saveTestConfig() throws ConfigurationException
+    {
+<span class="fc" id="L1259">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L1260">        handler.save(testSavePropertiesFile);</span>
+<span class="fc" id="L1261">    }</span>
+
+    /**
+     * A dummy layout implementation for checking whether certain methods are
+     * correctly called by the configuration.
+     */
+<span class="fc" id="L1267">    static class DummyLayout extends PropertiesConfigurationLayout</span>
+    {
+        /** Stores the number how often load() was called. */
+        public int loadCalls;
+
+        @Override
+        public void load(PropertiesConfiguration config, Reader in)
+                throws ConfigurationException
+        {
+<span class="fc" id="L1276">            loadCalls++;</span>
+<span class="fc" id="L1277">        }</span>
+    }
+
+    /**
+     * A mock implementation of a HttpURLConnection used for testing saving to
+     * a HTTP server.
+     */
+    static class MockHttpURLConnection extends HttpURLConnection
+    {
+        /** The response code to return.*/
+        private final int returnCode;
+
+        /** The output file. The output stream will point to this file.*/
+        private final File outputFile;
+
+        protected MockHttpURLConnection(URL u, int respCode, File outFile)
+        {
+<span class="fc" id="L1294">            super(u);</span>
+<span class="fc" id="L1295">            returnCode = respCode;</span>
+<span class="fc" id="L1296">            outputFile = outFile;</span>
+<span class="fc" id="L1297">        }</span>
+
+        @Override
+        public void disconnect()
+        {
+<span class="nc" id="L1302">        }</span>
+
+        @Override
+        public boolean usingProxy()
+        {
+<span class="nc" id="L1307">            return false;</span>
+        }
+
+        @Override
+        public void connect() throws IOException
+        {
+<span class="nc" id="L1313">        }</span>
+
+        @Override
+        public int getResponseCode() throws IOException
+        {
+<span class="fc" id="L1318">            return returnCode;</span>
+        }
+
+        @Override
+        public OutputStream getOutputStream() throws IOException
+        {
+<span class="fc" id="L1324">            return new FileOutputStream(outputFile);</span>
+        }
+    }
+
+    /**
+     * A mock stream handler for working with the mock HttpURLConnection.
+     */
+    static class MockHttpURLStreamHandler extends URLStreamHandler
+    {
+        /** Stores the response code.*/
+        private final int responseCode;
+
+        /** Stores the output file.*/
+        private final File outputFile;
+
+        /** Stores the connection.*/
+        private MockHttpURLConnection connection;
+
+        public MockHttpURLStreamHandler(int respCode, File outFile)
+<span class="fc" id="L1343">        {</span>
+<span class="fc" id="L1344">            responseCode = respCode;</span>
+<span class="fc" id="L1345">            outputFile = outFile;</span>
+<span class="fc" id="L1346">        }</span>
+
+        public MockHttpURLConnection getMockConnection()
+        {
+<span class="fc" id="L1350">            return connection;</span>
+        }
+
+        @Override
+        protected URLConnection openConnection(URL u) throws IOException
+        {
+<span class="fc" id="L1356">            connection = new MockHttpURLConnection(u, responseCode, outputFile);</span>
+<span class="fc" id="L1357">            return connection;</span>
+        }
+    }
+
+    /**
+     * A test PropertiesReader for testing whether a custom reader can be
+     * injected. This implementation creates a configurable number of synthetic
+     * test properties.
+     */
+    private static class PropertiesReaderTestImpl extends
+            PropertiesConfiguration.PropertiesReader
+    {
+        /** The number of test properties to be created. */
+        private final int maxProperties;
+
+        /** The current number of properties. */
+        private int propertyCount;
+
+        public PropertiesReaderTestImpl(Reader reader, int maxProps)
+        {
+<span class="fc" id="L1377">            super(reader);</span>
+<span class="fc" id="L1378">            maxProperties = maxProps;</span>
+<span class="fc" id="L1379">        }</span>
+
+        @Override
+        public String getPropertyName()
+        {
+<span class="fc" id="L1384">            return PROP_NAME + propertyCount;</span>
+        }
+
+        @Override
+        public String getPropertyValue()
+        {
+<span class="fc" id="L1390">            return PROP_VALUE + propertyCount;</span>
+        }
+
+        @Override
+        public boolean nextProperty() throws IOException
+        {
+<span class="fc" id="L1396">            propertyCount++;</span>
+<span class="fc bfc" id="L1397" title="All 2 branches covered.">            return propertyCount &lt;= maxProperties;</span>
+        }
+    }
+
+    /**
+     * A test PropertiesWriter for testing whether a custom writer can be
+     * injected. This implementation simply redirects all output into a test
+     * file.
+     */
+    private static class PropertiesWriterTestImpl extends
+            PropertiesConfiguration.PropertiesWriter
+    {
+        public PropertiesWriterTestImpl(ListDelimiterHandler handler) throws IOException
+        {
+<span class="fc" id="L1411">            super(new FileWriter(testSavePropertiesFile), handler);</span>
+<span class="fc" id="L1412">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

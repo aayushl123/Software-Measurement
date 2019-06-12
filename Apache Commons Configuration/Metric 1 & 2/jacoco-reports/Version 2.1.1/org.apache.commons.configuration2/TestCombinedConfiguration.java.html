@@ -1,0 +1,1312 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestCombinedConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons_configuration2$Unnamed.exec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">TestCombinedConfiguration.java</span></div><h1>TestCombinedConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.commons.configuration2.SynchronizerTestImpl.Methods;
+import org.apache.commons.configuration2.convert.DefaultListDelimiterHandler;
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.io.FileHandler;
+import org.apache.commons.configuration2.sync.LockMode;
+import org.apache.commons.configuration2.sync.ReadWriteSynchronizer;
+import org.apache.commons.configuration2.sync.Synchronizer;
+import org.apache.commons.configuration2.tree.DefaultExpressionEngine;
+import org.apache.commons.configuration2.tree.DefaultExpressionEngineSymbols;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.NodeCombiner;
+import org.apache.commons.configuration2.tree.NodeModel;
+import org.apache.commons.configuration2.tree.OverrideCombiner;
+import org.apache.commons.configuration2.tree.UnionCombiner;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+/**
+ * Test class for CombinedConfiguration.
+ *
+ * @version $Id$
+ */
+<span class="fc" id="L66">public class TestCombinedConfiguration</span>
+{
+    /** Constant for the name of a sub configuration. */
+    private static final String TEST_NAME = &quot;SUBCONFIG&quot;;
+
+    /** Constant for a test key. */
+    private static final String TEST_KEY = &quot;test.value&quot;;
+
+    /** Constant for a key to be used for a concurrent test. */
+    private static final String KEY_CONCURRENT = &quot;concurrent.access.test&quot;;
+
+    /** Constant for the name of the first child configuration.*/
+    private static final String CHILD1 = TEST_NAME + &quot;1&quot;;
+
+    /** Constant for the name of the second child configuration.*/
+    private static final String CHILD2 = TEST_NAME + &quot;2&quot;;
+
+    /** Constant for the key for a sub configuration. */
+    private static final String SUB_KEY = &quot;test.sub.config&quot;;
+
+    /** Helper object for managing temporary files. */
+<span class="fc" id="L87">    @Rule</span>
+    public TemporaryFolder folder = new TemporaryFolder();
+
+    /** The configuration to be tested. */
+    private CombinedConfiguration config;
+
+    /** The test event listener. */
+    private CombinedListener listener;
+
+    @Before
+    public void setUp() throws Exception
+    {
+<span class="fc" id="L99">        config = new CombinedConfiguration();</span>
+<span class="fc" id="L100">        listener = new CombinedListener();</span>
+<span class="fc" id="L101">        config.addEventListener(ConfigurationEvent.ANY, listener);</span>
+<span class="fc" id="L102">    }</span>
+
+    /**
+     * Tests accessing a newly created combined configuration.
+     */
+    @Test
+    public void testInit()
+    {
+<span class="fc" id="L110">        assertEquals(&quot;Already configurations contained&quot;, 0, config</span>
+<span class="fc" id="L111">                .getNumberOfConfigurations());</span>
+<span class="fc" id="L112">        assertTrue(&quot;Set of names is not empty&quot;, config.getConfigurationNames()</span>
+<span class="fc" id="L113">                .isEmpty());</span>
+<span class="fc" id="L114">        assertTrue(&quot;Wrong node combiner&quot;,</span>
+<span class="fc" id="L115">                config.getNodeCombiner() instanceof UnionCombiner);</span>
+<span class="fc" id="L116">        assertNull(&quot;Test config was found&quot;, config.getConfiguration(TEST_NAME));</span>
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * Tests adding a configuration (without further information).
+     */
+    @Test
+    public void testAddConfiguration()
+    {
+<span class="fc" id="L125">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L126">        config.addConfiguration(c);</span>
+<span class="fc" id="L127">        checkAddConfig(c);</span>
+<span class="fc" id="L128">        assertEquals(&quot;Wrong number of configs&quot;, 1, config</span>
+<span class="fc" id="L129">                .getNumberOfConfigurations());</span>
+<span class="fc" id="L130">        assertTrue(&quot;Name list is not empty&quot;, config.getConfigurationNames()</span>
+<span class="fc" id="L131">                .isEmpty());</span>
+<span class="fc" id="L132">        assertSame(&quot;Added config not found&quot;, c, config.getConfiguration(0));</span>
+<span class="fc" id="L133">        assertTrue(&quot;Wrong property value&quot;, config.getBoolean(TEST_KEY));</span>
+<span class="fc" id="L134">        listener.checkEvent(1, 0);</span>
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * Tests adding a configuration with a name.
+     */
+    @Test
+    public void testAddConfigurationWithName()
+    {
+<span class="fc" id="L143">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L144">        config.addConfiguration(c, TEST_NAME);</span>
+<span class="fc" id="L145">        checkAddConfig(c);</span>
+<span class="fc" id="L146">        assertEquals(&quot;Wrong number of configs&quot;, 1, config</span>
+<span class="fc" id="L147">                .getNumberOfConfigurations());</span>
+<span class="fc" id="L148">        assertSame(&quot;Added config not found&quot;, c, config.getConfiguration(0));</span>
+<span class="fc" id="L149">        assertSame(&quot;Added config not found by name&quot;, c, config</span>
+<span class="fc" id="L150">                .getConfiguration(TEST_NAME));</span>
+<span class="fc" id="L151">        Set&lt;String&gt; names = config.getConfigurationNames();</span>
+<span class="fc" id="L152">        assertEquals(&quot;Wrong number of config names&quot;, 1, names.size());</span>
+<span class="fc" id="L153">        assertTrue(&quot;Name not found&quot;, names.contains(TEST_NAME));</span>
+<span class="fc" id="L154">        assertTrue(&quot;Wrong property value&quot;, config.getBoolean(TEST_KEY));</span>
+<span class="fc" id="L155">        listener.checkEvent(1, 0);</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Tests adding a configuration with a name when this name already exists.
+     * This should cause an exception.
+     */
+    @Test(expected = ConfigurationRuntimeException.class)
+    public void testAddConfigurationWithNameTwice()
+    {
+<span class="fc" id="L165">        config.addConfiguration(setUpTestConfiguration(), TEST_NAME);</span>
+<span class="nc" id="L166">        config.addConfiguration(setUpTestConfiguration(), TEST_NAME,</span>
+                &quot;prefix&quot;);
+<span class="nc" id="L168">    }</span>
+
+    /**
+     * Tests adding a configuration and specifying an at position.
+     */
+    @Test
+    public void testAddConfigurationAt()
+    {
+<span class="fc" id="L176">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L177">        config.addConfiguration(c, null, &quot;my&quot;);</span>
+<span class="fc" id="L178">        checkAddConfig(c);</span>
+<span class="fc" id="L179">        assertTrue(&quot;Wrong property value&quot;, config.getBoolean(&quot;my.&quot; + TEST_KEY));</span>
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * Tests adding a configuration with a complex at position. Here the at path
+     * contains a dot, which must be escaped.
+     */
+    @Test
+    public void testAddConfigurationComplexAt()
+    {
+<span class="fc" id="L189">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L190">        config.addConfiguration(c, null, &quot;This..is.a.complex&quot;);</span>
+<span class="fc" id="L191">        checkAddConfig(c);</span>
+<span class="fc" id="L192">        assertTrue(&quot;Wrong property value&quot;, config</span>
+<span class="fc" id="L193">                .getBoolean(&quot;This..is.a.complex.&quot; + TEST_KEY));</span>
+<span class="fc" id="L194">    }</span>
+
+    /**
+     * Checks if a configuration was correctly added to the combined config.
+     *
+     * @param c the config to check
+     */
+    private void checkAddConfig(AbstractConfiguration c)
+    {
+<span class="fc" id="L203">        Collection&lt;EventListener&lt;? super ConfigurationEvent&gt;&gt; listeners =</span>
+<span class="fc" id="L204">                c.getEventListeners(ConfigurationEvent.ANY);</span>
+<span class="fc" id="L205">        assertEquals(&quot;Wrong number of configuration listeners&quot;, 1, listeners</span>
+<span class="fc" id="L206">                .size());</span>
+<span class="fc" id="L207">        assertTrue(&quot;Combined config is no listener&quot;, listeners.contains(config));</span>
+<span class="fc" id="L208">    }</span>
+
+    /**
+     * Tests adding a null configuration. This should cause an exception to be
+     * thrown.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testAddNullConfiguration()
+    {
+<span class="nc" id="L217">        config.addConfiguration(null);</span>
+<span class="nc" id="L218">    }</span>
+
+    /**
+     * Tests accessing properties if no configurations have been added.
+     */
+    @Test
+    public void testAccessPropertyEmpty()
+    {
+<span class="fc" id="L226">        assertFalse(&quot;Found a key&quot;, config.containsKey(TEST_KEY));</span>
+<span class="fc" id="L227">        assertNull(&quot;Key has a value&quot;, config.getString(&quot;test.comment&quot;));</span>
+<span class="fc" id="L228">        assertTrue(&quot;Config is not empty&quot;, config.isEmpty());</span>
+<span class="fc" id="L229">    }</span>
+
+    /**
+     * Tests accessing properties if multiple configurations have been added.
+     */
+    @Test
+    public void testAccessPropertyMulti()
+    {
+<span class="fc" id="L237">        config.addConfiguration(setUpTestConfiguration());</span>
+<span class="fc" id="L238">        config.addConfiguration(setUpTestConfiguration(), null, &quot;prefix1&quot;);</span>
+<span class="fc" id="L239">        config.addConfiguration(setUpTestConfiguration(), null, &quot;prefix2&quot;);</span>
+<span class="fc" id="L240">        assertTrue(&quot;Prop1 not found&quot;, config.getBoolean(TEST_KEY));</span>
+<span class="fc" id="L241">        assertTrue(&quot;Prop 2 not found&quot;, config.getBoolean(&quot;prefix1.&quot; + TEST_KEY));</span>
+<span class="fc" id="L242">        assertTrue(&quot;Prop 3 not found&quot;, config.getBoolean(&quot;prefix2.&quot; + TEST_KEY));</span>
+<span class="fc" id="L243">        assertFalse(&quot;Configuration is empty&quot;, config.isEmpty());</span>
+<span class="fc" id="L244">        listener.checkEvent(3, 0);</span>
+<span class="fc" id="L245">    }</span>
+
+    /**
+     * Tests removing a configuration.
+     */
+    @Test
+    public void testRemoveConfiguration()
+    {
+<span class="fc" id="L253">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L254">        config.addConfiguration(c);</span>
+<span class="fc" id="L255">        checkAddConfig(c);</span>
+<span class="fc" id="L256">        assertTrue(&quot;Config could not be removed&quot;, config.removeConfiguration(c));</span>
+<span class="fc" id="L257">        checkRemoveConfig(c);</span>
+<span class="fc" id="L258">    }</span>
+
+    /**
+     * Tests removing a configuration by index.
+     */
+    @Test
+    public void testRemoveConfigurationAt()
+    {
+<span class="fc" id="L266">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L267">        config.addConfiguration(c);</span>
+<span class="fc" id="L268">        assertSame(&quot;Wrong config removed&quot;, c, config.removeConfigurationAt(0));</span>
+<span class="fc" id="L269">        checkRemoveConfig(c);</span>
+<span class="fc" id="L270">    }</span>
+
+    /**
+     * Tests removing a configuration by name.
+     */
+    @Test
+    public void testRemoveConfigurationByName()
+    {
+<span class="fc" id="L278">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L279">        config.addConfiguration(c, TEST_NAME);</span>
+<span class="fc" id="L280">        assertSame(&quot;Wrong config removed&quot;, c, config</span>
+<span class="fc" id="L281">                .removeConfiguration(TEST_NAME));</span>
+<span class="fc" id="L282">        checkRemoveConfig(c);</span>
+<span class="fc" id="L283">    }</span>
+
+    /**
+     * Tests removing a configuration with a name.
+     */
+    @Test
+    public void testRemoveNamedConfiguration()
+    {
+<span class="fc" id="L291">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L292">        config.addConfiguration(c, TEST_NAME);</span>
+<span class="fc" id="L293">        config.removeConfiguration(c);</span>
+<span class="fc" id="L294">        checkRemoveConfig(c);</span>
+<span class="fc" id="L295">    }</span>
+
+    /**
+     * Tests removing a named configuration by index.
+     */
+    @Test
+    public void testRemoveNamedConfigurationAt()
+    {
+<span class="fc" id="L303">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L304">        config.addConfiguration(c, TEST_NAME);</span>
+<span class="fc" id="L305">        assertSame(&quot;Wrong config removed&quot;, c, config.removeConfigurationAt(0));</span>
+<span class="fc" id="L306">        checkRemoveConfig(c);</span>
+<span class="fc" id="L307">    }</span>
+
+    /**
+     * Tests removing a configuration that was not added prior.
+     */
+    @Test
+    public void testRemoveNonContainedConfiguration()
+    {
+<span class="fc" id="L315">        assertFalse(&quot;Could remove non contained config&quot;, config</span>
+<span class="fc" id="L316">                .removeConfiguration(setUpTestConfiguration()));</span>
+<span class="fc" id="L317">        listener.checkEvent(0, 0);</span>
+<span class="fc" id="L318">    }</span>
+
+    /**
+     * Tests removing a configuration by name, which is not contained.
+     */
+    @Test
+    public void testRemoveConfigurationByUnknownName()
+    {
+<span class="fc" id="L326">        assertNull(&quot;Could remove configuration by unknown name&quot;, config</span>
+<span class="fc" id="L327">                .removeConfiguration(&quot;unknownName&quot;));</span>
+<span class="fc" id="L328">        listener.checkEvent(0, 0);</span>
+<span class="fc" id="L329">    }</span>
+
+    /**
+     * Tests whether a configuration was completely removed.
+     *
+     * @param c the removed configuration
+     */
+    private void checkRemoveConfig(AbstractConfiguration c)
+    {
+<span class="fc" id="L338">        assertTrue(&quot;Listener was not removed&quot;,</span>
+<span class="fc" id="L339">                c.getEventListeners(ConfigurationEvent.ANY).isEmpty());</span>
+<span class="fc" id="L340">        assertEquals(&quot;Wrong number of contained configs&quot;, 0, config</span>
+<span class="fc" id="L341">                .getNumberOfConfigurations());</span>
+<span class="fc" id="L342">        assertTrue(&quot;Name was not removed&quot;, config.getConfigurationNames()</span>
+<span class="fc" id="L343">                .isEmpty());</span>
+<span class="fc" id="L344">        listener.checkEvent(2, 0);</span>
+<span class="fc" id="L345">    }</span>
+
+    /**
+     * Tests if an update of a contained configuration leeds to an invalidation
+     * of the combined configuration.
+     */
+    @Test
+    public void testUpdateContainedConfiguration()
+    {
+<span class="fc" id="L354">        AbstractConfiguration c = setUpTestConfiguration();</span>
+<span class="fc" id="L355">        config.addConfiguration(c);</span>
+<span class="fc" id="L356">        c.addProperty(&quot;test.otherTest&quot;, &quot;yes&quot;);</span>
+<span class="fc" id="L357">        assertEquals(&quot;New property not found&quot;, &quot;yes&quot;, config</span>
+<span class="fc" id="L358">                .getString(&quot;test.otherTest&quot;));</span>
+<span class="fc" id="L359">        listener.checkEvent(2, 0);</span>
+<span class="fc" id="L360">    }</span>
+
+    /**
+     * Tests if setting a node combiner causes an invalidation.
+     */
+    @Test
+    public void testSetNodeCombiner()
+    {
+<span class="fc" id="L368">        NodeCombiner combiner = new UnionCombiner();</span>
+<span class="fc" id="L369">        config.setNodeCombiner(combiner);</span>
+<span class="fc" id="L370">        assertSame(&quot;Node combiner was not set&quot;, combiner, config</span>
+<span class="fc" id="L371">                .getNodeCombiner());</span>
+<span class="fc" id="L372">        listener.checkEvent(1, 0);</span>
+<span class="fc" id="L373">    }</span>
+
+    /**
+     * Tests setting a null node combiner. This should cause an exception.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testSetNullNodeCombiner()
+    {
+<span class="nc" id="L381">        config.setNodeCombiner(null);</span>
+<span class="nc" id="L382">    }</span>
+
+    /**
+     * Tests cloning a combined configuration.
+     */
+    @Test
+    public void testClone()
+    {
+<span class="fc" id="L390">        config.addConfiguration(setUpTestConfiguration());</span>
+<span class="fc" id="L391">        config.addConfiguration(setUpTestConfiguration(), TEST_NAME, &quot;conf2&quot;);</span>
+<span class="fc" id="L392">        config.addConfiguration(new PropertiesConfiguration(), &quot;props&quot;);</span>
+
+<span class="fc" id="L394">        CombinedConfiguration cc2 = (CombinedConfiguration) config.clone();</span>
+<span class="fc" id="L395">        assertNotNull(&quot;No root node&quot;, cc2.getModel().getNodeHandler()</span>
+<span class="fc" id="L396">                .getRootNode());</span>
+<span class="fc" id="L397">        assertEquals(&quot;Wrong number of contained configurations&quot;, config</span>
+<span class="fc" id="L398">                .getNumberOfConfigurations(), cc2.getNumberOfConfigurations());</span>
+<span class="fc" id="L399">        assertSame(&quot;Wrong node combiner&quot;, config.getNodeCombiner(), cc2</span>
+<span class="fc" id="L400">                .getNodeCombiner());</span>
+<span class="fc" id="L401">        assertEquals(&quot;Wrong number of names&quot;, config.getConfigurationNames()</span>
+<span class="fc" id="L402">                .size(), cc2.getConfigurationNames().size());</span>
+<span class="fc" id="L403">        assertTrue(</span>
+                &quot;Found duplicate event listeners&quot;,
+<span class="fc" id="L405">                Collections.disjoint(</span>
+<span class="fc" id="L406">                        cc2.getEventListeners(ConfigurationEvent.ANY),</span>
+<span class="fc" id="L407">                        config.getEventListeners(ConfigurationEvent.ANY)));</span>
+
+<span class="fc" id="L409">        StrictConfigurationComparator comp = new StrictConfigurationComparator();</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        for (int i = 0; i &lt; config.getNumberOfConfigurations(); i++)</span>
+        {
+<span class="fc" id="L412">            assertNotSame(&quot;Configuration at &quot; + i + &quot; was not cloned&quot;, config</span>
+<span class="fc" id="L413">                    .getConfiguration(i), cc2.getConfiguration(i));</span>
+<span class="fc" id="L414">            assertEquals(&quot;Wrong config class at &quot; + i, config.getConfiguration(</span>
+<span class="fc" id="L415">                    i).getClass(), cc2.getConfiguration(i).getClass());</span>
+<span class="fc" id="L416">            assertTrue(&quot;Configs not equal at &quot; + i, comp.compare(config</span>
+<span class="fc" id="L417">                    .getConfiguration(i), cc2.getConfiguration(i)));</span>
+        }
+
+<span class="fc" id="L420">        assertTrue(&quot;Combined configs not equal&quot;, comp.compare(config, cc2));</span>
+<span class="fc" id="L421">    }</span>
+
+    /**
+     * Tests if the cloned configuration is decoupled from the original.
+     */
+    @Test
+    public void testCloneModify()
+    {
+<span class="fc" id="L429">        config.addConfiguration(setUpTestConfiguration(), TEST_NAME);</span>
+<span class="fc" id="L430">        CombinedConfiguration cc2 = (CombinedConfiguration) config.clone();</span>
+<span class="fc" id="L431">        assertTrue(&quot;Name is missing&quot;, cc2.getConfigurationNames().contains(</span>
+                TEST_NAME));
+<span class="fc" id="L433">        cc2.removeConfiguration(TEST_NAME);</span>
+<span class="fc" id="L434">        assertFalse(&quot;Names in original changed&quot;, config.getConfigurationNames()</span>
+<span class="fc" id="L435">                .isEmpty());</span>
+<span class="fc" id="L436">    }</span>
+
+    /**
+     * Tests clearing a combined configuration. This should remove all contained
+     * configurations.
+     */
+    @Test
+    public void testClear()
+    {
+<span class="fc" id="L445">        config.addConfiguration(setUpTestConfiguration(), TEST_NAME, &quot;test&quot;);</span>
+<span class="fc" id="L446">        config.addConfiguration(setUpTestConfiguration());</span>
+
+<span class="fc" id="L448">        config.clear();</span>
+<span class="fc" id="L449">        assertEquals(&quot;Still configs contained&quot;, 0, config</span>
+<span class="fc" id="L450">                .getNumberOfConfigurations());</span>
+<span class="fc" id="L451">        assertTrue(&quot;Still names contained&quot;, config.getConfigurationNames()</span>
+<span class="fc" id="L452">                .isEmpty());</span>
+<span class="fc" id="L453">        assertTrue(&quot;Config is not empty&quot;, config.isEmpty());</span>
+
+<span class="fc" id="L455">        listener.checkEvent(3, 2);</span>
+<span class="fc" id="L456">    }</span>
+
+    /**
+     * Tests whether the combined configuration removes itself as change
+     * listener from the child configurations on a clear operation. This test is
+     * related to CONFIGURATION-572.
+     */
+    @Test
+    public void testClearRemoveChildListener()
+    {
+<span class="fc" id="L466">        AbstractConfiguration child = setUpTestConfiguration();</span>
+<span class="fc" id="L467">        config.addConfiguration(child);</span>
+
+<span class="fc" id="L469">        config.clear();</span>
+<span class="pc bpc" id="L470" title="1 of 2 branches missed.">        for (EventListener&lt;?&gt; listener : child</span>
+<span class="fc" id="L471">                .getEventListeners(ConfigurationEvent.ANY))</span>
+        {
+<span class="nc" id="L473">            assertNotEquals(&quot;Still registered&quot;, config, listener);</span>
+<span class="nc" id="L474">        }</span>
+<span class="fc" id="L475">    }</span>
+
+    /**
+     * Prepares a test of the getSource() method.
+     */
+    private void setUpSourceTest()
+    {
+<span class="fc" id="L482">        BaseHierarchicalConfiguration c1 = new BaseHierarchicalConfiguration();</span>
+<span class="fc" id="L483">        PropertiesConfiguration c2 = new PropertiesConfiguration();</span>
+<span class="fc" id="L484">        c1.addProperty(TEST_KEY, TEST_NAME);</span>
+<span class="fc" id="L485">        c2.addProperty(&quot;another.key&quot;, &quot;test&quot;);</span>
+<span class="fc" id="L486">        config.addConfiguration(c1, CHILD1);</span>
+<span class="fc" id="L487">        config.addConfiguration(c2, CHILD2);</span>
+<span class="fc" id="L488">    }</span>
+
+    /**
+     * Tests the gestSource() method when the source property is defined in a
+     * hierarchical configuration.
+     */
+    @Test
+    public void testGetSourceHierarchical()
+    {
+<span class="fc" id="L497">        setUpSourceTest();</span>
+<span class="fc" id="L498">        assertEquals(&quot;Wrong source configuration&quot;, config</span>
+<span class="fc" id="L499">                .getConfiguration(CHILD1), config.getSource(TEST_KEY));</span>
+<span class="fc" id="L500">    }</span>
+
+    /**
+     * Tests whether the source configuration can be detected for non
+     * hierarchical configurations.
+     */
+    @Test
+    public void testGetSourceNonHierarchical()
+    {
+<span class="fc" id="L509">        setUpSourceTest();</span>
+<span class="fc" id="L510">        assertEquals(&quot;Wrong source configuration&quot;, config</span>
+<span class="fc" id="L511">                .getConfiguration(CHILD2), config.getSource(&quot;another.key&quot;));</span>
+<span class="fc" id="L512">    }</span>
+
+    /**
+     * Tests the getSource() method when the passed in key is not contained.
+     * Result should be null in this case.
+     */
+    @Test
+    public void testGetSourceUnknown()
+    {
+<span class="fc" id="L521">        setUpSourceTest();</span>
+<span class="fc" id="L522">        assertNull(&quot;Wrong result for unknown key&quot;, config</span>
+<span class="fc" id="L523">                .getSource(&quot;an.unknown.key&quot;));</span>
+<span class="fc" id="L524">    }</span>
+
+    /**
+     * Tests the getSource() method when a null key is passed in. This should
+     * cause an exception.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testGetSourceNull()
+    {
+<span class="nc" id="L533">        config.getSource(null);</span>
+<span class="nc" id="L534">    }</span>
+
+    /**
+     * Tests the getSource() method when the passed in key belongs to the
+     * combined configuration itself.
+     */
+    @Test
+    public void testGetSourceCombined()
+    {
+<span class="fc" id="L543">        setUpSourceTest();</span>
+<span class="fc" id="L544">        final String key = &quot;yet.another.key&quot;;</span>
+<span class="fc" id="L545">        config.addProperty(key, Boolean.TRUE);</span>
+<span class="fc" id="L546">        assertEquals(&quot;Wrong source for key&quot;, config, config.getSource(key));</span>
+<span class="fc" id="L547">    }</span>
+
+    /**
+     * Tests the getSource() method when the passed in key refers to multiple
+     * values, which are all defined in the same source configuration.
+     */
+    @Test
+    public void testGetSourceMulti()
+    {
+<span class="fc" id="L556">        setUpSourceTest();</span>
+<span class="fc" id="L557">        final String key = &quot;list.key&quot;;</span>
+<span class="fc" id="L558">        config.getConfiguration(CHILD1).addProperty(key, &quot;1,2,3&quot;);</span>
+<span class="fc" id="L559">        assertEquals(&quot;Wrong source for multi-value property&quot;, config</span>
+<span class="fc" id="L560">                .getConfiguration(CHILD1), config.getSource(key));</span>
+<span class="fc" id="L561">    }</span>
+
+    /**
+     * Tests the getSource() method when the passed in key refers to multiple
+     * values defined by different sources. This should cause an exception.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testGetSourceMultiSources()
+    {
+<span class="fc" id="L570">        setUpSourceTest();</span>
+<span class="fc" id="L571">        final String key = &quot;list.key&quot;;</span>
+<span class="fc" id="L572">        config.getConfiguration(CHILD1).addProperty(key, &quot;1,2,3&quot;);</span>
+<span class="fc" id="L573">        config.getConfiguration(CHILD2).addProperty(key, &quot;a,b,c&quot;);</span>
+<span class="nc" id="L574">        config.getSource(key);</span>
+<span class="nc" id="L575">    }</span>
+
+    /**
+     * Tests getSource() if a child configuration is again a combined configuration.
+     */
+    @Test
+    public void testGetSourceWithCombinedChildConfiguration()
+    {
+<span class="fc" id="L583">        setUpSourceTest();</span>
+<span class="fc" id="L584">        CombinedConfiguration cc = new CombinedConfiguration();</span>
+<span class="fc" id="L585">        cc.addConfiguration(config);</span>
+<span class="fc" id="L586">        assertEquals(&quot;Wrong source&quot;, config, cc.getSource(TEST_KEY));</span>
+<span class="fc" id="L587">    }</span>
+
+    /**
+     * Tests whether multiple sources of a key can be retrieved.
+     */
+    @Test
+    public void testGetSourcesMultiSources()
+    {
+<span class="fc" id="L595">        setUpSourceTest();</span>
+<span class="fc" id="L596">        final String key = &quot;list.key&quot;;</span>
+<span class="fc" id="L597">        config.getConfiguration(CHILD1).addProperty(key, &quot;1,2,3&quot;);</span>
+<span class="fc" id="L598">        config.getConfiguration(CHILD2).addProperty(key, &quot;a,b,c&quot;);</span>
+<span class="fc" id="L599">        Set&lt;Configuration&gt; sources = config.getSources(key);</span>
+<span class="fc" id="L600">        assertEquals(&quot;Wrong number of sources&quot;, 2, sources.size());</span>
+<span class="fc" id="L601">        assertTrue(&quot;Source 1 not found&quot;,</span>
+<span class="fc" id="L602">                sources.contains(config.getConfiguration(CHILD1)));</span>
+<span class="fc" id="L603">        assertTrue(&quot;Source 2 not found&quot;,</span>
+<span class="fc" id="L604">                sources.contains(config.getConfiguration(CHILD2)));</span>
+<span class="fc" id="L605">    }</span>
+
+    /**
+     * Tests getSources() for a non existing key.
+     */
+    @Test
+    public void testGetSourcesUnknownKey()
+    {
+<span class="fc" id="L613">        setUpSourceTest();</span>
+<span class="fc" id="L614">        assertTrue(&quot;Got sources&quot;, config.getSources(&quot;non.existing,key&quot;)</span>
+<span class="fc" id="L615">                .isEmpty());</span>
+<span class="fc" id="L616">    }</span>
+
+    /**
+     * Tests whether escaped list delimiters are treated correctly.
+     */
+    @Test
+    public void testEscapeListDelimiters()
+    {
+<span class="fc" id="L624">        PropertiesConfiguration sub = new PropertiesConfiguration();</span>
+<span class="fc" id="L625">        sub.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L626">        sub.addProperty(&quot;test.pi&quot;, &quot;3\\,1415&quot;);</span>
+<span class="fc" id="L627">        config.addConfiguration(sub);</span>
+<span class="fc" id="L628">        assertEquals(&quot;Wrong value&quot;, &quot;3,1415&quot;, config.getString(&quot;test.pi&quot;));</span>
+<span class="fc" id="L629">    }</span>
+
+    /**
+     * Tests whether only a single invalidate event is fired for a change. This
+     * test is related to CONFIGURATION-315.
+     */
+    @Test
+    public void testInvalidateEventBeforeAndAfterChange()
+    {
+<span class="fc" id="L638">        ConfigurationEvent event =</span>
+                new ConfigurationEvent(config, ConfigurationEvent.ANY, null, null, true);
+<span class="fc" id="L640">        config.onEvent(event);</span>
+<span class="fc" id="L641">        assertEquals(&quot;No invalidate event fired&quot;, 1, listener.invalidateEvents);</span>
+<span class="fc" id="L642">        event = new ConfigurationEvent(config, ConfigurationEvent.ANY, null, null, false);</span>
+<span class="fc" id="L643">        config.onEvent(event);</span>
+<span class="fc" id="L644">        assertEquals(&quot;Another invalidate event fired&quot;, 1,</span>
+                listener.invalidateEvents);
+<span class="fc" id="L646">    }</span>
+
+    /**
+     * Tests using a conversion expression engine for child configurations with
+     * strange keys. This test is related to CONFIGURATION-336.
+     */
+    @Test
+    public void testConversionExpressionEngine()
+    {
+<span class="fc" id="L655">        PropertiesConfiguration child = new PropertiesConfiguration();</span>
+<span class="fc" id="L656">        child.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L657">        child.addProperty(&quot;test(a)&quot;, &quot;1,2,3&quot;);</span>
+<span class="fc" id="L658">        config.addConfiguration(child);</span>
+<span class="fc" id="L659">        DefaultExpressionEngine engineQuery =</span>
+                new DefaultExpressionEngine(
+                        new DefaultExpressionEngineSymbols.Builder(
+                                DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS)
+<span class="fc" id="L663">                                .setIndexStart(&quot;&lt;&quot;).setIndexEnd(&quot;&gt;&quot;).create());</span>
+<span class="fc" id="L664">        config.setExpressionEngine(engineQuery);</span>
+<span class="fc" id="L665">        DefaultExpressionEngine engineConvert =</span>
+                new DefaultExpressionEngine(
+                        new DefaultExpressionEngineSymbols.Builder(
+                                DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS)
+<span class="fc" id="L669">                                .setIndexStart(&quot;[&quot;).setIndexEnd(&quot;]&quot;).create());</span>
+<span class="fc" id="L670">        config.setConversionExpressionEngine(engineConvert);</span>
+<span class="fc" id="L671">        assertEquals(&quot;Wrong property 1&quot;, &quot;1&quot;, config.getString(&quot;test(a)&lt;0&gt;&quot;));</span>
+<span class="fc" id="L672">        assertEquals(&quot;Wrong property 2&quot;, &quot;2&quot;, config.getString(&quot;test(a)&lt;1&gt;&quot;));</span>
+<span class="fc" id="L673">        assertEquals(&quot;Wrong property 3&quot;, &quot;3&quot;, config.getString(&quot;test(a)&lt;2&gt;&quot;));</span>
+<span class="fc" id="L674">    }</span>
+
+    @Test
+    public void testGetConfigurations() throws Exception
+    {
+<span class="fc" id="L679">        config.addConfiguration(setUpTestConfiguration());</span>
+<span class="fc" id="L680">        config.addConfiguration(setUpTestConfiguration(), TEST_NAME, &quot;conf2&quot;);</span>
+<span class="fc" id="L681">        AbstractConfiguration pc = new PropertiesConfiguration();</span>
+<span class="fc" id="L682">        config.addConfiguration(pc, &quot;props&quot;);</span>
+<span class="fc" id="L683">        List&lt;Configuration&gt; list = config.getConfigurations();</span>
+<span class="fc" id="L684">        assertNotNull(&quot;No list of configurations returned&quot;, list);</span>
+<span class="pc bpc" id="L685" title="1 of 2 branches missed.">        assertTrue(&quot;Incorrect number of configurations&quot;, list.size() == 3);</span>
+<span class="fc" id="L686">        Configuration c = list.get(2);</span>
+<span class="pc bpc" id="L687" title="1 of 2 branches missed.">        assertTrue(&quot;Incorrect configuration&quot;, c == pc);</span>
+<span class="fc" id="L688">    }</span>
+
+    @Test
+    public void testGetConfigurationNameList() throws Exception
+    {
+<span class="fc" id="L693">        config.addConfiguration(setUpTestConfiguration());</span>
+<span class="fc" id="L694">        config.addConfiguration(setUpTestConfiguration(), TEST_NAME, &quot;conf2&quot;);</span>
+<span class="fc" id="L695">        AbstractConfiguration pc = new PropertiesConfiguration();</span>
+<span class="fc" id="L696">        config.addConfiguration(pc, &quot;props&quot;);</span>
+<span class="fc" id="L697">        List&lt;String&gt; list = config.getConfigurationNameList();</span>
+<span class="fc" id="L698">        assertNotNull(&quot;No list of configurations returned&quot;, list);</span>
+<span class="pc bpc" id="L699" title="1 of 2 branches missed.">        assertTrue(&quot;Incorrect number of configurations&quot;, list.size() == 3);</span>
+<span class="fc" id="L700">        String name = list.get(1);</span>
+<span class="fc" id="L701">        assertNotNull(&quot;No name returned&quot;, name);</span>
+<span class="fc" id="L702">        assertTrue(&quot;Incorrect configuration name&quot;, TEST_NAME.equals(name));</span>
+<span class="fc" id="L703">    }</span>
+
+    /**
+     * Tests whether a combined configuration can be copied to an XML
+     * configuration. This test is related to CONFIGURATION-445.
+     */
+    @Test
+    public void testCombinedCopyToXML() throws ConfigurationException
+    {
+<span class="fc" id="L712">        XMLConfiguration x1 = new XMLConfiguration();</span>
+<span class="fc" id="L713">        x1.addProperty(&quot;key1&quot;, &quot;value1&quot;);</span>
+<span class="fc" id="L714">        x1.addProperty(&quot;key1[@override]&quot;, &quot;USER1&quot;);</span>
+<span class="fc" id="L715">        x1.addProperty(&quot;key2&quot;, &quot;value2&quot;);</span>
+<span class="fc" id="L716">        x1.addProperty(&quot;key2[@override]&quot;, &quot;USER2&quot;);</span>
+<span class="fc" id="L717">        XMLConfiguration x2 = new XMLConfiguration();</span>
+<span class="fc" id="L718">        x2.addProperty(&quot;key2&quot;, &quot;value2.2&quot;);</span>
+<span class="fc" id="L719">        x2.addProperty(&quot;key2[@override]&quot;, &quot;USER2&quot;);</span>
+<span class="fc" id="L720">        config.setNodeCombiner(new OverrideCombiner());</span>
+<span class="fc" id="L721">        config.addConfiguration(x2);</span>
+<span class="fc" id="L722">        config.addConfiguration(x1);</span>
+<span class="fc" id="L723">        XMLConfiguration x3 = new XMLConfiguration(config);</span>
+<span class="fc" id="L724">        assertEquals(&quot;Wrong element value&quot;, &quot;value2.2&quot;, x3.getString(&quot;key2&quot;));</span>
+<span class="fc" id="L725">        assertEquals(&quot;Wrong attribute value&quot;, &quot;USER2&quot;,</span>
+<span class="fc" id="L726">                x3.getString(&quot;key2[@override]&quot;));</span>
+<span class="fc" id="L727">        StringWriter w = new StringWriter();</span>
+<span class="fc" id="L728">        new FileHandler(x3).save(w);</span>
+<span class="fc" id="L729">        String s = w.toString();</span>
+<span class="fc" id="L730">        x3 = new XMLConfiguration();</span>
+<span class="fc" id="L731">        new FileHandler(x3).load(new StringReader(s));</span>
+<span class="fc" id="L732">        assertEquals(&quot;Wrong element value after load&quot;, &quot;value2.2&quot;,</span>
+<span class="fc" id="L733">                x3.getString(&quot;key2&quot;));</span>
+<span class="fc" id="L734">        assertEquals(&quot;Wrong attribute value after load&quot;, &quot;USER2&quot;,</span>
+<span class="fc" id="L735">                x3.getString(&quot;key2[@override]&quot;));</span>
+<span class="fc" id="L736">    }</span>
+
+    /**
+     * Prepares a test for synchronization. This method installs a test
+     * synchronizer and adds some test configurations.
+     *
+     * @return the test synchronizer
+     */
+    private SynchronizerTestImpl setUpSynchronizerTest()
+    {
+<span class="fc" id="L746">        setUpSourceTest();</span>
+<span class="fc" id="L747">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L748">        config.setSynchronizer(sync);</span>
+<span class="fc" id="L749">        return sync;</span>
+    }
+
+    /**
+     * Tests whether adding a new configuration is synchronized.
+     */
+    @Test
+    public void testAddConfigurationSynchronized()
+    {
+<span class="fc" id="L758">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L759">        config.addConfiguration(new BaseHierarchicalConfiguration());</span>
+<span class="fc" id="L760">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE);</span>
+<span class="fc" id="L761">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L762">    }</span>
+
+    /**
+     * Tests whether setNodeCombiner() is correctly synchronized.
+     */
+    @Test
+    public void testSetNodeCombinerSynchronized()
+    {
+<span class="fc" id="L770">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L771">        config.setNodeCombiner(new UnionCombiner());</span>
+<span class="fc" id="L772">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE);</span>
+<span class="fc" id="L773">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L774">    }</span>
+
+    /**
+     * Tests whether getNodeCombiner() is correctly synchronized.
+     */
+    @Test
+    public void testGetNodeCombinerSynchronized()
+    {
+<span class="fc" id="L782">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L783">        assertNotNull(&quot;No node combiner&quot;, config.getNodeCombiner());</span>
+<span class="fc" id="L784">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L785">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L786">    }</span>
+
+    /**
+     * Tests whether access to a configuration by index is correctly
+     * synchronized.
+     */
+    @Test
+    public void testGetConfigurationByIdxSynchronized()
+    {
+<span class="fc" id="L795">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L796">        assertNotNull(&quot;No configuration&quot;, config.getConfiguration(0));</span>
+<span class="fc" id="L797">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L798">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L799">    }</span>
+
+    /**
+     * Tests whether access to a configuration by name is correctly
+     * synchronized.
+     */
+    @Test
+    public void testGetConfigurationByNameSynchronized()
+    {
+<span class="fc" id="L808">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L809">        assertNotNull(&quot;No configuration&quot;, config.getConfiguration(CHILD1));</span>
+<span class="fc" id="L810">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L811">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L812">    }</span>
+
+    /**
+     * Tests whether querying the name set of child configurations is
+     * synchronized.
+     */
+    @Test
+    public void testGetConfigurationNamesSynchronized()
+    {
+<span class="fc" id="L821">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L822">        assertFalse(&quot;No child names&quot;, config.getConfigurationNames().isEmpty());</span>
+<span class="fc" id="L823">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L824">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L825">    }</span>
+
+    /**
+     * Tests whether querying the name list of child configurations is
+     * synchronized.
+     */
+    @Test
+    public void testGetConfigurationNameListSynchronized()
+    {
+<span class="fc" id="L834">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L835">        assertFalse(&quot;No child names&quot;, config.getConfigurationNameList()</span>
+<span class="fc" id="L836">                .isEmpty());</span>
+<span class="fc" id="L837">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L838">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L839">    }</span>
+
+    /**
+     * Helper method for testing that the combined root node has not yet been
+     * constructed.
+     */
+    private void checkCombinedRootNotConstructed()
+    {
+<span class="fc" id="L847">        assertTrue(&quot;Root node was constructed&quot;, config.getModel()</span>
+<span class="fc" id="L848">                .getNodeHandler().getRootNode().getChildren().isEmpty());</span>
+<span class="fc" id="L849">    }</span>
+
+    /**
+     * Tests whether querying the list of child configurations is synchronized.
+     */
+    @Test
+    public void testGetConfigurationsSynchronized()
+    {
+<span class="fc" id="L857">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L858">        assertFalse(&quot;No child configurations&quot;, config.getConfigurations()</span>
+<span class="fc" id="L859">                .isEmpty());</span>
+<span class="fc" id="L860">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L861">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L862">    }</span>
+
+    /**
+     * Tests whether read access to the conversion expression engine is
+     * synchronized.
+     */
+    @Test
+    public void testGetConversionExpressionEngineSynchronized()
+    {
+<span class="fc" id="L871">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L872">        assertNull(&quot;Got a conversion engine&quot;,</span>
+<span class="fc" id="L873">                config.getConversionExpressionEngine());</span>
+<span class="fc" id="L874">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L875">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L876">    }</span>
+
+    /**
+     * Tests whether write access to the conversion expression engine is
+     * synchronized.
+     */
+    @Test
+    public void testSetConversionExpressionEngineSynchronized()
+    {
+<span class="fc" id="L885">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L886">        config.setConversionExpressionEngine(new DefaultExpressionEngine(</span>
+                DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS));
+<span class="fc" id="L888">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE);</span>
+<span class="fc" id="L889">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L890">    }</span>
+
+    /**
+     * Tests whether invalidate() performs correct synchronization.
+     */
+    @Test
+    public void testInvalidateSynchronized()
+    {
+<span class="fc" id="L898">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L899">        config.invalidate();</span>
+<span class="fc" id="L900">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE);</span>
+<span class="fc" id="L901">    }</span>
+
+    /**
+     * Tests whether getSource() is correctly synchronized.
+     */
+    @Test
+    public void testGetSourceSynchronized()
+    {
+<span class="fc" id="L909">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L910">        assertNotNull(&quot;No source found&quot;, config.getSource(TEST_KEY));</span>
+<span class="fc" id="L911">        sync.verifyStart(Methods.BEGIN_READ);</span>
+<span class="fc" id="L912">        sync.verifyEnd(Methods.END_READ);</span>
+<span class="fc" id="L913">    }</span>
+
+    /**
+     * Tests whether querying the number of child configurations is
+     * synchronized.
+     */
+    @Test
+    public void testGetNumberOfConfigurationsSynchronized()
+    {
+<span class="fc" id="L922">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L923">        assertEquals(&quot;Wrong number of configurations&quot;, 2,</span>
+<span class="fc" id="L924">                config.getNumberOfConfigurations());</span>
+<span class="fc" id="L925">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L926">        checkCombinedRootNotConstructed();</span>
+<span class="fc" id="L927">    }</span>
+
+    /**
+     * Tests whether cloning of a configuration is correctly synchronized.
+     */
+    @Test
+    public void testCloneSynchronized()
+    {
+<span class="fc" id="L935">        setUpSourceTest();</span>
+<span class="fc" id="L936">        config.lock(LockMode.READ); // Causes the root node to be constructed</span>
+<span class="fc" id="L937">        config.unlock(LockMode.READ);</span>
+<span class="fc" id="L938">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L939">        config.setSynchronizer(sync);</span>
+<span class="fc" id="L940">        config.clone();</span>
+        // clone() of base class is wrapped by another read lock
+<span class="fc" id="L942">        sync.verifyStart(Methods.BEGIN_READ, Methods.BEGIN_READ);</span>
+<span class="fc" id="L943">        sync.verifyEnd(Methods.END_READ, Methods.END_READ);</span>
+<span class="fc" id="L944">    }</span>
+
+    /**
+     * Tests whether requested locks are freed correctly if an exception occurs
+     * while constructing the root node.
+     */
+    @Test
+    public void testLockHandlingWithExceptionWhenConstructingRootNode()
+    {
+<span class="fc" id="L953">        SynchronizerTestImpl sync = setUpSynchronizerTest();</span>
+<span class="fc" id="L954">        final RuntimeException testEx =</span>
+                new ConfigurationRuntimeException(&quot;Test exception&quot;);
+<span class="fc" id="L956">        BaseHierarchicalConfiguration childEx =</span>
+                new BaseHierarchicalConfiguration()
+<span class="fc" id="L958">                {</span>
+                    @Override
+                    public NodeModel&lt;ImmutableNode&gt; getModel() {
+<span class="fc" id="L961">                        throw testEx;</span>
+                    }
+                };
+<span class="fc" id="L964">        config.addConfiguration(childEx);</span>
+        try
+        {
+<span class="nc" id="L967">            config.lock(LockMode.READ);</span>
+<span class="nc" id="L968">            fail(&quot;Exception not detected!&quot;);</span>
+        }
+<span class="fc" id="L970">        catch (Exception ex)</span>
+        {
+<span class="fc" id="L972">            assertEquals(&quot;Unexpected exception&quot;, testEx, ex);</span>
+<span class="nc" id="L973">        }</span>
+        // 1 x add configuration, then obtain read lock and create root node
+<span class="fc" id="L975">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE, Methods.BEGIN_READ,</span>
+                Methods.END_READ, Methods.BEGIN_WRITE, Methods.END_WRITE);
+<span class="fc" id="L977">    }</span>
+
+    /**
+     * Tests concurrent read and write access on a combined configuration. There
+     * are multiple reader threads and a single writer thread. It is checked
+     * that no inconsistencies occur.
+     */
+    @Test
+    public void testConcurrentAccess() throws ConfigurationException,
+            InterruptedException
+    {
+        // populate the test combined configuration
+<span class="fc" id="L989">        setUpSourceTest();</span>
+<span class="fc" id="L990">        XMLConfiguration xmlConf = new XMLConfiguration();</span>
+<span class="fc" id="L991">        new FileHandler(xmlConf).load(ConfigurationAssert</span>
+<span class="fc" id="L992">                .getTestFile(&quot;test.xml&quot;));</span>
+<span class="fc" id="L993">        config.addConfiguration(xmlConf);</span>
+<span class="fc" id="L994">        PropertiesConfiguration propConf = new PropertiesConfiguration();</span>
+<span class="fc" id="L995">        new FileHandler(propConf).load(ConfigurationAssert</span>
+<span class="fc" id="L996">                .getTestFile(&quot;test.properties&quot;));</span>
+<span class="fc bfc" id="L997" title="All 2 branches covered.">        for (int i = 0; i &lt; 8; i++)</span>
+        {
+<span class="fc" id="L999">            config.addConfiguration(new BaseHierarchicalConfiguration());</span>
+        }
+<span class="fc" id="L1001">        config.getConfiguration(0).addProperty(KEY_CONCURRENT, TEST_NAME);</span>
+
+        // Set a single synchronizer for all involved configurations
+<span class="fc" id="L1004">        Synchronizer sync = new ReadWriteSynchronizer();</span>
+<span class="fc" id="L1005">        config.setSynchronizer(sync);</span>
+<span class="fc bfc" id="L1006" title="All 2 branches covered.">        for (Configuration c : config.getConfigurations())</span>
+        {
+<span class="fc" id="L1008">            c.setSynchronizer(sync);</span>
+<span class="fc" id="L1009">        }</span>
+
+        // setup test threads
+<span class="fc" id="L1012">        final int numberOfReaders = 3;</span>
+<span class="fc" id="L1013">        final int readCount = 5000;</span>
+<span class="fc" id="L1014">        final int writeCount = 3000;</span>
+<span class="fc" id="L1015">        CountDownLatch latch = new CountDownLatch(1);</span>
+<span class="fc" id="L1016">        AtomicInteger errorCount = new AtomicInteger();</span>
+<span class="fc" id="L1017">        Collection&lt;Thread&gt; threads = new ArrayList&lt;Thread&gt;(numberOfReaders + 1);</span>
+<span class="fc" id="L1018">        Thread writeThread =</span>
+                new WriteThread(config, latch, errorCount, writeCount);
+<span class="fc" id="L1020">        writeThread.start();</span>
+<span class="fc" id="L1021">        threads.add(writeThread);</span>
+<span class="fc bfc" id="L1022" title="All 2 branches covered.">        for (int i = 0; i &lt; numberOfReaders; i++)</span>
+        {
+<span class="fc" id="L1024">            Thread readThread =</span>
+                    new ReadThread(config, latch, errorCount, readCount);
+<span class="fc" id="L1026">            readThread.start();</span>
+<span class="fc" id="L1027">            threads.add(readThread);</span>
+        }
+
+        // perform test
+<span class="fc" id="L1031">        latch.countDown();</span>
+<span class="fc bfc" id="L1032" title="All 2 branches covered.">        for (Thread t : threads)</span>
+        {
+<span class="fc" id="L1034">            t.join();</span>
+<span class="fc" id="L1035">        }</span>
+<span class="fc" id="L1036">        assertEquals(&quot;Got errors&quot;, 0, errorCount.get());</span>
+<span class="fc" id="L1037">    }</span>
+
+    /**
+     * Prepares the test configuration for a test for sub configurations. Some
+     * child configurations are added.
+     *
+     * @return the sub configuration at the test sub key
+     */
+    private AbstractConfiguration setUpSubConfigTest()
+    {
+<span class="fc" id="L1047">        AbstractConfiguration srcConfig = setUpTestConfiguration();</span>
+<span class="fc" id="L1048">        config.addConfiguration(srcConfig, &quot;source&quot;, SUB_KEY);</span>
+<span class="fc" id="L1049">        config.addConfiguration(setUpTestConfiguration());</span>
+<span class="fc" id="L1050">        config.addConfiguration(setUpTestConfiguration(), &quot;otherTest&quot;,</span>
+                &quot;other.prefix&quot;);
+<span class="fc" id="L1052">        return srcConfig;</span>
+    }
+
+    /**
+     * Tests whether a sub configuration survives updates of its parent.
+     */
+    @Test
+    public void testSubConfigurationWithUpdates()
+    {
+<span class="fc" id="L1061">        AbstractConfiguration srcConfig = setUpSubConfigTest();</span>
+<span class="fc" id="L1062">        HierarchicalConfiguration&lt;ImmutableNode&gt; sub =</span>
+<span class="fc" id="L1063">                config.configurationAt(SUB_KEY, true);</span>
+<span class="fc" id="L1064">        assertTrue(&quot;Wrong value before update&quot;, sub.getBoolean(TEST_KEY));</span>
+<span class="fc" id="L1065">        srcConfig.setProperty(TEST_KEY, Boolean.FALSE);</span>
+<span class="fc" id="L1066">        assertFalse(&quot;Wrong value after update&quot;, sub.getBoolean(TEST_KEY));</span>
+<span class="fc" id="L1067">        assertFalse(&quot;Wrong value from combined configuration&quot;,</span>
+<span class="fc" id="L1068">                config.getBoolean(SUB_KEY + '.' + TEST_KEY));</span>
+<span class="fc" id="L1069">    }</span>
+
+    /**
+     * Checks the configurationsAt() method.
+     * @param withUpdates flag whether updates are supported
+     */
+    private void checkConfigurationsAt(boolean withUpdates)
+    {
+<span class="fc" id="L1077">        setUpSubConfigTest();</span>
+<span class="fc" id="L1078">        List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; subs =</span>
+<span class="fc" id="L1079">                config.configurationsAt(SUB_KEY, withUpdates);</span>
+<span class="fc" id="L1080">        assertEquals(&quot;Wrong number of sub configurations&quot;, 1, subs.size());</span>
+<span class="fc" id="L1081">        assertTrue(&quot;Wrong value in sub configuration&quot;,</span>
+<span class="fc" id="L1082">                subs.get(0).getBoolean(TEST_KEY));</span>
+<span class="fc" id="L1083">    }</span>
+
+    /**
+     * Tests whether sub configurations can be created from a key.
+     */
+    @Test
+    public void testConfigurationsAt()
+    {
+<span class="fc" id="L1091">        checkConfigurationsAt(false);</span>
+<span class="fc" id="L1092">    }</span>
+
+    /**
+     * Tests whether sub configurations can be created which are attached.
+     */
+    @Test
+    public void testConfigurationsAtWithUpdates()
+    {
+<span class="fc" id="L1100">        checkConfigurationsAt(true);</span>
+<span class="fc" id="L1101">    }</span>
+
+    /**
+     * Helper method for creating a test configuration to be added to the
+     * combined configuration.
+     *
+     * @return the test configuration
+     */
+    private static AbstractConfiguration setUpTestConfiguration()
+    {
+<span class="fc" id="L1111">        BaseHierarchicalConfiguration config = new BaseHierarchicalConfiguration();</span>
+<span class="fc" id="L1112">        config.addProperty(TEST_KEY, Boolean.TRUE);</span>
+<span class="fc" id="L1113">        config.addProperty(&quot;test.comment&quot;, &quot;This is a test&quot;);</span>
+<span class="fc" id="L1114">        return config;</span>
+    }
+
+    /**
+     * Test event listener class for checking if the expected invalidate events
+     * are fired.
+     */
+    private static class CombinedListener implements EventListener&lt;ConfigurationEvent&gt;
+    {
+        int invalidateEvents;
+
+        int otherEvents;
+
+        @Override
+        public void onEvent(ConfigurationEvent event)
+        {
+<span class="fc bfc" id="L1130" title="All 2 branches covered.">            if (event.getEventType() == CombinedConfiguration.COMBINED_INVALIDATE)</span>
+            {
+<span class="fc" id="L1132">                invalidateEvents++;</span>
+            }
+            else
+            {
+<span class="fc" id="L1136">                otherEvents++;</span>
+            }
+<span class="fc" id="L1138">        }</span>
+
+        /**
+         * Checks if the expected number of events was fired.
+         *
+         * @param expectedInvalidate the expected number of invalidate events
+         * @param expectedOthers the expected number of other events
+         */
+        public void checkEvent(int expectedInvalidate, int expectedOthers)
+        {
+<span class="fc" id="L1148">            assertEquals(&quot;Wrong number of invalidate events&quot;,</span>
+                    expectedInvalidate, invalidateEvents);
+<span class="fc" id="L1150">            assertEquals(&quot;Wrong number of other events&quot;, expectedOthers,</span>
+                    otherEvents);
+<span class="fc" id="L1152">        }</span>
+    }
+
+    /**
+     * A test thread performing reads on a combined configuration. This thread
+     * reads a certain property from the configuration. If everything works
+     * well, this property should have at least one and at most two values.
+     */
+    private static class ReadThread extends Thread
+    {
+        /** The configuration to be accessed. */
+        private final Configuration config;
+
+        /** The latch for synchronizing thread start. */
+        private final CountDownLatch startLatch;
+
+        /** A counter for read errors. */
+        private final AtomicInteger errorCount;
+
+        /** The number of reads to be performed. */
+        private final int numberOfReads;
+
+        /**
+         * Creates a new instance of {@code ReadThread}.
+         *
+         * @param readConfig the configuration to be read
+         * @param latch the latch for synchronizing thread start
+         * @param errCnt the counter for read errors
+         * @param readCount the number of reads to be performed
+         */
+        public ReadThread(Configuration readConfig, CountDownLatch latch,
+                AtomicInteger errCnt, int readCount)
+<span class="fc" id="L1184">        {</span>
+<span class="fc" id="L1185">            config = readConfig;</span>
+<span class="fc" id="L1186">            startLatch = latch;</span>
+<span class="fc" id="L1187">            errorCount = errCnt;</span>
+<span class="fc" id="L1188">            numberOfReads = readCount;</span>
+<span class="fc" id="L1189">        }</span>
+
+        /**
+         * Reads from the test configuration.
+         */
+        @Override
+        public void run()
+        {
+            try
+            {
+<span class="fc" id="L1199">                startLatch.await();</span>
+<span class="fc bfc" id="L1200" title="All 2 branches covered.">                for (int i = 0; i &lt; numberOfReads; i++)</span>
+                {
+<span class="fc" id="L1202">                    readConfiguration();</span>
+                }
+            }
+<span class="nc" id="L1205">            catch (Exception e)</span>
+            {
+<span class="nc" id="L1207">                errorCount.incrementAndGet();</span>
+<span class="fc" id="L1208">            }</span>
+<span class="fc" id="L1209">        }</span>
+
+        /**
+         * Reads the test property from the associated configuration. Its values
+         * are checked.
+         */
+        private void readConfiguration()
+        {
+<span class="fc" id="L1217">            List&lt;Object&gt; values = config.getList(KEY_CONCURRENT);</span>
+<span class="pc bpc" id="L1218" title="2 of 4 branches missed.">            if (values.size() &lt; 1 || values.size() &gt; 2)</span>
+            {
+<span class="nc" id="L1220">                errorCount.incrementAndGet();</span>
+            }
+            else
+            {
+<span class="fc" id="L1224">                boolean ok = true;</span>
+<span class="fc bfc" id="L1225" title="All 2 branches covered.">                for (Object value : values)</span>
+                {
+<span class="pc bpc" id="L1227" title="1 of 2 branches missed.">                    if (!TEST_NAME.equals(value))</span>
+                    {
+<span class="nc" id="L1229">                        ok = false;</span>
+                    }
+<span class="fc" id="L1231">                }</span>
+<span class="pc bpc" id="L1232" title="1 of 2 branches missed.">                if (!ok)</span>
+                {
+<span class="nc" id="L1234">                    errorCount.incrementAndGet();</span>
+                }
+            }
+<span class="fc" id="L1237">        }</span>
+    }
+
+    /**
+     * A test thread performing updates on a test configuration. This thread
+     * modifies configurations which are children of a combined configuration.
+     * Each update operation adds a value to one of the child configurations and
+     * removes it from another one (which contained it before). So if concurrent
+     * reads are performed, the test property should always have between 1 and 2
+     * values.
+     */
+    private static class WriteThread extends Thread
+    {
+        /** The list with the child configurations. */
+        private final List&lt;Configuration&gt; testConfigs;
+
+        /** The latch for synchronizing thread start. */
+        private final CountDownLatch startLatch;
+
+        /** A counter for errors. */
+        private final AtomicInteger errorCount;
+
+        /** The number of write operations to be performed. */
+        private final int numberOfWrites;
+
+        /** The index of the child configuration containing the test property. */
+        private int currentChildConfigIdx;
+
+        /**
+         * Creates a new instance of {@code WriteThread}.
+         *
+         * @param cc the test combined configuration
+         * @param latch the latch for synchronizing test start
+         * @param errCnt a counter for errors
+         * @param writeCount the number of writes to be performed
+         */
+        public WriteThread(CombinedConfiguration cc, CountDownLatch latch,
+                AtomicInteger errCnt, int writeCount)
+<span class="fc" id="L1275">        {</span>
+<span class="fc" id="L1276">            testConfigs = cc.getConfigurations();</span>
+<span class="fc" id="L1277">            startLatch = latch;</span>
+<span class="fc" id="L1278">            errorCount = errCnt;</span>
+<span class="fc" id="L1279">            numberOfWrites = writeCount;</span>
+<span class="fc" id="L1280">        }</span>
+
+        @Override
+        public void run()
+        {
+            try
+            {
+<span class="fc" id="L1287">                startLatch.await();</span>
+<span class="fc bfc" id="L1288" title="All 2 branches covered.">                for (int i = 0; i &lt; numberOfWrites; i++)</span>
+                {
+<span class="fc" id="L1290">                    updateConfigurations();</span>
+                }
+            }
+<span class="nc" id="L1293">            catch (InterruptedException e)</span>
+            {
+<span class="nc" id="L1295">                errorCount.incrementAndGet();</span>
+<span class="fc" id="L1296">            }</span>
+<span class="fc" id="L1297">        }</span>
+
+        /**
+         * Performs the update operation.
+         */
+        private void updateConfigurations()
+        {
+<span class="fc" id="L1304">            int newIdx = (currentChildConfigIdx + 1) % testConfigs.size();</span>
+<span class="fc" id="L1305">            testConfigs.get(newIdx).addProperty(KEY_CONCURRENT, TEST_NAME);</span>
+<span class="fc" id="L1306">            testConfigs.get(currentChildConfigIdx)</span>
+<span class="fc" id="L1307">                    .clearProperty(KEY_CONCURRENT);</span>
+<span class="fc" id="L1308">            currentChildConfigIdx = newIdx;</span>
+<span class="fc" id="L1309">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>
