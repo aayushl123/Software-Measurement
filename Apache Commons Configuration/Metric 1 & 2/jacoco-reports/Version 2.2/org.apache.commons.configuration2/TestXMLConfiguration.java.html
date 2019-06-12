@@ -1,0 +1,1719 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestXMLConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons_configuration2$Whole_project.exec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">TestXMLConfiguration.java</span></div><h1>TestXMLConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerFactoryConfigurationError;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+
+import org.apache.commons.configuration2.SynchronizerTestImpl.Methods;
+import org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
+import org.apache.commons.configuration2.convert.DefaultListDelimiterHandler;
+import org.apache.commons.configuration2.convert.DisabledListDelimiterHandler;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.io.FileHandler;
+import org.apache.commons.configuration2.resolver.CatalogResolver;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.NodeStructureHelper;
+import org.apache.commons.configuration2.tree.xpath.XPathExpressionEngine;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.Rule;
+import org.junit.rules.TemporaryFolder;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.DefaultHandler;
+
+/**
+ * test for loading and saving xml properties files
+ *
+ * @version $Id$
+ */
+<span class="fc" id="L68">public class TestXMLConfiguration</span>
+{
+    /** XML Catalog */
+<span class="fc" id="L71">    private static final String CATALOG_FILES = ConfigurationAssert</span>
+<span class="fc" id="L72">            .getTestFile(&quot;catalog.xml&quot;).getAbsolutePath();</span>
+
+    /** Constant for the used encoding.*/
+    static final String ENCODING = &quot;ISO-8859-1&quot;;
+
+    /** Constant for the test system ID.*/
+    static final String SYSTEM_ID = &quot;properties.dtd&quot;;
+
+    /** Constant for the test public ID.*/
+    static final String PUBLIC_ID = &quot;-//Commons Configuration//DTD Test Configuration 1.3//EN&quot;;
+
+    /** Constant for the DOCTYPE declaration.*/
+    static final String DOCTYPE_DECL = &quot; PUBLIC \&quot;&quot; + PUBLIC_ID + &quot;\&quot; \&quot;&quot; + SYSTEM_ID + &quot;\&quot;&gt;&quot;;
+
+    /** Constant for the DOCTYPE prefix.*/
+    static final String DOCTYPE = &quot;&lt;!DOCTYPE &quot;;
+
+    /** Constant for the transformer factory property.*/
+    static final String PROP_FACTORY = &quot;javax.xml.transform.TransformerFactory&quot;;
+
+    /** Helper object for creating temporary files. */
+<span class="fc" id="L93">    @Rule</span>
+    public TemporaryFolder folder = new TemporaryFolder();
+
+    /** The File that we test with */
+<span class="fc" id="L97">    private final String testProperties = ConfigurationAssert.getTestFile(&quot;test.xml&quot;).getAbsolutePath();</span>
+<span class="fc" id="L98">    private final String testProperties2 = ConfigurationAssert.getTestFile(&quot;testDigesterConfigurationInclude1.xml&quot;).getAbsolutePath();</span>
+    private File testSaveConf;
+    private File testSaveFile;
+<span class="fc" id="L101">    private final String testFile2 = ConfigurationAssert.getTestFile(&quot;sample.xml&quot;).getAbsolutePath();</span>
+
+    /** Constant for the number of test threads. */
+    private static final int THREAD_COUNT = 5;
+
+    /** Constant for the number of loops in tests with multiple threads. */
+    private static final int LOOP_COUNT = 100;
+
+    private XMLConfiguration conf;
+
+    @Before
+    public void setUp() throws Exception
+    {
+<span class="fc" id="L114">        testSaveConf = folder.newFile(&quot;testsave.xml&quot;);</span>
+<span class="fc" id="L115">        testSaveFile = folder.newFile(&quot;testsample2.xml&quot;);</span>
+<span class="fc" id="L116">        conf = createFromFile(testProperties);</span>
+<span class="fc" id="L117">        removeTestFile();</span>
+<span class="fc" id="L118">    }</span>
+
+    /**
+     * Helper method for loading the specified configuration file.
+     *
+     * @param config the configuration
+     * @param fileName the name of the file to be loaded
+     * @throws ConfigurationException if an error occurs
+     */
+    private static void load(XMLConfiguration config, String fileName)
+            throws ConfigurationException
+    {
+<span class="fc" id="L130">        FileHandler handler = new FileHandler(config);</span>
+<span class="fc" id="L131">        handler.setFileName(fileName);</span>
+<span class="fc" id="L132">        handler.load();</span>
+<span class="fc" id="L133">    }</span>
+
+    /**
+     * Creates a new XMLConfiguration and loads the specified file.
+     *
+     * @param fileName the name of the file to be loaded
+     * @return the newly created configuration instance
+     * @throws ConfigurationException if an error occurs
+     */
+    private static XMLConfiguration createFromFile(String fileName)
+            throws ConfigurationException
+    {
+<span class="fc" id="L145">        XMLConfiguration config = new XMLConfiguration();</span>
+<span class="fc" id="L146">        config.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L147">        load(config, fileName);</span>
+<span class="fc" id="L148">        return config;</span>
+    }
+
+    @Test
+    public void testGetProperty()
+    {
+<span class="fc" id="L154">        assertEquals(&quot;value&quot;, conf.getProperty(&quot;element&quot;));</span>
+<span class="fc" id="L155">    }</span>
+
+    @Test
+    public void testGetCommentedProperty()
+    {
+<span class="fc" id="L160">        assertEquals(&quot;&quot;, conf.getProperty(&quot;test.comment&quot;));</span>
+<span class="fc" id="L161">    }</span>
+
+    @Test
+    public void testGetPropertyWithXMLEntity()
+    {
+<span class="fc" id="L166">        assertEquals(&quot;1&lt;2&quot;, conf.getProperty(&quot;test.entity&quot;));</span>
+<span class="fc" id="L167">    }</span>
+
+    @Test
+    public void testClearPropertyNotExisting()
+    {
+<span class="fc" id="L172">        String key = &quot;clearly&quot;;</span>
+<span class="fc" id="L173">        conf.clearProperty(key);</span>
+<span class="fc" id="L174">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L175">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L176">    }</span>
+
+    @Test
+    public void testClearPropertySingleElement()
+    {
+<span class="fc" id="L181">        String key = &quot;clear.element&quot;;</span>
+<span class="fc" id="L182">        conf.clearProperty(key);</span>
+<span class="fc" id="L183">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L184">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L185">    }</span>
+
+    @Test
+    public void testClearPropertySingleElementWithAttribute()
+    {
+<span class="fc" id="L190">        String key = &quot;clear.element2&quot;;</span>
+<span class="fc" id="L191">        conf.clearProperty(key);</span>
+<span class="fc" id="L192">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L193">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L194">        key = &quot;clear.element2[@id]&quot;;</span>
+<span class="fc" id="L195">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L196">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L197">    }</span>
+
+    @Test
+    public void testClearPropertyNonText()
+    {
+<span class="fc" id="L202">        String key = &quot;clear.comment&quot;;</span>
+<span class="fc" id="L203">        conf.clearProperty(key);</span>
+<span class="fc" id="L204">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L205">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L206">    }</span>
+
+    @Test
+    public void testClearPropertyCData()
+    {
+<span class="fc" id="L211">        String key = &quot;clear.cdata&quot;;</span>
+<span class="fc" id="L212">        conf.clearProperty(key);</span>
+<span class="fc" id="L213">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L214">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L215">    }</span>
+
+    @Test
+    public void testClearPropertyMultipleSiblings()
+    {
+<span class="fc" id="L220">        String key = &quot;clear.list.item&quot;;</span>
+<span class="fc" id="L221">        conf.clearProperty(key);</span>
+<span class="fc" id="L222">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L223">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L224">        key = &quot;clear.list.item[@id]&quot;;</span>
+<span class="fc" id="L225">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L226">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L227">    }</span>
+
+    @Test
+    public void testClearPropertyMultipleDisjoined() throws Exception
+    {
+<span class="fc" id="L232">        String key = &quot;list.item&quot;;</span>
+<span class="fc" id="L233">        conf.clearProperty(key);</span>
+<span class="fc" id="L234">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L235">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L236">    }</span>
+
+    @Test
+    public void testgetProperty() {
+        // test non-leaf element
+<span class="fc" id="L241">        Object property = conf.getProperty(&quot;clear&quot;);</span>
+<span class="fc" id="L242">        assertNull(property);</span>
+
+        // test non-existent element
+<span class="fc" id="L245">        property = conf.getProperty(&quot;e&quot;);</span>
+<span class="fc" id="L246">        assertNull(property);</span>
+
+        // test non-existent element
+<span class="fc" id="L249">        property = conf.getProperty(&quot;element3[@n]&quot;);</span>
+<span class="fc" id="L250">        assertNull(property);</span>
+
+        // test single element
+<span class="fc" id="L253">        property = conf.getProperty(&quot;element&quot;);</span>
+<span class="fc" id="L254">        assertNotNull(property);</span>
+<span class="fc" id="L255">        assertTrue(property instanceof String);</span>
+<span class="fc" id="L256">        assertEquals(&quot;value&quot;, property);</span>
+
+        // test single attribute
+<span class="fc" id="L259">        property = conf.getProperty(&quot;element3[@name]&quot;);</span>
+<span class="fc" id="L260">        assertNotNull(property);</span>
+<span class="fc" id="L261">        assertTrue(property instanceof String);</span>
+<span class="fc" id="L262">        assertEquals(&quot;foo&quot;, property);</span>
+
+        // test non-text/cdata element
+<span class="fc" id="L265">        property = conf.getProperty(&quot;test.comment&quot;);</span>
+<span class="fc" id="L266">        assertEquals(&quot;&quot;, property);</span>
+
+        // test cdata element
+<span class="fc" id="L269">        property = conf.getProperty(&quot;test.cdata&quot;);</span>
+<span class="fc" id="L270">        assertNotNull(property);</span>
+<span class="fc" id="L271">        assertTrue(property instanceof String);</span>
+<span class="fc" id="L272">        assertEquals(&quot;&lt;cdata value&gt;&quot;, property);</span>
+
+        // test multiple sibling elements
+<span class="fc" id="L275">        property = conf.getProperty(&quot;list.sublist.item&quot;);</span>
+<span class="fc" id="L276">        assertNotNull(property);</span>
+<span class="fc" id="L277">        assertTrue(property instanceof List);</span>
+<span class="fc" id="L278">        List&lt;?&gt; list = (List&lt;?&gt;) property;</span>
+<span class="fc" id="L279">        assertEquals(2, list.size());</span>
+<span class="fc" id="L280">        assertEquals(&quot;five&quot;, list.get(0));</span>
+<span class="fc" id="L281">        assertEquals(&quot;six&quot;, list.get(1));</span>
+
+        // test multiple, disjoined elements
+<span class="fc" id="L284">        property = conf.getProperty(&quot;list.item&quot;);</span>
+<span class="fc" id="L285">        assertNotNull(property);</span>
+<span class="fc" id="L286">        assertTrue(property instanceof List);</span>
+<span class="fc" id="L287">        list = (List&lt;?&gt;) property;</span>
+<span class="fc" id="L288">        assertEquals(4, list.size());</span>
+<span class="fc" id="L289">        assertEquals(&quot;one&quot;, list.get(0));</span>
+<span class="fc" id="L290">        assertEquals(&quot;two&quot;, list.get(1));</span>
+<span class="fc" id="L291">        assertEquals(&quot;three&quot;, list.get(2));</span>
+<span class="fc" id="L292">        assertEquals(&quot;four&quot;, list.get(3));</span>
+
+        // test multiple, disjoined attributes
+<span class="fc" id="L295">        property = conf.getProperty(&quot;list.item[@name]&quot;);</span>
+<span class="fc" id="L296">        assertNotNull(property);</span>
+<span class="fc" id="L297">        assertTrue(property instanceof List);</span>
+<span class="fc" id="L298">        list = (List&lt;?&gt;) property;</span>
+<span class="fc" id="L299">        assertEquals(2, list.size());</span>
+<span class="fc" id="L300">        assertEquals(&quot;one&quot;, list.get(0));</span>
+<span class="fc" id="L301">        assertEquals(&quot;three&quot;, list.get(1));</span>
+<span class="fc" id="L302">    }</span>
+
+    @Test
+    public void testGetAttribute()
+    {
+<span class="fc" id="L307">        assertEquals(&quot;element3[@name]&quot;, &quot;foo&quot;, conf.getProperty(&quot;element3[@name]&quot;));</span>
+<span class="fc" id="L308">    }</span>
+
+    @Test
+    public void testClearAttributeNonExisting()
+    {
+<span class="fc" id="L313">        String key = &quot;clear[@id]&quot;;</span>
+<span class="fc" id="L314">        conf.clearProperty(key);</span>
+<span class="fc" id="L315">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L316">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L317">    }</span>
+
+    @Test
+    public void testClearAttributeSingle()
+    {
+<span class="fc" id="L322">        String key = &quot;clear.element2[@id]&quot;;</span>
+<span class="fc" id="L323">        conf.clearProperty(key);</span>
+<span class="fc" id="L324">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L325">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L326">        key = &quot;clear.element2&quot;;</span>
+<span class="fc" id="L327">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L328">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L329">    }</span>
+
+    @Test
+    public void testClearAttributeMultipleDisjoined() throws Exception
+    {
+<span class="fc" id="L334">        String key = &quot;clear.list.item[@id]&quot;;</span>
+<span class="fc" id="L335">        conf.clearProperty(key);</span>
+<span class="fc" id="L336">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L337">        assertNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L338">        key = &quot;clear.list.item&quot;;</span>
+<span class="fc" id="L339">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L340">        assertNotNull(key, conf.getProperty(key));</span>
+<span class="fc" id="L341">    }</span>
+
+    @Test
+    public void testSetAttribute()
+    {
+        // replace an existing attribute
+<span class="fc" id="L347">        conf.setProperty(&quot;element3[@name]&quot;, &quot;bar&quot;);</span>
+<span class="fc" id="L348">        assertEquals(&quot;element3[@name]&quot;, &quot;bar&quot;, conf.getProperty(&quot;element3[@name]&quot;));</span>
+
+        // set a new attribute
+<span class="fc" id="L351">        conf.setProperty(&quot;foo[@bar]&quot;, &quot;value&quot;);</span>
+<span class="fc" id="L352">        assertEquals(&quot;foo[@bar]&quot;, &quot;value&quot;, conf.getProperty(&quot;foo[@bar]&quot;));</span>
+
+<span class="fc" id="L354">        conf.setProperty(&quot;name1&quot;, &quot;value1&quot;);</span>
+<span class="fc" id="L355">        assertEquals(&quot;value1&quot;, conf.getProperty(&quot;name1&quot;));</span>
+<span class="fc" id="L356">    }</span>
+
+    /**
+     * Tests whether an attribute value can be overridden.
+     */
+    @Test
+    public void testOverrideAttribute()
+    {
+<span class="fc" id="L364">        conf.addProperty(&quot;element3[@name]&quot;, &quot;bar&quot;);</span>
+
+<span class="fc" id="L366">        List&lt;Object&gt; list = conf.getList(&quot;element3[@name]&quot;);</span>
+<span class="fc" id="L367">        assertNotNull(&quot;null list&quot;, list);</span>
+<span class="fc" id="L368">        assertTrue(&quot;'bar' element missing&quot;, list.contains(&quot;bar&quot;));</span>
+<span class="fc" id="L369">        assertEquals(&quot;list size&quot;, 1, list.size());</span>
+<span class="fc" id="L370">    }</span>
+
+    @Test
+    public void testAddObjectAttribute()
+    {
+<span class="fc" id="L375">        conf.addProperty(&quot;test.boolean[@value]&quot;, Boolean.TRUE);</span>
+<span class="fc" id="L376">        assertTrue(&quot;test.boolean[@value]&quot;, conf.getBoolean(&quot;test.boolean[@value]&quot;));</span>
+<span class="fc" id="L377">    }</span>
+
+    /**
+     * Tests setting an attribute on the root element.
+     */
+    @Test
+    public void testSetRootAttribute() throws ConfigurationException
+    {
+<span class="fc" id="L385">        conf.setProperty(&quot;[@test]&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L386">        assertEquals(&quot;Root attribute not set&quot;, &quot;true&quot;, conf</span>
+<span class="fc" id="L387">                .getString(&quot;[@test]&quot;));</span>
+<span class="fc" id="L388">        saveTestConfig();</span>
+<span class="fc" id="L389">        XMLConfiguration checkConf = checkSavedConfig();</span>
+<span class="fc" id="L390">        assertTrue(&quot;Attribute not found after save&quot;, checkConf</span>
+<span class="fc" id="L391">                .containsKey(&quot;[@test]&quot;));</span>
+<span class="fc" id="L392">        checkConf.setProperty(&quot;[@test]&quot;, &quot;newValue&quot;);</span>
+<span class="fc" id="L393">        conf = checkConf;</span>
+<span class="fc" id="L394">        saveTestConfig();</span>
+<span class="fc" id="L395">        checkConf = checkSavedConfig();</span>
+<span class="fc" id="L396">        assertEquals(&quot;Attribute not modified after save&quot;, &quot;newValue&quot;, checkConf</span>
+<span class="fc" id="L397">                .getString(&quot;[@test]&quot;));</span>
+<span class="fc" id="L398">    }</span>
+
+    @Test
+    public void testAddList()
+    {
+<span class="fc" id="L403">        conf.addProperty(&quot;test.array&quot;, &quot;value1&quot;);</span>
+<span class="fc" id="L404">        conf.addProperty(&quot;test.array&quot;, &quot;value2&quot;);</span>
+
+<span class="fc" id="L406">        List&lt;Object&gt; list = conf.getList(&quot;test.array&quot;);</span>
+<span class="fc" id="L407">        assertNotNull(&quot;null list&quot;, list);</span>
+<span class="fc" id="L408">        assertTrue(&quot;'value1' element missing&quot;, list.contains(&quot;value1&quot;));</span>
+<span class="fc" id="L409">        assertTrue(&quot;'value2' element missing&quot;, list.contains(&quot;value2&quot;));</span>
+<span class="fc" id="L410">        assertEquals(&quot;list size&quot;, 2, list.size());</span>
+<span class="fc" id="L411">    }</span>
+
+    @Test
+    public void testGetComplexProperty()
+    {
+<span class="fc" id="L416">        assertEquals(&quot;I'm complex!&quot;, conf.getProperty(&quot;element2.subelement.subsubelement&quot;));</span>
+<span class="fc" id="L417">    }</span>
+
+    /**
+     * Tests constructing an XMLConfiguration from a non existing file and later
+     * saving to this file.
+     */
+    @Test
+    public void testLoadAndSaveFromFile() throws Exception
+    {
+        // If the file does not exist, an empty config is created
+<span class="fc" id="L427">        assertFalse(&quot;File exists&quot;, testSaveConf.exists());</span>
+<span class="fc" id="L428">        FileBasedConfigurationBuilder&lt;XMLConfiguration&gt; builder =</span>
+                new FileBasedConfigurationBuilder&lt;&gt;(
+                        XMLConfiguration.class, null, true);
+<span class="fc" id="L431">        builder.configure(new FileBasedBuilderParametersImpl()</span>
+<span class="fc" id="L432">                .setFile(testSaveConf));</span>
+<span class="fc" id="L433">        conf = builder.getConfiguration();</span>
+<span class="fc" id="L434">        assertTrue(conf.isEmpty());</span>
+<span class="fc" id="L435">        conf.addProperty(&quot;test&quot;, &quot;yes&quot;);</span>
+<span class="fc" id="L436">        builder.save();</span>
+
+<span class="fc" id="L438">        XMLConfiguration checkConfig =</span>
+<span class="fc" id="L439">                createFromFile(testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L440">        assertEquals(&quot;yes&quot;, checkConfig.getString(&quot;test&quot;));</span>
+<span class="fc" id="L441">    }</span>
+
+    /**
+     * Tests loading from a stream.
+     */
+    @Test
+    public void testLoadFromStream() throws Exception
+    {
+<span class="fc" id="L449">        String xml = &quot;&lt;?xml version=\&quot;1.0\&quot;?&gt;&lt;config&gt;&lt;test&gt;1&lt;/test&gt;&lt;/config&gt;&quot;;</span>
+<span class="fc" id="L450">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L451">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L452">        handler.load(new ByteArrayInputStream(xml.getBytes()));</span>
+<span class="fc" id="L453">        assertEquals(1, conf.getInt(&quot;test&quot;));</span>
+
+<span class="fc" id="L455">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L456">        handler = new FileHandler(conf);</span>
+<span class="fc" id="L457">        handler.load(new ByteArrayInputStream(xml.getBytes()), &quot;UTF8&quot;);</span>
+<span class="fc" id="L458">        assertEquals(1, conf.getInt(&quot;test&quot;));</span>
+<span class="fc" id="L459">    }</span>
+
+    /**
+     * Tests loading a non well formed XML from a string.
+     */
+    @Test(expected = ConfigurationException.class)
+    public void testLoadInvalidXML() throws Exception
+    {
+<span class="fc" id="L467">        String xml = &quot;&lt;?xml version=\&quot;1.0\&quot;?&gt;&lt;config&gt;&lt;test&gt;1&lt;/rest&gt;&lt;/config&gt;&quot;;</span>
+<span class="fc" id="L468">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L469">        FileHandler handler = new FileHandler(conf);</span>
+<span class="nc" id="L470">        handler.load(new StringReader(xml));</span>
+<span class="nc" id="L471">    }</span>
+
+    @Test
+    public void testSetProperty() throws Exception
+    {
+<span class="fc" id="L476">        conf.setProperty(&quot;element.string&quot;, &quot;hello&quot;);</span>
+
+<span class="fc" id="L478">        assertEquals(&quot;'element.string'&quot;, &quot;hello&quot;, conf.getString(&quot;element.string&quot;));</span>
+<span class="fc" id="L479">        assertEquals(&quot;XML value of element.string&quot;, &quot;hello&quot;, conf.getProperty(&quot;element.string&quot;));</span>
+<span class="fc" id="L480">    }</span>
+
+    @Test
+    public void testAddProperty()
+    {
+        // add a property to a non initialized xml configuration
+<span class="fc" id="L486">        XMLConfiguration config = new XMLConfiguration();</span>
+<span class="fc" id="L487">        config.addProperty(&quot;test.string&quot;, &quot;hello&quot;);</span>
+
+<span class="fc" id="L489">        assertEquals(&quot;'test.string'&quot;, &quot;hello&quot;, config.getString(&quot;test.string&quot;));</span>
+<span class="fc" id="L490">    }</span>
+
+    @Test
+    public void testAddObjectProperty()
+    {
+        // add a non string property
+<span class="fc" id="L496">        conf.addProperty(&quot;test.boolean&quot;, Boolean.TRUE);</span>
+<span class="fc" id="L497">        assertTrue(&quot;'test.boolean'&quot;, conf.getBoolean(&quot;test.boolean&quot;));</span>
+<span class="fc" id="L498">    }</span>
+
+    @Test
+    public void testSave() throws Exception
+    {
+        // add an array of strings to the configuration
+<span class="fc" id="L504">        conf.addProperty(&quot;string&quot;, &quot;value1&quot;);</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        for (int i = 1; i &lt; 5; i++)</span>
+        {
+<span class="fc" id="L507">            conf.addProperty(&quot;test.array&quot;, &quot;value&quot; + i);</span>
+        }
+
+        // add comma delimited lists with escaped delimiters
+<span class="fc" id="L511">        conf.addProperty(&quot;split.list5&quot;, &quot;a\\,b\\,c&quot;);</span>
+<span class="fc" id="L512">        conf.setProperty(&quot;element3&quot;, &quot;value\\,value1\\,value2&quot;);</span>
+<span class="fc" id="L513">        conf.setProperty(&quot;element3[@name]&quot;, &quot;foo\\,bar&quot;);</span>
+
+        // save the configuration
+<span class="fc" id="L516">        saveTestConfig();</span>
+
+        // read the configuration and compare the properties
+<span class="fc" id="L519">        checkSavedConfig();</span>
+<span class="fc" id="L520">    }</span>
+
+    /**
+     * Tests saving to a URL.
+     */
+    @Test
+    public void testSaveToURL() throws Exception
+    {
+<span class="fc" id="L528">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L529">        handler.save(testSaveConf.toURI().toURL());</span>
+<span class="fc" id="L530">        checkSavedConfig(testSaveConf);</span>
+<span class="fc" id="L531">    }</span>
+
+    /**
+     * Tests saving to a stream.
+     */
+    @Test
+    public void testSaveToStream() throws ConfigurationException, IOException
+    {
+<span class="fc" id="L539">        FileOutputStream out = null;</span>
+<span class="fc" id="L540">        FileHandler handler = new FileHandler(conf);</span>
+        try
+        {
+<span class="fc" id="L543">            out = new FileOutputStream(testSaveConf);</span>
+<span class="fc" id="L544">            handler.save(out, &quot;UTF8&quot;);</span>
+        }
+        finally
+        {
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">            if(out != null)</span>
+            {
+<span class="fc" id="L550">                out.close();</span>
+            }
+        }
+
+<span class="fc" id="L554">        checkSavedConfig(testSaveConf);</span>
+<span class="fc" id="L555">    }</span>
+
+    /**
+     * Tests whether a configuration can be saved to a stream with a specific encoding.
+     */
+    @Test
+    public void testSaveToStreamWithEncoding() throws ConfigurationException, IOException
+    {
+<span class="fc" id="L563">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L564">        handler.setEncoding(&quot;UTF8&quot;);</span>
+<span class="fc" id="L565">        FileOutputStream out = null;</span>
+        try
+        {
+<span class="fc" id="L568">            out = new FileOutputStream(testSaveConf);</span>
+<span class="fc" id="L569">            handler.save(out);</span>
+        }
+        finally
+        {
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">            if(out != null)</span>
+            {
+<span class="fc" id="L575">                out.close();</span>
+            }
+        }
+
+<span class="fc" id="L579">        checkSavedConfig(testSaveConf);</span>
+<span class="fc" id="L580">    }</span>
+
+    /**
+     * Tests if a second file can be appended to a first.
+     */
+    @Test
+    public void testAppend() throws Exception
+    {
+<span class="fc" id="L588">        load(conf, testProperties2);</span>
+<span class="fc" id="L589">        assertEquals(&quot;value&quot;, conf.getString(&quot;element&quot;));</span>
+<span class="fc" id="L590">        assertEquals(&quot;tasks&quot;, conf.getString(&quot;table.name&quot;));</span>
+
+<span class="fc" id="L592">        saveTestConfig();</span>
+<span class="fc" id="L593">        conf = createFromFile(testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L594">        assertEquals(&quot;value&quot;, conf.getString(&quot;element&quot;));</span>
+<span class="fc" id="L595">        assertEquals(&quot;tasks&quot;, conf.getString(&quot;table.name&quot;));</span>
+<span class="fc" id="L596">        assertEquals(&quot;application&quot;, conf.getString(&quot;table[@tableType]&quot;));</span>
+<span class="fc" id="L597">    }</span>
+
+    /**
+     * Tests saving attributes (related to issue 34442).
+     */
+    @Test
+    public void testSaveAttributes() throws Exception
+    {
+<span class="fc" id="L605">        conf.clear();</span>
+<span class="fc" id="L606">        load(conf, testProperties);</span>
+<span class="fc" id="L607">        saveTestConfig();</span>
+<span class="fc" id="L608">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L609">        load(conf, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L610">        assertEquals(&quot;foo&quot;, conf.getString(&quot;element3[@name]&quot;));</span>
+<span class="fc" id="L611">    }</span>
+
+    /**
+     * Tests access to tag names with delimiter characters.
+     */
+    @Test
+    public void testComplexNames()
+    {
+<span class="fc" id="L619">        assertEquals(&quot;Name with dot&quot;, conf.getString(&quot;complexNames.my..elem&quot;));</span>
+<span class="fc" id="L620">        assertEquals(&quot;Another dot&quot;, conf.getString(&quot;complexNames.my..elem.sub..elem&quot;));</span>
+<span class="fc" id="L621">    }</span>
+
+    /**
+     * Creates a validating document builder.
+     * @return the document builder
+     * @throws ParserConfigurationException if an error occurs
+     */
+    private DocumentBuilder createValidatingDocBuilder()
+            throws ParserConfigurationException
+    {
+<span class="fc" id="L631">        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="fc" id="L632">        factory.setValidating(true);</span>
+<span class="fc" id="L633">        DocumentBuilder builder = factory.newDocumentBuilder();</span>
+<span class="fc" id="L634">        builder.setErrorHandler(new DefaultHandler() {</span>
+            @Override
+            public void error(SAXParseException ex) throws SAXException
+            {
+<span class="fc" id="L638">                throw ex;</span>
+            }
+        });
+<span class="fc" id="L641">        return builder;</span>
+    }
+
+    /**
+     * Tests setting a custom document builder.
+     */
+    @Test
+    public void testCustomDocBuilder() throws Exception
+    {
+        // Load an invalid XML file with the default (non validating)
+        // doc builder. This should work...
+<span class="fc" id="L652">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L653">        load(conf, ConfigurationAssert.getTestFile(&quot;testValidateInvalid.xml&quot;)</span>
+<span class="fc" id="L654">                .getAbsolutePath());</span>
+<span class="fc" id="L655">        assertEquals(&quot;customers&quot;, conf.getString(&quot;table.name&quot;));</span>
+<span class="fc" id="L656">        assertFalse(conf.containsKey(&quot;table.fields.field(1).type&quot;));</span>
+<span class="fc" id="L657">    }</span>
+
+    /**
+     * Tests whether a validating document builder detects a validation error.
+     */
+    @Test(expected = ConfigurationException.class)
+    public void testCustomDocBuilderValidationError() throws Exception
+    {
+<span class="fc" id="L665">        DocumentBuilder builder = createValidatingDocBuilder();</span>
+<span class="fc" id="L666">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L667">        conf.setDocumentBuilder(builder);</span>
+<span class="pc" id="L668">        load(conf, ConfigurationAssert.getTestFile(&quot;testValidateInvalid.xml&quot;)</span>
+<span class="fc" id="L669">                .getAbsolutePath());</span>
+<span class="nc" id="L670">    }</span>
+
+    /**
+     * Tests whether a valid document can be loaded with a validating document builder.
+     */
+    @Test
+    public void testCustomDocBuilderValidationSuccess() throws Exception
+    {
+<span class="fc" id="L678">        DocumentBuilder builder = createValidatingDocBuilder();</span>
+<span class="fc" id="L679">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L680">        conf.setDocumentBuilder(builder);</span>
+<span class="fc" id="L681">        load(conf, ConfigurationAssert.getTestFile(&quot;testValidateValid.xml&quot;)</span>
+<span class="fc" id="L682">                .getAbsolutePath());</span>
+<span class="fc" id="L683">        assertTrue(conf.containsKey(&quot;table.fields.field(1).type&quot;));</span>
+<span class="fc" id="L684">    }</span>
+
+    /**
+     * Tests the clone() method.
+     */
+    @Test
+    public void testClone()
+    {
+<span class="fc" id="L692">        Configuration c = (Configuration) conf.clone();</span>
+<span class="fc" id="L693">        assertTrue(c instanceof XMLConfiguration);</span>
+<span class="fc" id="L694">        XMLConfiguration copy = (XMLConfiguration) c;</span>
+<span class="fc" id="L695">        assertNotNull(conf.getDocument());</span>
+<span class="fc" id="L696">        assertNull(copy.getDocument());</span>
+
+<span class="fc" id="L698">        copy.setProperty(&quot;element3&quot;, &quot;clonedValue&quot;);</span>
+<span class="fc" id="L699">        assertEquals(&quot;value&quot;, conf.getString(&quot;element3&quot;));</span>
+<span class="fc" id="L700">        conf.setProperty(&quot;element3[@name]&quot;, &quot;originalFoo&quot;);</span>
+<span class="fc" id="L701">        assertEquals(&quot;foo&quot;, copy.getString(&quot;element3[@name]&quot;));</span>
+<span class="fc" id="L702">    }</span>
+
+    /**
+     * Tests saving a configuration after cloning to ensure that the clone and
+     * the original are completely detached.
+     */
+    @Test
+    public void testCloneWithSave() throws ConfigurationException
+    {
+<span class="fc" id="L711">        XMLConfiguration c = (XMLConfiguration) conf.clone();</span>
+<span class="fc" id="L712">        c.addProperty(&quot;test.newProperty&quot;, Boolean.TRUE);</span>
+<span class="fc" id="L713">        conf.addProperty(&quot;test.orgProperty&quot;, Boolean.TRUE);</span>
+<span class="fc" id="L714">        new FileHandler(c).save(testSaveConf);</span>
+<span class="fc" id="L715">        XMLConfiguration c2 = new XMLConfiguration();</span>
+<span class="fc" id="L716">        load(c2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L717">        assertTrue(&quot;New property after clone() was not saved&quot;, c2</span>
+<span class="fc" id="L718">                .getBoolean(&quot;test.newProperty&quot;));</span>
+<span class="fc" id="L719">        assertFalse(&quot;Property of original config was saved&quot;, c2</span>
+<span class="fc" id="L720">                .containsKey(&quot;test.orgProperty&quot;));</span>
+<span class="fc" id="L721">    }</span>
+
+    /**
+     * Tests the subset() method. There was a bug that calling subset() had
+     * undesired side effects.
+     */
+    @Test
+    public void testSubset() throws ConfigurationException
+    {
+<span class="fc" id="L730">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L731">        load(conf, &quot;testHierarchicalXMLConfiguration.xml&quot;);</span>
+<span class="fc" id="L732">        conf.subset(&quot;tables.table(0)&quot;);</span>
+<span class="fc" id="L733">        saveTestConfig();</span>
+
+<span class="fc" id="L735">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L736">        load(conf, &quot;testHierarchicalXMLConfiguration.xml&quot;);</span>
+<span class="fc" id="L737">        assertEquals(&quot;users&quot;, conf.getString(&quot;tables.table(0).name&quot;));</span>
+<span class="fc" id="L738">    }</span>
+
+    /**
+     * Tests string properties with list delimiters and escaped delimiters.
+     */
+    @Test
+    public void testSplitLists()
+    {
+<span class="fc" id="L746">        assertEquals(&quot;a,b,c&quot;, conf.getString(&quot;split.list3[@values]&quot;));</span>
+<span class="fc" id="L747">        assertEquals(0, conf.getMaxIndex(&quot;split.list3[@values]&quot;));</span>
+<span class="fc" id="L748">        assertEquals(&quot;a\\,b\\,c&quot;, conf.getString(&quot;split.list4[@values]&quot;));</span>
+<span class="fc" id="L749">        assertEquals(&quot;a&quot;, conf.getString(&quot;split.list1&quot;));</span>
+<span class="fc" id="L750">        assertEquals(2, conf.getMaxIndex(&quot;split.list1&quot;));</span>
+<span class="fc" id="L751">        assertEquals(&quot;a,b,c&quot;, conf.getString(&quot;split.list2&quot;));</span>
+<span class="fc" id="L752">    }</span>
+
+    /**
+     * Tests string properties with list delimiters when delimiter parsing
+     * is disabled
+     */
+    @Test
+    public void testDelimiterParsingDisabled() throws ConfigurationException {
+<span class="fc" id="L760">        XMLConfiguration conf2 = new XMLConfiguration();</span>
+<span class="fc" id="L761">        load(conf2, testProperties);</span>
+
+<span class="fc" id="L763">        assertEquals(&quot;a,b,c&quot;, conf2.getString(&quot;split.list3[@values]&quot;));</span>
+<span class="fc" id="L764">        assertEquals(0, conf2.getMaxIndex(&quot;split.list3[@values]&quot;));</span>
+<span class="fc" id="L765">        assertEquals(&quot;a\\,b\\,c&quot;, conf2.getString(&quot;split.list4[@values]&quot;));</span>
+<span class="fc" id="L766">        assertEquals(&quot;a,b,c&quot;, conf2.getString(&quot;split.list1&quot;));</span>
+<span class="fc" id="L767">        assertEquals(0, conf2.getMaxIndex(&quot;split.list1&quot;));</span>
+<span class="fc" id="L768">        assertEquals(&quot;a\\,b\\,c&quot;, conf2.getString(&quot;split.list2&quot;));</span>
+<span class="fc" id="L769">    }</span>
+
+    /**
+     * Tests whether string properties with list delimiters can be accessed if
+     * delimiter parsing is disabled and the XPath expression engine is used.
+     */
+    @Test
+    public void testDelimiterParsingDisabledXPath() throws ConfigurationException
+    {
+<span class="fc" id="L778">        XMLConfiguration conf2 = new XMLConfiguration();</span>
+<span class="fc" id="L779">        conf2.setExpressionEngine(new XPathExpressionEngine());</span>
+<span class="fc" id="L780">        load(conf2, testProperties);</span>
+
+<span class="fc" id="L782">        assertEquals(&quot;a,b,c&quot;, conf2.getString(&quot;split/list3/@values&quot;));</span>
+<span class="fc" id="L783">        assertEquals(0, conf2.getMaxIndex(&quot;split/list3/@values&quot;));</span>
+<span class="fc" id="L784">        assertEquals(&quot;a\\,b\\,c&quot;, conf2.getString(&quot;split/list4/@values&quot;));</span>
+<span class="fc" id="L785">        assertEquals(&quot;a,b,c&quot;, conf2.getString(&quot;split/list1&quot;));</span>
+<span class="fc" id="L786">        assertEquals(0, conf2.getMaxIndex(&quot;split/list1&quot;));</span>
+<span class="fc" id="L787">        assertEquals(&quot;a\\,b\\,c&quot;, conf2.getString(&quot;split/list2&quot;));</span>
+<span class="fc" id="L788">    }</span>
+
+     /**
+     * Tests string properties with list delimiters when delimiter parsing
+     * is disabled
+     */
+    @Test
+    public void testSaveWithDelimiterParsingDisabled() throws ConfigurationException {
+<span class="fc" id="L796">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L797">        conf.setExpressionEngine(new XPathExpressionEngine());</span>
+<span class="fc" id="L798">        load(conf, testProperties);</span>
+
+<span class="fc" id="L800">        assertEquals(&quot;a,b,c&quot;, conf.getString(&quot;split/list3/@values&quot;));</span>
+<span class="fc" id="L801">        assertEquals(0, conf.getMaxIndex(&quot;split/list3/@values&quot;));</span>
+<span class="fc" id="L802">        assertEquals(&quot;a\\,b\\,c&quot;, conf.getString(&quot;split/list4/@values&quot;));</span>
+<span class="fc" id="L803">        assertEquals(&quot;a,b,c&quot;, conf.getString(&quot;split/list1&quot;));</span>
+<span class="fc" id="L804">        assertEquals(0, conf.getMaxIndex(&quot;split/list1&quot;));</span>
+<span class="fc" id="L805">        assertEquals(&quot;a\\,b\\,c&quot;, conf.getString(&quot;split/list2&quot;));</span>
+        // save the configuration
+<span class="fc" id="L807">        saveTestConfig();</span>
+
+<span class="fc" id="L809">        XMLConfiguration config = new XMLConfiguration();</span>
+        //config.setExpressionEngine(new XPathExpressionEngine());
+<span class="fc" id="L811">        load(config, testFile2);</span>
+<span class="fc" id="L812">        config.setProperty(&quot;Employee[@attr1]&quot;, &quot;3,2,1&quot;);</span>
+<span class="fc" id="L813">        assertEquals(&quot;3,2,1&quot;, config.getString(&quot;Employee[@attr1]&quot;));</span>
+<span class="fc" id="L814">        new FileHandler(config).save(testSaveFile);</span>
+<span class="fc" id="L815">        config = new XMLConfiguration();</span>
+        //config.setExpressionEngine(new XPathExpressionEngine());
+<span class="fc" id="L817">        load(config, testSaveFile.getAbsolutePath());</span>
+<span class="fc" id="L818">        config.setProperty(&quot;Employee[@attr1]&quot;, &quot;1,2,3&quot;);</span>
+<span class="fc" id="L819">        assertEquals(&quot;1,2,3&quot;, config.getString(&quot;Employee[@attr1]&quot;));</span>
+<span class="fc" id="L820">        config.setProperty(&quot;Employee[@attr2]&quot;, &quot;one, two, three&quot;);</span>
+<span class="fc" id="L821">        assertEquals(&quot;one, two, three&quot;, config.getString(&quot;Employee[@attr2]&quot;));</span>
+<span class="fc" id="L822">        config.setProperty(&quot;Employee.text&quot;, &quot;a,b,d&quot;);</span>
+<span class="fc" id="L823">        assertEquals(&quot;a,b,d&quot;, config.getString(&quot;Employee.text&quot;));</span>
+<span class="fc" id="L824">        config.setProperty(&quot;Employee.Salary&quot;, &quot;100,000&quot;);</span>
+<span class="fc" id="L825">        assertEquals(&quot;100,000&quot;, config.getString(&quot;Employee.Salary&quot;));</span>
+<span class="fc" id="L826">        new FileHandler(config).save(testSaveFile);</span>
+<span class="fc" id="L827">        XMLConfiguration checkConfig = new XMLConfiguration();</span>
+<span class="fc" id="L828">        checkConfig.setExpressionEngine(new XPathExpressionEngine());</span>
+<span class="fc" id="L829">        load(checkConfig, testSaveFile.getAbsolutePath());</span>
+<span class="fc" id="L830">        assertEquals(&quot;1,2,3&quot;, checkConfig.getString(&quot;Employee/@attr1&quot;));</span>
+<span class="fc" id="L831">        assertEquals(&quot;one, two, three&quot;, checkConfig.getString(&quot;Employee/@attr2&quot;));</span>
+<span class="fc" id="L832">        assertEquals(&quot;a,b,d&quot;, checkConfig.getString(&quot;Employee/text&quot;));</span>
+<span class="fc" id="L833">        assertEquals(&quot;100,000&quot;, checkConfig.getString(&quot;Employee/Salary&quot;));</span>
+<span class="fc" id="L834">    }</span>
+
+    /**
+     * Tests whether a DTD can be accessed.
+     */
+    @Test
+    public void testDtd() throws ConfigurationException
+    {
+<span class="fc" id="L842">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L843">        load(conf, &quot;testDtd.xml&quot;);</span>
+<span class="fc" id="L844">        assertEquals(&quot;value1&quot;, conf.getString(&quot;entry(0)&quot;));</span>
+<span class="fc" id="L845">        assertEquals(&quot;test2&quot;, conf.getString(&quot;entry(1)[@key]&quot;));</span>
+<span class="fc" id="L846">    }</span>
+
+    /**
+     * Tests DTD validation using the setValidating() method.
+     */
+    @Test
+    public void testValidating() throws ConfigurationException
+    {
+<span class="fc" id="L854">        File nonValidFile = ConfigurationAssert.getTestFile(&quot;testValidateInvalid.xml&quot;);</span>
+<span class="fc" id="L855">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L856">        assertFalse(conf.isValidating());</span>
+
+        // Load a non valid XML document. Should work for isValidating() == false
+<span class="fc" id="L859">        load(conf, nonValidFile.getAbsolutePath());</span>
+<span class="fc" id="L860">        assertEquals(&quot;customers&quot;, conf.getString(&quot;table.name&quot;));</span>
+<span class="fc" id="L861">        assertFalse(conf.containsKey(&quot;table.fields.field(1).type&quot;));</span>
+<span class="fc" id="L862">    }</span>
+
+    /**
+     * Tests whether an invalid file is detected when validating is enabled.
+     */
+    @Test(expected = ConfigurationException.class)
+    public void testValidatingInvalidFile() throws ConfigurationException
+    {
+<span class="fc" id="L870">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L871">        conf.setValidating(true);</span>
+<span class="nc" id="L872">        load(conf, &quot;testValidateInvalid.xml&quot;);</span>
+<span class="nc" id="L873">    }</span>
+
+    /**
+     * Tests handling of empty elements.
+     */
+    @Test
+    public void testEmptyElements() throws ConfigurationException
+    {
+<span class="fc" id="L881">        assertTrue(conf.containsKey(&quot;empty&quot;));</span>
+<span class="fc" id="L882">        assertEquals(&quot;&quot;, conf.getString(&quot;empty&quot;));</span>
+<span class="fc" id="L883">        conf.addProperty(&quot;empty2&quot;, &quot;&quot;);</span>
+<span class="fc" id="L884">        conf.setProperty(&quot;empty&quot;, &quot;no more empty&quot;);</span>
+<span class="fc" id="L885">        saveTestConfig();</span>
+
+<span class="fc" id="L887">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L888">        load(conf, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L889">        assertEquals(&quot;no more empty&quot;, conf.getString(&quot;empty&quot;));</span>
+<span class="fc" id="L890">        assertEquals(&quot;&quot;, conf.getProperty(&quot;empty2&quot;));</span>
+<span class="fc" id="L891">    }</span>
+
+    /**
+     * Tests the isEmpty() method for an empty configuration that was reloaded.
+     */
+    @Test
+    public void testEmptyReload() throws ConfigurationException
+    {
+<span class="fc" id="L899">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L900">        assertTrue(&quot;Newly created configuration not empty&quot;, conf.isEmpty());</span>
+<span class="fc" id="L901">        saveTestConfig();</span>
+<span class="fc" id="L902">        load(conf, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L903">        assertTrue(&quot;Reloaded configuration not empty&quot;, conf.isEmpty());</span>
+<span class="fc" id="L904">    }</span>
+
+    /**
+     * Tests whether the encoding is correctly detected by the XML parser. This
+     * is done by loading an XML file with the encoding &quot;UTF-16&quot;. If this
+     * encoding is not detected correctly, an exception will be thrown that
+     * &quot;Content is not allowed in prolog&quot;. This test case is related to issue
+     * 34204.
+     */
+    @Test
+    public void testLoadWithEncoding() throws ConfigurationException
+    {
+<span class="fc" id="L916">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L917">        new FileHandler(conf).load(ConfigurationAssert.getTestFile(&quot;testEncoding.xml&quot;));</span>
+<span class="fc" id="L918">        assertEquals(&quot;test3_yoge&quot;, conf.getString(&quot;yoge&quot;));</span>
+<span class="fc" id="L919">    }</span>
+
+    /**
+     * Tests whether the encoding is written to the generated XML file.
+     */
+    @Test
+    public void testSaveWithEncoding() throws ConfigurationException
+    {
+<span class="fc" id="L927">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L928">        conf.setProperty(&quot;test&quot;, &quot;a value&quot;);</span>
+<span class="fc" id="L929">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L930">        handler.setEncoding(ENCODING);</span>
+
+<span class="fc" id="L932">        StringWriter out = new StringWriter();</span>
+<span class="fc" id="L933">        handler.save(out);</span>
+<span class="fc" id="L934">        assertThat(&quot;Encoding was not written to file&quot;, out.toString(),</span>
+<span class="fc" id="L935">                containsString(&quot;encoding=\&quot;&quot; + ENCODING + &quot;\&quot;&quot;));</span>
+<span class="fc" id="L936">    }</span>
+
+    /**
+     * Tests whether a default encoding is used if no specific encoding is set.
+     * According to the XSLT specification (http://www.w3.org/TR/xslt#output)
+     * this should be either UTF-8 or UTF-16.
+     */
+    @Test
+    public void testSaveWithNullEncoding() throws ConfigurationException
+    {
+<span class="fc" id="L946">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L947">        conf.setProperty(&quot;testNoEncoding&quot;, &quot;yes&quot;);</span>
+<span class="fc" id="L948">        FileHandler handler = new FileHandler(conf);</span>
+
+<span class="fc" id="L950">        StringWriter out = new StringWriter();</span>
+<span class="fc" id="L951">        handler.save(out);</span>
+<span class="fc" id="L952">        assertThat(&quot;Encoding was written to file&quot;, out.toString(),</span>
+<span class="fc" id="L953">                containsString(&quot;encoding=\&quot;UTF-&quot;));</span>
+<span class="fc" id="L954">    }</span>
+
+    /**
+     * Tests whether the DOCTYPE survives a save operation.
+     */
+    @Test
+    public void testSaveWithDoctype() throws ConfigurationException
+    {
+<span class="fc" id="L962">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L963">        load(conf, &quot;testDtdPublic.xml&quot;);</span>
+
+<span class="fc" id="L965">        assertEquals(&quot;Wrong public ID&quot;, PUBLIC_ID, conf.getPublicID());</span>
+<span class="fc" id="L966">        assertEquals(&quot;Wrong system ID&quot;, SYSTEM_ID, conf.getSystemID());</span>
+<span class="fc" id="L967">        StringWriter out = new StringWriter();</span>
+<span class="fc" id="L968">        new FileHandler(conf).save(out);</span>
+<span class="fc" id="L969">        assertThat(&quot;Did not find DOCTYPE&quot;, out.toString(),</span>
+<span class="fc" id="L970">                containsString(DOCTYPE));</span>
+<span class="fc" id="L971">    }</span>
+
+    /**
+     * Tests setting public and system IDs for the DOCTYPE and then saving the
+     * configuration. This should generate a DOCTYPE declaration.
+     */
+    @Test
+    public void testSaveWithDoctypeIDs() throws ConfigurationException
+    {
+<span class="fc" id="L980">        assertNull(&quot;A public ID was found&quot;, conf.getPublicID());</span>
+<span class="fc" id="L981">        assertNull(&quot;A system ID was found&quot;, conf.getSystemID());</span>
+<span class="fc" id="L982">        conf.setPublicID(PUBLIC_ID);</span>
+<span class="fc" id="L983">        conf.setSystemID(SYSTEM_ID);</span>
+<span class="fc" id="L984">        StringWriter out = new StringWriter();</span>
+<span class="fc" id="L985">        new FileHandler(conf).save(out);</span>
+<span class="fc" id="L986">        assertThat(&quot;Did not find DOCTYPE&quot;, out.toString(), containsString(</span>
+                DOCTYPE + &quot;testconfig&quot; + DOCTYPE_DECL));
+<span class="fc" id="L988">    }</span>
+
+    /**
+     * Tests saving a configuration if an invalid transformer factory is
+     * specified. In this case an error is thrown by the transformer factory.
+     * XMLConfiguration should not catch this error.
+     */
+    @Test
+    public void testSaveWithInvalidTransformerFactory() throws ConfigurationException {
+<span class="fc" id="L997">        System.setProperty(PROP_FACTORY, &quot;an.invalid.Class&quot;);</span>
+        try
+        {
+<span class="nc" id="L1000">            saveTestConfig();</span>
+<span class="nc" id="L1001">            fail(&quot;Could save with invalid TransformerFactory!&quot;);</span>
+        }
+<span class="fc" id="L1003">        catch (TransformerFactoryConfigurationError cex)</span>
+        {
+            // ok
+        }
+        finally
+        {
+<span class="fc" id="L1009">            System.getProperties().remove(PROP_FACTORY);</span>
+        }
+<span class="fc" id="L1011">    }</span>
+
+    /**
+     * Tests accessing properties when the XPATH expression engine is set.
+     */
+    @Test
+    public void testXPathExpressionEngine()
+    {
+<span class="fc" id="L1019">        conf.setExpressionEngine(new XPathExpressionEngine());</span>
+<span class="fc" id="L1020">        assertEquals(&quot;Wrong attribute value&quot;, &quot;foo\&quot;bar&quot;, conf</span>
+<span class="fc" id="L1021">                .getString(&quot;test[1]/entity/@name&quot;));</span>
+<span class="fc" id="L1022">        conf.clear();</span>
+<span class="fc" id="L1023">        assertNull(conf.getString(&quot;test[1]/entity/@name&quot;));</span>
+<span class="fc" id="L1024">    }</span>
+
+    /**
+     * Tests the copy constructor.
+     */
+    @Test
+    public void testInitCopy() throws ConfigurationException
+    {
+<span class="fc" id="L1032">        XMLConfiguration copy = new XMLConfiguration(conf);</span>
+<span class="fc" id="L1033">        copy.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L1034">        assertEquals(&quot;value&quot;, copy.getProperty(&quot;element&quot;));</span>
+<span class="fc" id="L1035">        assertNull(&quot;Document was copied, too&quot;, copy.getDocument());</span>
+
+<span class="fc" id="L1037">        new FileHandler(copy).save(testSaveConf);</span>
+<span class="fc" id="L1038">        checkSavedConfig();</span>
+<span class="fc" id="L1039">    }</span>
+
+    /**
+     * Tests setting text of the root element.
+     */
+    @Test
+    public void testSetTextRootElement() throws ConfigurationException
+    {
+<span class="fc" id="L1047">        conf.setProperty(&quot;&quot;, &quot;Root text&quot;);</span>
+<span class="fc" id="L1048">        saveTestConfig();</span>
+<span class="fc" id="L1049">        checkSavedConfig();</span>
+<span class="fc" id="L1050">    }</span>
+
+    /**
+     * Tests removing the text of the root element.
+     */
+    @Test
+    public void testClearTextRootElement() throws ConfigurationException
+    {
+<span class="fc" id="L1058">        final String xml = &quot;&lt;e a=\&quot;v\&quot;&gt;text&lt;/e&gt;&quot;;</span>
+<span class="fc" id="L1059">        conf.clear();</span>
+<span class="fc" id="L1060">        StringReader in = new StringReader(xml);</span>
+<span class="fc" id="L1061">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L1062">        handler.load(in);</span>
+<span class="fc" id="L1063">        assertEquals(&quot;Wrong text of root&quot;, &quot;text&quot;, conf.getString(&quot;&quot;));</span>
+
+<span class="fc" id="L1065">        conf.clearProperty(&quot;&quot;);</span>
+<span class="fc" id="L1066">        saveTestConfig();</span>
+<span class="fc" id="L1067">        checkSavedConfig();</span>
+<span class="fc" id="L1068">    }</span>
+
+    /**
+     * Tests list nodes with multiple values and attributes.
+     */
+    @Test
+    public void testListWithAttributes()
+    {
+<span class="fc" id="L1076">        assertEquals(&quot;Wrong number of &lt;a&gt; elements&quot;, 6, conf.getList(</span>
+<span class="fc" id="L1077">                &quot;attrList.a&quot;).size());</span>
+<span class="fc" id="L1078">        assertEquals(&quot;Wrong value of first element&quot;, &quot;ABC&quot;, conf</span>
+<span class="fc" id="L1079">                .getString(&quot;attrList.a(0)&quot;));</span>
+<span class="fc" id="L1080">        assertEquals(&quot;Wrong value of first name attribute&quot;, &quot;x&quot;, conf</span>
+<span class="fc" id="L1081">                .getString(&quot;attrList.a(0)[@name]&quot;));</span>
+<span class="fc" id="L1082">        assertEquals(&quot;Wrong number of name attributes&quot;, 6, conf.getList(</span>
+<span class="fc" id="L1083">                &quot;attrList.a[@name]&quot;).size());</span>
+<span class="fc" id="L1084">    }</span>
+
+    /**
+     * Tests a list node with attributes that has multiple values separated by
+     * the list delimiter. In this scenario the attribute should be added to all
+     * list nodes.
+     */
+    @Test
+    public void testListWithAttributesMultiValue()
+    {
+<span class="fc" id="L1094">        assertEquals(&quot;Wrong value of 2nd element&quot;, &quot;1&quot;,</span>
+<span class="fc" id="L1095">                conf.getString(&quot;attrList.a(1)&quot;));</span>
+<span class="fc" id="L1096">        assertEquals(&quot;Wrong value of 2nd name attribute&quot;, &quot;y&quot;,</span>
+<span class="fc" id="L1097">                conf.getString(&quot;attrList.a(1)[@name]&quot;));</span>
+<span class="fc bfc" id="L1098" title="All 2 branches covered.">        for (int i = 1; i &lt;= 3; i++)</span>
+        {
+<span class="fc" id="L1100">            assertEquals(&quot;Wrong value of element &quot; + (i + 1), i,</span>
+<span class="fc" id="L1101">                    conf.getInt(&quot;attrList.a(&quot; + i + &quot;)&quot;));</span>
+<span class="fc" id="L1102">            assertEquals(&quot;Wrong name attribute for element &quot; + (i), &quot;y&quot;,</span>
+<span class="fc" id="L1103">                    conf.getString(&quot;attrList.a(&quot; + i + &quot;)[@name]&quot;));</span>
+        }
+<span class="fc" id="L1105">    }</span>
+
+    /**
+     * Tests a list node with multiple values and multiple attributes. All
+     * attribute values should be assigned to all list nodes.
+     */
+    @Test
+    public void testListWithMultipleAttributesMultiValue()
+    {
+<span class="fc bfc" id="L1114" title="All 2 branches covered.">        for (int i = 1; i &lt;= 2; i++)</span>
+        {
+<span class="fc" id="L1116">            String idxStr = String.format(&quot;(%d)&quot;, Integer.valueOf(i + 3));</span>
+<span class="fc" id="L1117">            String nodeKey = &quot;attrList.a&quot; + idxStr;</span>
+<span class="fc" id="L1118">            assertEquals(&quot;Wrong value of multi-valued node&quot;, &quot;value&quot; + i,</span>
+<span class="fc" id="L1119">                    conf.getString(nodeKey));</span>
+<span class="fc" id="L1120">            assertEquals(&quot;Wrong name attribute at &quot; + i, &quot;u&quot;,</span>
+<span class="fc" id="L1121">                    conf.getString(nodeKey + &quot;[@name]&quot;));</span>
+<span class="fc" id="L1122">            assertEquals(&quot;Wrong test attribute at &quot; + i, &quot;yes&quot;,</span>
+<span class="fc" id="L1123">                    conf.getString(nodeKey + &quot;[@test]&quot;));</span>
+        }
+<span class="fc" id="L1125">    }</span>
+
+    /**
+     * Tests whether the auto save mechanism is triggered by changes at a
+     * subnode configuration.
+     */
+    @Test
+    public void testAutoSaveWithSubnodeConfig() throws ConfigurationException
+    {
+<span class="fc" id="L1134">        FileBasedConfigurationBuilder&lt;XMLConfiguration&gt; builder =</span>
+                new FileBasedConfigurationBuilder&lt;&gt;(
+                        XMLConfiguration.class);
+<span class="fc" id="L1137">        builder.configure(new FileBasedBuilderParametersImpl()</span>
+<span class="fc" id="L1138">                .setFileName(testProperties));</span>
+<span class="fc" id="L1139">        conf = builder.getConfiguration();</span>
+<span class="fc" id="L1140">        builder.getFileHandler().setFile(testSaveConf);</span>
+<span class="fc" id="L1141">        builder.setAutoSave(true);</span>
+<span class="fc" id="L1142">        final String newValue = &quot;I am autosaved&quot;;</span>
+<span class="fc" id="L1143">        Configuration sub = conf.configurationAt(&quot;element2.subelement&quot;, true);</span>
+<span class="fc" id="L1144">        sub.setProperty(&quot;subsubelement&quot;, newValue);</span>
+<span class="fc" id="L1145">        assertEquals(&quot;Change not visible to parent&quot;, newValue,</span>
+<span class="fc" id="L1146">                conf.getString(&quot;element2.subelement.subsubelement&quot;));</span>
+<span class="fc" id="L1147">        XMLConfiguration conf2 = new XMLConfiguration();</span>
+<span class="fc" id="L1148">        load(conf2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1149">        assertEquals(&quot;Change was not saved&quot;, newValue,</span>
+<span class="fc" id="L1150">                conf2.getString(&quot;element2.subelement.subsubelement&quot;));</span>
+<span class="fc" id="L1151">    }</span>
+
+    /**
+     * Tests whether a subnode configuration created from another subnode
+     * configuration of a XMLConfiguration can trigger the auto save mechanism.
+     */
+    @Test
+    public void testAutoSaveWithSubSubnodeConfig() throws ConfigurationException
+    {
+<span class="fc" id="L1160">        FileBasedConfigurationBuilder&lt;XMLConfiguration&gt; builder =</span>
+                new FileBasedConfigurationBuilder&lt;&gt;(
+                        XMLConfiguration.class);
+<span class="fc" id="L1163">        builder.configure(new FileBasedBuilderParametersImpl()</span>
+<span class="fc" id="L1164">                .setFileName(testProperties));</span>
+<span class="fc" id="L1165">        conf = builder.getConfiguration();</span>
+<span class="fc" id="L1166">        builder.getFileHandler().setFile(testSaveConf);</span>
+<span class="fc" id="L1167">        builder.setAutoSave(true);</span>
+<span class="fc" id="L1168">        final String newValue = &quot;I am autosaved&quot;;</span>
+<span class="fc" id="L1169">        HierarchicalConfiguration&lt;?&gt; sub1 = conf.configurationAt(&quot;element2&quot;, true);</span>
+<span class="fc" id="L1170">        HierarchicalConfiguration&lt;?&gt; sub2 = sub1.configurationAt(&quot;subelement&quot;, true);</span>
+<span class="fc" id="L1171">        sub2.setProperty(&quot;subsubelement&quot;, newValue);</span>
+<span class="fc" id="L1172">        assertEquals(&quot;Change not visible to parent&quot;, newValue, conf</span>
+<span class="fc" id="L1173">                .getString(&quot;element2.subelement.subsubelement&quot;));</span>
+<span class="fc" id="L1174">        XMLConfiguration conf2 = new XMLConfiguration();</span>
+<span class="fc" id="L1175">        load(conf2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1176">        assertEquals(&quot;Change was not saved&quot;, newValue, conf2</span>
+<span class="fc" id="L1177">                .getString(&quot;element2.subelement.subsubelement&quot;));</span>
+<span class="fc" id="L1178">    }</span>
+
+    /**
+     * Tests saving and loading a configuration when delimiter parsing is
+     * disabled.
+     */
+    @Test
+    public void testSaveDelimiterParsingDisabled()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1188">        checkSaveDelimiterParsingDisabled(&quot;list.delimiter.test&quot;);</span>
+<span class="fc" id="L1189">    }</span>
+
+    /**
+     * Helper method for testing saving and loading a configuration when
+     * delimiter parsing is disabled.
+     *
+     * @param key the key to be checked
+     * @throws ConfigurationException if an error occurs
+     */
+    private void checkSaveDelimiterParsingDisabled(String key)
+            throws ConfigurationException
+    {
+<span class="fc" id="L1201">        conf.clear();</span>
+<span class="fc" id="L1202">        conf.setListDelimiterHandler(new DisabledListDelimiterHandler());</span>
+<span class="fc" id="L1203">        load(conf, testProperties);</span>
+<span class="fc" id="L1204">        conf.setProperty(key, &quot;C:\\Temp\\,C:\\Data\\&quot;);</span>
+<span class="fc" id="L1205">        conf.addProperty(key, &quot;a,b,c&quot;);</span>
+<span class="fc" id="L1206">        saveTestConfig();</span>
+<span class="fc" id="L1207">        XMLConfiguration checkConf = new XMLConfiguration();</span>
+<span class="fc" id="L1208">        checkConf.setListDelimiterHandler(conf.getListDelimiterHandler());</span>
+<span class="fc" id="L1209">        load(checkConf, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1210">        ConfigurationAssert.assertConfigurationEquals(conf, checkConf);</span>
+<span class="fc" id="L1211">    }</span>
+
+    /**
+     * Tests that attribute values are not split.
+     */
+    @Test
+    public void testNoDelimiterParsingInAttrValues() throws ConfigurationException
+    {
+<span class="fc" id="L1219">        conf.clear();</span>
+<span class="fc" id="L1220">        load(conf, testProperties);</span>
+<span class="fc" id="L1221">        List&lt;Object&gt; expr = conf.getList(&quot;expressions[@value]&quot;);</span>
+<span class="fc" id="L1222">        assertEquals(&quot;Wrong list size&quot;, 1, expr.size());</span>
+<span class="fc" id="L1223">        assertEquals(&quot;Wrong element 1&quot;, &quot;a || (b &amp;&amp; c) | !d&quot;, expr.get(0));</span>
+<span class="fc" id="L1224">    }</span>
+
+    /**
+     * Tries to create an attribute with multiple values. Only the first value
+     * is taken into account.
+     */
+    @Test
+    public void testAttributeKeyWithMultipleValues()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1234">        conf.addProperty(&quot;errorTest[@multiAttr]&quot;, Arrays.asList(&quot;v1&quot;, &quot;v2&quot;));</span>
+<span class="fc" id="L1235">        saveTestConfig();</span>
+<span class="fc" id="L1236">        XMLConfiguration checkConfig = new XMLConfiguration();</span>
+<span class="fc" id="L1237">        load(checkConfig, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1238">        assertEquals(&quot;Wrong attribute value&quot;, &quot;v1&quot;,</span>
+<span class="fc" id="L1239">                checkConfig.getString(&quot;errorTest[@multiAttr]&quot;));</span>
+<span class="fc" id="L1240">    }</span>
+
+    /**
+     * Tests adding nodes from another configuration.
+     */
+    @Test
+    public void testAddNodesCopy() throws ConfigurationException
+    {
+<span class="fc" id="L1248">        XMLConfiguration c2 = new XMLConfiguration();</span>
+<span class="fc" id="L1249">        load(c2, testProperties2);</span>
+<span class="fc" id="L1250">        conf.addNodes(&quot;copiedProperties&quot;, c2.getModel().getNodeHandler()</span>
+<span class="fc" id="L1251">                .getRootNode().getChildren());</span>
+<span class="fc" id="L1252">        saveTestConfig();</span>
+<span class="fc" id="L1253">        checkSavedConfig();</span>
+<span class="fc" id="L1254">    }</span>
+
+    /**
+     * Tests whether the addNodes() method triggers an auto save.
+     */
+    @Test
+    public void testAutoSaveAddNodes() throws ConfigurationException
+    {
+<span class="fc" id="L1262">        FileBasedConfigurationBuilder&lt;XMLConfiguration&gt; builder =</span>
+                new FileBasedConfigurationBuilder&lt;&gt;(
+                        XMLConfiguration.class);
+<span class="fc" id="L1265">        builder.configure(new FileBasedBuilderParametersImpl()</span>
+<span class="fc" id="L1266">                .setFileName(testProperties));</span>
+<span class="fc" id="L1267">        conf = builder.getConfiguration();</span>
+<span class="fc" id="L1268">        builder.getFileHandler().setFile(testSaveConf);</span>
+<span class="fc" id="L1269">        builder.setAutoSave(true);</span>
+<span class="fc" id="L1270">        ImmutableNode node = NodeStructureHelper.createNode(</span>
+                &quot;addNodesTest&quot;, Boolean.TRUE);
+<span class="fc" id="L1272">        Collection&lt;ImmutableNode&gt; nodes = new ArrayList&lt;&gt;(1);</span>
+<span class="fc" id="L1273">        nodes.add(node);</span>
+<span class="fc" id="L1274">        conf.addNodes(&quot;test.autosave&quot;, nodes);</span>
+<span class="fc" id="L1275">        XMLConfiguration c2 = new XMLConfiguration();</span>
+<span class="fc" id="L1276">        load(c2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1277">        assertTrue(&quot;Added nodes are not saved&quot;, c2</span>
+<span class="fc" id="L1278">                .getBoolean(&quot;test.autosave.addNodesTest&quot;));</span>
+<span class="fc" id="L1279">    }</span>
+
+    /**
+     * Tests saving a configuration after a node was added. Test for
+     * CONFIGURATION-294.
+     */
+    @Test
+    public void testAddNodesAndSave() throws ConfigurationException
+    {
+<span class="fc" id="L1288">        ImmutableNode.Builder bldrNode = new ImmutableNode.Builder(1);</span>
+<span class="fc" id="L1289">        bldrNode.addChild(NodeStructureHelper.createNode(&quot;child&quot;, null));</span>
+<span class="fc" id="L1290">        bldrNode.addAttribute(&quot;attr&quot;, &quot;&quot;);</span>
+<span class="fc" id="L1291">        ImmutableNode node2 = NodeStructureHelper.createNode(&quot;test2&quot;, null);</span>
+<span class="fc" id="L1292">        conf.addNodes(&quot;add.nodes&quot;,</span>
+<span class="fc" id="L1293">                Arrays.asList(bldrNode.name(&quot;test&quot;).create(), node2));</span>
+<span class="fc" id="L1294">        saveTestConfig();</span>
+<span class="fc" id="L1295">        conf.setProperty(&quot;add.nodes.test&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L1296">        conf.setProperty(&quot;add.nodes.test.child&quot;, &quot;yes&quot;);</span>
+<span class="fc" id="L1297">        conf.setProperty(&quot;add.nodes.test[@attr]&quot;, &quot;existing&quot;);</span>
+<span class="fc" id="L1298">        conf.setProperty(&quot;add.nodes.test2&quot;, &quot;anotherValue&quot;);</span>
+<span class="fc" id="L1299">        saveTestConfig();</span>
+<span class="fc" id="L1300">        XMLConfiguration c2 = new XMLConfiguration();</span>
+<span class="fc" id="L1301">        load(c2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1302">        assertEquals(&quot;Value was not saved&quot;, &quot;true&quot;, c2</span>
+<span class="fc" id="L1303">                .getString(&quot;add.nodes.test&quot;));</span>
+<span class="fc" id="L1304">        assertEquals(&quot;Child value was not saved&quot;, &quot;yes&quot;, c2</span>
+<span class="fc" id="L1305">                .getString(&quot;add.nodes.test.child&quot;));</span>
+<span class="fc" id="L1306">        assertEquals(&quot;Attr value was not saved&quot;, &quot;existing&quot;, c2</span>
+<span class="fc" id="L1307">                .getString(&quot;add.nodes.test[@attr]&quot;));</span>
+<span class="fc" id="L1308">        assertEquals(&quot;Node2 not saved&quot;, &quot;anotherValue&quot;, c2</span>
+<span class="fc" id="L1309">                .getString(&quot;add.nodes.test2&quot;));</span>
+<span class="fc" id="L1310">    }</span>
+
+    /**
+     * Tests saving a configuration that was created from a hierarchical
+     * configuration. This test exposes bug CONFIGURATION-301.
+     */
+    @Test
+    public void testSaveAfterCreateWithCopyConstructor()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1320">        HierarchicalConfiguration&lt;ImmutableNode&gt; hc =</span>
+<span class="fc" id="L1321">                conf.configurationAt(&quot;element2&quot;);</span>
+<span class="fc" id="L1322">        conf = new XMLConfiguration(hc);</span>
+<span class="fc" id="L1323">        saveTestConfig();</span>
+<span class="fc" id="L1324">        XMLConfiguration checkConfig = checkSavedConfig();</span>
+<span class="fc" id="L1325">        assertEquals(&quot;Wrong name of root element&quot;, &quot;element2&quot;, checkConfig</span>
+<span class="fc" id="L1326">                .getRootElementName());</span>
+<span class="fc" id="L1327">    }</span>
+
+    /**
+     * Tests whether the name of the root element is copied when a configuration
+     * is created using the copy constructor.
+     */
+    @Test
+    public void testCopyRootName() throws ConfigurationException
+    {
+<span class="fc" id="L1336">        final String rootName = &quot;rootElement&quot;;</span>
+<span class="fc" id="L1337">        final String xml = &quot;&lt;&quot; + rootName + &quot;&gt;&lt;test&gt;true&lt;/test&gt;&lt;/&quot; + rootName</span>
+                + &quot;&gt;&quot;;
+<span class="fc" id="L1339">        conf.clear();</span>
+<span class="fc" id="L1340">        new FileHandler(conf).load(new StringReader(xml));</span>
+<span class="fc" id="L1341">        XMLConfiguration copy = new XMLConfiguration(conf);</span>
+<span class="fc" id="L1342">        assertEquals(&quot;Wrong name of root element&quot;, rootName, copy</span>
+<span class="fc" id="L1343">                .getRootElementName());</span>
+<span class="fc" id="L1344">        new FileHandler(copy).save(testSaveConf);</span>
+<span class="fc" id="L1345">        copy = new XMLConfiguration();</span>
+<span class="fc" id="L1346">        load(copy, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1347">        assertEquals(&quot;Wrong name of root element after save&quot;, rootName, copy</span>
+<span class="fc" id="L1348">                .getRootElementName());</span>
+<span class="fc" id="L1349">    }</span>
+
+    /**
+     * Tests whether the name of the root element is copied for a configuration
+     * for which not yet a document exists.
+     */
+    @Test
+    public void testCopyRootNameNoDocument() throws ConfigurationException
+    {
+<span class="fc" id="L1358">        final String rootName = &quot;rootElement&quot;;</span>
+<span class="fc" id="L1359">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L1360">        conf.setRootElementName(rootName);</span>
+<span class="fc" id="L1361">        conf.setProperty(&quot;test&quot;, Boolean.TRUE);</span>
+<span class="fc" id="L1362">        XMLConfiguration copy = new XMLConfiguration(conf);</span>
+<span class="fc" id="L1363">        assertEquals(&quot;Wrong name of root element&quot;, rootName, copy</span>
+<span class="fc" id="L1364">                .getRootElementName());</span>
+<span class="fc" id="L1365">        new FileHandler(copy).save(testSaveConf);</span>
+<span class="fc" id="L1366">        load(copy, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1367">        assertEquals(&quot;Wrong name of root element after save&quot;, rootName, copy</span>
+<span class="fc" id="L1368">                .getRootElementName());</span>
+<span class="fc" id="L1369">    }</span>
+
+    /**
+     * Tests the copy constructor for null input.
+     */
+    @Test
+    public void testCopyNull()
+    {
+<span class="fc" id="L1377">        conf = new XMLConfiguration(null);</span>
+<span class="fc" id="L1378">        assertTrue(&quot;Not empty&quot;, conf.isEmpty());</span>
+<span class="fc" id="L1379">        assertEquals(&quot;Wrong root element name&quot;, &quot;configuration&quot;,</span>
+<span class="fc" id="L1380">                conf.getRootElementName());</span>
+<span class="fc" id="L1381">    }</span>
+
+    /**
+     * Tests whether spaces are preserved when the xml:space attribute is set.
+     */
+    @Test
+    public void testPreserveSpace()
+    {
+<span class="fc" id="L1389">        assertEquals(&quot;Wrong value of blanc&quot;, &quot; &quot;, conf.getString(&quot;space.blanc&quot;));</span>
+<span class="fc" id="L1390">        assertEquals(&quot;Wrong value of stars&quot;, &quot; * * &quot;, conf</span>
+<span class="fc" id="L1391">                .getString(&quot;space.stars&quot;));</span>
+<span class="fc" id="L1392">    }</span>
+
+    /**
+     * Tests whether the xml:space attribute works directly on the current
+     * element. This test is related to CONFIGURATION-555.
+     */
+    @Test
+    public void testPreserveSpaceOnElement()
+    {
+<span class="fc" id="L1401">        assertEquals(&quot;Wrong value&quot;, &quot; preserved &quot;, conf.getString(&quot;spaceElement&quot;));</span>
+<span class="fc" id="L1402">    }</span>
+
+    /**
+     * Tests whether the xml:space attribute can be overridden in nested
+     * elements.
+     */
+    @Test
+    public void testPreserveSpaceOverride()
+    {
+<span class="fc" id="L1411">        assertEquals(&quot;Not trimmed&quot;, &quot;Some text&quot;, conf</span>
+<span class="fc" id="L1412">                .getString(&quot;space.description&quot;));</span>
+<span class="fc" id="L1413">    }</span>
+
+    /**
+     * Tests an xml:space attribute with an invalid value. This will be
+     * interpreted as default.
+     */
+    @Test
+    public void testPreserveSpaceInvalid()
+    {
+<span class="fc" id="L1422">        assertEquals(&quot;Invalid not trimmed&quot;, &quot;Some other text&quot;, conf</span>
+<span class="fc" id="L1423">                .getString(&quot;space.testInvalid&quot;));</span>
+<span class="fc" id="L1424">    }</span>
+
+    /**
+     * Tests modifying an XML document and saving it with schema validation enabled.
+     */
+    @Test
+    public void testSaveWithValidation() throws Exception
+    {
+<span class="fc" id="L1432">        CatalogResolver resolver = new CatalogResolver();</span>
+<span class="fc" id="L1433">        resolver.setCatalogFiles(CATALOG_FILES);</span>
+<span class="fc" id="L1434">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L1435">        conf.setEntityResolver(resolver);</span>
+<span class="fc" id="L1436">        conf.setSchemaValidation(true);</span>
+<span class="fc" id="L1437">        load(conf, testFile2);</span>
+<span class="fc" id="L1438">        conf.setProperty(&quot;Employee.SSN&quot;, &quot;123456789&quot;);</span>
+<span class="fc" id="L1439">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1440">        conf.setSynchronizer(sync);</span>
+<span class="fc" id="L1441">        conf.validate();</span>
+<span class="fc" id="L1442">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE);</span>
+<span class="fc" id="L1443">        saveTestConfig();</span>
+<span class="fc" id="L1444">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L1445">        load(conf, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1446">        assertEquals(&quot;123456789&quot;, conf.getString(&quot;Employee.SSN&quot;));</span>
+<span class="fc" id="L1447">    }</span>
+
+    /**
+     * Tests modifying an XML document and validating it against the schema.
+     */
+    @Test
+    public void testSaveWithValidationFailure() throws Exception
+    {
+<span class="fc" id="L1455">        CatalogResolver resolver = new CatalogResolver();</span>
+<span class="fc" id="L1456">        resolver.setCatalogFiles(CATALOG_FILES);</span>
+<span class="fc" id="L1457">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L1458">        conf.setEntityResolver(resolver);</span>
+<span class="fc" id="L1459">        conf.setSchemaValidation(true);</span>
+<span class="fc" id="L1460">        load(conf, testFile2);</span>
+<span class="fc" id="L1461">        conf.setProperty(&quot;Employee.Email&quot;, &quot;JohnDoe@apache.org&quot;);</span>
+        try
+        {
+<span class="nc" id="L1464">            conf.validate();</span>
+<span class="nc" id="L1465">            fail(&quot;No validation failure on save&quot;);</span>
+        }
+<span class="fc" id="L1467">        catch (Exception e)</span>
+        {
+<span class="fc" id="L1469">            Throwable cause = e.getCause();</span>
+<span class="fc" id="L1470">            assertNotNull(&quot;No cause for exception on save&quot;, cause);</span>
+<span class="fc" id="L1471">            assertTrue(&quot;Incorrect exception on save&quot;, cause instanceof SAXParseException);</span>
+<span class="nc" id="L1472">        }</span>
+<span class="fc" id="L1473">    }</span>
+
+    @Test
+    public void testConcurrentGetAndReload() throws ConfigurationException,
+            InterruptedException
+    {
+<span class="fc" id="L1479">        FileBasedConfigurationBuilder&lt;XMLConfiguration&gt; builder =</span>
+                new FileBasedConfigurationBuilder&lt;&gt;(
+                        XMLConfiguration.class);
+<span class="fc" id="L1482">        builder.configure(new FileBasedBuilderParametersImpl()</span>
+<span class="fc" id="L1483">                .setFileName(testProperties));</span>
+<span class="fc" id="L1484">        XMLConfiguration config = builder.getConfiguration();</span>
+<span class="fc" id="L1485">        assertTrue(&quot;Property not found&quot;,</span>
+<span class="pc bpc" id="L1486" title="1 of 2 branches missed.">                config.getProperty(&quot;test.short&quot;) != null);</span>
+
+<span class="fc" id="L1488">        Thread testThreads[] = new Thread[THREAD_COUNT];</span>
+<span class="fc bfc" id="L1489" title="All 2 branches covered.">        for (int i = 0; i &lt; testThreads.length; ++i)</span>
+        {
+<span class="fc" id="L1491">            testThreads[i] = new ReloadThread(builder);</span>
+<span class="fc" id="L1492">            testThreads[i].start();</span>
+        }
+
+<span class="fc bfc" id="L1495" title="All 2 branches covered.">        for (int i = 0; i &lt; LOOP_COUNT; i++)</span>
+        {
+<span class="fc" id="L1497">            config = builder.getConfiguration();</span>
+<span class="pc bpc" id="L1498" title="1 of 2 branches missed.">            assertTrue(&quot;Property not found&quot;, config.getProperty(&quot;test.short&quot;) != null);</span>
+        }
+
+<span class="fc bfc" id="L1501" title="All 2 branches covered.">        for (Thread testThread : testThreads) {</span>
+<span class="fc" id="L1502">            testThread.join();</span>
+        }
+<span class="fc" id="L1504">    }</span>
+
+    /**
+     * Tests whether a windows path can be saved correctly. This test is related
+     * to CONFIGURATION-428.
+     */
+    @Test
+    public void testSaveWindowsPath() throws ConfigurationException
+    {
+<span class="fc" id="L1513">        conf.clear();</span>
+<span class="fc" id="L1514">        conf.setListDelimiterHandler(new DisabledListDelimiterHandler());</span>
+<span class="fc" id="L1515">        conf.addProperty(&quot;path&quot;, &quot;C:\\Temp&quot;);</span>
+<span class="fc" id="L1516">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L1517">        new FileHandler(conf).save(writer);</span>
+<span class="fc" id="L1518">        String content = writer.toString();</span>
+<span class="fc" id="L1519">        assertThat(&quot;Path not found: &quot;, content,</span>
+<span class="fc" id="L1520">                containsString(&quot;&lt;path&gt;C:\\Temp&lt;/path&gt;&quot;));</span>
+<span class="fc" id="L1521">        saveTestConfig();</span>
+<span class="fc" id="L1522">        XMLConfiguration conf2 = new XMLConfiguration();</span>
+<span class="fc" id="L1523">        load(conf2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1524">        assertEquals(&quot;Wrong windows path&quot;, &quot;C:\\Temp&quot;,</span>
+<span class="fc" id="L1525">                conf2.getString(&quot;path&quot;));</span>
+<span class="fc" id="L1526">    }</span>
+
+    /**
+     * Tests whether an attribute can be set to an empty string. This test is
+     * related to CONFIGURATION-446.
+     */
+    @Test
+    public void testEmptyAttribute() throws ConfigurationException
+    {
+<span class="fc" id="L1535">        String key = &quot;element3[@value]&quot;;</span>
+<span class="fc" id="L1536">        conf.setProperty(key, &quot;&quot;);</span>
+<span class="fc" id="L1537">        assertTrue(&quot;Key not found&quot;, conf.containsKey(key));</span>
+<span class="fc" id="L1538">        assertEquals(&quot;Wrong value&quot;, &quot;&quot;, conf.getString(key));</span>
+<span class="fc" id="L1539">        saveTestConfig();</span>
+<span class="fc" id="L1540">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L1541">        load(conf, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1542">        assertTrue(&quot;Key not found after save&quot;, conf.containsKey(key));</span>
+<span class="fc" id="L1543">        assertEquals(&quot;Wrong value after save&quot;, &quot;&quot;, conf.getString(key));</span>
+<span class="fc" id="L1544">    }</span>
+
+    /**
+     * Tests whether it is possible to add nodes to a XMLConfiguration through a
+     * SubnodeConfiguration and whether these nodes have the correct type. This
+     * test is related to CONFIGURATION-472.
+     */
+    @Test
+    public void testAddNodesToSubnodeConfiguration() throws Exception
+    {
+<span class="fc" id="L1554">        HierarchicalConfiguration&lt;ImmutableNode&gt; sub =</span>
+<span class="fc" id="L1555">                conf.configurationAt(&quot;element2&quot;, true);</span>
+<span class="fc" id="L1556">        sub.addProperty(&quot;newKey&quot;, &quot;newvalue&quot;);</span>
+<span class="fc" id="L1557">        assertEquals(&quot;Property not added&quot;, &quot;newvalue&quot;,</span>
+<span class="fc" id="L1558">                conf.getString(&quot;element2.newKey&quot;));</span>
+<span class="fc" id="L1559">    }</span>
+
+    /**
+     * Tests whether list properties are set correctly if delimiter
+     * parsing is disabled. This test is related to CONFIGURATION-495.
+     */
+    @Test
+    public void testSetPropertyListWithDelimiterParsingDisabled()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1569">        String prop = &quot;delimiterListProp&quot;;</span>
+<span class="fc" id="L1570">        List&lt;String&gt; list = Arrays.asList(&quot;val&quot;, &quot;val2&quot;, &quot;val3&quot;);</span>
+<span class="fc" id="L1571">        conf.setProperty(prop, list);</span>
+<span class="fc" id="L1572">        saveTestConfig();</span>
+<span class="fc" id="L1573">        XMLConfiguration conf2 = new XMLConfiguration();</span>
+<span class="fc" id="L1574">        load(conf2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1575">        assertEquals(&quot;Wrong list property&quot;, list, conf2.getProperty(prop));</span>
+<span class="fc" id="L1576">    }</span>
+
+    /**
+     * Tests whether list properties are added correctly if delimiter parsing is
+     * disabled. This test is related to CONFIGURATION-495.
+     */
+    @Test
+    public void testAddPropertyListWithDelimiterParsingDisabled()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1586">        conf.clear();</span>
+<span class="fc" id="L1587">        String prop = &quot;delimiterListProp&quot;;</span>
+<span class="fc" id="L1588">        conf.setListDelimiterHandler(DisabledListDelimiterHandler.INSTANCE);</span>
+<span class="fc" id="L1589">        List&lt;String&gt; list = Arrays.asList(&quot;val&quot;, &quot;val2&quot;, &quot;val3&quot;);</span>
+<span class="fc" id="L1590">        conf.addProperty(prop, list);</span>
+<span class="fc" id="L1591">        saveTestConfig();</span>
+<span class="fc" id="L1592">        XMLConfiguration conf2 = new XMLConfiguration();</span>
+<span class="fc" id="L1593">        load(conf2, testSaveConf.getAbsolutePath());</span>
+<span class="fc" id="L1594">        assertEquals(&quot;Wrong list property&quot;, list, conf2.getProperty(prop));</span>
+<span class="fc" id="L1595">    }</span>
+
+    /**
+     * Tests whether the system ID is accessed in a synchronized manner.
+     */
+    @Test
+    public void testSystemIdSynchronized()
+    {
+<span class="fc" id="L1603">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1604">        conf.setSynchronizer(sync);</span>
+<span class="fc" id="L1605">        conf.setSystemID(SYSTEM_ID);</span>
+<span class="fc" id="L1606">        assertEquals(&quot;SystemID not set&quot;, SYSTEM_ID, conf.getSystemID());</span>
+<span class="fc" id="L1607">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE, Methods.BEGIN_READ,</span>
+                Methods.END_READ);
+<span class="fc" id="L1609">    }</span>
+
+    /**
+     * Tests whether the public ID is accessed in a synchronized manner.
+     */
+    @Test
+    public void testPublicIdSynchronized()
+    {
+<span class="fc" id="L1617">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1618">        conf.setSynchronizer(sync);</span>
+<span class="fc" id="L1619">        conf.setPublicID(PUBLIC_ID);</span>
+<span class="fc" id="L1620">        assertEquals(&quot;PublicID not set&quot;, PUBLIC_ID, conf.getPublicID());</span>
+<span class="fc" id="L1621">        sync.verify(Methods.BEGIN_WRITE, Methods.END_WRITE, Methods.BEGIN_READ,</span>
+                Methods.END_READ);
+<span class="fc" id="L1623">    }</span>
+
+    /**
+     * Tests a direct invocation of the read() method. This is not allowed
+     * because certain initializations have not been done. This test is
+     * related to CONFIGURATION-641.
+     */
+    @Test
+    public void testReadCalledDirectly() throws IOException, ConfigurationException
+    {
+<span class="fc" id="L1633">        conf = new XMLConfiguration();</span>
+<span class="fc" id="L1634">        String content = &quot;&lt;configuration&gt;&lt;test&gt;1&lt;/test&gt;&lt;/configuration&gt;&quot;;</span>
+<span class="fc" id="L1635">        ByteArrayInputStream bis = new ByteArrayInputStream(content.getBytes());</span>
+        try
+        {
+<span class="nc" id="L1638">            conf.read(bis);</span>
+<span class="nc" id="L1639">            fail(&quot;No exception thrown!&quot;);</span>
+        }
+<span class="fc" id="L1641">        catch (ConfigurationException e)</span>
+        {
+<span class="fc" id="L1643">            assertThat(e.getMessage(), containsString(&quot;FileHandler&quot;));</span>
+<span class="nc" id="L1644">        }</span>
+<span class="fc" id="L1645">    }</span>
+
+    /**
+     * Removes the test output file if it exists.
+     */
+    private void removeTestFile()
+    {
+<span class="pc bpc" id="L1652" title="1 of 2 branches missed.">        if (testSaveConf.exists())</span>
+        {
+<span class="fc" id="L1654">            assertTrue(testSaveConf.delete());</span>
+        }
+<span class="fc" id="L1656">    }</span>
+
+    /**
+     * Helper method for saving the test configuration to the default output
+     * file.
+     *
+     * @throws ConfigurationException if an error occurs
+     */
+    private void saveTestConfig() throws ConfigurationException
+    {
+<span class="fc" id="L1666">        FileHandler handler = new FileHandler(conf);</span>
+<span class="fc" id="L1667">        handler.save(testSaveConf);</span>
+<span class="fc" id="L1668">    }</span>
+
+    /**
+     * Tests whether the saved configuration file matches the original data.
+     *
+     * @param saveFile the saved configuration file
+     * @return the newly loaded configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    private XMLConfiguration checkSavedConfig(File saveFile)
+            throws ConfigurationException
+    {
+<span class="fc" id="L1680">        XMLConfiguration config = createFromFile(saveFile.getAbsolutePath());</span>
+<span class="fc" id="L1681">        ConfigurationAssert.assertConfigurationEquals(conf, config);</span>
+<span class="fc" id="L1682">        return config;</span>
+    }
+
+    /**
+     * Helper method for testing whether a configuration was correctly saved to
+     * the default output file.
+     *
+     * @return the newly loaded configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    private XMLConfiguration checkSavedConfig() throws ConfigurationException
+    {
+<span class="fc" id="L1694">        return checkSavedConfig(testSaveConf);</span>
+    }
+
+    /**
+     * A thread used for testing concurrent access to a builder.
+     */
+    private class ReloadThread extends Thread
+    {
+        private final FileBasedConfigurationBuilder&lt;?&gt; builder;
+
+        ReloadThread(FileBasedConfigurationBuilder&lt;?&gt; confBulder)
+<span class="fc" id="L1705">        {</span>
+<span class="fc" id="L1706">            builder = confBulder;</span>
+<span class="fc" id="L1707">        }</span>
+
+        @Override
+        public void run()
+        {
+<span class="fc bfc" id="L1712" title="All 2 branches covered.">            for (int i = 0; i &lt; LOOP_COUNT; i++)</span>
+            {
+<span class="fc" id="L1714">                builder.resetResult();</span>
+            }
+<span class="fc" id="L1716">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

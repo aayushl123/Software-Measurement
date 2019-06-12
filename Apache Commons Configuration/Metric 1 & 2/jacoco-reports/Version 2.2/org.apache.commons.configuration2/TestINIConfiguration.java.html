@@ -1,0 +1,1292 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestINIConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons_configuration2$Whole_project.exec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">TestINIConfiguration.java</span></div><h1>TestINIConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with this
+ * work for additional information regarding copyright ownership. The ASF
+ * licenses this file to You under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.io.Writer;
+import java.text.MessageFormat;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.commons.configuration2.SynchronizerTestImpl.Methods;
+import org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
+import org.apache.commons.configuration2.builder.fluent.Parameters;
+import org.apache.commons.configuration2.convert.DefaultListDelimiterHandler;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.sync.ReadWriteSynchronizer;
+import org.apache.commons.configuration2.tree.DefaultExpressionEngine;
+import org.apache.commons.configuration2.tree.DefaultExpressionEngineSymbols;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.configuration2.tree.NodeNameMatchers;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+/**
+ * Test class for {@code INIConfiguration}.
+ *
+ * @version $Id$
+ */
+<span class="fc" id="L62">public class TestINIConfiguration</span>
+{
+<span class="fc" id="L64">    private static String LINE_SEPARATOR = System.getProperty(&quot;line.separator&quot;);</span>
+
+    /** Constant for the content of an ini file. */
+<span class="fc" id="L67">    private static final String INI_DATA = &quot;[section1]&quot; + LINE_SEPARATOR</span>
+            + &quot;var1 = foo&quot; + LINE_SEPARATOR + &quot;var2 = 451&quot; + LINE_SEPARATOR
+            + LINE_SEPARATOR + &quot;[section2]&quot; + LINE_SEPARATOR + &quot;var1 = 123.45&quot;
+            + LINE_SEPARATOR + &quot;var2 = bar&quot; + LINE_SEPARATOR + LINE_SEPARATOR
+            + &quot;[section3]&quot; + LINE_SEPARATOR + &quot;var1 = true&quot; + LINE_SEPARATOR
+            + &quot;interpolated = ${section3.var1}&quot; + LINE_SEPARATOR
+            + &quot;multi = foo&quot; + LINE_SEPARATOR + &quot;multi = bar&quot; + LINE_SEPARATOR
+            + LINE_SEPARATOR;
+
+<span class="fc" id="L76">    private static final String INI_DATA2 = &quot;[section4]&quot; + LINE_SEPARATOR</span>
+            + &quot;var1 = \&quot;quoted value\&quot;&quot; + LINE_SEPARATOR
+            + &quot;var2 = \&quot;quoted value\\nwith \\\&quot;quotes\\\&quot;\&quot;&quot; + LINE_SEPARATOR
+            + &quot;var3 = 123 ; comment&quot; + LINE_SEPARATOR
+            + &quot;var4 = \&quot;1;2;3\&quot; ; comment&quot; + LINE_SEPARATOR
+            + &quot;var5 = '\\'quoted\\' \&quot;value\&quot;' ; comment&quot; + LINE_SEPARATOR
+            + &quot;var6 = \&quot;\&quot;&quot; + LINE_SEPARATOR;
+
+<span class="fc" id="L84">    private static final String INI_DATA3 = &quot;[section5]&quot; + LINE_SEPARATOR</span>
+            + &quot;multiLine = one \\&quot; + LINE_SEPARATOR
+            + &quot;    two      \\&quot; + LINE_SEPARATOR
+            + &quot; three&quot; + LINE_SEPARATOR
+            + &quot;singleLine = C:\\Temp\\&quot; + LINE_SEPARATOR
+            + &quot;multiQuoted = one \\&quot; + LINE_SEPARATOR
+            + &quot;\&quot;  two  \&quot; \\&quot; + LINE_SEPARATOR
+            + &quot;  three&quot; + LINE_SEPARATOR
+            + &quot;multiComment = one \\ ; a comment&quot; + LINE_SEPARATOR
+            + &quot;two&quot; + LINE_SEPARATOR
+            + &quot;multiQuotedComment = \&quot; one \&quot; \\ ; comment&quot; + LINE_SEPARATOR
+            + &quot;two&quot; + LINE_SEPARATOR
+            + &quot;noFirstLine = \\&quot; + LINE_SEPARATOR
+            + &quot;  line 2&quot; + LINE_SEPARATOR
+            + &quot;continueNoLine = one \\&quot; + LINE_SEPARATOR;
+
+<span class="fc" id="L100">    private static final String INI_DATA4 = &quot;[section6]&quot; + LINE_SEPARATOR</span>
+    		+ &quot;key1{0}value1&quot; + LINE_SEPARATOR
+    		+ &quot;key2{0}value2&quot; + LINE_SEPARATOR + LINE_SEPARATOR
+    		+ &quot;[section7]&quot; + LINE_SEPARATOR
+    		+ &quot;key3{0}value3&quot; + LINE_SEPARATOR;
+
+<span class="fc" id="L106">    private static final String INI_DATA_SEPARATORS = &quot;[section]&quot;</span>
+            + LINE_SEPARATOR + &quot;var1 = value1&quot; + LINE_SEPARATOR
+            + &quot;var2 : value2&quot; + LINE_SEPARATOR
+            + &quot;var3=value3&quot; + LINE_SEPARATOR
+            + &quot;var4:value4&quot; + LINE_SEPARATOR
+            + &quot;var5 : value=5&quot; + LINE_SEPARATOR
+            + &quot;var:6=value&quot; + LINE_SEPARATOR
+            + &quot;var:7=\&quot;value7\&quot;&quot; + LINE_SEPARATOR
+            + &quot;var:8 =  \&quot;value8\&quot;&quot; + LINE_SEPARATOR;
+
+    /** An ini file that contains only a property in the global section. */
+<span class="fc" id="L117">    private static final String INI_DATA_GLOBAL_ONLY = &quot;globalVar = testGlobal&quot;</span>
+            + LINE_SEPARATOR + LINE_SEPARATOR;
+
+    /** An ini file with a global section. */
+<span class="fc" id="L121">    private static final String INI_DATA_GLOBAL = INI_DATA_GLOBAL_ONLY</span>
+            + INI_DATA;
+
+    /** A helper object for creating temporary files. */
+<span class="fc" id="L125">    @Rule</span>
+    public TemporaryFolder folder = new TemporaryFolder();
+
+    /**
+     * Creates a INIConfiguration object that is initialized from
+     * the given data.
+     *
+     * @param data the data of the configuration (an ini file as string)
+     * @return the initialized configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    private static INIConfiguration setUpConfig(String data)
+            throws ConfigurationException
+    {
+<span class="fc" id="L139">        INIConfiguration instance = new INIConfiguration();</span>
+<span class="fc" id="L140">        instance.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L141">        load(instance, data);</span>
+<span class="fc" id="L142">        return instance;</span>
+    }
+
+    /**
+     * Loads the specified content into the given configuration instance.
+     *
+     * @param instance the configuration
+     * @param data the data to be loaded
+     * @throws ConfigurationException if an error occurs
+     */
+    private static void load(INIConfiguration instance, String data)
+            throws ConfigurationException
+    {
+<span class="fc" id="L155">        StringReader reader = new StringReader(data);</span>
+        try
+        {
+<span class="fc" id="L158">            instance.read(reader);</span>
+        }
+<span class="nc" id="L160">        catch (IOException e)</span>
+        {
+<span class="nc" id="L162">            throw new ConfigurationException(e);</span>
+<span class="fc" id="L163">        }</span>
+<span class="fc" id="L164">        reader.close();</span>
+<span class="fc" id="L165">    }</span>
+
+    /**
+     * Saves the specified configuration to a string. The string can be compared
+     * with an expected value or again loaded into a configuration.
+     *
+     * @param config the configuration to be saved
+     * @return the content of this configuration saved to a string
+     * @throws ConfigurationException if an error occurs
+     */
+    private static String saveToString(INIConfiguration config)
+            throws ConfigurationException
+    {
+<span class="fc" id="L178">        StringWriter writer = new StringWriter();</span>
+        try
+        {
+<span class="fc" id="L181">            config.write(writer);</span>
+        }
+<span class="nc" id="L183">        catch (IOException e)</span>
+        {
+<span class="nc" id="L185">            throw new ConfigurationException(e);</span>
+<span class="fc" id="L186">        }</span>
+<span class="fc" id="L187">        return writer.toString();</span>
+    }
+
+    /**
+     * Writes a test ini file.
+     *
+     * @param content the content of the file
+     * @return the newly created file
+     * @throws IOException if an error occurs
+     */
+    private File writeTestFile(String content) throws IOException
+    {
+<span class="fc" id="L199">        File file = folder.newFile();</span>
+<span class="fc" id="L200">        PrintWriter out = new PrintWriter(new FileWriter(file));</span>
+        try
+        {
+<span class="fc" id="L203">            out.println(content);</span>
+        }
+        finally
+        {
+<span class="fc" id="L207">            out.close();</span>
+        }
+<span class="fc" id="L209">        return file;</span>
+    }
+
+    /**
+     * Test of save method, of class {@link INIConfiguration}.
+     */
+    @Test
+    public void testSave() throws Exception
+    {
+<span class="fc" id="L218">        Writer writer = new StringWriter();</span>
+<span class="fc" id="L219">        INIConfiguration instance = new INIConfiguration();</span>
+<span class="fc" id="L220">        instance.addProperty(&quot;section1.var1&quot;, &quot;foo&quot;);</span>
+<span class="fc" id="L221">        instance.addProperty(&quot;section1.var2&quot;, &quot;451&quot;);</span>
+<span class="fc" id="L222">        instance.addProperty(&quot;section2.var1&quot;, &quot;123.45&quot;);</span>
+<span class="fc" id="L223">        instance.addProperty(&quot;section2.var2&quot;, &quot;bar&quot;);</span>
+<span class="fc" id="L224">        instance.addProperty(&quot;section3.var1&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L225">        instance.addProperty(&quot;section3.interpolated&quot;, &quot;${section3.var1}&quot;);</span>
+<span class="fc" id="L226">        instance.addProperty(&quot;section3.multi&quot;, &quot;foo&quot;);</span>
+<span class="fc" id="L227">        instance.addProperty(&quot;section3.multi&quot;, &quot;bar&quot;);</span>
+<span class="fc" id="L228">        instance.write(writer);</span>
+
+<span class="fc" id="L230">        assertEquals(&quot;Wrong content of ini file&quot;, INI_DATA, writer.toString());</span>
+<span class="fc" id="L231">    }</span>
+
+    /**
+     * Test of save method with changed separator
+     */
+    @Test
+    public void testSeparatorUsedInINIOutput() throws Exception
+    {
+<span class="fc" id="L239">    	final String outputSeparator = &quot;: &quot;;</span>
+<span class="fc" id="L240">    	String input = MessageFormat.format(INI_DATA4, &quot;=&quot;).trim();</span>
+<span class="fc" id="L241">    	String expectedOutput = MessageFormat.format(INI_DATA4, outputSeparator).trim();</span>
+
+<span class="fc" id="L243">    	INIConfiguration instance = new FileBasedConfigurationBuilder&lt;&gt;(</span>
+    	        INIConfiguration.class)
+<span class="fc" id="L245">                .configure(new Parameters().ini().setSeparatorUsedInOutput(outputSeparator))</span>
+<span class="fc" id="L246">                .getConfiguration();</span>
+<span class="fc" id="L247">        load(instance, input);</span>
+
+<span class="fc" id="L249">        Writer writer = new StringWriter();</span>
+<span class="fc" id="L250">        instance.write(writer);</span>
+<span class="fc" id="L251">        String result = writer.toString().trim();</span>
+
+<span class="fc" id="L253">        assertEquals(&quot;Wrong content of ini file&quot;, expectedOutput, result);</span>
+<span class="fc" id="L254">    }</span>
+
+    /**
+     * Helper method for testing a save operation. This method constructs a
+     * configuration from the specified content string. Then it saves this
+     * configuration and checks whether the result matches the original content.
+     *
+     * @param content the content of the configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    private void checkSave(String content) throws ConfigurationException
+    {
+<span class="fc" id="L266">        INIConfiguration config = setUpConfig(content);</span>
+<span class="fc" id="L267">        String sOutput = saveToString(config);</span>
+<span class="fc" id="L268">        assertEquals(&quot;Wrong content of ini file&quot;, content, sOutput);</span>
+<span class="fc" id="L269">    }</span>
+
+    /**
+     * Tests saving a configuration that contains a global section.
+     */
+    @Test
+    public void testSaveWithGlobalSection() throws ConfigurationException
+    {
+<span class="fc" id="L277">        checkSave(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Tests whether a configuration that contains only a global section can be
+     * saved correctly.
+     */
+    @Test
+    public void testSaveWithOnlyGlobalSection() throws ConfigurationException
+    {
+<span class="fc" id="L287">        checkSave(INI_DATA_GLOBAL_ONLY);</span>
+<span class="fc" id="L288">    }</span>
+
+    /**
+     * Tests whether list delimiter parsing can be disabled.
+     */
+    @Test
+    public void testSaveWithDelimiterParsingDisabled()
+            throws ConfigurationException
+    {
+<span class="fc" id="L297">        INIConfiguration config = new INIConfiguration();</span>
+<span class="fc" id="L298">        String data =</span>
+<span class="fc" id="L299">                INI_DATA.substring(0, INI_DATA.length() - LINE_SEPARATOR.length())</span>
+                        + &quot;nolist = 1,2, 3&quot;;
+<span class="fc" id="L301">        load(config, data);</span>
+<span class="fc" id="L302">        assertEquals(&quot;Wrong property value&quot;, &quot;1,2, 3&quot;,</span>
+<span class="fc" id="L303">                config.getString(&quot;section3.nolist&quot;));</span>
+<span class="fc" id="L304">        String content = saveToString(config);</span>
+<span class="fc" id="L305">        INIConfiguration config2 = new INIConfiguration();</span>
+<span class="fc" id="L306">        load(config2, content);</span>
+<span class="fc" id="L307">        assertEquals(&quot;Wrong property value after reload&quot;, &quot;1,2, 3&quot;,</span>
+<span class="fc" id="L308">                config2.getString(&quot;section3.nolist&quot;));</span>
+<span class="fc" id="L309">    }</span>
+
+    /**
+     * Test of load method, of class {@link INIConfiguration}.
+     */
+    @Test
+    public void testLoad() throws Exception
+    {
+<span class="fc" id="L317">        checkLoad(INI_DATA);</span>
+<span class="fc" id="L318">    }</span>
+
+    /**
+     * Tests the load() method when the alternative value separator is used (a
+     * ':' for '=').
+     */
+    @Test
+    public void testLoadAlternativeSeparator() throws Exception
+    {
+<span class="fc" id="L327">        checkLoad(INI_DATA.replace('=', ':'));</span>
+<span class="fc" id="L328">    }</span>
+
+    /**
+     * Tests whether an instance can be created using a file-based builder.
+     */
+    @Test
+    public void testLoadFromBuilder() throws ConfigurationException,
+            IOException
+    {
+<span class="fc" id="L337">        File file = writeTestFile(INI_DATA);</span>
+<span class="fc" id="L338">        FileBasedConfigurationBuilder&lt;INIConfiguration&gt; builder =</span>
+                new FileBasedConfigurationBuilder&lt;&gt;(
+                        INIConfiguration.class);
+<span class="fc" id="L341">        builder.configure(new FileBasedBuilderParametersImpl()</span>
+<span class="fc" id="L342">                .setFile(file));</span>
+<span class="fc" id="L343">        INIConfiguration config = builder.getConfiguration();</span>
+<span class="fc" id="L344">        checkContent(config);</span>
+<span class="fc" id="L345">    }</span>
+
+    /**
+     * Tests the values of some properties to ensure that the configuration was
+     * correctly loaded.
+     *
+     * @param instance the configuration to check
+     */
+    private void checkContent(INIConfiguration instance)
+    {
+<span class="fc" id="L355">        assertEquals(&quot;var1&quot;, &quot;foo&quot;, instance.getString(&quot;section1.var1&quot;));</span>
+<span class="fc" id="L356">        assertEquals(&quot;var2&quot;, 451, instance.getInt(&quot;section1.var2&quot;));</span>
+<span class="fc" id="L357">        assertEquals(&quot;section2.var1&quot;, 123.45,</span>
+<span class="fc" id="L358">                instance.getDouble(&quot;section2.var1&quot;), .001);</span>
+<span class="fc" id="L359">        assertEquals(&quot;section2.var2&quot;, &quot;bar&quot;,</span>
+<span class="fc" id="L360">                instance.getString(&quot;section2.var2&quot;));</span>
+<span class="fc" id="L361">        assertEquals(&quot;section3.var1&quot;, true,</span>
+<span class="fc" id="L362">                instance.getBoolean(&quot;section3.var1&quot;));</span>
+<span class="fc" id="L363">        assertEquals(&quot;Wrong number of sections&quot;, 3, instance.getSections()</span>
+<span class="fc" id="L364">                .size());</span>
+<span class="fc" id="L365">        assertTrue(</span>
+                &quot;Wrong sections&quot;,
+<span class="fc" id="L367">                instance.getSections().containsAll(</span>
+<span class="fc" id="L368">                        Arrays.asList(&quot;section1&quot;, &quot;section2&quot;, &quot;section3&quot;)));</span>
+<span class="fc" id="L369">    }</span>
+
+    /**
+     * Helper method for testing the load operation. Loads the specified content
+     * into a configuration and then checks some properties.
+     *
+     * @param data the data to load
+     */
+    private void checkLoad(String data) throws ConfigurationException
+    {
+<span class="fc" id="L379">        INIConfiguration instance = setUpConfig(data);</span>
+<span class="fc" id="L380">        checkContent(instance);</span>
+<span class="fc" id="L381">    }</span>
+
+    /**
+     * Test of isCommentLine method, of class
+     * {@link INIConfiguration}.
+     */
+    @Test
+    public void testIsCommentLine()
+    {
+<span class="fc" id="L390">        INIConfiguration instance = new INIConfiguration();</span>
+<span class="fc" id="L391">        assertTrue(instance.isCommentLine(&quot;#comment1&quot;));</span>
+<span class="fc" id="L392">        assertTrue(instance.isCommentLine(&quot;;comment1&quot;));</span>
+<span class="fc" id="L393">        assertFalse(instance.isCommentLine(&quot;nocomment=true&quot;));</span>
+<span class="fc" id="L394">        assertFalse(instance.isCommentLine(null));</span>
+<span class="fc" id="L395">    }</span>
+
+    /**
+     * Test of isSectionLine method, of class
+     * {@link INIConfiguration}.
+     */
+    @Test
+    public void testIsSectionLine()
+    {
+<span class="fc" id="L404">        INIConfiguration instance = new INIConfiguration();</span>
+<span class="fc" id="L405">        assertTrue(instance.isSectionLine(&quot;[section]&quot;));</span>
+<span class="fc" id="L406">        assertFalse(instance.isSectionLine(&quot;nosection=true&quot;));</span>
+<span class="fc" id="L407">        assertFalse(instance.isSectionLine(null));</span>
+<span class="fc" id="L408">    }</span>
+
+    /**
+     * Test of getSections method, of class {@link INIConfiguration}
+     * .
+     */
+    @Test
+    public void testGetSections()
+    {
+<span class="fc" id="L417">        INIConfiguration instance = new INIConfiguration();</span>
+<span class="fc" id="L418">        instance.addProperty(&quot;test1.foo&quot;, &quot;bar&quot;);</span>
+<span class="fc" id="L419">        instance.addProperty(&quot;test2.foo&quot;, &quot;abc&quot;);</span>
+<span class="fc" id="L420">        Set&lt;String&gt; expResult = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L421">        expResult.add(&quot;test1&quot;);</span>
+<span class="fc" id="L422">        expResult.add(&quot;test2&quot;);</span>
+<span class="fc" id="L423">        Set&lt;String&gt; result = instance.getSections();</span>
+<span class="fc" id="L424">        assertEquals(expResult, result);</span>
+<span class="fc" id="L425">    }</span>
+
+    @Test
+    public void testQuotedValue() throws Exception
+    {
+<span class="fc" id="L430">        INIConfiguration config = setUpConfig(INI_DATA2);</span>
+<span class="fc" id="L431">        assertEquals(&quot;value&quot;, &quot;quoted value&quot;, config.getString(&quot;section4.var1&quot;));</span>
+<span class="fc" id="L432">    }</span>
+
+    @Test
+    public void testQuotedValueWithQuotes() throws Exception
+    {
+<span class="fc" id="L437">        INIConfiguration config = setUpConfig(INI_DATA2);</span>
+<span class="fc" id="L438">        assertEquals(&quot;value&quot;, &quot;quoted value\\nwith \&quot;quotes\&quot;&quot;, config</span>
+<span class="fc" id="L439">                .getString(&quot;section4.var2&quot;));</span>
+<span class="fc" id="L440">    }</span>
+
+    @Test
+    public void testValueWithComment() throws Exception
+    {
+<span class="fc" id="L445">        INIConfiguration config = setUpConfig(INI_DATA2);</span>
+<span class="fc" id="L446">        assertEquals(&quot;value&quot;, &quot;123&quot;, config.getString(&quot;section4.var3&quot;));</span>
+<span class="fc" id="L447">    }</span>
+
+    @Test
+    public void testQuotedValueWithComment() throws Exception
+    {
+<span class="fc" id="L452">        INIConfiguration config = setUpConfig(INI_DATA2);</span>
+<span class="fc" id="L453">        assertEquals(&quot;value&quot;, &quot;1;2;3&quot;, config.getString(&quot;section4.var4&quot;));</span>
+<span class="fc" id="L454">    }</span>
+
+    @Test
+    public void testQuotedValueWithSingleQuotes() throws Exception
+    {
+<span class="fc" id="L459">        INIConfiguration config = setUpConfig(INI_DATA2);</span>
+<span class="fc" id="L460">        assertEquals(&quot;value&quot;, &quot;'quoted' \&quot;value\&quot;&quot;, config</span>
+<span class="fc" id="L461">                .getString(&quot;section4.var5&quot;));</span>
+<span class="fc" id="L462">    }</span>
+
+    @Test
+    public void testWriteValueWithCommentChar() throws Exception
+    {
+<span class="fc" id="L467">        INIConfiguration config = new INIConfiguration();</span>
+<span class="fc" id="L468">        config.setProperty(&quot;section.key1&quot;, &quot;1;2;3&quot;);</span>
+
+<span class="fc" id="L470">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L471">        config.write(writer);</span>
+
+<span class="fc" id="L473">        INIConfiguration config2 = new INIConfiguration();</span>
+<span class="fc" id="L474">        config2.read(new StringReader(writer.toString()));</span>
+
+<span class="fc" id="L476">        assertEquals(&quot;value&quot;, &quot;1;2;3&quot;, config2.getString(&quot;section.key1&quot;));</span>
+<span class="fc" id="L477">    }</span>
+
+    /**
+     * Tests whether whitespace is left unchanged for quoted values.
+     */
+    @Test
+    public void testQuotedValueWithWhitespace() throws Exception
+    {
+<span class="fc" id="L485">        final String content = &quot;CmdPrompt = \&quot; [test@cmd ~]$ \&quot;&quot;;</span>
+<span class="fc" id="L486">        INIConfiguration config = setUpConfig(content);</span>
+<span class="fc" id="L487">        assertEquals(&quot;Wrong propert value&quot;, &quot; [test@cmd ~]$ &quot;, config</span>
+<span class="fc" id="L488">                .getString(&quot;CmdPrompt&quot;));</span>
+<span class="fc" id="L489">    }</span>
+
+    /**
+     * Tests a quoted value with space and a comment.
+     */
+    @Test
+    public void testQuotedValueWithWhitespaceAndComment() throws Exception
+    {
+<span class="fc" id="L497">        final String content = &quot;CmdPrompt = \&quot; [test@cmd ~]$ \&quot; ; a comment&quot;;</span>
+<span class="fc" id="L498">        INIConfiguration config = setUpConfig(content);</span>
+<span class="fc" id="L499">        assertEquals(&quot;Wrong propert value&quot;, &quot; [test@cmd ~]$ &quot;, config</span>
+<span class="fc" id="L500">                .getString(&quot;CmdPrompt&quot;));</span>
+<span class="fc" id="L501">    }</span>
+
+    /**
+     * Tests an empty quoted value.
+     */
+    @Test
+    public void testQuotedValueEmpty() throws ConfigurationException
+    {
+<span class="fc" id="L509">        INIConfiguration config = setUpConfig(INI_DATA2);</span>
+<span class="fc" id="L510">        assertEquals(&quot;Wrong value for empty property&quot;, &quot;&quot;, config</span>
+<span class="fc" id="L511">                .getString(&quot;section4.var6&quot;));</span>
+<span class="fc" id="L512">    }</span>
+
+    /**
+     * Tests a property that has no value.
+     */
+    @Test
+    public void testGetPropertyNoValue() throws ConfigurationException
+    {
+<span class="fc" id="L520">        final String data = INI_DATA2 + LINE_SEPARATOR + &quot;noValue =&quot;</span>
+                + LINE_SEPARATOR;
+<span class="fc" id="L522">        INIConfiguration config = setUpConfig(data);</span>
+<span class="fc" id="L523">        assertEquals(&quot;Wrong value of key&quot;, &quot;&quot;, config</span>
+<span class="fc" id="L524">                .getString(&quot;section4.noValue&quot;));</span>
+<span class="fc" id="L525">    }</span>
+
+    /**
+     * Tests a property that has no key.
+     */
+    @Test
+    public void testGetPropertyNoKey() throws ConfigurationException
+    {
+<span class="fc" id="L533">        final String data = INI_DATA2 + LINE_SEPARATOR + &quot;= noKey&quot;</span>
+                + LINE_SEPARATOR;
+<span class="fc" id="L535">        INIConfiguration config = setUpConfig(data);</span>
+<span class="fc" id="L536">        assertEquals(&quot;Cannot find property with no key&quot;, &quot;noKey&quot;, config</span>
+<span class="fc" id="L537">                .getString(&quot;section4. &quot;));</span>
+<span class="fc" id="L538">    }</span>
+
+    /**
+     * Tests reading a property from the global section.
+     */
+    @Test
+    public void testGlobalProperty() throws ConfigurationException
+    {
+<span class="fc" id="L546">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L547">        assertEquals(&quot;Wrong value of global property&quot;, &quot;testGlobal&quot;, config</span>
+<span class="fc" id="L548">                .getString(&quot;globalVar&quot;));</span>
+<span class="fc" id="L549">    }</span>
+
+    /**
+     * Tests whether the sub configuration for the global section is connected
+     * to its parent.
+     */
+    @Test
+    public void testGlobalSectionConnected() throws ConfigurationException
+    {
+<span class="fc" id="L558">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L559">        HierarchicalConfiguration&lt;ImmutableNode&gt; sub = config.getSection(null);</span>
+<span class="fc" id="L560">        config.setProperty(&quot;globalVar&quot;, &quot;changed&quot;);</span>
+<span class="fc" id="L561">        assertEquals(&quot;Wrong value in sub&quot;, &quot;changed&quot;,</span>
+<span class="fc" id="L562">                sub.getString(&quot;globalVar&quot;));</span>
+<span class="fc" id="L563">    }</span>
+
+    /**
+     * Tests whether the specified configuration contains exactly the expected
+     * sections.
+     *
+     * @param config the configuration to check
+     * @param expected an array with the expected sections
+     */
+    private void checkSectionNames(INIConfiguration config,
+            String[] expected)
+    {
+<span class="fc" id="L575">        Set&lt;String&gt; sectionNames = config.getSections();</span>
+<span class="fc" id="L576">        Iterator&lt;String&gt; it = sectionNames.iterator();</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">        for (int idx = 0; idx &lt; expected.length; idx++)</span>
+        {
+<span class="fc" id="L579">            assertEquals(&quot;Wrong section at &quot; + idx, expected[idx], it.next());</span>
+        }
+<span class="fc" id="L581">        assertFalse(&quot;Too many sections&quot;, it.hasNext());</span>
+<span class="fc" id="L582">    }</span>
+
+    /**
+     * Tests the names of the sections returned by the configuration.
+     *
+     * @param data the data of the ini configuration
+     * @param expected the expected section names
+     * @return the configuration instance
+     */
+    private INIConfiguration checkSectionNames(String data,
+            String[] expected) throws ConfigurationException
+    {
+<span class="fc" id="L594">        INIConfiguration config = setUpConfig(data);</span>
+<span class="fc" id="L595">        checkSectionNames(config, expected);</span>
+<span class="fc" id="L596">        return config;</span>
+    }
+
+    /**
+     * Tests querying the sections if a global section if available.
+     */
+    @Test
+    public void testGetSectionsWithGlobal() throws ConfigurationException
+    {
+<span class="fc" id="L605">        checkSectionNames(INI_DATA_GLOBAL, new String[]{</span>
+                null, &quot;section1&quot;, &quot;section2&quot;, &quot;section3&quot;
+        });
+<span class="fc" id="L608">    }</span>
+
+    /**
+     * Tests querying the sections if there is no global section.
+     */
+    @Test
+    public void testGetSectionsNoGlobal() throws ConfigurationException
+    {
+<span class="fc" id="L616">        checkSectionNames(INI_DATA, new String[]{</span>
+                &quot;section1&quot;, &quot;section2&quot;, &quot;section3&quot;
+        });
+<span class="fc" id="L619">    }</span>
+
+    /**
+     * Tests whether the sections of a configuration can be queried that
+     * contains only a global section.
+     */
+    @Test
+    public void testGetSectionsGlobalOnly() throws ConfigurationException
+    {
+<span class="fc" id="L628">        checkSectionNames(INI_DATA_GLOBAL_ONLY, new String[]{</span>
+                null
+        });
+<span class="fc" id="L631">    }</span>
+
+    /**
+     * Tests whether variables containing a dot are not misinterpreted as
+     * sections. This test is related to CONFIGURATION-327.
+     */
+    @Test
+    public void testGetSectionsDottedVar() throws ConfigurationException
+    {
+<span class="fc" id="L640">        final String data = &quot;dotted.var = 1&quot; + LINE_SEPARATOR + INI_DATA_GLOBAL;</span>
+<span class="fc" id="L641">        INIConfiguration config = checkSectionNames(data,</span>
+                new String[] {
+                        null, &quot;section1&quot;, &quot;section2&quot;, &quot;section3&quot;
+                });
+<span class="fc" id="L645">        assertEquals(&quot;Wrong value of dotted variable&quot;, 1, config</span>
+<span class="fc" id="L646">                .getInt(&quot;dotted..var&quot;));</span>
+<span class="fc" id="L647">    }</span>
+
+    /**
+     * Tests whether a section added later is also found by getSections().
+     */
+    @Test
+    public void testGetSectionsAdded() throws ConfigurationException
+    {
+<span class="fc" id="L655">        INIConfiguration config = setUpConfig(INI_DATA2);</span>
+<span class="fc" id="L656">        config.addProperty(&quot;section5.test&quot;, Boolean.TRUE);</span>
+<span class="fc" id="L657">        checkSectionNames(config, new String[]{</span>
+                &quot;section4&quot;, &quot;section5&quot;
+        });
+<span class="fc" id="L660">    }</span>
+
+    /**
+     * Tests querying the properties of an existing section.
+     */
+    @Test
+    public void testGetSectionExisting() throws ConfigurationException
+    {
+<span class="fc" id="L668">        INIConfiguration config = setUpConfig(INI_DATA);</span>
+<span class="fc" id="L669">        HierarchicalConfiguration&lt;ImmutableNode&gt; section =</span>
+<span class="fc" id="L670">                config.getSection(&quot;section1&quot;);</span>
+<span class="fc" id="L671">        assertEquals(&quot;Wrong value of var1&quot;, &quot;foo&quot;, section.getString(&quot;var1&quot;));</span>
+<span class="fc" id="L672">        assertEquals(&quot;Wrong value of var2&quot;, &quot;451&quot;, section.getString(&quot;var2&quot;));</span>
+<span class="fc" id="L673">    }</span>
+
+    /**
+     * Tests whether the sub configuration returned by getSection() is connected
+     * to the parent.
+     */
+    @Test
+    public void testGetSectionConnected() throws ConfigurationException
+    {
+<span class="fc" id="L682">        INIConfiguration config = setUpConfig(INI_DATA);</span>
+<span class="fc" id="L683">        HierarchicalConfiguration&lt;ImmutableNode&gt; section =</span>
+<span class="fc" id="L684">                config.getSection(&quot;section1&quot;);</span>
+<span class="fc" id="L685">        section.setProperty(&quot;var1&quot;, &quot;foo2&quot;);</span>
+<span class="fc" id="L686">        assertEquals(&quot;Not connected to parent&quot;, &quot;foo2&quot;,</span>
+<span class="fc" id="L687">                config.getString(&quot;section1.var1&quot;));</span>
+<span class="fc" id="L688">    }</span>
+
+    /**
+     * Tests querying the properties of a section that was merged from two
+     * sections with the same name.
+     */
+    @Test
+    public void testGetSectionMerged() throws ConfigurationException
+    {
+<span class="fc" id="L697">        final String data = INI_DATA + &quot;[section1]&quot; + LINE_SEPARATOR</span>
+                + &quot;var3 = merged&quot; + LINE_SEPARATOR;
+<span class="fc" id="L699">        INIConfiguration config = setUpConfig(data);</span>
+<span class="fc" id="L700">        HierarchicalConfiguration&lt;ImmutableNode&gt; section = config.getSection(&quot;section1&quot;);</span>
+<span class="fc" id="L701">        assertEquals(&quot;Wrong value of var1&quot;, &quot;foo&quot;, section.getString(&quot;var1&quot;));</span>
+<span class="fc" id="L702">        assertEquals(&quot;Wrong value of var2&quot;, &quot;451&quot;, section.getString(&quot;var2&quot;));</span>
+<span class="fc" id="L703">        assertEquals(&quot;Wrong value of var3&quot;, &quot;merged&quot;, section.getString(&quot;var3&quot;));</span>
+<span class="fc" id="L704">    }</span>
+
+    /**
+     * Tests querying the content of the global section.
+     */
+    @Test
+    public void testGetSectionGlobal() throws ConfigurationException
+    {
+<span class="fc" id="L712">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L713">        HierarchicalConfiguration&lt;ImmutableNode&gt; section = config.getSection(null);</span>
+<span class="fc" id="L714">        assertEquals(&quot;Wrong value of global variable&quot;, &quot;testGlobal&quot;, section</span>
+<span class="fc" id="L715">                .getString(&quot;globalVar&quot;));</span>
+<span class="fc" id="L716">    }</span>
+
+    /**
+     * Tests concurrent access to the global section.
+     */
+    @Test
+    public void testGetSectionGloabalMultiThreaded()
+            throws ConfigurationException, InterruptedException
+    {
+<span class="fc" id="L725">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L726">        config.setSynchronizer(new ReadWriteSynchronizer());</span>
+<span class="fc" id="L727">        final int threadCount = 10;</span>
+<span class="fc" id="L728">        GlobalSectionTestThread[] threads = new GlobalSectionTestThread[threadCount];</span>
+<span class="fc bfc" id="L729" title="All 2 branches covered.">        for (int i = 0; i &lt; threadCount; i++)</span>
+        {
+<span class="fc" id="L731">            threads[i] = new GlobalSectionTestThread(config);</span>
+<span class="fc" id="L732">            threads[i].start();</span>
+        }
+<span class="fc bfc" id="L734" title="All 2 branches covered.">        for (int i = 0; i &lt; threadCount; i++)</span>
+        {
+<span class="fc" id="L736">            threads[i].join();</span>
+<span class="fc" id="L737">            assertFalse(&quot;Exception occurred&quot;, threads[i].error);</span>
+        }
+<span class="fc" id="L739">    }</span>
+
+    /**
+     * Tests querying the content of the global section if there is none.
+     */
+    @Test
+    public void testGetSectionGlobalNonExisting() throws ConfigurationException
+    {
+<span class="fc" id="L747">        INIConfiguration config = setUpConfig(INI_DATA);</span>
+<span class="fc" id="L748">        HierarchicalConfiguration&lt;ImmutableNode&gt; section = config.getSection(null);</span>
+<span class="fc" id="L749">        assertTrue(&quot;Sub config not empty&quot;, section.isEmpty());</span>
+<span class="fc" id="L750">    }</span>
+
+    /**
+     * Tests querying a non existing section.
+     */
+    @Test
+    public void testGetSectionNonExisting() throws ConfigurationException
+    {
+<span class="fc" id="L758">        INIConfiguration config = setUpConfig(INI_DATA);</span>
+<span class="fc" id="L759">        HierarchicalConfiguration&lt;ImmutableNode&gt; section = config</span>
+<span class="fc" id="L760">                .getSection(&quot;Non existing section&quot;);</span>
+<span class="fc" id="L761">        assertTrue(&quot;Sub config not empty&quot;, section.isEmpty());</span>
+<span class="fc" id="L762">    }</span>
+
+    /**
+     * Tests a property whose value spans multiple lines.
+     */
+    @Test
+    public void testLineContinuation() throws ConfigurationException
+    {
+<span class="fc" id="L770">        INIConfiguration config = setUpConfig(INI_DATA3);</span>
+<span class="fc" id="L771">        assertEquals(&quot;Wrong value&quot;, &quot;one&quot; + LINE_SEPARATOR + &quot;two&quot;</span>
+                + LINE_SEPARATOR + &quot;three&quot;, config
+<span class="fc" id="L773">                .getString(&quot;section5.multiLine&quot;));</span>
+<span class="fc" id="L774">    }</span>
+
+    /**
+     * Tests a property value that ends on a backslash, which is no line
+     * continuation character.
+     */
+    @Test
+    public void testLineContinuationNone() throws ConfigurationException
+    {
+<span class="fc" id="L783">        INIConfiguration config = setUpConfig(INI_DATA3);</span>
+<span class="fc" id="L784">        assertEquals(&quot;Wrong value&quot;, &quot;C:\\Temp\\&quot;, config</span>
+<span class="fc" id="L785">                .getString(&quot;section5.singleLine&quot;));</span>
+<span class="fc" id="L786">    }</span>
+
+    /**
+     * Tests a property whose value spans multiple lines when quoting is
+     * involved. In this case whitespace must not be trimmed.
+     */
+    @Test
+    public void testLineContinuationQuoted() throws ConfigurationException
+    {
+<span class="fc" id="L795">        INIConfiguration config = setUpConfig(INI_DATA3);</span>
+<span class="fc" id="L796">        assertEquals(&quot;Wrong value&quot;, &quot;one&quot; + LINE_SEPARATOR + &quot;  two  &quot;</span>
+                + LINE_SEPARATOR + &quot;three&quot;, config
+<span class="fc" id="L798">                .getString(&quot;section5.multiQuoted&quot;));</span>
+<span class="fc" id="L799">    }</span>
+
+    /**
+     * Tests a property whose value spans multiple lines with a comment.
+     */
+    @Test
+    public void testLineContinuationComment() throws ConfigurationException
+    {
+<span class="fc" id="L807">        INIConfiguration config = setUpConfig(INI_DATA3);</span>
+<span class="fc" id="L808">        assertEquals(&quot;Wrong value&quot;, &quot;one&quot; + LINE_SEPARATOR + &quot;two&quot;, config</span>
+<span class="fc" id="L809">                .getString(&quot;section5.multiComment&quot;));</span>
+<span class="fc" id="L810">    }</span>
+
+    /**
+     * Tests a property with a quoted value spanning multiple lines and a
+     * comment.
+     */
+    @Test
+    public void testLineContinuationQuotedComment()
+            throws ConfigurationException
+    {
+<span class="fc" id="L820">        INIConfiguration config = setUpConfig(INI_DATA3);</span>
+<span class="fc" id="L821">        assertEquals(&quot;Wrong value&quot;, &quot; one &quot; + LINE_SEPARATOR + &quot;two&quot;, config</span>
+<span class="fc" id="L822">                .getString(&quot;section5.multiQuotedComment&quot;));</span>
+<span class="fc" id="L823">    }</span>
+
+    /**
+     * Tests a multi-line property value with an empty line.
+     */
+    @Test
+    public void testLineContinuationEmptyLine() throws ConfigurationException
+    {
+<span class="fc" id="L831">        INIConfiguration config = setUpConfig(INI_DATA3);</span>
+<span class="fc" id="L832">        assertEquals(&quot;Wrong value&quot;, LINE_SEPARATOR + &quot;line 2&quot;, config</span>
+<span class="fc" id="L833">                .getString(&quot;section5.noFirstLine&quot;));</span>
+<span class="fc" id="L834">    }</span>
+
+    /**
+     * Tests a line continuation at the end of the file.
+     */
+    @Test
+    public void testLineContinuationAtEnd() throws ConfigurationException
+    {
+<span class="fc" id="L842">        INIConfiguration config = setUpConfig(INI_DATA3);</span>
+<span class="fc" id="L843">        assertEquals(&quot;Wrong value&quot;, &quot;one&quot; + LINE_SEPARATOR, config</span>
+<span class="fc" id="L844">                .getString(&quot;section5.continueNoLine&quot;));</span>
+<span class="fc" id="L845">    }</span>
+
+    /**
+     * Tests whether a configuration can be saved that contains section keys
+     * with delimiter characters. This test is related to CONFIGURATION-409.
+     */
+    @Test
+    public void testSaveKeysWithDelimiters() throws ConfigurationException, IOException
+    {
+<span class="fc" id="L854">        INIConfiguration conf = new INIConfiguration();</span>
+<span class="fc" id="L855">        final String section = &quot;Section..with..dots&quot;;</span>
+<span class="fc" id="L856">        conf.addProperty(section + &quot;.test1&quot;, &quot;test1&quot;);</span>
+<span class="fc" id="L857">        conf.addProperty(section + &quot;.test2&quot;, &quot;test2&quot;);</span>
+<span class="fc" id="L858">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L859">        conf.write(writer);</span>
+<span class="fc" id="L860">        conf = new INIConfiguration();</span>
+<span class="fc" id="L861">        conf.read(new StringReader(writer.toString()));</span>
+<span class="fc" id="L862">        assertEquals(&quot;Wrong value (1)&quot;, &quot;test1&quot;, conf.getString(section + &quot;.test1&quot;));</span>
+<span class="fc" id="L863">        assertEquals(&quot;Wrong value (2)&quot;, &quot;test2&quot;, conf.getString(section + &quot;.test2&quot;));</span>
+<span class="fc" id="L864">    }</span>
+
+    /**
+     * Tests that loading and saving a configuration that contains keys with
+     * delimiter characters works correctly. This test is related to
+     * CONFIGURATION-622.
+     */
+    @Test
+    public void testPropertyWithDelimiter() throws ConfigurationException
+    {
+<span class="fc" id="L874">        String data = INI_DATA + &quot;key.dot = dotValue&quot;;</span>
+<span class="fc" id="L875">        INIConfiguration conf = new INIConfiguration();</span>
+<span class="fc" id="L876">        load(conf, data);</span>
+<span class="fc" id="L877">        assertEquals(&quot;Wrong property value&quot;, &quot;dotValue&quot;,</span>
+<span class="fc" id="L878">                conf.getString(&quot;section3.key..dot&quot;));</span>
+<span class="fc" id="L879">        String output = saveToString(conf);</span>
+<span class="fc" id="L880">        assertThat(output, containsString(&quot;key.dot = dotValue&quot;));</span>
+<span class="fc" id="L881">    }</span>
+
+    /**
+     * Tests whether a value which contains a semicolon can be loaded
+     * successfully. This test is related to CONFIGURATION-434.
+     */
+    @Test
+    public void testValueWithSemicolon() throws ConfigurationException
+    {
+<span class="fc" id="L890">        final String path =</span>
+                &quot;C:\\Program Files\\jar\\manage.jar;&quot;
+                        + &quot;C:\\Program Files\\jar\\guiLauncher.jar&quot;;
+<span class="fc" id="L893">        final String content =</span>
+                &quot;[Environment]&quot; + LINE_SEPARATOR + &quot;Application Type=any&quot;
+                        + LINE_SEPARATOR + &quot;Class Path=&quot; + path + &quot;  ;comment&quot;
+                        + LINE_SEPARATOR + &quot;Path=&quot; + path
+                        + &quot;\t; another comment&quot;;
+<span class="fc" id="L898">        INIConfiguration config = setUpConfig(content);</span>
+<span class="fc" id="L899">        assertEquals(&quot;Wrong class path&quot;, path,</span>
+<span class="fc" id="L900">                config.getString(&quot;Environment.Class Path&quot;));</span>
+<span class="fc" id="L901">        assertEquals(&quot;Wrong path&quot;, path, config.getString(&quot;Environment.Path&quot;));</span>
+<span class="fc" id="L902">    }</span>
+
+    /**
+     * Tests whether the different separators with or without whitespace are
+     * recognized.
+     */
+    @Test
+    public void testSeparators() throws ConfigurationException
+    {
+<span class="fc" id="L911">        INIConfiguration config = setUpConfig(INI_DATA_SEPARATORS);</span>
+<span class="fc bfc" id="L912" title="All 2 branches covered.">        for (int i = 1; i &lt;= 4; i++)</span>
+        {
+<span class="fc" id="L914">            assertEquals(&quot;Wrong value&quot;, &quot;value&quot; + i,</span>
+<span class="fc" id="L915">                    config.getString(&quot;section.var&quot; + i));</span>
+        }
+<span class="fc" id="L917">    }</span>
+
+    /**
+     * Tests property definitions containing multiple separators.
+     */
+    @Test
+    public void testMultipleSeparators() throws ConfigurationException
+    {
+<span class="fc" id="L925">        INIConfiguration config = setUpConfig(INI_DATA_SEPARATORS);</span>
+<span class="fc" id="L926">        assertEquals(&quot;Wrong value for var5&quot;, &quot;value=5&quot;,</span>
+<span class="fc" id="L927">                config.getString(&quot;section.var5&quot;));</span>
+<span class="fc" id="L928">        assertEquals(&quot;Wrong value for var6&quot;, &quot;6=value&quot;,</span>
+<span class="fc" id="L929">                config.getString(&quot;section.var&quot;));</span>
+<span class="fc" id="L930">    }</span>
+
+    /**
+     * Tests property definitions containing multiple separators that are
+     * quoted.
+     */
+    @Test
+    public void testMultipleSeparatorsQuoted() throws ConfigurationException
+    {
+<span class="fc" id="L939">        INIConfiguration config = setUpConfig(INI_DATA_SEPARATORS);</span>
+<span class="fc" id="L940">        assertEquals(&quot;Wrong value for var7&quot;, &quot;value7&quot;,</span>
+<span class="fc" id="L941">                config.getString(&quot;section.var:7&quot;));</span>
+<span class="fc" id="L942">        assertEquals(&quot;Wrong value for var8&quot;, &quot;value8&quot;,</span>
+<span class="fc" id="L943">                config.getString(&quot;section.var:8&quot;));</span>
+<span class="fc" id="L944">    }</span>
+
+    /**
+     * Tests whether a section that has been cleared can be manipulated and
+     * saved later.
+     */
+    @Test
+    public void testSaveClearedSection() throws ConfigurationException, IOException
+    {
+<span class="fc" id="L953">        final String data = &quot;[section]\ntest = failed\n&quot;;</span>
+<span class="fc" id="L954">        INIConfiguration config = setUpConfig(data);</span>
+<span class="fc" id="L955">        SubnodeConfiguration sub = config.getSection(&quot;section&quot;);</span>
+<span class="fc" id="L956">        assertFalse(&quot;No content&quot;, sub.isEmpty());</span>
+<span class="fc" id="L957">        sub.clear();</span>
+<span class="fc" id="L958">        sub.close();</span>
+<span class="fc" id="L959">        sub = config.getSection(&quot;section&quot;);</span>
+<span class="fc" id="L960">        sub.setProperty(&quot;test&quot;, &quot;success&quot;);</span>
+<span class="fc" id="L961">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L962">        config.write(writer);</span>
+<span class="fc" id="L963">        HierarchicalConfiguration&lt;?&gt; config2 = setUpConfig(writer.toString());</span>
+<span class="fc" id="L964">        assertEquals(&quot;Wrong value&quot;, &quot;success&quot;,</span>
+<span class="fc" id="L965">                config2.getString(&quot;section.test&quot;));</span>
+<span class="fc" id="L966">    }</span>
+
+    /**
+     * Tests whether a duplicate session is merged.
+     */
+    @Test
+    public void testMergeDuplicateSection() throws ConfigurationException, IOException
+    {
+<span class="fc" id="L974">        final String data =</span>
+                &quot;[section]\nvar1 = sec1\n\n&quot; + &quot;[section]\nvar2 = sec2\n&quot;;
+<span class="fc" id="L976">        INIConfiguration config = setUpConfig(data);</span>
+<span class="fc" id="L977">        assertEquals(&quot;Wrong value 1&quot;, &quot;sec1&quot;, config.getString(&quot;section.var1&quot;));</span>
+<span class="fc" id="L978">        assertEquals(&quot;Wrong value 2&quot;, &quot;sec2&quot;, config.getString(&quot;section.var2&quot;));</span>
+<span class="fc" id="L979">        HierarchicalConfiguration&lt;ImmutableNode&gt; sub = config.getSection(&quot;section&quot;);</span>
+<span class="fc" id="L980">        assertEquals(&quot;Wrong sub value 1&quot;, &quot;sec1&quot;, sub.getString(&quot;var1&quot;));</span>
+<span class="fc" id="L981">        assertEquals(&quot;Wrong sub value 2&quot;, &quot;sec2&quot;, sub.getString(&quot;var2&quot;));</span>
+<span class="fc" id="L982">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L983">        config.write(writer);</span>
+<span class="fc" id="L984">        String content = writer.toString();</span>
+<span class="fc" id="L985">        int pos = content.indexOf(&quot;[section]&quot;);</span>
+<span class="pc bpc" id="L986" title="1 of 2 branches missed.">        assertTrue(&quot;Section not found: &quot; + content, pos &gt;= 0);</span>
+<span class="fc" id="L987">        assertTrue(&quot;Section found multiple times: &quot; + content,</span>
+<span class="pc bpc" id="L988" title="1 of 2 branches missed.">                content.indexOf(&quot;[section]&quot;, pos + 1) &lt; 0);</span>
+<span class="fc" id="L989">    }</span>
+
+    /**
+     * Tests whether a section that was created by getSection() can be
+     * manipulated.
+     */
+    @Test
+    public void testGetSectionNonExistingManipulate()
+            throws ConfigurationException, IOException
+    {
+<span class="fc" id="L999">        INIConfiguration config = setUpConfig(INI_DATA);</span>
+<span class="fc" id="L1000">        HierarchicalConfiguration&lt;ImmutableNode&gt; section = config.getSection(&quot;newSection&quot;);</span>
+<span class="fc" id="L1001">        section.addProperty(&quot;test&quot;, &quot;success&quot;);</span>
+<span class="fc" id="L1002">        assertEquals(&quot;Main config not updated&quot;, &quot;success&quot;,</span>
+<span class="fc" id="L1003">                config.getString(&quot;newSection.test&quot;));</span>
+<span class="fc" id="L1004">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L1005">        config.write(writer);</span>
+<span class="fc" id="L1006">        INIConfiguration config2 = setUpConfig(writer.toString());</span>
+<span class="fc" id="L1007">        section = config2.getSection(&quot;newSection&quot;);</span>
+<span class="fc" id="L1008">        assertEquals(&quot;Wrong value&quot;, &quot;success&quot;, section.getString(&quot;test&quot;));</span>
+<span class="fc" id="L1009">    }</span>
+
+    /**
+     * Tests whether getSection() can deal with duplicate sections.
+     */
+    @Test
+    public void testGetSectionDuplicate()
+    {
+<span class="fc" id="L1017">        INIConfiguration config =</span>
+                new INIConfiguration();
+<span class="fc" id="L1019">        config.addProperty(&quot;section.var1&quot;, &quot;value1&quot;);</span>
+<span class="fc" id="L1020">        config.addProperty(&quot;section(-1).var2&quot;, &quot;value2&quot;);</span>
+<span class="fc" id="L1021">        HierarchicalConfiguration&lt;ImmutableNode&gt; section = config.getSection(&quot;section&quot;);</span>
+<span class="fc" id="L1022">        Iterator&lt;String&gt; keys = section.getKeys();</span>
+<span class="fc" id="L1023">        assertEquals(&quot;Wrong key&quot;, &quot;var1&quot;, keys.next());</span>
+<span class="fc" id="L1024">        assertFalse(&quot;Too many keys&quot;, keys.hasNext());</span>
+<span class="fc" id="L1025">    }</span>
+
+    /**
+     * Tests whether the list delimiter character is recognized.
+     */
+    @Test
+    public void testValueWithDelimiters() throws ConfigurationException
+    {
+<span class="fc" id="L1033">        INIConfiguration config =</span>
+<span class="fc" id="L1034">                setUpConfig(&quot;[test]&quot; + LINE_SEPARATOR + &quot;list=1,2,3&quot;</span>
+                        + LINE_SEPARATOR);
+<span class="fc" id="L1036">        List&lt;Object&gt; list = config.getList(&quot;test.list&quot;);</span>
+<span class="fc" id="L1037">        assertEquals(&quot;Wrong number of elements&quot;, 3, list.size());</span>
+<span class="fc" id="L1038">        assertEquals(&quot;Wrong element at 1&quot;, &quot;1&quot;, list.get(0));</span>
+<span class="fc" id="L1039">        assertEquals(&quot;Wrong element at 2&quot;, &quot;2&quot;, list.get(1));</span>
+<span class="fc" id="L1040">        assertEquals(&quot;Wrong element at 3&quot;, &quot;3&quot;, list.get(2));</span>
+<span class="fc" id="L1041">    }</span>
+
+    /**
+     * Tests whether parsing of lists can be disabled.
+     */
+    @Test
+    public void testListParsingDisabled() throws ConfigurationException
+    {
+<span class="fc" id="L1049">        INIConfiguration config =</span>
+                new INIConfiguration();
+<span class="fc" id="L1051">        load(config, &quot;[test]&quot; + LINE_SEPARATOR + &quot;nolist=1,2,3&quot;);</span>
+<span class="fc" id="L1052">        assertEquals(&quot;Wrong value&quot;, &quot;1,2,3&quot;, config.getString(&quot;test.nolist&quot;));</span>
+<span class="fc" id="L1053">    }</span>
+
+    /**
+     * Tests whether synchronization is performed when querying the
+     * configuration's sections.
+     */
+    @Test
+    public void testGetSectionsSynchronized() throws ConfigurationException
+    {
+<span class="fc" id="L1062">        INIConfiguration config = setUpConfig(INI_DATA);</span>
+<span class="fc" id="L1063">        SynchronizerTestImpl sync = new SynchronizerTestImpl();</span>
+<span class="fc" id="L1064">        config.setSynchronizer(sync);</span>
+<span class="fc" id="L1065">        assertFalse(&quot;No sections&quot;, config.getSections().isEmpty());</span>
+<span class="fc" id="L1066">        sync.verify(Methods.BEGIN_READ, Methods.END_READ);</span>
+<span class="fc" id="L1067">    }</span>
+
+    /**
+     * Tests whether the configuration deals correctly with list delimiters.
+     */
+    @Test
+    public void testListDelimiterHandling() throws ConfigurationException
+    {
+<span class="fc" id="L1075">        INIConfiguration config = new INIConfiguration();</span>
+<span class="fc" id="L1076">        config.setListDelimiterHandler(new DefaultListDelimiterHandler(','));</span>
+<span class="fc" id="L1077">        config.addProperty(&quot;list&quot;, &quot;a,b,c&quot;);</span>
+<span class="fc" id="L1078">        config.addProperty(&quot;listesc&quot;, &quot;3\\,1415&quot;);</span>
+<span class="fc" id="L1079">        String output = saveToString(config);</span>
+<span class="fc" id="L1080">        INIConfiguration config2 = setUpConfig(output);</span>
+<span class="fc" id="L1081">        assertEquals(&quot;Wrong list size&quot;, 3, config2.getList(&quot;list&quot;).size());</span>
+<span class="fc" id="L1082">        assertEquals(&quot;Wrong list element&quot;, &quot;b&quot;, config2.getList(&quot;list&quot;).get(1));</span>
+<span class="fc" id="L1083">        assertEquals(&quot;Wrong escaped list element&quot;, &quot;3,1415&quot;,</span>
+<span class="fc" id="L1084">                config2.getString(&quot;listesc&quot;));</span>
+<span class="fc" id="L1085">    }</span>
+
+    /**
+     * Tests whether property values are correctly escaped even if they are part
+     * of a property with multiple values.
+     */
+    @Test
+    public void testListDelimiterHandlingInList() throws ConfigurationException
+    {
+<span class="fc" id="L1094">        String data =</span>
+                INI_DATA + &quot;[sectest]&quot; + LINE_SEPARATOR
+                        + &quot;list = 3\\,1415,pi,\\\\Test\\,5&quot; + LINE_SEPARATOR;
+<span class="fc" id="L1097">        INIConfiguration config = setUpConfig(data);</span>
+<span class="fc" id="L1098">        INIConfiguration config2 = setUpConfig(saveToString(config));</span>
+<span class="fc" id="L1099">        List&lt;Object&gt; list = config2.getList(&quot;sectest.list&quot;);</span>
+<span class="fc" id="L1100">        assertEquals(&quot;Wrong number of values&quot;, 3, list.size());</span>
+<span class="fc" id="L1101">        assertEquals(&quot;Wrong element 1&quot;, &quot;3,1415&quot;, list.get(0));</span>
+<span class="fc" id="L1102">        assertEquals(&quot;Wrong element 3&quot;, &quot;\\Test,5&quot;, list.get(2));</span>
+<span class="fc" id="L1103">    }</span>
+
+    /**
+     * Tests whether only properties with values occur in the enumeration of the
+     * global section.
+     */
+    @Test
+    public void testKeysOfGlobalSection() throws ConfigurationException
+    {
+<span class="fc" id="L1112">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L1113">        HierarchicalConfiguration&lt;ImmutableNode&gt; sub = config.getSection(null);</span>
+<span class="fc" id="L1114">        Iterator&lt;String&gt; keys = sub.getKeys();</span>
+<span class="fc" id="L1115">        assertEquals(&quot;Wrong key&quot;, &quot;globalVar&quot;, keys.next());</span>
+<span class="pc bpc" id="L1116" title="1 of 2 branches missed.">        if (keys.hasNext())</span>
+        {
+<span class="nc" id="L1118">            StringBuilder buf = new StringBuilder();</span>
+            do
+            {
+<span class="nc" id="L1121">                buf.append(keys.next()).append(' ');</span>
+<span class="nc bnc" id="L1122" title="All 2 branches missed.">            } while (keys.hasNext());</span>
+<span class="nc" id="L1123">            fail(&quot;Got additional keys: &quot; + buf);</span>
+        }
+<span class="fc" id="L1125">    }</span>
+
+    /**
+     * Tests whether the node handler of a global section correctly filters
+     * named children.
+     */
+    @Test
+    public void testGlobalSectionNodeHandlerGetChildrenByName()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1135">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L1136">        SubnodeConfiguration sub = config.getSection(null);</span>
+<span class="fc" id="L1137">        NodeHandler&lt;ImmutableNode&gt; handler = sub.getModel().getNodeHandler();</span>
+<span class="fc" id="L1138">        assertTrue(</span>
+                &quot;Sections not filtered&quot;,
+<span class="fc" id="L1140">                handler.getChildren(</span>
+<span class="fc" id="L1141">                        sub.getModel().getNodeHandler().getRootNode(),</span>
+<span class="fc" id="L1142">                        &quot;section1&quot;).isEmpty());</span>
+<span class="fc" id="L1143">    }</span>
+
+    /**
+     * Tests whether the node handler of a global section correctly determines
+     * the number of children.
+     */
+    @Test
+    public void testGlobalSectionNodeHandlerGetChildrenCount()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1153">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L1154">        SubnodeConfiguration sub = config.getSection(null);</span>
+<span class="fc" id="L1155">        NodeHandler&lt;ImmutableNode&gt; handler = sub.getModel().getNodeHandler();</span>
+<span class="fc" id="L1156">        assertEquals(&quot;Wrong number of children&quot;, 1,</span>
+<span class="fc" id="L1157">                handler.getChildrenCount(handler.getRootNode(), null));</span>
+<span class="fc" id="L1158">    }</span>
+
+    /**
+     * Tests whether the node handler of a global section correctly returns a
+     * child by index.
+     */
+    @Test
+    public void testGlobalSectionNodeHandlerGetChildByIndex()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1168">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L1169">        SubnodeConfiguration sub = config.getSection(null);</span>
+<span class="fc" id="L1170">        NodeHandler&lt;ImmutableNode&gt; handler = sub.getModel().getNodeHandler();</span>
+<span class="fc" id="L1171">        ImmutableNode child = handler.getChild(handler.getRootNode(), 0);</span>
+<span class="fc" id="L1172">        assertEquals(&quot;Wrong child&quot;, &quot;globalVar&quot;, child.getNodeName());</span>
+        try
+        {
+<span class="nc" id="L1175">            handler.getChild(handler.getRootNode(), 1);</span>
+<span class="nc" id="L1176">            fail(&quot;Could obtain child with invalid index!&quot;);</span>
+        }
+<span class="fc" id="L1178">        catch (IndexOutOfBoundsException iex)</span>
+        {
+            // ok
+<span class="nc" id="L1181">        }</span>
+<span class="fc" id="L1182">    }</span>
+
+    /**
+     * Tests whether the node handler of a global section correctly determines
+     * the index of a child.
+     */
+    @Test
+    public void testGlobalSectionNodeHandlerIndexOfChild()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1192">        INIConfiguration config = setUpConfig(INI_DATA_GLOBAL);</span>
+<span class="fc" id="L1193">        SubnodeConfiguration sub = config.getSection(null);</span>
+<span class="fc" id="L1194">        NodeHandler&lt;ImmutableNode&gt; handler = sub.getModel().getNodeHandler();</span>
+<span class="fc" id="L1195">        List&lt;ImmutableNode&gt; children = handler.getRootNode().getChildren();</span>
+<span class="fc" id="L1196">        assertEquals(&quot;Wrong index&quot;, 0,</span>
+<span class="fc" id="L1197">                handler.indexOfChild(handler.getRootNode(), children.get(0)));</span>
+<span class="fc" id="L1198">        assertEquals(&quot;Wrong index of section child&quot;, -1,</span>
+<span class="fc" id="L1199">                handler.indexOfChild(handler.getRootNode(), children.get(1)));</span>
+<span class="fc" id="L1200">    }</span>
+
+    /**
+     * Tests whether an expression engine can be used which ignores case.
+     */
+    @Test
+    public void testExpressionEngineIgnoringCase()
+            throws ConfigurationException
+    {
+<span class="fc" id="L1209">        DefaultExpressionEngine engine =</span>
+                new DefaultExpressionEngine(
+                        DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS,
+                        NodeNameMatchers.EQUALS_IGNORE_CASE);
+<span class="fc" id="L1213">        INIConfiguration config = new INIConfiguration();</span>
+<span class="fc" id="L1214">        config.setExpressionEngine(engine);</span>
+<span class="fc" id="L1215">        load(config, INI_DATA);</span>
+
+<span class="fc" id="L1217">        checkContent(config);</span>
+<span class="fc" id="L1218">        assertEquals(&quot;Wrong result (1)&quot;, &quot;foo&quot;,</span>
+<span class="fc" id="L1219">                config.getString(&quot;Section1.var1&quot;));</span>
+<span class="fc" id="L1220">        assertEquals(&quot;Wrong result (2)&quot;, &quot;foo&quot;,</span>
+<span class="fc" id="L1221">                config.getString(&quot;section1.Var1&quot;));</span>
+<span class="fc" id="L1222">        assertEquals(&quot;Wrong result (1)&quot;, &quot;foo&quot;,</span>
+<span class="fc" id="L1223">                config.getString(&quot;SECTION1.VAR1&quot;));</span>
+<span class="fc" id="L1224">    }</span>
+
+    /**
+     * Tests whether an empty section can be saved. This is related to
+     * CONFIGURATION-671.
+     */
+    @Test
+    public void testWriteEmptySection()
+            throws ConfigurationException, IOException
+    {
+<span class="fc" id="L1234">        final String section = &quot;[EmptySection]&quot;;</span>
+<span class="fc" id="L1235">        INIConfiguration config = setUpConfig(section);</span>
+<span class="fc" id="L1236">        assertEquals(&quot;Wrong number of sections&quot;, 1,</span>
+<span class="fc" id="L1237">                config.getSections().size());</span>
+<span class="fc" id="L1238">        assertTrue(&quot;Section not found&quot;,</span>
+<span class="fc" id="L1239">                config.getSections().contains(&quot;EmptySection&quot;));</span>
+
+<span class="fc" id="L1241">        StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L1242">        config.write(writer);</span>
+<span class="fc" id="L1243">        assertEquals(&quot;Wrong saved configuration&quot;,</span>
+<span class="fc" id="L1244">                section + LINE_SEPARATOR + LINE_SEPARATOR, writer.toString());</span>
+<span class="fc" id="L1245">    }</span>
+
+    /**
+     * A thread class for testing concurrent access to the global section.
+     */
+    private static class GlobalSectionTestThread extends Thread
+    {
+        /** The configuration. */
+        private final INIConfiguration config;
+
+        /** A flag whether an error was found. */
+        volatile boolean error;
+
+        /**
+         * Creates a new instance of &lt;code&gt;GlobalSectionTestThread&lt;/code&gt; and
+         * initializes it.
+         *
+         * @param conf the configuration object
+         */
+        public GlobalSectionTestThread(INIConfiguration conf)
+<span class="fc" id="L1265">        {</span>
+<span class="fc" id="L1266">            config = conf;</span>
+<span class="fc" id="L1267">        }</span>
+
+        /**
+         * Accesses the global section in a loop. If there is no correct
+         * synchronization, this can cause an exception.
+         */
+        @Override
+        public void run()
+        {
+<span class="fc" id="L1276">            final int loopCount = 250;</span>
+
+<span class="pc bpc" id="L1278" title="1 of 4 branches missed.">            for (int i = 0; i &lt; loopCount &amp;&amp; !error; i++)</span>
+            {
+                try
+                {
+<span class="fc" id="L1282">                    config.getSection(null);</span>
+                }
+<span class="nc" id="L1284">                catch (IllegalStateException istex)</span>
+                {
+<span class="nc" id="L1286">                    error = true;</span>
+<span class="fc" id="L1287">                }</span>
+            }
+<span class="fc" id="L1289">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

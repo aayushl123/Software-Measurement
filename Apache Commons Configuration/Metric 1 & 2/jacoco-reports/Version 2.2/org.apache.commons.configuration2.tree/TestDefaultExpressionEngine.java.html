@@ -1,0 +1,830 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestDefaultExpressionEngine.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons_configuration2$Whole_project.exec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">TestDefaultExpressionEngine.java</span></div><h1>TestDefaultExpressionEngine.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+
+import java.util.Iterator;
+import java.util.List;
+
+import org.apache.commons.lang3.StringUtils;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+/**
+ * Test class for DefaultExpressionEngine.
+ *
+ * @author &lt;a
+ * href=&quot;http://commons.apache.org/configuration/team-list.html&quot;&gt;Commons
+ * Configuration team&lt;/a&gt;
+ * @version $Id$
+ */
+<span class="fc" id="L40">public class TestDefaultExpressionEngine</span>
+{
+    /** Stores the names of the test nodes representing tables. */
+<span class="fc" id="L43">    private static String[] tables =</span>
+    { &quot;users&quot;, &quot;documents&quot;};
+
+    /** Stores the types of the test table nodes. */
+<span class="fc" id="L47">    private static String[] tabTypes =</span>
+    { &quot;system&quot;, &quot;application&quot;};
+
+    /** Test data fields for the node hierarchy. */
+<span class="fc" id="L51">    private static String[][] fields =</span>
+    {
+    { &quot;uid&quot;, &quot;uname&quot;, &quot;firstName&quot;, &quot;lastName&quot;, &quot;email&quot;},
+    { &quot;docid&quot;, &quot;name&quot;, &quot;creationDate&quot;, &quot;authorID&quot;, &quot;version&quot;}};
+
+    /** The root of a hierarchy with test nodes. */
+    private static ImmutableNode root;
+
+    /** A node handler for the hierarchy of test nodes. */
+    private static NodeHandler&lt;ImmutableNode&gt; handler;
+
+    /** The object to be tested. */
+    private DefaultExpressionEngine engine;
+
+    @BeforeClass
+    public static void setUpBeforeClass()
+    {
+<span class="fc" id="L68">        root = setUpNodes();</span>
+<span class="fc" id="L69">        handler = new InMemoryNodeModel(root).getNodeHandler();</span>
+<span class="fc" id="L70">    }</span>
+
+    @Before
+    public void setUp() throws Exception
+    {
+<span class="fc" id="L75">        engine = DefaultExpressionEngine.INSTANCE;</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Tests whether the default instance is initialized with default symbols.
+     */
+    @Test
+    public void testDefaultSymbols()
+    {
+<span class="fc" id="L84">        assertSame(&quot;Wrong default symbols&quot;,</span>
+                DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS,
+<span class="fc" id="L86">                engine.getSymbols());</span>
+<span class="fc" id="L87">    }</span>
+
+    /**
+     * Tries to create an instance without symbols.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testInitNoSymbols()
+    {
+<span class="nc" id="L95">        new DefaultExpressionEngine(null);</span>
+<span class="nc" id="L96">    }</span>
+
+    /**
+     * Tests some simple queries.
+     */
+    @Test
+    public void testQueryKeys()
+    {
+<span class="fc" id="L104">        checkKey(&quot;tables.table.name&quot;, &quot;name&quot;, 2);</span>
+<span class="fc" id="L105">        checkKey(&quot;tables.table.fields.field.name&quot;, &quot;name&quot;, 10);</span>
+<span class="fc" id="L106">        checkKey(&quot;tables.table[@type]&quot;, &quot;type&quot;, 2);</span>
+<span class="fc" id="L107">        checkKey(&quot;tables.table(0).fields.field.name&quot;, &quot;name&quot;, 5);</span>
+<span class="fc" id="L108">        checkKey(&quot;tables.table(1).fields.field.name&quot;, &quot;name&quot;, 5);</span>
+<span class="fc" id="L109">        checkKey(&quot;tables.table.fields.field(1).name&quot;, &quot;name&quot;, 2);</span>
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Performs some queries and evaluates the values of the result nodes.
+     */
+    @Test
+    public void testQueryNodes()
+    {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (int i = 0; i &lt; tables.length; i++)</span>
+        {
+<span class="fc" id="L120">            checkKeyValue(&quot;tables.table(&quot; + i + &quot;).name&quot;, &quot;name&quot;, tables[i]);</span>
+<span class="fc" id="L121">            checkAttributeValue(&quot;tables.table(&quot; + i + &quot;)[@type]&quot;, &quot;type&quot;,</span>
+                    tabTypes[i]);
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            for (int j = 0; j &lt; fields[i].length; j++)</span>
+            {
+<span class="fc" id="L126">                checkKeyValue(&quot;tables.table(&quot; + i + &quot;).fields.field(&quot; + j</span>
+                        + &quot;).name&quot;, &quot;name&quot;, fields[i][j]);
+            }
+        }
+<span class="fc" id="L130">    }</span>
+
+    /**
+     * Tests querying keys that do not exist.
+     */
+    @Test
+    public void testQueryNonExistingKeys()
+    {
+<span class="fc" id="L138">        checkKey(&quot;tables.tablespace.name&quot;, null, 0);</span>
+<span class="fc" id="L139">        checkKey(&quot;tables.table(2).name&quot;, null, 0);</span>
+<span class="fc" id="L140">        checkKey(&quot;a complete unknown key&quot;, null, 0);</span>
+<span class="fc" id="L141">        checkKey(&quot;tables.table(0).fields.field(-1).name&quot;, null, 0);</span>
+<span class="fc" id="L142">        checkKey(&quot;tables.table(0).fields.field(28).name&quot;, null, 0);</span>
+<span class="fc" id="L143">        checkKey(&quot;tables.table(0).fields.field().name&quot;, null, 0);</span>
+<span class="fc" id="L144">        checkKey(&quot;connection.settings.usr.name&quot;, null, 0);</span>
+<span class="fc" id="L145">        checkKey(&quot;tables.table(0)[@type].additional&quot;, null, 0);</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Tests querying nodes whose names contain a delimiter.
+     */
+    @Test
+    public void testQueryEscapedKeys()
+    {
+<span class="fc" id="L154">        checkKeyValue(&quot;connection..settings.usr..name&quot;, &quot;usr.name&quot;, &quot;scott&quot;);</span>
+<span class="fc" id="L155">        checkKeyValue(&quot;connection..settings.usr..pwd&quot;, &quot;usr.pwd&quot;, &quot;tiger&quot;);</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Tests some queries when the same delimiter is used for properties and
+     * attributes.
+     */
+    @Test
+    public void testQueryAttributeEmulation()
+    {
+<span class="fc" id="L165">        DefaultExpressionEngineSymbols symbols =</span>
+                new DefaultExpressionEngineSymbols.Builder(
+                        DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS)
+<span class="fc" id="L168">                        .setAttributeEnd(null)</span>
+<span class="fc" id="L169">                        .setAttributeStart(</span>
+                                DefaultExpressionEngineSymbols.DEFAULT_PROPERTY_DELIMITER)
+<span class="fc" id="L171">                        .create();</span>
+<span class="fc" id="L172">        engine = new DefaultExpressionEngine(symbols);</span>
+<span class="fc" id="L173">        checkKeyValue(&quot;tables.table(0).name&quot;, &quot;name&quot;, tables[0]);</span>
+<span class="fc" id="L174">        checkAttributeValue(&quot;tables.table(0).type&quot;, &quot;type&quot;, tabTypes[0]);</span>
+<span class="fc" id="L175">        checkKey(&quot;tables.table.type&quot;, &quot;type&quot;, 2);</span>
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Helper method for testing a query for the root node.
+     *
+     * @param key the key to be used
+     */
+    private void checkQueryRootNode(String key)
+    {
+<span class="fc" id="L185">        List&lt;QueryResult&lt;ImmutableNode&gt;&gt; results = checkKey(key, null, 1);</span>
+<span class="fc" id="L186">        QueryResult&lt;ImmutableNode&gt; result = results.get(0);</span>
+<span class="fc" id="L187">        assertFalse(&quot;No node result&quot;, result.isAttributeResult());</span>
+<span class="fc" id="L188">        assertSame(&quot;Not the root node&quot;, root, result.getNode());</span>
+<span class="fc" id="L189">    }</span>
+
+    /**
+     * Tests whether the root node can be retrieved using the null key.
+     */
+    @Test
+    public void testQueryRootNodeNullKey()
+    {
+<span class="fc" id="L197">        checkQueryRootNode(null);</span>
+<span class="fc" id="L198">    }</span>
+
+    /**
+     * Tests whether the root node can be retrieved using the empty key.
+     */
+    @Test
+    public void testQueryRootNodeEmptyKey()
+    {
+<span class="fc" id="L206">        checkQueryRootNode(&quot;&quot;);</span>
+<span class="fc" id="L207">    }</span>
+
+    /**
+     * Tests whether an attribute of the root node can be queried.
+     */
+    @Test
+    public void testQueryRootAttribute()
+    {
+<span class="fc" id="L215">        checkAttributeValue(&quot;[@test]&quot;, &quot;test&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L216">    }</span>
+
+    /**
+     * Tests a different query syntax. Sets other strings for the typical tokens
+     * used by the expression engine.
+     */
+    @Test
+    public void testQueryAlternativeSyntax()
+    {
+<span class="fc" id="L225">        setUpAlternativeSyntax();</span>
+<span class="fc" id="L226">        checkKeyValue(&quot;tables/table[1]/name&quot;, &quot;name&quot;, tables[1]);</span>
+<span class="fc" id="L227">        checkAttributeValue(&quot;tables/table[0]@type&quot;, &quot;type&quot;, tabTypes[0]);</span>
+<span class="fc" id="L228">        checkAttributeValue(&quot;@test&quot;, &quot;test&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L229">        checkKeyValue(&quot;connection.settings/usr.name&quot;, &quot;usr.name&quot;, &quot;scott&quot;);</span>
+<span class="fc" id="L230">    }</span>
+
+    /**
+     * Tests obtaining keys for nodes.
+     */
+    @Test
+    public void testNodeKey()
+    {
+<span class="fc" id="L238">        ImmutableNode node = root.getChildren().get(0);</span>
+<span class="fc" id="L239">        assertEquals(&quot;Invalid name for descendant of root&quot;, &quot;tables&quot;, engine</span>
+<span class="fc" id="L240">                .nodeKey(node, &quot;&quot;, handler));</span>
+<span class="fc" id="L241">        assertEquals(&quot;Parent key not respected&quot;, &quot;test.tables&quot;, engine.nodeKey(</span>
+                node, &quot;test&quot;, handler));
+<span class="fc" id="L243">        assertEquals(&quot;Full parent key not taken into account&quot;,</span>
+<span class="fc" id="L244">                &quot;a.full.parent.key.tables&quot;, engine.nodeKey(node,</span>
+                &quot;a.full.parent.key&quot;, handler));
+<span class="fc" id="L246">    }</span>
+
+    /**
+     * Tests obtaining keys if the root node is involved.
+     */
+    @Test
+    public void testNodeKeyWithRoot()
+    {
+<span class="fc" id="L254">        assertEquals(&quot;Wrong name for root node&quot;, &quot;&quot;,</span>
+<span class="fc" id="L255">                engine.nodeKey(root, null, handler));</span>
+<span class="fc" id="L256">        assertEquals(&quot;Null name not detected&quot;, &quot;test&quot;,</span>
+<span class="fc" id="L257">                engine.nodeKey(root, &quot;test&quot;, handler));</span>
+<span class="fc" id="L258">    }</span>
+
+    /**
+     * Tests obtaining keys for attribute nodes.
+     */
+    @Test
+    public void testAttributeKey()
+    {
+<span class="fc" id="L266">        assertEquals(&quot;Wrong attribute key&quot;, &quot;tables.table[@type]&quot;, engine</span>
+<span class="fc" id="L267">                .attributeKey(&quot;tables.table&quot;, &quot;type&quot;));</span>
+<span class="fc" id="L268">    }</span>
+
+    /**
+     * Tests whether an attribute key can be queried if the root node is involved.
+     */
+    @Test
+    public void testAttributeKeyRoot()
+    {
+<span class="fc" id="L276">        assertEquals(&quot;Wrong key for root attribute&quot;, &quot;[@test]&quot;,</span>
+<span class="fc" id="L277">                engine.attributeKey(&quot;&quot;, &quot;test&quot;));</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Tests that a null parent key is ignored when constructing an attribute key.
+     */
+    @Test
+    public void testAttributeKeyNoParent()
+    {
+<span class="fc" id="L286">        assertEquals(&quot;Wrong key for null parent&quot;, &quot;[@test]&quot;,</span>
+<span class="fc" id="L287">                engine.attributeKey(null, &quot;test&quot;));</span>
+<span class="fc" id="L288">    }</span>
+
+    /**
+     * Tests obtaining keys for nodes that contain the delimiter character.
+     */
+    @Test
+    public void testNodeKeyWithEscapedDelimiters()
+    {
+<span class="fc" id="L296">        ImmutableNode node = root.getChildren().get(1);</span>
+<span class="fc" id="L297">        assertEquals(&quot;Wrong escaped key&quot;, &quot;connection..settings&quot;,</span>
+<span class="fc" id="L298">                engine.nodeKey(node, &quot;&quot;, handler));</span>
+<span class="fc" id="L299">        assertEquals(</span>
+                &quot;Wrong complex escaped key&quot;,
+                &quot;connection..settings.usr..name&quot;,
+<span class="fc" id="L302">                engine.nodeKey(node.getChildren().get(0),</span>
+<span class="fc" id="L303">                        engine.nodeKey(node, &quot;&quot;, handler), handler));</span>
+<span class="fc" id="L304">    }</span>
+
+    /**
+     * Tests obtaining node keys if a different syntax is set.
+     */
+    @Test
+    public void testNodeKeyWithAlternativeSyntax()
+    {
+<span class="fc" id="L312">        setUpAlternativeSyntax();</span>
+<span class="fc" id="L313">        assertEquals(&quot;Wrong child key&quot;, &quot;tables/table&quot;, engine.nodeKey(root</span>
+<span class="fc" id="L314">                .getChildren().get(0).getChildren().get(0), &quot;tables&quot;, handler));</span>
+<span class="fc" id="L315">    }</span>
+
+    /**
+     * Tests whether a correct attribute key with alternative syntax is
+     * generated.
+     */
+    @Test
+    public void testAttributeKeyWithAlternativeSyntax()
+    {
+<span class="fc" id="L324">        setUpAlternativeSyntax();</span>
+<span class="fc" id="L325">        assertEquals(&quot;Wrong attribute key&quot;, &quot;@test&quot;,</span>
+<span class="fc" id="L326">                engine.attributeKey(&quot;&quot;, &quot;test&quot;));</span>
+<span class="fc" id="L327">    }</span>
+
+    /**
+     * Tests obtaining node keys if a different syntax is set and the same
+     * string is used as property delimiter and attribute start marker.
+     */
+    @Test
+    public void testNodeKeyWithAlternativeSyntaxAttributePropertyDelimiter()
+    {
+<span class="fc" id="L336">        setUpAlternativeSyntax();</span>
+<span class="fc" id="L337">        DefaultExpressionEngineSymbols symbols =</span>
+<span class="fc" id="L338">                new DefaultExpressionEngineSymbols.Builder(engine.getSymbols())</span>
+<span class="fc" id="L339">                        .setAttributeStart(</span>
+<span class="fc" id="L340">                                engine.getSymbols().getPropertyDelimiter())</span>
+<span class="fc" id="L341">                        .create();</span>
+<span class="fc" id="L342">        engine = new DefaultExpressionEngine(symbols);</span>
+<span class="fc" id="L343">        assertEquals(&quot;Wrong attribute key&quot;, &quot;/test&quot;,</span>
+<span class="fc" id="L344">                engine.attributeKey(&quot;&quot;, &quot;test&quot;));</span>
+<span class="fc" id="L345">    }</span>
+
+    /**
+     * Tests adding direct child nodes to the existing hierarchy.
+     */
+    @Test
+    public void testPrepareAddDirectly()
+    {
+<span class="fc" id="L353">        NodeAddData&lt;ImmutableNode&gt; data = engine.prepareAdd(root, &quot;newNode&quot;, handler);</span>
+<span class="fc" id="L354">        assertSame(&quot;Wrong parent node&quot;, root, data.getParent());</span>
+<span class="fc" id="L355">        assertTrue(&quot;Path nodes available&quot;, data.getPathNodes().isEmpty());</span>
+<span class="fc" id="L356">        assertEquals(&quot;Wrong name of new node&quot;, &quot;newNode&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L357">        assertFalse(&quot;New node is an attribute&quot;, data.isAttribute());</span>
+
+<span class="fc" id="L359">        data = engine.prepareAdd(root, &quot;tables.table.fields.field.name&quot;, handler);</span>
+<span class="fc" id="L360">        assertEquals(&quot;Wrong name of new node&quot;, &quot;name&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L361">        assertTrue(&quot;Path nodes available&quot;, data.getPathNodes().isEmpty());</span>
+<span class="fc" id="L362">        assertEquals(&quot;Wrong parent node&quot;, &quot;field&quot;, data.getParent().getNodeName());</span>
+<span class="fc" id="L363">        ImmutableNode nd = data.getParent().getChildren().get(0);</span>
+<span class="fc" id="L364">        assertEquals(&quot;Field has no name node&quot;, &quot;name&quot;, nd.getNodeName());</span>
+<span class="fc" id="L365">        assertEquals(&quot;Incorrect name&quot;, &quot;version&quot;, nd.getValue());</span>
+<span class="fc" id="L366">    }</span>
+
+    /**
+     * Tests adding if indices are involved.
+     */
+    @Test
+    public void testPrepareAddWithIndex()
+    {
+<span class="fc" id="L374">        NodeAddData&lt;ImmutableNode&gt; data = engine</span>
+<span class="fc" id="L375">                .prepareAdd(root, &quot;tables.table(0).tableSpace&quot;, handler);</span>
+<span class="fc" id="L376">        assertEquals(&quot;Wrong name of new node&quot;, &quot;tableSpace&quot;, data</span>
+<span class="fc" id="L377">                .getNewNodeName());</span>
+<span class="fc" id="L378">        assertTrue(&quot;Path nodes available&quot;, data.getPathNodes().isEmpty());</span>
+<span class="fc" id="L379">        assertEquals(&quot;Wrong type of parent node&quot;, &quot;table&quot;, data.getParent()</span>
+<span class="fc" id="L380">                .getNodeName());</span>
+<span class="fc" id="L381">        ImmutableNode node = data.getParent().getChildren().get(0);</span>
+<span class="fc" id="L382">        assertEquals(&quot;Wrong table&quot;, tables[0], node.getValue());</span>
+
+<span class="fc" id="L384">        data = engine.prepareAdd(root, &quot;tables.table(1).fields.field(2).alias&quot;, handler);</span>
+<span class="fc" id="L385">        assertEquals(&quot;Wrong name of new node&quot;, &quot;alias&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L386">        assertEquals(&quot;Wrong type of parent node&quot;, &quot;field&quot;, data.getParent()</span>
+<span class="fc" id="L387">                .getNodeName());</span>
+<span class="fc" id="L388">        assertEquals(&quot;Wrong field node&quot;, &quot;creationDate&quot;, data.getParent()</span>
+<span class="fc" id="L389">                .getChildren().get(0).getValue());</span>
+<span class="fc" id="L390">    }</span>
+
+    /**
+     * Tests adding new attributes.
+     */
+    @Test
+    public void testPrepareAddAttribute()
+    {
+<span class="fc" id="L398">        NodeAddData&lt;ImmutableNode&gt; data = engine.prepareAdd(root,</span>
+                &quot;tables.table(0)[@tableSpace]&quot;, handler);
+<span class="fc" id="L400">        assertEquals(&quot;Wrong table node&quot;, tables[0], data.getParent()</span>
+<span class="fc" id="L401">                .getChildren().get(0).getValue());</span>
+<span class="fc" id="L402">        assertEquals(&quot;Wrong name of new node&quot;, &quot;tableSpace&quot;, data</span>
+<span class="fc" id="L403">                .getNewNodeName());</span>
+<span class="fc" id="L404">        assertTrue(&quot;Attribute not detected&quot;, data.isAttribute());</span>
+<span class="fc" id="L405">        assertTrue(&quot;Path nodes available&quot;, data.getPathNodes().isEmpty());</span>
+<span class="fc" id="L406">    }</span>
+
+    /**
+     * Tests whether an attribute to the root node can be added.
+     */
+    @Test
+    public void testPrepareAddAttributeRoot()
+    {
+<span class="fc" id="L414">        NodeAddData&lt;ImmutableNode&gt; data = engine.prepareAdd(root, &quot;[@newAttr]&quot;, handler);</span>
+<span class="fc" id="L415">        assertSame(&quot;Root node is not parent&quot;, root, data.getParent());</span>
+<span class="fc" id="L416">        assertEquals(&quot;Wrong name of new node&quot;, &quot;newAttr&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L417">        assertTrue(&quot;Attribute not detected&quot;, data.isAttribute());</span>
+<span class="fc" id="L418">    }</span>
+
+    /**
+     * Tests add operations where complete paths are added.
+     */
+    @Test
+    public void testPrepareAddWithPath()
+    {
+<span class="fc" id="L426">        NodeAddData&lt;ImmutableNode&gt; data = engine.prepareAdd(root,</span>
+                &quot;tables.table(1).fields.field(-1).name&quot;, handler);
+<span class="fc" id="L428">        assertEquals(&quot;Wrong name of new node&quot;, &quot;name&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L429">        checkNodePath(data, &quot;field&quot;);</span>
+<span class="fc" id="L430">        assertEquals(&quot;Wrong type of parent node&quot;, &quot;fields&quot;, data.getParent()</span>
+<span class="fc" id="L431">                .getNodeName());</span>
+
+<span class="fc" id="L433">        data = engine.prepareAdd(root, &quot;tables.table(-1).name&quot;, handler);</span>
+<span class="fc" id="L434">        assertEquals(&quot;Wrong name of new node&quot;, &quot;name&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L435">        checkNodePath(data, &quot;table&quot;);</span>
+<span class="fc" id="L436">        assertEquals(&quot;Wrong type of parent node&quot;, &quot;tables&quot;, data.getParent()</span>
+<span class="fc" id="L437">                .getNodeName());</span>
+
+<span class="fc" id="L439">        data = engine.prepareAdd(root, &quot;a.complete.new.path&quot;, handler);</span>
+<span class="fc" id="L440">        assertEquals(&quot;Wrong name of new node&quot;, &quot;path&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L441">        checkNodePath(data, &quot;a&quot;, &quot;complete&quot;, &quot;new&quot;);</span>
+<span class="fc" id="L442">        assertSame(&quot;Root is not parent&quot;, root, data.getParent());</span>
+<span class="fc" id="L443">    }</span>
+
+    /**
+     * Tests add operations if property and attribute delimiters are equal.
+     * Then it is not possible to add new attribute nodes.
+     */
+    @Test
+    public void testPrepareAddWithSameAttributeDelimiter()
+    {
+<span class="fc" id="L452">        DefaultExpressionEngineSymbols symbols =</span>
+                new DefaultExpressionEngineSymbols.Builder(
+                        DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS)
+<span class="fc" id="L455">                        .setAttributeEnd(null)</span>
+<span class="fc" id="L456">                        .setAttributeStart(</span>
+                                DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS
+<span class="fc" id="L458">                                        .getPropertyDelimiter()).create();</span>
+<span class="fc" id="L459">        engine = new DefaultExpressionEngine(symbols);</span>
+
+<span class="fc" id="L461">        NodeAddData&lt;ImmutableNode&gt; data =</span>
+<span class="fc" id="L462">                engine.prepareAdd(root, &quot;tables.table(0).test&quot;, handler);</span>
+<span class="fc" id="L463">        assertEquals(&quot;Wrong name of new node&quot;, &quot;test&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L464">        assertFalse(&quot;New node is an attribute&quot;, data.isAttribute());</span>
+<span class="fc" id="L465">        assertEquals(&quot;Wrong type of parent node&quot;, &quot;table&quot;, data.getParent()</span>
+<span class="fc" id="L466">                .getNodeName());</span>
+
+<span class="fc" id="L468">        data = engine.prepareAdd(root, &quot;a.complete.new.path&quot;, handler);</span>
+<span class="fc" id="L469">        assertFalse(&quot;New node is an attribute&quot;, data.isAttribute());</span>
+<span class="fc" id="L470">        checkNodePath(data, &quot;a&quot;, &quot;complete&quot;, &quot;new&quot;);</span>
+<span class="fc" id="L471">    }</span>
+
+    /**
+     * Tests add operations when an alternative syntax is set.
+     */
+    @Test
+    public void testPrepareAddWithAlternativeSyntax()
+    {
+<span class="fc" id="L479">        setUpAlternativeSyntax();</span>
+<span class="fc" id="L480">        NodeAddData&lt;ImmutableNode&gt; data =</span>
+<span class="fc" id="L481">                engine.prepareAdd(root, &quot;tables/table[0]/test&quot;, handler);</span>
+<span class="fc" id="L482">        assertEquals(&quot;Wrong name of new node&quot;, &quot;test&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L483">        assertFalse(&quot;New node is attribute&quot;, data.isAttribute());</span>
+<span class="fc" id="L484">        assertEquals(&quot;Wrong parent node&quot;, tables[0], data.getParent()</span>
+<span class="fc" id="L485">                .getChildren().get(0).getValue());</span>
+
+<span class="fc" id="L487">        data = engine.prepareAdd(root, &quot;a/complete/new/path@attr&quot;, handler);</span>
+<span class="fc" id="L488">        assertEquals(&quot;Wrong name of new attribute&quot;, &quot;attr&quot;, data</span>
+<span class="fc" id="L489">                .getNewNodeName());</span>
+<span class="fc" id="L490">        checkNodePath(data, &quot;a&quot;, &quot;complete&quot;, &quot;new&quot;, &quot;path&quot;);</span>
+<span class="fc" id="L491">        assertSame(&quot;Root is not parent&quot;, root, data.getParent());</span>
+<span class="fc" id="L492">    }</span>
+
+    /**
+     * Tests using invalid keys, e.g. if something should be added to
+     * attributes.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testPrepareAddInvalidKey()
+    {
+<span class="nc" id="L501">        engine.prepareAdd(root, &quot;tables.table(0)[@type].new&quot;, handler);</span>
+<span class="nc" id="L502">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testPrepareAddInvalidKeyAttribute()
+    {
+<span class="nc" id="L507">        engine.prepareAdd(</span>
+                root,
+                &quot;a.complete.new.path.with.an[@attribute].at.a.non.allowed[@position]&quot;,
+                handler);
+<span class="nc" id="L511">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testPrepareAddNullKey()
+    {
+<span class="nc" id="L516">        engine.prepareAdd(root, null, handler);</span>
+<span class="nc" id="L517">    }</span>
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testPrepareAddEmptyKey()
+    {
+<span class="nc" id="L522">        engine.prepareAdd(root, &quot;&quot;, handler);</span>
+<span class="nc" id="L523">    }</span>
+
+    /**
+     * Tests whether a canonical key can be queried if all child nodes have
+     * different names.
+     */
+    @Test
+    public void testCanonicalKeyNoDuplicates()
+    {
+<span class="fc" id="L532">        ImmutableNode node = fetchNode(&quot;tables.table(0).name&quot;);</span>
+<span class="fc" id="L533">        assertEquals(&quot;Wrong canonical key&quot;, &quot;table.name(0)&quot;,</span>
+<span class="fc" id="L534">                engine.canonicalKey(node, &quot;table&quot;, handler));</span>
+<span class="fc" id="L535">    }</span>
+
+    /**
+     * Tests whether duplicates are correctly resolved when querying for
+     * canonical keys.
+     */
+    @Test
+    public void testCanonicalKeyWithDuplicates()
+    {
+<span class="fc" id="L544">        ImmutableNode tab1 = fetchNode(&quot;tables.table(0)&quot;);</span>
+<span class="fc" id="L545">        ImmutableNode tab2 = fetchNode(&quot;tables.table(1)&quot;);</span>
+<span class="fc" id="L546">        assertEquals(&quot;Wrong key 1&quot;, &quot;tables.table(0)&quot;,</span>
+<span class="fc" id="L547">                engine.canonicalKey(tab1, &quot;tables&quot;, handler));</span>
+<span class="fc" id="L548">        assertEquals(&quot;Wrong key 2&quot;, &quot;tables.table(1)&quot;,</span>
+<span class="fc" id="L549">                engine.canonicalKey(tab2, &quot;tables&quot;, handler));</span>
+<span class="fc" id="L550">    }</span>
+
+    /**
+     * Tests whether the parent key can be undefined when querying a canonical
+     * key.
+     */
+    @Test
+    public void testCanonicalKeyNoParentKey()
+    {
+<span class="fc" id="L559">        ImmutableNode node = fetchNode(&quot;tables.table(0).fields.field(1).name&quot;);</span>
+<span class="fc" id="L560">        assertEquals(&quot;Wrong key&quot;, &quot;name(0)&quot;,</span>
+<span class="fc" id="L561">                engine.canonicalKey(node, null, handler));</span>
+<span class="fc" id="L562">    }</span>
+
+    /**
+     * Tests whether a canonical key for the parent node can be queried if no
+     * parent key was passed in.
+     */
+    @Test
+    public void testCanonicalKeyRootNoParentKey()
+    {
+<span class="fc" id="L571">        assertEquals(&quot;Wrong key&quot;, &quot;&quot;, engine.canonicalKey(root, null, handler));</span>
+<span class="fc" id="L572">    }</span>
+
+    /**
+     * Tests whether a parent key is evaluated when determining the canonical
+     * key of the root node.
+     */
+    @Test
+    public void testCanonicalKeyRootWithParentKey()
+    {
+<span class="fc" id="L581">        assertEquals(&quot;Wrong key&quot;, &quot;parent&quot;,</span>
+<span class="fc" id="L582">                engine.canonicalKey(root, &quot;parent&quot;, handler));</span>
+<span class="fc" id="L583">    }</span>
+
+    /**
+     * Tests whether the node matcher is used when querying keys.
+     */
+    @Test
+    public void testQueryKeyWithAlternativeMatcher()
+    {
+<span class="fc" id="L591">        setUpAlternativeMatcher();</span>
+<span class="fc" id="L592">        checkKey(&quot;tables_._table_.name_&quot;, &quot;name&quot;, 2);</span>
+<span class="fc" id="L593">    }</span>
+
+    /**
+     * Tests whether the node matcher is used when adding keys.
+     */
+    @Test
+    public void testPrepareAddWithAlternativeMatcher()
+    {
+<span class="fc" id="L601">        setUpAlternativeMatcher();</span>
+<span class="fc" id="L602">        NodeAddData&lt;ImmutableNode&gt; data =</span>
+<span class="fc" id="L603">                engine.prepareAdd(root, &quot;tables_.table._fields__._field.name&quot;,</span>
+                        handler);
+<span class="fc" id="L605">        assertEquals(&quot;Wrong name of new node&quot;, &quot;name&quot;, data.getNewNodeName());</span>
+<span class="fc" id="L606">        assertTrue(&quot;Path nodes available&quot;, data.getPathNodes().isEmpty());</span>
+<span class="fc" id="L607">    }</span>
+
+    /**
+     * Creates a node hierarchy for testing that consists of tables, their
+     * fields, and some additional data:
+     *
+     * &lt;pre&gt;
+     *  tables
+     *       table
+     *          name
+     *          fields
+     *              field
+     *                  name
+     *              field
+     *                  name
+     * &lt;/pre&gt;
+     *
+     * @return the root of the test node hierarchy
+     */
+    private static ImmutableNode setUpNodes()
+    {
+<span class="fc" id="L628">        ImmutableNode.Builder nodeTablesBuilder =</span>
+                new ImmutableNode.Builder(tables.length);
+<span class="fc" id="L630">        nodeTablesBuilder.name(&quot;tables&quot;);</span>
+<span class="fc bfc" id="L631" title="All 2 branches covered.">        for (int i = 0; i &lt; tables.length; i++)</span>
+        {
+<span class="fc" id="L633">            ImmutableNode.Builder nodeTableBuilder =</span>
+                    new ImmutableNode.Builder(2);
+<span class="fc" id="L635">            nodeTableBuilder.name(&quot;table&quot;);</span>
+<span class="fc" id="L636">            nodeTableBuilder.addChild(new ImmutableNode.Builder().name(&quot;name&quot;)</span>
+<span class="fc" id="L637">                    .value(tables[i]).create());</span>
+<span class="fc" id="L638">            nodeTableBuilder.addAttribute(&quot;type&quot;, tabTypes[i]);</span>
+
+<span class="fc" id="L640">            ImmutableNode.Builder nodeFieldsBuilder =</span>
+                    new ImmutableNode.Builder(fields[i].length);
+<span class="fc bfc" id="L642" title="All 2 branches covered.">            for (int j = 0; j &lt; fields[i].length; j++)</span>
+            {
+<span class="fc" id="L644">                nodeFieldsBuilder.addChild(createFieldNode(fields[i][j]));</span>
+            }
+<span class="fc" id="L646">            nodeTableBuilder</span>
+<span class="fc" id="L647">                    .addChild(nodeFieldsBuilder.name(&quot;fields&quot;).create());</span>
+<span class="fc" id="L648">            nodeTablesBuilder.addChild(nodeTableBuilder.create());</span>
+        }
+
+<span class="fc" id="L651">        ImmutableNode.Builder rootBuilder = new ImmutableNode.Builder();</span>
+<span class="fc" id="L652">        rootBuilder.addChild(nodeTablesBuilder.create());</span>
+<span class="fc" id="L653">        ImmutableNode.Builder nodeConnBuilder = new ImmutableNode.Builder();</span>
+<span class="fc" id="L654">        nodeConnBuilder.name(&quot;connection.settings&quot;);</span>
+<span class="fc" id="L655">        nodeConnBuilder.addChild(createNode(&quot;usr.name&quot;, &quot;scott&quot;));</span>
+<span class="fc" id="L656">        nodeConnBuilder.addChild(createNode(&quot;usr.pwd&quot;, &quot;tiger&quot;));</span>
+<span class="fc" id="L657">        rootBuilder.addAttribute(&quot;test&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L658">        rootBuilder.addChild(nodeConnBuilder.create());</span>
+
+<span class="fc" id="L660">        return rootBuilder.create();</span>
+    }
+
+    /**
+     * Configures the expression engine to use a different syntax.
+     */
+    private void setUpAlternativeSyntax()
+    {
+<span class="fc" id="L668">        DefaultExpressionEngineSymbols symbols =</span>
+                new DefaultExpressionEngineSymbols.Builder()
+<span class="fc" id="L670">                        .setAttributeEnd(null).setAttributeStart(&quot;@&quot;)</span>
+<span class="fc" id="L671">                        .setPropertyDelimiter(&quot;/&quot;).setEscapedDelimiter(null)</span>
+<span class="fc" id="L672">                        .setIndexStart(&quot;[&quot;).setIndexEnd(&quot;]&quot;).create();</span>
+<span class="fc" id="L673">        engine = new DefaultExpressionEngine(symbols);</span>
+<span class="fc" id="L674">    }</span>
+
+    /**
+     * Configures the test expression engine to use a special matcher. This
+     * matcher ignores underscore characters in node names.
+     */
+    private void setUpAlternativeMatcher()
+    {
+<span class="fc" id="L682">        NodeMatcher&lt;String&gt; matcher = new NodeMatcher&lt;String&gt;()</span>
+<span class="fc" id="L683">        {</span>
+            @Override
+            public &lt;T&gt; boolean matches(T node, NodeHandler&lt;T&gt; handler,
+                    String criterion)
+            {
+<span class="fc" id="L688">                return handler.nodeName(node).equals(StringUtils.remove(criterion, '_'));</span>
+            }
+        };
+<span class="fc" id="L691">        engine = new DefaultExpressionEngine(engine.getSymbols(), matcher);</span>
+<span class="fc" id="L692">    }</span>
+
+    /**
+     * Helper method for checking the evaluation of a key. Queries the
+     * expression engine and tests if the expected results are returned.
+     *
+     * @param key the key
+     * @param name the name of the nodes to be returned
+     * @param count the number of expected result nodes
+     * @return the list with the results of the query
+     */
+    private List&lt;QueryResult&lt;ImmutableNode&gt;&gt; checkKey(String key, String name,
+            int count)
+    {
+<span class="fc" id="L706">        List&lt;QueryResult&lt;ImmutableNode&gt;&gt; nodes = query(key, count);</span>
+<span class="fc bfc" id="L707" title="All 2 branches covered.">        for (QueryResult&lt;ImmutableNode&gt; result : nodes)</span>
+        {
+<span class="fc bfc" id="L709" title="All 2 branches covered.">            if (result.isAttributeResult())</span>
+            {
+<span class="fc" id="L711">                assertEquals(&quot;Wrong attribute name for key &quot; + key, name,</span>
+<span class="fc" id="L712">                        result.getAttributeName());</span>
+            }
+            else
+            {
+<span class="fc" id="L716">                assertEquals(&quot;Wrong result node for key &quot; + key, name, result</span>
+<span class="fc" id="L717">                        .getNode().getNodeName());</span>
+            }
+<span class="fc" id="L719">        }</span>
+<span class="fc" id="L720">        return nodes;</span>
+    }
+
+    /**
+     * Helper method for querying the test engine for a specific key.
+     *
+     * @param key the key
+     * @param expCount the expected number of result nodes
+     * @return the collection of retrieved nodes
+     */
+    private List&lt;QueryResult&lt;ImmutableNode&gt;&gt; query(String key, int expCount)
+    {
+<span class="fc" id="L732">        List&lt;QueryResult&lt;ImmutableNode&gt;&gt; nodes = engine.query(root, key, handler);</span>
+<span class="fc" id="L733">        assertEquals(&quot;Wrong number of result nodes for key &quot; + key, expCount,</span>
+<span class="fc" id="L734">                nodes.size());</span>
+<span class="fc" id="L735">        return nodes;</span>
+    }
+
+    /**
+     * Helper method for fetching a specific node by its key.
+     *
+     * @param key the key
+     * @return the node with this key
+     */
+    private ImmutableNode fetchNode(String key)
+    {
+<span class="fc" id="L746">        QueryResult&lt;ImmutableNode&gt; result = query(key, 1).get(0);</span>
+<span class="fc" id="L747">        assertFalse(&quot;An attribute result&quot;, result.isAttributeResult());</span>
+<span class="fc" id="L748">        return result.getNode();</span>
+    }
+
+    /**
+     * Helper method for checking the value of a node specified by the given
+     * key. This method evaluates the key and checks whether the resulting node
+     * has the expected value.
+     *
+     * @param key the key
+     * @param name the expected name of the result node
+     * @param value the expected value of the result node
+     */
+    private void checkKeyValue(String key, String name, String value)
+    {
+<span class="fc" id="L762">        List&lt;QueryResult&lt;ImmutableNode&gt;&gt; results = checkKey(key, name, 1);</span>
+<span class="fc" id="L763">        QueryResult&lt;ImmutableNode&gt; result = results.get(0);</span>
+<span class="fc" id="L764">        assertFalse(&quot;No node result&quot;, result.isAttributeResult());</span>
+<span class="fc" id="L765">        assertEquals(&quot;Wrong value for key &quot; + key, value,</span>
+<span class="fc" id="L766">                result.getNode().getValue());</span>
+<span class="fc" id="L767">    }</span>
+
+    /**
+     * Helper method for checking whether an attribute key is correctly
+     * evaluated.
+     *
+     * @param key the attribute key
+     * @param attr the attribute name
+     * @param expValue the expected attribute value
+     */
+    private void checkAttributeValue(String key, String attr, Object expValue)
+    {
+<span class="fc" id="L779">        List&lt;QueryResult&lt;ImmutableNode&gt;&gt; results = checkKey(key, attr, 1);</span>
+<span class="fc" id="L780">        QueryResult&lt;ImmutableNode&gt; result = results.get(0);</span>
+<span class="fc" id="L781">        assertTrue(&quot;Not an attribute result&quot;, result.isAttributeResult());</span>
+<span class="fc" id="L782">        assertEquals(&quot;Wrong attribute value for key &quot; + key, expValue,</span>
+<span class="fc" id="L783">                result.getAttributeValue(handler));</span>
+<span class="fc" id="L784">    }</span>
+
+    /**
+     * Helper method for checking the path of an add operation.
+     *
+     * @param data the add data object
+     * @param expected the expected path nodes
+     */
+    private void checkNodePath(NodeAddData&lt;ImmutableNode&gt; data,
+            String... expected)
+    {
+<span class="fc" id="L795">        assertEquals(&quot;Wrong number of path nodes&quot;, expected.length, data</span>
+<span class="fc" id="L796">                .getPathNodes().size());</span>
+<span class="fc" id="L797">        Iterator&lt;String&gt; it = data.getPathNodes().iterator();</span>
+<span class="fc bfc" id="L798" title="All 2 branches covered.">        for (int i = 0; i &lt; expected.length; i++)</span>
+        {
+<span class="fc" id="L800">            assertEquals(&quot;Wrong path node &quot; + i, expected[i], it.next());</span>
+        }
+<span class="fc" id="L802">    }</span>
+
+    /**
+     * Helper method for creating a field node with its children for the test
+     * node hierarchy.
+     *
+     * @param name the name of the field
+     * @return the field node
+     */
+    private static ImmutableNode createFieldNode(String name)
+    {
+<span class="fc" id="L813">        ImmutableNode.Builder nodeFieldBuilder = new ImmutableNode.Builder(1);</span>
+<span class="fc" id="L814">        nodeFieldBuilder.addChild(createNode(&quot;name&quot;, name));</span>
+<span class="fc" id="L815">        return nodeFieldBuilder.name(&quot;field&quot;).create();</span>
+    }
+
+    /**
+     * Convenience method for creating a simple node with a name and a value.
+     *
+     * @param name the node name
+     * @param value the node value
+     * @return the node instance
+     */
+    private static ImmutableNode createNode(String name, Object value)
+    {
+<span class="fc" id="L827">        return new ImmutableNode.Builder().name(name).value(value).create();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>
