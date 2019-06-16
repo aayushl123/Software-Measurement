@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Base64InputStreamTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons_codec$Jacoco.exec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.binary</a> &gt; <span class="el_source">Base64InputStreamTest.java</span></div><h1>Base64InputStreamTest.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.binary;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.Arrays;
+
+import org.junit.Test;
+
+/**
+ * @since 1.4
+ */
+<span class="fc" id="L40">public class Base64InputStreamTest {</span>
+
+    /**
+     * Decodes to {0, 0, 0, 255, 255, 255}
+     */
+    private static final String ENCODED_B64 = &quot;AAAA////&quot;;
+
+<span class="fc" id="L47">    private final static byte[] CRLF = { (byte) '\r', (byte) '\n' };</span>
+
+<span class="fc" id="L49">    private final static byte[] LF = { (byte) '\n' };</span>
+
+    private static final String STRING_FIXTURE = &quot;Hello World&quot;;
+
+    /**
+     * Tests the problem reported in CODEC-130. Missing / wrong implementation of skip.
+     */
+    @Test
+    public void testCodec130() throws IOException {
+<span class="fc" id="L58">        final ByteArrayOutputStream bos = new ByteArrayOutputStream();</span>
+<span class="fc" id="L59">        try (final Base64OutputStream base64os = new Base64OutputStream(bos)) {</span>
+<span class="fc" id="L60">            base64os.write(StringUtils.getBytesUtf8(STRING_FIXTURE));</span>
+        }
+
+<span class="fc" id="L63">        final ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());</span>
+<span class="fc" id="L64">        final Base64InputStream ins = new Base64InputStream(bis);</span>
+
+        // we skip the first character read from the reader
+<span class="fc" id="L67">        ins.skip(1);</span>
+<span class="fc" id="L68">        final byte[] decodedBytes = Base64TestData.streamToBytes(ins, new byte[64]);</span>
+<span class="fc" id="L69">        final String str = StringUtils.newStringUtf8(decodedBytes);</span>
+
+<span class="fc" id="L71">        assertEquals(STRING_FIXTURE.substring(1), str);</span>
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * Tests the bug reported in CODEC-105. Bad interactions with InputStream when reading one byte at a time.
+     */
+    @Test
+    public void testCodec105() throws IOException {
+<span class="fc" id="L79">        try (final Base64InputStream in = new Base64InputStream(new Codec105ErrorInputStream(), true, 0, null)) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            for (int i = 0; i &lt; 5; i++) {</span>
+<span class="fc" id="L81">                in.read();</span>
+            }
+        }
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Test for the CODEC-101 bug: InputStream.read(byte[]) should never return 0 because Java's builtin InputStreamReader hates that.
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testCodec101() throws Exception {
+<span class="fc" id="L94">        final byte[] codec101 = StringUtils.getBytesUtf8(Base64TestData.CODEC_101_MULTIPLE_OF_3);</span>
+<span class="fc" id="L95">        final ByteArrayInputStream bais = new ByteArrayInputStream(codec101);</span>
+<span class="fc" id="L96">        try (final Base64InputStream in = new Base64InputStream(bais)) {</span>
+<span class="fc" id="L97">            final byte[] result = new byte[8192];</span>
+<span class="fc" id="L98">            int c = in.read(result);</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            assertTrue(&quot;Codec101: First read successful [c=&quot; + c + &quot;]&quot;, c &gt; 0);</span>
+
+<span class="fc" id="L101">            c = in.read(result);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">            assertTrue(&quot;Codec101: Second read should report end-of-stream [c=&quot; + c + &quot;]&quot;, c &lt; 0);</span>
+        }
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * Another test for the CODEC-101 bug: In commons-codec-1.4 this test shows InputStreamReader explicitly hating an
+     * InputStream.read(byte[]) return of 0:
+     *
+     * java.io.IOException: Underlying input stream returned zero bytes at sun.nio.cs.StreamDecoder.readBytes(StreamDecoder.java:268) at
+     * sun.nio.cs.StreamDecoder.implRead(StreamDecoder.java:306) at sun.nio.cs.StreamDecoder.read(StreamDecoder.java:158) at
+     * java.io.InputStreamReader.read(InputStreamReader.java:167) at java.io.BufferedReader.fill(BufferedReader.java:136) at
+     * java.io.BufferedReader.readLine(BufferedReader.java:299) at java.io.BufferedReader.readLine(BufferedReader.java:362) at
+     * org.apache.commons.codec.binary.Base64InputStreamTest.testInputStreamReader(Base64InputStreamTest.java:75)
+     *
+     * But in commons-codec-1.5 it's fixed. :-)
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testInputStreamReader() throws Exception {
+<span class="fc" id="L123">        final byte[] codec101 = StringUtils.getBytesUtf8(Base64TestData.CODEC_101_MULTIPLE_OF_3);</span>
+<span class="fc" id="L124">        final ByteArrayInputStream bais = new ByteArrayInputStream(codec101);</span>
+<span class="fc" id="L125">        final Base64InputStream in = new Base64InputStream(bais);</span>
+<span class="fc" id="L126">        final InputStreamReader isr = new InputStreamReader(in);</span>
+<span class="fc" id="L127">        try (final BufferedReader br = new BufferedReader(isr)) {</span>
+<span class="fc" id="L128">            final String line = br.readLine();</span>
+<span class="fc" id="L129">            assertNotNull(&quot;Codec101:  InputStreamReader works!&quot;, line);</span>
+        }
+<span class="fc" id="L131">    }</span>
+
+    /**
+     * Test the Base64InputStream implementation against the special NPE inducing input identified in the CODEC-98 bug.
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testCodec98NPE() throws Exception {
+<span class="fc" id="L141">        final byte[] codec98 = StringUtils.getBytesUtf8(Base64TestData.CODEC_98_NPE);</span>
+<span class="fc" id="L142">        final ByteArrayInputStream data = new ByteArrayInputStream(codec98);</span>
+<span class="fc" id="L143">        final Base64InputStream stream = new Base64InputStream(data);</span>
+
+        // This line causes an NPE in commons-codec-1.4.jar:
+<span class="fc" id="L146">        final byte[] decodedBytes = Base64TestData.streamToBytes(stream, new byte[1024]);</span>
+
+<span class="fc" id="L148">        final String decoded = StringUtils.newStringUtf8(decodedBytes);</span>
+<span class="fc" id="L149">        assertEquals(&quot;codec-98 NPE Base64InputStream&quot;, Base64TestData.CODEC_98_NPE_DECODED, decoded);</span>
+<span class="fc" id="L150">    }</span>
+
+    /**
+     * Tests skipping past the end of a stream.
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void testAvailable() throws Throwable {
+<span class="fc" id="L159">        final InputStream ins = new ByteArrayInputStream(StringUtils.getBytesIso8859_1(ENCODED_B64));</span>
+<span class="fc" id="L160">        try (final Base64InputStream b64stream = new Base64InputStream(ins)) {</span>
+<span class="fc" id="L161">            assertEquals(1, b64stream.available());</span>
+<span class="fc" id="L162">            assertEquals(6, b64stream.skip(10));</span>
+            // End of stream reached
+<span class="fc" id="L164">            assertEquals(0, b64stream.available());</span>
+<span class="fc" id="L165">            assertEquals(-1, b64stream.read());</span>
+<span class="fc" id="L166">            assertEquals(-1, b64stream.read());</span>
+<span class="fc" id="L167">            assertEquals(0, b64stream.available());</span>
+        }
+<span class="fc" id="L169">    }</span>
+
+    /**
+     * Tests the Base64InputStream implementation against empty input.
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testBase64EmptyInputStreamMimeChuckSize() throws Exception {
+<span class="fc" id="L179">        testBase64EmptyInputStream(BaseNCodec.MIME_CHUNK_SIZE);</span>
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * Tests the Base64InputStream implementation against empty input.
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testBase64EmptyInputStreamPemChuckSize() throws Exception {
+<span class="fc" id="L190">        testBase64EmptyInputStream(BaseNCodec.PEM_CHUNK_SIZE);</span>
+<span class="fc" id="L191">    }</span>
+
+    private void testBase64EmptyInputStream(final int chuckSize) throws Exception {
+<span class="fc" id="L194">        final byte[] emptyEncoded = new byte[0];</span>
+<span class="fc" id="L195">        final byte[] emptyDecoded = new byte[0];</span>
+<span class="fc" id="L196">        testByteByByte(emptyEncoded, emptyDecoded, chuckSize, CRLF);</span>
+<span class="fc" id="L197">        testByChunk(emptyEncoded, emptyDecoded, chuckSize, CRLF);</span>
+<span class="fc" id="L198">    }</span>
+
+    /**
+     * Tests the Base64InputStream implementation.
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testBase64InputStreamByChunk() throws Exception {
+        // Hello World test.
+<span class="fc" id="L209">        byte[] encoded = StringUtils.getBytesUtf8(&quot;SGVsbG8gV29ybGQ=\r\n&quot;);</span>
+<span class="fc" id="L210">        byte[] decoded = StringUtils.getBytesUtf8(STRING_FIXTURE);</span>
+<span class="fc" id="L211">        testByChunk(encoded, decoded, BaseNCodec.MIME_CHUNK_SIZE, CRLF);</span>
+
+        // Single Byte test.
+<span class="fc" id="L214">        encoded = StringUtils.getBytesUtf8(&quot;AA==\r\n&quot;);</span>
+<span class="fc" id="L215">        decoded = new byte[] { (byte) 0 };</span>
+<span class="fc" id="L216">        testByChunk(encoded, decoded, BaseNCodec.MIME_CHUNK_SIZE, CRLF);</span>
+
+        // OpenSSL interop test.
+<span class="fc" id="L219">        encoded = StringUtils.getBytesUtf8(Base64TestData.ENCODED_64_CHARS_PER_LINE);</span>
+<span class="fc" id="L220">        decoded = Base64TestData.DECODED;</span>
+<span class="fc" id="L221">        testByChunk(encoded, decoded, BaseNCodec.PEM_CHUNK_SIZE, LF);</span>
+
+        // Single Line test.
+<span class="fc" id="L224">        final String singleLine = Base64TestData.ENCODED_64_CHARS_PER_LINE.replaceAll(&quot;\n&quot;, &quot;&quot;);</span>
+<span class="fc" id="L225">        encoded = StringUtils.getBytesUtf8(singleLine);</span>
+<span class="fc" id="L226">        decoded = Base64TestData.DECODED;</span>
+<span class="fc" id="L227">        testByChunk(encoded, decoded, 0, LF);</span>
+
+        // test random data of sizes 0 thru 150
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        for (int i = 0; i &lt;= 150; i++) {</span>
+<span class="fc" id="L231">            final byte[][] randomData = Base64TestData.randomData(i, false);</span>
+<span class="fc" id="L232">            encoded = randomData[1];</span>
+<span class="fc" id="L233">            decoded = randomData[0];</span>
+<span class="fc" id="L234">            testByChunk(encoded, decoded, 0, LF);</span>
+        }
+<span class="fc" id="L236">    }</span>
+
+    /**
+     * Tests the Base64InputStream implementation.
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testBase64InputStreamByteByByte() throws Exception {
+        // Hello World test.
+<span class="fc" id="L247">        byte[] encoded = StringUtils.getBytesUtf8(&quot;SGVsbG8gV29ybGQ=\r\n&quot;);</span>
+<span class="fc" id="L248">        byte[] decoded = StringUtils.getBytesUtf8(STRING_FIXTURE);</span>
+<span class="fc" id="L249">        testByteByByte(encoded, decoded, BaseNCodec.MIME_CHUNK_SIZE, CRLF);</span>
+
+        // Single Byte test.
+<span class="fc" id="L252">        encoded = StringUtils.getBytesUtf8(&quot;AA==\r\n&quot;);</span>
+<span class="fc" id="L253">        decoded = new byte[] { (byte) 0 };</span>
+<span class="fc" id="L254">        testByteByByte(encoded, decoded, BaseNCodec.MIME_CHUNK_SIZE, CRLF);</span>
+
+        // OpenSSL interop test.
+<span class="fc" id="L257">        encoded = StringUtils.getBytesUtf8(Base64TestData.ENCODED_64_CHARS_PER_LINE);</span>
+<span class="fc" id="L258">        decoded = Base64TestData.DECODED;</span>
+<span class="fc" id="L259">        testByteByByte(encoded, decoded, BaseNCodec.PEM_CHUNK_SIZE, LF);</span>
+
+        // Single Line test.
+<span class="fc" id="L262">        final String singleLine = Base64TestData.ENCODED_64_CHARS_PER_LINE.replaceAll(&quot;\n&quot;, &quot;&quot;);</span>
+<span class="fc" id="L263">        encoded = StringUtils.getBytesUtf8(singleLine);</span>
+<span class="fc" id="L264">        decoded = Base64TestData.DECODED;</span>
+<span class="fc" id="L265">        testByteByByte(encoded, decoded, 0, LF);</span>
+
+        // test random data of sizes 0 thru 150
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        for (int i = 0; i &lt;= 150; i++) {</span>
+<span class="fc" id="L269">            final byte[][] randomData = Base64TestData.randomData(i, false);</span>
+<span class="fc" id="L270">            encoded = randomData[1];</span>
+<span class="fc" id="L271">            decoded = randomData[0];</span>
+<span class="fc" id="L272">            testByteByByte(encoded, decoded, 0, LF);</span>
+        }
+<span class="fc" id="L274">    }</span>
+
+    /**
+     * Tests method does three tests on the supplied data: 1. encoded ---[DECODE]--&gt; decoded 2. decoded ---[ENCODE]--&gt; encoded 3. decoded
+     * ---[WRAP-WRAP-WRAP-etc...] --&gt; decoded
+     * &lt;p/&gt;
+     * By &quot;[WRAP-WRAP-WRAP-etc...]&quot; we mean situation where the Base64InputStream wraps itself in encode and decode mode over and over
+     * again.
+     *
+     * @param encoded
+     *            base64 encoded data
+     * @param decoded
+     *            the data from above, but decoded
+     * @param chunkSize
+     *            chunk size (line-length) of the base64 encoded data.
+     * @param separator
+     *            Line separator in the base64 encoded data.
+     * @throws Exception
+     *             Usually signifies a bug in the Base64 commons-codec implementation.
+     */
+    private void testByChunk(final byte[] encoded, final byte[] decoded, final int chunkSize, final byte[] separator) throws Exception {
+
+        // Start with encode.
+        InputStream in;
+<span class="fc" id="L298">        in = new Base64InputStream(new ByteArrayInputStream(decoded), true, chunkSize, separator);</span>
+<span class="fc" id="L299">        byte[] output = Base64TestData.streamToBytes(in);</span>
+
+<span class="fc" id="L301">        assertEquals(&quot;EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L302">        assertEquals(&quot;Still EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L303">        assertTrue(&quot;Streaming base64 encode&quot;, Arrays.equals(output, encoded));</span>
+
+<span class="fc" id="L305">        in.close();</span>
+
+        // Now let's try decode.
+<span class="fc" id="L308">        in = new Base64InputStream(new ByteArrayInputStream(encoded));</span>
+<span class="fc" id="L309">        output = Base64TestData.streamToBytes(in);</span>
+
+<span class="fc" id="L311">        assertEquals(&quot;EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L312">        assertEquals(&quot;Still EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L313">        assertTrue(&quot;Streaming base64 decode&quot;, Arrays.equals(output, decoded));</span>
+
+        // I always wanted to do this! (wrap encoder with decoder etc etc).
+<span class="fc" id="L316">        in = new ByteArrayInputStream(decoded);</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L318">            in = new Base64InputStream(in, true, chunkSize, separator);</span>
+<span class="fc" id="L319">            in = new Base64InputStream(in, false);</span>
+        }
+<span class="fc" id="L321">        output = Base64TestData.streamToBytes(in);</span>
+
+<span class="fc" id="L323">        assertEquals(&quot;EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L324">        assertEquals(&quot;Still EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L325">        assertTrue(&quot;Streaming base64 wrap-wrap-wrap!&quot;, Arrays.equals(output, decoded));</span>
+<span class="fc" id="L326">        in.close();</span>
+<span class="fc" id="L327">    }</span>
+
+    /**
+     * Tests method does three tests on the supplied data: 1. encoded ---[DECODE]--&gt; decoded 2. decoded ---[ENCODE]--&gt; encoded 3. decoded
+     * ---[WRAP-WRAP-WRAP-etc...] --&gt; decoded
+     * &lt;p/&gt;
+     * By &quot;[WRAP-WRAP-WRAP-etc...]&quot; we mean situation where the Base64InputStream wraps itself in encode and decode mode over and over
+     * again.
+     *
+     * @param encoded
+     *            base64 encoded data
+     * @param decoded
+     *            the data from above, but decoded
+     * @param chunkSize
+     *            chunk size (line-length) of the base64 encoded data.
+     * @param separator
+     *            Line separator in the base64 encoded data.
+     * @throws Exception
+     *             Usually signifies a bug in the Base64 commons-codec implementation.
+     */
+    private void testByteByByte(final byte[] encoded, final byte[] decoded, final int chunkSize, final byte[] separator) throws Exception {
+
+        // Start with encode.
+        InputStream in;
+<span class="fc" id="L351">        in = new Base64InputStream(new ByteArrayInputStream(decoded), true, chunkSize, separator);</span>
+<span class="fc" id="L352">        byte[] output = new byte[encoded.length];</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">        for (int i = 0; i &lt; output.length; i++) {</span>
+<span class="fc" id="L354">            output[i] = (byte) in.read();</span>
+        }
+
+<span class="fc" id="L357">        assertEquals(&quot;EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L358">        assertEquals(&quot;Still EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L359">        assertTrue(&quot;Streaming base64 encode&quot;, Arrays.equals(output, encoded));</span>
+
+<span class="fc" id="L361">        in.close();</span>
+        // Now let's try decode.
+<span class="fc" id="L363">        in = new Base64InputStream(new ByteArrayInputStream(encoded));</span>
+<span class="fc" id="L364">        output = new byte[decoded.length];</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        for (int i = 0; i &lt; output.length; i++) {</span>
+<span class="fc" id="L366">            output[i] = (byte) in.read();</span>
+        }
+
+<span class="fc" id="L369">        assertEquals(&quot;EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L370">        assertEquals(&quot;Still EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L371">        assertTrue(&quot;Streaming base64 decode&quot;, Arrays.equals(output, decoded));</span>
+
+<span class="fc" id="L373">        in.close();</span>
+
+        // I always wanted to do this! (wrap encoder with decoder etc etc).
+<span class="fc" id="L376">        in = new ByteArrayInputStream(decoded);</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L378">            in = new Base64InputStream(in, true, chunkSize, separator);</span>
+<span class="fc" id="L379">            in = new Base64InputStream(in, false);</span>
+        }
+<span class="fc" id="L381">        output = new byte[decoded.length];</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        for (int i = 0; i &lt; output.length; i++) {</span>
+<span class="fc" id="L383">            output[i] = (byte) in.read();</span>
+        }
+
+<span class="fc" id="L386">        assertEquals(&quot;EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L387">        assertEquals(&quot;Still EOF&quot;, -1, in.read());</span>
+<span class="fc" id="L388">        assertTrue(&quot;Streaming base64 wrap-wrap-wrap!&quot;, Arrays.equals(output, decoded));</span>
+<span class="fc" id="L389">        in.close();</span>
+<span class="fc" id="L390">    }</span>
+
+    /**
+     * Tests markSupported.
+     *
+     * @throws Exception
+     */
+    @Test
+    public void testMarkSupported() throws Exception {
+<span class="fc" id="L399">        final byte[] decoded = StringUtils.getBytesUtf8(STRING_FIXTURE);</span>
+<span class="fc" id="L400">        final ByteArrayInputStream bin = new ByteArrayInputStream(decoded);</span>
+<span class="fc" id="L401">        try (final Base64InputStream in = new Base64InputStream(bin, true, 4, new byte[] { 0, 0, 0 })) {</span>
+            // Always returns false for now.
+<span class="fc" id="L403">            assertFalse(&quot;Base64InputStream.markSupported() is false&quot;, in.markSupported());</span>
+        }
+<span class="fc" id="L405">    }</span>
+
+    /**
+     * Tests read returning 0
+     *
+     * @throws Exception
+     */
+    @Test
+    public void testRead0() throws Exception {
+<span class="fc" id="L414">        final byte[] decoded = StringUtils.getBytesUtf8(STRING_FIXTURE);</span>
+<span class="fc" id="L415">        final byte[] buf = new byte[1024];</span>
+<span class="fc" id="L416">        int bytesRead = 0;</span>
+<span class="fc" id="L417">        final ByteArrayInputStream bin = new ByteArrayInputStream(decoded);</span>
+<span class="fc" id="L418">        try (final Base64InputStream in = new Base64InputStream(bin, true, 4, new byte[] { 0, 0, 0 })) {</span>
+<span class="fc" id="L419">            bytesRead = in.read(buf, 0, 0);</span>
+<span class="fc" id="L420">            assertEquals(&quot;Base64InputStream.read(buf, 0, 0) returns 0&quot;, 0, bytesRead);</span>
+        }
+<span class="fc" id="L422">    }</span>
+
+    /**
+     * Tests read with null.
+     *
+     * @throws Exception
+     *             for some failure scenarios.
+     */
+    @Test
+    public void testReadNull() throws Exception {
+<span class="fc" id="L432">        final byte[] decoded = StringUtils.getBytesUtf8(STRING_FIXTURE);</span>
+<span class="fc" id="L433">        final ByteArrayInputStream bin = new ByteArrayInputStream(decoded);</span>
+<span class="fc" id="L434">        try (final Base64InputStream in = new Base64InputStream(bin, true, 4, new byte[] { 0, 0, 0 })) {</span>
+<span class="nc" id="L435">            in.read(null, 0, 0);</span>
+<span class="nc" id="L436">            fail(&quot;Base64InputStream.read(null, 0, 0) to throw a NullPointerException&quot;);</span>
+<span class="fc" id="L437">        } catch (final NullPointerException e) {</span>
+            // Expected
+<span class="nc" id="L439">        }</span>
+<span class="fc" id="L440">    }</span>
+
+    /**
+     * Tests read throwing IndexOutOfBoundsException
+     *
+     * @throws Exception
+     */
+    @Test
+    public void testReadOutOfBounds() throws Exception {
+<span class="fc" id="L449">        final byte[] decoded = StringUtils.getBytesUtf8(STRING_FIXTURE);</span>
+<span class="fc" id="L450">        final byte[] buf = new byte[1024];</span>
+<span class="fc" id="L451">        final ByteArrayInputStream bin = new ByteArrayInputStream(decoded);</span>
+<span class="fc" id="L452">        try (final Base64InputStream in = new Base64InputStream(bin, true, 4, new byte[] { 0, 0, 0 })) {</span>
+
+            try {
+<span class="nc" id="L455">                in.read(buf, -1, 0);</span>
+<span class="nc" id="L456">                fail(&quot;Expected Base64InputStream.read(buf, -1, 0) to throw IndexOutOfBoundsException&quot;);</span>
+<span class="fc" id="L457">            } catch (final IndexOutOfBoundsException e) {</span>
+                // Expected
+<span class="nc" id="L459">            }</span>
+
+            try {
+<span class="nc" id="L462">                in.read(buf, 0, -1);</span>
+<span class="nc" id="L463">                fail(&quot;Expected Base64InputStream.read(buf, 0, -1) to throw IndexOutOfBoundsException&quot;);</span>
+<span class="fc" id="L464">            } catch (final IndexOutOfBoundsException e) {</span>
+                // Expected
+<span class="nc" id="L466">            }</span>
+
+            try {
+<span class="nc" id="L469">                in.read(buf, buf.length + 1, 0);</span>
+<span class="nc" id="L470">                fail(&quot;Base64InputStream.read(buf, buf.length + 1, 0) throws IndexOutOfBoundsException&quot;);</span>
+<span class="fc" id="L471">            } catch (final IndexOutOfBoundsException e) {</span>
+                // Expected
+<span class="nc" id="L473">            }</span>
+
+            try {
+<span class="nc" id="L476">                in.read(buf, buf.length - 1, 2);</span>
+<span class="nc" id="L477">                fail(&quot;Base64InputStream.read(buf, buf.length - 1, 2) throws IndexOutOfBoundsException&quot;);</span>
+<span class="fc" id="L478">            } catch (final IndexOutOfBoundsException e) {</span>
+                // Expected
+<span class="nc" id="L480">            }</span>
+        }
+<span class="fc" id="L482">    }</span>
+
+    /**
+     * Tests skipping number of characters larger than the internal buffer.
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void testSkipBig() throws Throwable {
+<span class="fc" id="L491">        final InputStream ins = new ByteArrayInputStream(StringUtils.getBytesIso8859_1(ENCODED_B64));</span>
+<span class="fc" id="L492">        try (final Base64InputStream b64stream = new Base64InputStream(ins)) {</span>
+<span class="fc" id="L493">            assertEquals(6, b64stream.skip(Integer.MAX_VALUE));</span>
+            // End of stream reached
+<span class="fc" id="L495">            assertEquals(-1, b64stream.read());</span>
+<span class="fc" id="L496">            assertEquals(-1, b64stream.read());</span>
+        }
+<span class="fc" id="L498">    }</span>
+
+    /**
+     * Tests skipping as a noop
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void testSkipNone() throws Throwable {
+<span class="fc" id="L507">        final InputStream ins = new ByteArrayInputStream(StringUtils.getBytesIso8859_1(ENCODED_B64));</span>
+<span class="fc" id="L508">        try (final Base64InputStream b64stream = new Base64InputStream(ins)) {</span>
+<span class="fc" id="L509">            final byte[] actualBytes = new byte[6];</span>
+<span class="fc" id="L510">            assertEquals(0, b64stream.skip(0));</span>
+<span class="fc" id="L511">            b64stream.read(actualBytes, 0, actualBytes.length);</span>
+<span class="fc" id="L512">            assertArrayEquals(actualBytes, new byte[] { 0, 0, 0, (byte) 255, (byte) 255, (byte) 255 });</span>
+            // End of stream reached
+<span class="fc" id="L514">            assertEquals(-1, b64stream.read());</span>
+        }
+<span class="fc" id="L516">    }</span>
+
+    /**
+     * Tests skipping past the end of a stream.
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void testSkipPastEnd() throws Throwable {
+<span class="fc" id="L525">        final InputStream ins = new ByteArrayInputStream(StringUtils.getBytesIso8859_1(ENCODED_B64));</span>
+<span class="fc" id="L526">        try (final Base64InputStream b64stream = new Base64InputStream(ins)) {</span>
+            // due to CODEC-130, skip now skips correctly decoded characters rather than encoded
+<span class="fc" id="L528">            assertEquals(6, b64stream.skip(10));</span>
+            // End of stream reached
+<span class="fc" id="L530">            assertEquals(-1, b64stream.read());</span>
+<span class="fc" id="L531">            assertEquals(-1, b64stream.read());</span>
+        }
+<span class="fc" id="L533">    }</span>
+
+    /**
+     * Tests skipping to the end of a stream.
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void testSkipToEnd() throws Throwable {
+<span class="fc" id="L542">        final InputStream ins = new ByteArrayInputStream(StringUtils.getBytesIso8859_1(ENCODED_B64));</span>
+<span class="fc" id="L543">        try (final Base64InputStream b64stream = new Base64InputStream(ins)) {</span>
+            // due to CODEC-130, skip now skips correctly decoded characters rather than encoded
+<span class="fc" id="L545">            assertEquals(6, b64stream.skip(6));</span>
+            // End of stream reached
+<span class="fc" id="L547">            assertEquals(-1, b64stream.read());</span>
+<span class="fc" id="L548">            assertEquals(-1, b64stream.read());</span>
+        }
+<span class="fc" id="L550">    }</span>
+
+    /**
+     * Tests if negative arguments to skip are handled correctly.
+     *
+     * @throws Throwable
+     */
+    @Test(expected=IllegalArgumentException.class)
+    public void testSkipWrongArgument() throws Throwable {
+<span class="fc" id="L559">        final InputStream ins = new ByteArrayInputStream(StringUtils.getBytesIso8859_1(ENCODED_B64));</span>
+<span class="fc" id="L560">        try (final Base64InputStream b64stream = new Base64InputStream(ins)) {</span>
+<span class="nc" id="L561">            b64stream.skip(-10);</span>
+        }
+<span class="nc" id="L563">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>
