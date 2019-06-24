@@ -54,6 +54,10 @@
   + Metric 6  // Includes data for BMI calculation
 + Documents // Includes final project report, final presentation, Excel files of data calculations and Scatter plots.
 
+## Required tools/plugins
+1. JaCoCo with IntelliJ (We didn't need to update any pom.xml to run JaCoCo)
+2. PIT mutation testing Idea plugin (We didn't need to update any pom.xml to run mutation testing)
+3. MetricsReloaded - Plugins | JetBrains
 
 
 
