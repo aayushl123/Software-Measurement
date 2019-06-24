@@ -52,9 +52,14 @@
   + Metric 4  // Includes data for cyclomatic complexity
   + Metric 5  // Includes data for MI-maintability index calculation
   + Metric 6  // Includes data for BMI calculation
-+ Documents // Includes final project report, final presentation, Excel files of data calculations and Scatter plots.
++ Documents
+   + Final project report
+   + Final presentation
+   + Help file on configurations added for code coverage and PITest
+   + Excel files of data calculations and Scatter plots
+   + Other files
 
-## Required tools/plugins
+## Required tools/plugins (Please check help file on configurations added for code coverage and PITest in Document folder)
 1. JaCoCo with IntelliJ (We didn't need to update any pom.xml to run JaCoCo)
 2. PIT mutation testing Idea plugin (We didn't need to update any pom.xml to run mutation testing)
 3. MetricsReloaded - Plugins | JetBrains
